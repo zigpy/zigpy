@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import collections
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Generator, Iterable, Sequence
+import contextlib
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import enum
@@ -15,7 +17,7 @@ import warnings
 
 from zigpy import util
 from zigpy.const import APS_REPLY_TIMEOUT
-from zigpy.event import EventBase, suppress_events
+from zigpy.event import EventBase
 import zigpy.types as t
 from zigpy.typing import UNDEFINED, UndefinedType
 from zigpy.zcl import foundation
@@ -28,6 +30,27 @@ if TYPE_CHECKING:
 
 
 LOGGER = logging.getLogger(__name__)
+
+# Tracks (cluster_id, attrid) pairs for which AttributeUpdatedEvent should be suppressed.
+# Used during Report_Attributes handling to allow quirks that update other clusters or
+# other attributes to emit their own events while suppressing the direct report's event.
+_suppressed_attribute_updates: ContextVar[frozenset[tuple[int, int]]] = ContextVar(
+    "_suppressed_attribute_updates", default=frozenset()
+)
+
+
+@contextlib.contextmanager
+def _suppress_attribute_update_event(
+    cluster_id: int, attrid: int
+) -> Generator[None, None, None]:
+    """Suppress AttributeUpdatedEvent for a specific (cluster, attribute) pair."""
+    current = _suppressed_attribute_updates.get()
+    token = _suppressed_attribute_updates.set(current | {(cluster_id, attrid)})
+
+    try:
+        yield
+    finally:
+        _suppressed_attribute_updates.reset(token)
 
 
 class ClusterType(enum.IntEnum):
@@ -404,6 +427,31 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         for key, value in new_value.items():
             self._update_attribute(key, value)
 
+    def _legacy_apply_quirk_attribute_update(
+        self, attr_def: foundation.ZCLAttributeDef, value: Any
+    ) -> Any | None:
+        """Update an attribute and return the cached value (possibly transformed).
+
+        Returns None if the quirk swallowed the attribute (no super() call).
+        """
+        with _suppress_attribute_update_event(self.cluster_id, attr_def.id):
+            self._update_attribute(attr_def.id, value)
+
+        try:
+            return self._attr_cache.get_value(attr_def)
+        except KeyError:
+            pass
+
+        # When multiple attrs share an ID (different manufacturer codes),
+        # `_update_attribute` stores in legacy cache. Move it to typed cache.
+        if attr_def.id in self._attr_cache._legacy_cache:
+            cached_value = self._attr_cache._legacy_cache.pop(attr_def.id).value
+            self._attr_cache.set_value(attr_def, cached_value)
+            return cached_value
+
+        # Quirk swallowed the attribute
+        return None
+
     @classmethod
     def find_attribute(
         cls,
@@ -752,33 +800,70 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                         attr.attrid, manufacturer_code=hdr.manufacturer
                     )
                 except KeyError:
-                    attr_name = None
+                    attr_def = None
                     value = attr.value.value
                 else:
-                    attr_name = attr_def.name
                     value = attr_def.type(attr.value.value)
 
-                # We suppress events because we want to emit `AttributeReportedEvent`
-                # directly. `_update_attribute` will update the attribute cache but is
-                # structured to be called directly from quirks and will emit an
-                # `AttributeUpdatedEvent by default.
-                with suppress_events():
-                    self._update_attribute(attr.attrid, value)
+                if attr_def is None:
+                    # Unknown attribute, update and emit reported event
+                    with _suppress_attribute_update_event(self.cluster_id, attr.attrid):
+                        self._update_attribute(attr.attrid, value)
 
-                self.emit(
-                    AttributeReportedEvent.event_type,
-                    AttributeReportedEvent(
-                        device_ieee=str(self.endpoint.device.ieee),
-                        endpoint_id=self.endpoint.endpoint_id,
-                        cluster_type=self._type,
-                        cluster_id=self.cluster_id,
-                        attribute_name=attr_name,
-                        attribute_id=attr.attrid,
-                        manufacturer_code=hdr.manufacturer,
-                        raw_value=attr.value.value,
-                        value=value,
-                    ),
+                    self.emit(
+                        AttributeReportedEvent.event_type,
+                        AttributeReportedEvent(
+                            device_ieee=str(self.endpoint.device.ieee),
+                            endpoint_id=self.endpoint.endpoint_id,
+                            cluster_type=self._type,
+                            cluster_id=self.cluster_id,
+                            attribute_name=None,
+                            attribute_id=attr.attrid,
+                            manufacturer_code=hdr.manufacturer,
+                            raw_value=attr.value.value,
+                            value=value,
+                        ),
+                    )
+                    continue
+
+                cached_value = self._legacy_apply_quirk_attribute_update(
+                    attr_def, value
                 )
+
+                if cached_value is None:
+                    # Quirk swallowed the attribute
+                    continue
+                elif cached_value != value:
+                    # Quirk transformed the value, emit AttributeUpdatedEvent
+                    self.emit(
+                        AttributeUpdatedEvent.event_type,
+                        AttributeUpdatedEvent(
+                            device_ieee=str(self.endpoint.device.ieee),
+                            endpoint_id=self.endpoint.endpoint_id,
+                            cluster_type=self._type,
+                            cluster_id=self.cluster_id,
+                            attribute_name=attr_def.name,
+                            attribute_id=attr_def.id,
+                            manufacturer_code=attr_def.manufacturer_code,
+                            value=cached_value,
+                        ),
+                    )
+                else:
+                    # Value unchanged, emit AttributeReportedEvent
+                    self.emit(
+                        AttributeReportedEvent.event_type,
+                        AttributeReportedEvent(
+                            device_ieee=str(self.endpoint.device.ieee),
+                            endpoint_id=self.endpoint.endpoint_id,
+                            cluster_type=self._type,
+                            cluster_id=self.cluster_id,
+                            attribute_name=attr_def.name,
+                            attribute_id=attr.attrid,
+                            manufacturer_code=hdr.manufacturer,
+                            raw_value=attr.value.value,
+                            value=value,
+                        ),
+                    )
 
         if not hdr.frame_control.disable_default_response:
             self.send_default_rsp(
@@ -916,27 +1001,44 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
                         success[attribute_map[attr_def]] = value
 
-                        # We suppress events because we want to emit
-                        # `AttributeReadEvent` directly. `_update_attribute` will
-                        # update the attribute cache but is structured to be called
-                        # directly from quirks and will emit an `AttributeUpdatedEvent
-                        with suppress_events():
-                            self._update_attribute(attr_def.id, value)
-
-                        self.emit(
-                            AttributeReadEvent.event_type,
-                            AttributeReadEvent(
-                                device_ieee=str(self.endpoint.device.ieee),
-                                endpoint_id=self.endpoint.endpoint_id,
-                                cluster_type=self._type,
-                                cluster_id=self.cluster_id,
-                                attribute_name=attr_def.name,
-                                attribute_id=attr_def.id,
-                                manufacturer_code=attr_def.manufacturer_code,
-                                raw_value=record.value.value,
-                                value=value,
-                            ),
+                        cached_value = self._legacy_apply_quirk_attribute_update(
+                            attr_def, value
                         )
+
+                        if cached_value is None:
+                            # Quirk swallowed the attribute
+                            continue
+                        elif cached_value != value:
+                            # Quirk transformed the value, emit AttributeUpdatedEvent
+                            self.emit(
+                                AttributeUpdatedEvent.event_type,
+                                AttributeUpdatedEvent(
+                                    device_ieee=str(self.endpoint.device.ieee),
+                                    endpoint_id=self.endpoint.endpoint_id,
+                                    cluster_type=self._type,
+                                    cluster_id=self.cluster_id,
+                                    attribute_name=attr_def.name,
+                                    attribute_id=attr_def.id,
+                                    manufacturer_code=attr_def.manufacturer_code,
+                                    value=cached_value,
+                                ),
+                            )
+                        else:
+                            # Value unchanged, emit AttributeReadEvent
+                            self.emit(
+                                AttributeReadEvent.event_type,
+                                AttributeReadEvent(
+                                    device_ieee=str(self.endpoint.device.ieee),
+                                    endpoint_id=self.endpoint.endpoint_id,
+                                    cluster_type=self._type,
+                                    cluster_id=self.cluster_id,
+                                    attribute_name=attr_def.name,
+                                    attribute_id=attr_def.id,
+                                    manufacturer_code=attr_def.manufacturer_code,
+                                    raw_value=record.value.value,
+                                    value=value,
+                                ),
+                            )
                     else:
                         if record.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
                             self._attr_cache.mark_unsupported(attr_def)
@@ -962,29 +1064,36 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         self._update_attribute(attrid, value)
 
     def _update_attribute(self, attrid: int | t.uint16_t, value: Any) -> None:
+        # Check if AttributeUpdatedEvent should be suppressed for this attribute.
+        # This is used during Report_Attributes handling to allow quirks that update
+        # other clusters or attributes to emit their own events.
+        suppressed = (self.cluster_id, attrid) in _suppressed_attribute_updates.get()
+
         try:
             attr_def = self.find_attribute(attrid)
         except KeyError:
             if value is not None:
                 self._attr_cache.set_legacy_value(attrid, value)
-                self.emit(
-                    AttributeUpdatedEvent.event_type,
-                    AttributeUpdatedEvent(
-                        device_ieee=str(self.endpoint.device.ieee),
-                        endpoint_id=self.endpoint.endpoint_id,
-                        cluster_type=self._type,
-                        cluster_id=self.cluster_id,
-                        attribute_name=None,
-                        attribute_id=attrid,
-                        manufacturer_code=None,
-                        value=value,
-                    ),
-                )
 
-                # Legacy `listener_event`, will be removed in the near future
-                self.listener_event(
-                    "attribute_updated", attrid, value, datetime.now(UTC)
-                )
+                if not suppressed:
+                    self.emit(
+                        AttributeUpdatedEvent.event_type,
+                        AttributeUpdatedEvent(
+                            device_ieee=str(self.endpoint.device.ieee),
+                            endpoint_id=self.endpoint.endpoint_id,
+                            cluster_type=self._type,
+                            cluster_id=self.cluster_id,
+                            attribute_name=None,
+                            attribute_id=attrid,
+                            manufacturer_code=None,
+                            value=value,
+                        ),
+                    )
+
+                    # Legacy `listener_event`, will be removed in the near future
+                    self.listener_event(
+                        "attribute_updated", attrid, value, datetime.now(UTC)
+                    )
 
             return
 
@@ -1004,22 +1113,26 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             )
         else:
             self._attr_cache.set_value(attr_def, value)
-            self.emit(
-                AttributeUpdatedEvent.event_type,
-                AttributeUpdatedEvent(
-                    device_ieee=str(self.endpoint.device.ieee),
-                    endpoint_id=self.endpoint.endpoint_id,
-                    cluster_type=self._type,
-                    cluster_id=self.cluster_id,
-                    attribute_name=attr_def.name,
-                    attribute_id=attr_def.id,
-                    manufacturer_code=attr_def.manufacturer_code,
-                    value=value,
-                ),
-            )
 
-            # Legacy `listener_event`, will be removed in the near future
-            self.listener_event("attribute_updated", attrid, value, datetime.now(UTC))
+            if not suppressed:
+                self.emit(
+                    AttributeUpdatedEvent.event_type,
+                    AttributeUpdatedEvent(
+                        device_ieee=str(self.endpoint.device.ieee),
+                        endpoint_id=self.endpoint.endpoint_id,
+                        cluster_type=self._type,
+                        cluster_id=self.cluster_id,
+                        attribute_name=attr_def.name,
+                        attribute_id=attr_def.id,
+                        manufacturer_code=attr_def.manufacturer_code,
+                        value=value,
+                    ),
+                )
+
+                # Legacy `listener_event`, will be removed in the near future
+                self.listener_event(
+                    "attribute_updated", attrid, value, datetime.now(UTC)
+                )
 
     async def write_attributes(
         self,

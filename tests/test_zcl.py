@@ -7,13 +7,25 @@ from unittest.mock import AsyncMock, MagicMock, call, patch, sentinel
 
 import pytest
 
-from tests.conftest import add_initialized_device, make_app
+from tests.conftest import (
+    add_initialized_device,
+    make_app,
+    make_ieee,
+    mock_attribute_reads,
+    mock_attribute_report,
+)
 from zigpy import zcl
 import zigpy.device
 import zigpy.endpoint
 import zigpy.profiles.zha
 import zigpy.types as t
-from zigpy.zcl import AttributeWrittenEvent, foundation
+from zigpy.zcl import (
+    AttributeReadEvent,
+    AttributeReportedEvent,
+    AttributeUpdatedEvent,
+    AttributeWrittenEvent,
+    foundation,
+)
 from zigpy.zcl.clusters.general import Basic, OnOff, Ota
 from zigpy.zcl.helpers import ReportingConfig
 
@@ -1653,3 +1665,222 @@ async def test_command_explicit_manufacturer():
         await cluster.command(0x00, manufacturer=0x9999)
 
     assert mock_request.mock_calls[0].kwargs["manufacturer"] == 0x9999
+
+
+async def test_report_attributes_quirk_transforms_value(app_mock):
+    """Test that quirks transforming values emit both reported and updated events."""
+    from zigpy.zcl.clusters.measurement import OccupancySensing
+
+    MOTION_ATTRIBUTE = 0x0112  # Unknown attribute that triggers motion
+
+    class DoublingCluster(zcl.Cluster):
+        """A quirk cluster that doubles reported values."""
+
+        cluster_id = 0xABCD
+        ep_attribute = "doubling"
+
+        class AttributeDefs(zcl.foundation.BaseAttributeDefs):
+            test_attr = foundation.ZCLAttributeDef(
+                id=0x0001, type=t.uint8_t, access="r"
+            )
+            other_attr = foundation.ZCLAttributeDef(
+                id=0x0002, type=t.uint8_t, access="r"
+            )
+            passthrough_attr = foundation.ZCLAttributeDef(
+                id=0x0003, type=t.uint8_t, access="r"
+            )
+            swallowed_attr = foundation.ZCLAttributeDef(
+                id=0x0004, type=t.uint8_t, access="r"
+            )
+
+        def _update_attribute(self, attrid, value):
+            if attrid == self.AttributeDefs.test_attr.id:
+                # Double the value
+                value = value * 2
+                super()._update_attribute(attrid, value)
+
+                # Also update a different attribute
+                super()._update_attribute(self.AttributeDefs.other_attr.id, 123)
+
+                # Update an attribute that doesn't have a definition
+                super()._update_attribute(0xABCD, 45)
+            elif attrid == MOTION_ATTRIBUTE:
+                # Unknown attribute that updates a different cluster (like motion sensors)
+                super()._update_attribute(attrid, value)
+                self.endpoint.occupancy.update_attribute(
+                    OccupancySensing.AttributeDefs.occupancy.id,
+                    OccupancySensing.Occupancy.Occupied,
+                )
+            elif attrid == self.AttributeDefs.swallowed_attr.id:
+                # Swallow the attribute update entirely (no super() call)
+                return
+            else:
+                # Pass through unchanged
+                super()._update_attribute(attrid, value)
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = DoublingCluster(dev.endpoints[1])
+    occupancy_cluster = OccupancySensing(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(DoublingCluster.cluster_id, cluster)
+    dev.endpoints[1].add_input_cluster(OccupancySensing.cluster_id, occupancy_cluster)
+
+    events = []
+    cluster.on_event(AttributeReadEvent.event_type, events.append)
+    cluster.on_event(AttributeReportedEvent.event_type, events.append)
+    cluster.on_event(AttributeUpdatedEvent.event_type, events.append)
+    occupancy_cluster.on_event(AttributeReportedEvent.event_type, events.append)
+    occupancy_cluster.on_event(AttributeUpdatedEvent.event_type, events.append)
+
+    await mock_attribute_report(
+        cluster,
+        {
+            DoublingCluster.AttributeDefs.test_attr: t.uint8_t(50),
+            DoublingCluster.AttributeDefs.passthrough_attr: t.uint8_t(99),
+            DoublingCluster.AttributeDefs.swallowed_attr: t.uint8_t(42),
+            MOTION_ATTRIBUTE: t.uint8_t(1),  # Unknown attribute (raw ID)
+        },
+    )
+
+    assert events == [
+        # No event for swallowed_attr since quirk swallows it entirely
+        # No AttributeReportedEvent for test_attr since the value was transformed
+        # AttributeUpdatedEvent for other_attr (quirk side-effect)
+        AttributeUpdatedEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=DoublingCluster.cluster_id,
+            attribute_name="other_attr",
+            attribute_id=DoublingCluster.AttributeDefs.other_attr.id,
+            manufacturer_code=None,
+            value=123,
+        ),
+        # AttributeUpdatedEvent for unknown attribute
+        AttributeUpdatedEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=DoublingCluster.cluster_id,
+            attribute_name=None,
+            attribute_id=0xABCD,
+            manufacturer_code=None,
+            value=45,
+        ),
+        # AttributeUpdatedEvent for test_attr with transformed value (doubled)
+        AttributeUpdatedEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=DoublingCluster.cluster_id,
+            attribute_name="test_attr",
+            attribute_id=DoublingCluster.AttributeDefs.test_attr.id,
+            manufacturer_code=None,
+            value=100,
+        ),
+        # AttributeReportedEvent for passthrough_attr (no transformation)
+        AttributeReportedEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=DoublingCluster.cluster_id,
+            attribute_name="passthrough_attr",
+            attribute_id=DoublingCluster.AttributeDefs.passthrough_attr.id,
+            manufacturer_code=None,
+            raw_value=99,
+            value=99,
+        ),
+        # No AttributeUpdatedEvent for passthrough_attr since value wasn't transformed
+        # AttributeUpdatedEvent for occupancy (quirk updates different cluster)
+        AttributeUpdatedEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=OccupancySensing.cluster_id,
+            attribute_name="occupancy",
+            attribute_id=OccupancySensing.AttributeDefs.occupancy.id,
+            manufacturer_code=None,
+            value=OccupancySensing.Occupancy.Occupied,
+        ),
+        # AttributeReportedEvent for unknown MOTION_ATTRIBUTE (no transformation)
+        AttributeReportedEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=DoublingCluster.cluster_id,
+            attribute_name=None,
+            attribute_id=MOTION_ATTRIBUTE,
+            manufacturer_code=None,
+            raw_value=1,
+            value=1,
+        ),
+    ]
+
+    # Now test the read path
+    events.clear()
+
+    with mock_attribute_reads(
+        cluster,
+        {
+            DoublingCluster.AttributeDefs.test_attr: t.uint8_t(25),
+            DoublingCluster.AttributeDefs.passthrough_attr: t.uint8_t(77),
+            DoublingCluster.AttributeDefs.swallowed_attr: t.uint8_t(99),
+        },
+    ):
+        await cluster.read_attributes(
+            [
+                DoublingCluster.AttributeDefs.test_attr,
+                DoublingCluster.AttributeDefs.passthrough_attr,
+                DoublingCluster.AttributeDefs.swallowed_attr,
+            ]
+        )
+
+    assert events == [
+        # No event for swallowed_attr since quirk swallows it entirely
+        # No AttributeReadEvent for test_attr since the value was transformed
+        # AttributeUpdatedEvent for other_attr (quirk side-effect)
+        AttributeUpdatedEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=DoublingCluster.cluster_id,
+            attribute_name="other_attr",
+            attribute_id=DoublingCluster.AttributeDefs.other_attr.id,
+            manufacturer_code=None,
+            value=123,
+        ),
+        # AttributeUpdatedEvent for unknown attribute
+        AttributeUpdatedEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=DoublingCluster.cluster_id,
+            attribute_name=None,
+            attribute_id=0xABCD,
+            manufacturer_code=None,
+            value=45,
+        ),
+        # AttributeUpdatedEvent for test_attr with transformed value (doubled)
+        AttributeUpdatedEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=DoublingCluster.cluster_id,
+            attribute_name="test_attr",
+            attribute_id=DoublingCluster.AttributeDefs.test_attr.id,
+            manufacturer_code=None,
+            value=50,  # Doubled from 25
+        ),
+        # AttributeReadEvent for passthrough_attr (no transformation)
+        AttributeReadEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=DoublingCluster.cluster_id,
+            attribute_name="passthrough_attr",
+            attribute_id=DoublingCluster.AttributeDefs.passthrough_attr.id,
+            manufacturer_code=None,
+            raw_value=77,
+            value=77,
+        ),
+        # No AttributeUpdatedEvent for passthrough_attr since value wasn't transformed
+    ]
