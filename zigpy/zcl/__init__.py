@@ -429,19 +429,28 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
     def _legacy_apply_quirk_attribute_update(
         self, attr_def: foundation.ZCLAttributeDef, value: Any
-    ) -> Any:
-        """Update an attribute and return the cached value (possibly transformed)."""
+    ) -> Any | None:
+        """Update an attribute and return the cached value (possibly transformed).
+
+        Returns None if the quirk swallowed the attribute (no super() call).
+        """
         with _suppress_attribute_update_event(self.cluster_id, attr_def.id):
             self._update_attribute(attr_def.id, value)
 
         try:
             return self._attr_cache.get_value(attr_def)
         except KeyError:
-            # When multiple attrs share an ID (different manufacturer codes),
-            # `_update_attribute` stores in legacy cache. Move it to typed cache.
+            pass
+
+        # When multiple attrs share an ID (different manufacturer codes),
+        # `_update_attribute` stores in legacy cache. Move it to typed cache.
+        if attr_def.id in self._attr_cache._legacy_cache:
             cached_value = self._attr_cache._legacy_cache.pop(attr_def.id).value
             self._attr_cache.set_value(attr_def, cached_value)
             return cached_value
+
+        # Quirk swallowed the attribute
+        return None
 
     @classmethod
     def find_attribute(
@@ -821,7 +830,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     attr_def, value
                 )
 
-                if cached_value != value:
+                if cached_value is None:
+                    # Quirk swallowed the attribute
+                    continue
+                elif cached_value != value:
                     # Quirk transformed the value, emit AttributeUpdatedEvent
                     self.emit(
                         AttributeUpdatedEvent.event_type,
@@ -993,7 +1005,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                             attr_def, value
                         )
 
-                        if cached_value != value:
+                        if cached_value is None:
+                            # Quirk swallowed the attribute
+                            continue
+                        elif cached_value != value:
                             # Quirk transformed the value, emit AttributeUpdatedEvent
                             self.emit(
                                 AttributeUpdatedEvent.event_type,

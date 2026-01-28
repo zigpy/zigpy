@@ -1689,6 +1689,9 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
             passthrough_attr = foundation.ZCLAttributeDef(
                 id=0x0003, type=t.uint8_t, access="r"
             )
+            swallowed_attr = foundation.ZCLAttributeDef(
+                id=0x0004, type=t.uint8_t, access="r"
+            )
 
         def _update_attribute(self, attrid, value):
             if attrid == self.AttributeDefs.test_attr.id:
@@ -1708,6 +1711,9 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
                     OccupancySensing.AttributeDefs.occupancy.id,
                     OccupancySensing.Occupancy.Occupied,
                 )
+            elif attrid == self.AttributeDefs.swallowed_attr.id:
+                # Swallow the attribute update entirely (no super() call)
+                return
             else:
                 # Pass through unchanged
                 super()._update_attribute(attrid, value)
@@ -1730,11 +1736,13 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
         {
             DoublingCluster.AttributeDefs.test_attr: t.uint8_t(50),
             DoublingCluster.AttributeDefs.passthrough_attr: t.uint8_t(99),
+            DoublingCluster.AttributeDefs.swallowed_attr: t.uint8_t(42),
             MOTION_ATTRIBUTE: t.uint8_t(1),  # Unknown attribute (raw ID)
         },
     )
 
     assert events == [
+        # No event for swallowed_attr since quirk swallows it entirely
         # No AttributeReportedEvent for test_attr since the value was transformed
         # AttributeUpdatedEvent for other_attr (quirk side-effect)
         AttributeUpdatedEvent(
