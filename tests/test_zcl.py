@@ -1720,18 +1720,7 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
     )
 
     assert events == [
-        # AttributeReportedEvent for test_attr with raw value (50)
-        AttributeReportedEvent(
-            device_ieee=str(dev.ieee),
-            endpoint_id=1,
-            cluster_type=zcl.ClusterType.Server,
-            cluster_id=DoublingCluster.cluster_id,
-            attribute_name="test_attr",
-            attribute_id=DoublingCluster.AttributeDefs.test_attr.id,
-            manufacturer_code=None,
-            raw_value=50,
-            value=50,
-        ),
+        # No AttributeReportedEvent for test_attr since the value was transformed
         # AttributeUpdatedEvent for other_attr (quirk side-effect)
         AttributeUpdatedEvent(
             device_ieee=str(dev.ieee),
@@ -1798,18 +1787,7 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
         )
 
     assert events == [
-        # AttributeReadEvent for test_attr with raw value (25)
-        AttributeReadEvent(
-            device_ieee=str(dev.ieee),
-            endpoint_id=1,
-            cluster_type=zcl.ClusterType.Server,
-            cluster_id=DoublingCluster.cluster_id,
-            attribute_name="test_attr",
-            attribute_id=DoublingCluster.AttributeDefs.test_attr.id,
-            manufacturer_code=None,
-            raw_value=25,
-            value=25,
-        ),
+        # No AttributeReadEvent for test_attr since the value was transformed
         # AttributeUpdatedEvent for other_attr (quirk side-effect)
         AttributeUpdatedEvent(
             device_ieee=str(dev.ieee),
