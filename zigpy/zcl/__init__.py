@@ -427,6 +427,22 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         for key, value in new_value.items():
             self._update_attribute(key, value)
 
+    def _legacy_apply_quirk_attribute_update(
+        self, attr_def: foundation.ZCLAttributeDef, value: Any
+    ) -> Any:
+        """Update an attribute and return the cached value (possibly transformed)."""
+        with _suppress_attribute_update_event(self.cluster_id, attr_def.id):
+            self._update_attribute(attr_def.id, value)
+
+        try:
+            return self._attr_cache.get_value(attr_def)
+        except KeyError:
+            # When multiple attrs share an ID (different manufacturer codes),
+            # `_update_attribute` stores in legacy cache. Move it to typed cache.
+            cached_value = self._attr_cache._legacy_cache.pop(attr_def.id).value
+            self._attr_cache.set_value(attr_def, cached_value)
+            return cached_value
+
     @classmethod
     def find_attribute(
         cls,
@@ -780,12 +796,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 else:
                     value = attr_def.type(attr.value.value)
 
-                # Update the attribute with suppression for this specific attribute
-                with _suppress_attribute_update_event(self.cluster_id, attr.attrid):
-                    self._update_attribute(attr.attrid, value)
-
                 if attr_def is None:
-                    # Unknown attribute, emit reported event
+                    # Unknown attribute, update and emit reported event
+                    with _suppress_attribute_update_event(self.cluster_id, attr.attrid):
+                        self._update_attribute(attr.attrid, value)
+
                     self.emit(
                         AttributeReportedEvent.event_type,
                         AttributeReportedEvent(
@@ -802,8 +817,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     )
                     continue
 
-                # Check if quirk transformed the value
-                cached_value = self._attr_cache.get_value(attr_def)
+                cached_value = self._legacy_apply_quirk_attribute_update(
+                    attr_def, value
+                )
 
                 if cached_value != value:
                     # Quirk transformed the value, emit AttributeUpdatedEvent
@@ -973,19 +989,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
                         success[attribute_map[attr_def]] = value
 
-                        # Update the attribute with suppression for this specific attr
-                        with _suppress_attribute_update_event(
-                            self.cluster_id, attr_def.id
-                        ):
-                            self._update_attribute(attr_def.id, value)
-
-                        # Check if quirk transformed the value
-                        try:
-                            cached_value = self._attr_cache.get_value(attr_def)
-                        except KeyError:
-                            # When multiple attrs share an ID (different manufacturer
-                            # codes), `_update_attribute` stores in the wrong location
-                            continue
+                        cached_value = self._legacy_apply_quirk_attribute_update(
+                            attr_def, value
+                        )
 
                         if cached_value != value:
                             # Quirk transformed the value, emit AttributeUpdatedEvent
