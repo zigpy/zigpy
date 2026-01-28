@@ -3,7 +3,7 @@ from __future__ import annotations
 import dataclasses
 import inspect
 import typing
-from typing import TYPE_CHECKING, Self, cast
+from typing import TYPE_CHECKING, Any, Self, cast
 
 import zigpy.types as t
 
@@ -31,7 +31,7 @@ class EmptyObject:
 @dataclasses.dataclass(frozen=True)
 class StructField:
     name: str | None = None
-    type: type | None = None
+    type: type[Any] | None = None
 
     requires: typing.Callable[[Struct], bool] | None = dataclasses.field(
         default=None, repr=False
@@ -64,12 +64,14 @@ if TYPE_CHECKING:
         """`StructField` instance with name and type resolved."""
 
         name: str
-        type: type
+        type: type[Any]
 else:
     ResolvedStructField = StructField
 
 
 class Struct:
+    fields: list[ResolvedStructField]
+
     @classmethod
     def _real_cls(cls) -> type:
         # The "Optional" subclass is dynamically created and breaks types.
