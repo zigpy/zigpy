@@ -3,7 +3,7 @@ from __future__ import annotations
 import dataclasses
 import inspect
 import typing
-from typing import TYPE_CHECKING, Any, Self, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Self, cast
 
 import zigpy.types as t
 
@@ -70,7 +70,7 @@ else:
 
 
 class Struct:
-    fields: list[ResolvedStructField]
+    fields: ClassVar[list[ResolvedStructField]]
 
     @classmethod
     def _real_cls(cls) -> type:
@@ -154,6 +154,10 @@ class Struct:
         #      order them with respect to annotation-only fields.
         #      Every struct field must be annotated.
         for name, annotation in annotations.items():
+            # Skip ClassVar annotations (e.g. inherited from Struct base class)
+            if typing.get_origin(annotation) is ClassVar:
+                continue
+
             field = getattr(cls, name, StructField())
 
             if not isinstance(field, StructField):
