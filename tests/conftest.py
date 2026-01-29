@@ -489,9 +489,7 @@ async def mock_attribute_report(
             )
         else:
             attr_def = cluster.find_attribute(attr)
-            manufacturer_codes.add(
-                cluster._get_effective_manufacturer_code(attr_def, None)
-            )
+            manufacturer_codes.add(cluster._get_effective_manufacturer_code(attr_def))
 
             reports.append(
                 foundation.Attribute(

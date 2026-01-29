@@ -227,8 +227,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     # to remove the need to create 1024 "ManufacturerSpecificCluster" instances.
     cluster_id_range: tuple[t.uint16_t, t.uint16_t] = None
 
-    attributes_by_id: dict[
-        int, dict[int | UndefinedType | None, foundation.ZCLAttributeDef]
+    # Internal cache to speed up attribute finding. Nested layering, keyed by:
+    # attr_id, is_manufacturer_specific, manufacturer_code
+    _attributes_by_id: dict[
+        int,
+        dict[
+            bool,
+            dict[int | UndefinedType | None, foundation.ZCLAttributeDef],
+        ],
     ] = {}
 
     # Deprecated: clusters contain attributes and both client and server commands
@@ -370,14 +376,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 if isinstance(definition, foundation.ZCLCommandDef):
                     setattr(defs, definition.name, definition.with_compiled_schema())
 
-        # Create a way to look up attributes (with manufacturer_code)
-        cls.attributes_by_id = {}
+        # Create a way to look up attributes (with manufacturer_code) internally
+        cls._attributes_by_id = {}
 
         for attr_def in cls.AttributeDefs:
-            if attr_def.id not in cls.attributes_by_id:
-                cls.attributes_by_id[attr_def.id] = {}
+            if attr_def.id not in cls._attributes_by_id:
+                cls._attributes_by_id[attr_def.id] = {True: {}, False: {}}
 
-            cls.attributes_by_id[attr_def.id][attr_def.manufacturer_code] = attr_def
+            is_manuf = attr_def.is_manufacturer_specific
+            cls._attributes_by_id[attr_def.id][is_manuf][attr_def.manufacturer_code] = (
+                attr_def
+            )
 
         # Recreate the old structures using the new-style definitions
         cls.attributes = {attr.id: attr for attr in cls.AttributeDefs}
@@ -464,41 +473,50 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         elif isinstance(name_or_id, str):
             return cls.attributes_by_name[name_or_id]
         elif isinstance(name_or_id, int):
-            candidates = cls.attributes_by_id[name_or_id]
+            candidates = cls._attributes_by_id[name_or_id]
+            manuf_specific = candidates[True]
+            non_manuf_specific = candidates[False]
 
             if manufacturer_code is not UNDEFINED:
-                # Try exact match first
-                if manufacturer_code in candidates:
-                    return candidates[manufacturer_code]
+                if manufacturer_code is None:
+                    # Explicitly no manufacturer code
+                    if None in non_manuf_specific:
+                        return non_manuf_specific[None]
 
-                # If no ambiguous candidates exist, we immediately error
-                if UNDEFINED not in candidates:
-                    raise KeyError(manufacturer_code)
+                    # Fall back to unspecified
+                    if UNDEFINED in non_manuf_specific:
+                        return non_manuf_specific[UNDEFINED]
+                else:
+                    # Try exact manufacturer-specific match
+                    if manufacturer_code in manuf_specific:
+                        return manuf_specific[manufacturer_code]
 
-                # Otherwise, fall back to the undefined candidate
-                attr_def = candidates[UNDEFINED]
-                manuf_code_str = (
-                    f"0x{manufacturer_code:04X}"
-                    if manufacturer_code is not None
-                    else "None"
-                )
-                warnings.warn(
-                    f"Attribute {attr_def.name!r} has `is_manufacturer_specific`"
-                    f" without an explicit `manufacturer_code`. Please set"
-                    f" `manufacturer_code={manuf_code_str}`.",
-                    DeprecationWarning,
-                    stacklevel=3,
-                )
-                return attr_def
+                    # Try manufacturer-specific without explicit code (deprecation)
+                    if UNDEFINED in manuf_specific:
+                        attr_def = manuf_specific[UNDEFINED]
+                        warnings.warn(
+                            f"Attribute {attr_def.name!r} has `is_manufacturer_specific`"
+                            f" without an explicit `manufacturer_code`. Please set"
+                            f" `manufacturer_code=0x{manufacturer_code:04X}`.",
+                            DeprecationWarning,
+                            stacklevel=3,
+                        )
+                        return attr_def
 
-            if len(candidates) > 1:
+                raise KeyError(manufacturer_code)
+
+            all_candidates = list(manuf_specific.values()) + list(
+                non_manuf_specific.values()
+            )
+
+            if len(all_candidates) > 1:
                 raise KeyError(
                     f"Multiple definitions exist for attribute ID {name_or_id:#06x},"
                     f" please specify a manufacturer code: {candidates!r}"
                 )
 
             # Pick the only one
-            return next(iter(candidates.values()))
+            return all_candidates[0]
         else:
             raise TypeError(  # noqa: TRY004
                 f"Attribute must be a definition, string, or integer,"
@@ -844,7 +862,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                             cluster_id=self.cluster_id,
                             attribute_name=attr_def.name,
                             attribute_id=attr_def.id,
-                            manufacturer_code=attr_def.manufacturer_code,
+                            manufacturer_code=hdr.manufacturer,
                             value=cached_value,
                         ),
                     )
@@ -881,15 +899,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     def _get_effective_manufacturer_code(
         self,
         definition: foundation.ZCLAttributeDef | foundation.ZCLCommandDef,
-        manufacturer: int | UndefinedType | None,
+        manufacturer: int | UndefinedType | None = UNDEFINED,
     ) -> int | None:
         """Get the effective manufacturer code for an attribute or command."""
-        if manufacturer not in (None, UNDEFINED):
-            assert not isinstance(manufacturer, UndefinedType)
+        if manufacturer is not UNDEFINED:
             return manufacturer
 
-        if definition.manufacturer_code not in (None, UNDEFINED):
-            assert not isinstance(definition.manufacturer_code, UndefinedType)
+        if definition.manufacturer_code is not UNDEFINED:
             return definition.manufacturer_code
 
         # In the future, we should migrate to explicit `manufacturer_code` for every
@@ -959,7 +975,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     continue
 
             # Otherwise, populate the groups of attributes to read
-            effective_manuf = self._get_effective_manufacturer_code(attr_def, None)
+            effective_manuf = self._get_effective_manufacturer_code(attr_def)
             reads_by_manuf_code[effective_manuf].append(attr_def)
 
         if only_cache:
@@ -1019,7 +1035,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                                     cluster_id=self.cluster_id,
                                     attribute_name=attr_def.name,
                                     attribute_id=attr_def.id,
-                                    manufacturer_code=attr_def.manufacturer_code,
+                                    manufacturer_code=manufacturer_code,
                                     value=cached_value,
                                 ),
                             )
@@ -1034,7 +1050,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                                     cluster_id=self.cluster_id,
                                     attribute_name=attr_def.name,
                                     attribute_id=attr_def.id,
-                                    manufacturer_code=attr_def.manufacturer_code,
+                                    manufacturer_code=manufacturer_code,
                                     raw_value=record.value.value,
                                     value=value,
                                 ),
@@ -1108,7 +1124,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     cluster_id=self.cluster_id,
                     attribute_name=attr_def.name,
                     attribute_id=attr_def.id,
-                    manufacturer_code=attr_def.manufacturer_code,
+                    manufacturer_code=self._get_effective_manufacturer_code(attr_def),
                 ),
             )
         else:
@@ -1124,7 +1140,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                         cluster_id=self.cluster_id,
                         attribute_name=attr_def.name,
                         attribute_id=attr_def.id,
-                        manufacturer_code=attr_def.manufacturer_code,
+                        manufacturer_code=self._get_effective_manufacturer_code(
+                            attr_def
+                        ),
                         value=value,
                     ),
                 )
@@ -1149,7 +1167,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         for attr, value in attributes.items():
             attr_def = self.find_attribute(attr, manufacturer_code=manufacturer)
-            effective_manuf = self._get_effective_manufacturer_code(attr_def, None)
+            effective_manuf = self._get_effective_manufacturer_code(attr_def)
             writes_by_manuf_code[effective_manuf].append((attr_def, value))
 
         # Write each group separately and merge results
@@ -1309,7 +1327,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             cfg.max_interval = reporting_config.max_interval
             cfg.reportable_change = reporting_config.reportable_change
 
-            effective_manuf = self._get_effective_manufacturer_code(attr_def, None)
+            effective_manuf = self._get_effective_manufacturer_code(attr_def)
             reporting_by_manuf_code[effective_manuf].append((attr_def, cfg))
 
         results: list[foundation.ConfigureReportingResponseRecord] = []
@@ -1395,11 +1413,16 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         self,
         command_id: foundation.GeneralCommand | int | t.uint8_t,
         *args,
-        manufacturer: int | t.uint16_t | None = None,
+        manufacturer: int | t.uint16_t | UndefinedType | None = None,
         expect_reply: bool = True,
         **kwargs,
     ):
         command = self.server_commands[command_id]
+
+        # Quirks override `def command` but provide their own signature that has
+        # `manufacturer` default to `None`. We treat this as UNDEFINED.
+        if manufacturer is None:
+            manufacturer = UNDEFINED
 
         return self.request(
             False,
@@ -1415,7 +1438,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         self,
         command_id: foundation.GeneralCommand | int | t.uint8_t,
         *args,
-        manufacturer: int | t.uint16_t | None = None,
+        manufacturer: int | t.uint16_t | UndefinedType | None = UNDEFINED,
         **kwargs,
     ):
         command = self.client_commands[command_id]
@@ -1425,6 +1448,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             command_id,
             command.schema,
             *args,
+            # No quirks override or touch `client_command` so we can keep this simple
             manufacturer=self._get_effective_manufacturer_code(command, manufacturer),
             **kwargs,
         )
@@ -1595,7 +1619,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 cluster_id=self.cluster_id,
                 attribute_name=attr_def.name,
                 attribute_id=attr_def.id,
-                manufacturer_code=attr_def.manufacturer_code,
+                manufacturer_code=self._get_effective_manufacturer_code(attr_def),
             ),
         )
 

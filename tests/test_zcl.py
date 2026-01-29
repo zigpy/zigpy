@@ -27,6 +27,7 @@ from zigpy.zcl import (
     foundation,
 )
 from zigpy.zcl.clusters.general import Basic, OnOff, Ota
+from zigpy.zcl.clusters.measurement import OccupancySensing
 from zigpy.zcl.helpers import ReportingConfig
 
 DEFAULT_TSN = 123
@@ -1667,10 +1668,32 @@ async def test_command_explicit_manufacturer():
     assert mock_request.mock_calls[0].kwargs["manufacturer"] == 0x9999
 
 
+async def test_read_attribute_manufacturer_code_none_on_manuf_cluster():
+    """Test that manufacturer_code=None suppresses manufacturer code on manuf clusters."""
+
+    class ManufCluster(zcl.Cluster):
+        cluster_id = 0xFC11  # Manufacturer-specific cluster range
+        ep_attribute = "manuf_cluster"
+
+        class AttributeDefs(zcl.BaseAttributeDefs):
+            # Explicitly no manufacturer code, even though cluster is manufacturer-specific
+            valve_opening = foundation.ZCLAttributeDef(
+                id=0x600B, type=t.uint8_t, manufacturer_code=None
+            )
+
+    endpoint = MagicMock(spec=zigpy.endpoint.Endpoint)
+    cluster = ManufCluster(endpoint)
+
+    with mock_attribute_reads(
+        cluster, {ManufCluster.AttributeDefs.valve_opening: t.uint8_t(100)}
+    ) as (mock_read, _):
+        await cluster.read_attributes([ManufCluster.AttributeDefs.valve_opening])
+
+    assert mock_read.mock_calls == [call([0x600B], manufacturer=None)]
+
+
 async def test_report_attributes_quirk_transforms_value(app_mock):
     """Test that quirks transforming values emit both reported and updated events."""
-    from zigpy.zcl.clusters.measurement import OccupancySensing
-
     MOTION_ATTRIBUTE = 0x0112  # Unknown attribute that triggers motion
 
     class DoublingCluster(zcl.Cluster):

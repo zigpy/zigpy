@@ -1476,9 +1476,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     )
                     continue
 
-                manufacturer_code = cluster._get_effective_manufacturer_code(
-                    attr_def, manufacturer=None
-                )
+                manufacturer_code = cluster._get_effective_manufacturer_code(attr_def)
 
                 await self.execute(
                     """
