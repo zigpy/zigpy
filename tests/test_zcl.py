@@ -1926,6 +1926,7 @@ async def test_zcl_write_attributes_update_cache(app_mock) -> None:
             {Basic.AttributeDefs.location_desc: "Test"},
         )
 
+    # The cache updated
     assert cluster._attr_cache.get(Basic.AttributeDefs.location_desc) == "Test"
 
     # But this can be overridden
@@ -1941,7 +1942,8 @@ async def test_zcl_write_attributes_update_cache(app_mock) -> None:
             update_cache=False,
         )
 
-        assert cluster._attr_cache.get(Basic.AttributeDefs.location_desc) == "Test"
+    # The cache never updated to `Test 2`
+    assert cluster._attr_cache.get(Basic.AttributeDefs.location_desc) == "Test"
 
     # No events should have been emitted
     assert events == []
