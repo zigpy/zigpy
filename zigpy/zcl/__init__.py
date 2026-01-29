@@ -892,8 +892,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             assert not isinstance(definition.manufacturer_code, UndefinedType)
             return definition.manufacturer_code
 
-        # In the future, we should migrate to explicit `manufacturer_code` for every
-        # attribute and command
+        if definition.manufacturer_code is None:
+            return None
+
+        # Determine manufacturer_code if undefined. In the future, we should migrate
+        # to explicit `manufacturer_code` for every attribute and command.
         if 0xFC00 <= self.cluster_id <= 0xFFFF or definition.is_manufacturer_specific:
             return (
                 self.manufacturer_id_override
