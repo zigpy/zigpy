@@ -1156,6 +1156,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         self,
         attributes: dict[str | int | foundation.ZCLAttributeDef, Any],
         manufacturer: int | UndefinedType | None = UNDEFINED,
+        *,
+        update_cache: bool = True,
         **kwargs,
     ) -> list[list[foundation.WriteAttributesStatusRecord]]:
         """Write attributes to device with internal 'attributes' validation."""
@@ -1233,6 +1235,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     for zcl_attr in zcl_attrs
                 )
 
+            results.extend(records_group)
+
+            if not update_cache:
+                continue
+
             # Finally, emit events for the group
             for record in records_group:
                 attr_def = attr_defs[record.attrid]
@@ -1270,8 +1277,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                         status=record.status,
                     ),
                 )
-
-            results.extend(records_group)
 
         # TODO: ditch the low-level return type
         return [results]
