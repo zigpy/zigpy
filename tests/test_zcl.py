@@ -13,6 +13,7 @@ from tests.conftest import (
     make_ieee,
     mock_attribute_reads,
     mock_attribute_report,
+    mock_attribute_writes,
 )
 from zigpy import zcl
 import zigpy.device
@@ -1907,3 +1908,40 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
         ),
         # No AttributeUpdatedEvent for passthrough_attr since value wasn't transformed
     ]
+
+
+async def test_zcl_write_attributes_update_cache(app_mock) -> None:
+    """Test that `write_attributes` can skip updating the attribute cache."""
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+
+    cluster = Basic(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(Basic.cluster_id, cluster)
+
+    # The cache updates by default
+    with mock_attribute_writes(
+        cluster,
+        {Basic.AttributeDefs.location_desc: foundation.Status.SUCCESS},
+    ):
+        await cluster.write_attributes(
+            {Basic.AttributeDefs.location_desc: "Test"},
+        )
+
+    assert cluster._attr_cache.get(Basic.AttributeDefs.location_desc) == "Test"
+
+    # But this can be overridden
+    events = []
+    cluster.on_all_events(events.append)
+
+    with mock_attribute_writes(
+        cluster,
+        {Basic.AttributeDefs.location_desc: foundation.Status.SUCCESS},
+    ):
+        await cluster.write_attributes(
+            {Basic.AttributeDefs.location_desc: "Test 2"},
+            update_cache=False,
+        )
+
+        assert cluster._attr_cache.get(Basic.AttributeDefs.location_desc) == "Test"
+
+    # No events should have been emitted
+    assert events == []
