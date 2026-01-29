@@ -1075,11 +1075,15 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         return success, failure
 
-    def update_attribute(self, attrid: int | t.uint16_t, value: Any) -> None:
+    def update_attribute(
+        self, attrid: int | t.uint16_t | foundation.ZCLAttributeDef, value: Any
+    ) -> None:
         """Update specified attribute with specified value"""
         self._update_attribute(attrid, value)
 
-    def _update_attribute(self, attrid: int | t.uint16_t, value: Any) -> None:
+    def _update_attribute(
+        self, attrid: int | t.uint16_t | foundation.ZCLAttributeDef, value: Any
+    ) -> None:
         # Check if AttributeUpdatedEvent should be suppressed for this attribute.
         # This is used during Report_Attributes handling to allow quirks that update
         # other clusters or attributes to emit their own events.
@@ -1156,6 +1160,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         self,
         attributes: dict[str | int | foundation.ZCLAttributeDef, Any],
         manufacturer: int | UndefinedType | None = UNDEFINED,
+        *,
+        update_cache: bool = True,
         **kwargs,
     ) -> list[list[foundation.WriteAttributesStatusRecord]]:
         """Write attributes to device with internal 'attributes' validation."""
@@ -1233,6 +1239,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     for zcl_attr in zcl_attrs
                 )
 
+            results.extend(records_group)
+
+            if not update_cache:
+                continue
+
             # Finally, emit events for the group
             for record in records_group:
                 attr_def = attr_defs[record.attrid]
@@ -1270,8 +1281,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                         status=record.status,
                     ),
                 )
-
-            results.extend(records_group)
 
         # TODO: ditch the low-level return type
         return [results]
