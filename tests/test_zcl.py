@@ -1917,33 +1917,58 @@ async def test_zcl_write_attributes_update_cache(app_mock) -> None:
     cluster = Basic(dev.endpoints[1])
     dev.endpoints[1].add_input_cluster(Basic.cluster_id, cluster)
 
+    cluster.add_unsupported_attribute(Basic.AttributeDefs.product_url)
+
     # The cache updates by default
     with mock_attribute_writes(
         cluster,
-        {Basic.AttributeDefs.location_desc: foundation.Status.SUCCESS},
+        {
+            Basic.AttributeDefs.location_desc: foundation.Status.SUCCESS,
+            Basic.AttributeDefs.serial_number: foundation.Status.UNSUPPORTED_ATTRIBUTE,
+            Basic.AttributeDefs.product_url: foundation.Status.SUCCESS,
+        },
     ):
         await cluster.write_attributes(
-            {Basic.AttributeDefs.location_desc: "Test"},
+            {
+                Basic.AttributeDefs.location_desc: "Test",
+                Basic.AttributeDefs.serial_number: "1234",
+                Basic.AttributeDefs.product_url: "5678",
+            }
         )
 
-    # The cache updated
+    # The cache updated and all attribute state makes sense
     assert cluster._attr_cache.get(Basic.AttributeDefs.location_desc) == "Test"
+    assert cluster.is_attribute_unsupported(Basic.AttributeDefs.serial_number) is True
+    assert not cluster.is_attribute_unsupported(Basic.AttributeDefs.product_url)
+    assert cluster._attr_cache.get(Basic.AttributeDefs.product_url) == "5678"
 
-    # But this can be overridden
     events = []
     cluster.on_all_events(events.append)
 
     with mock_attribute_writes(
         cluster,
-        {Basic.AttributeDefs.location_desc: foundation.Status.SUCCESS},
+        {
+            Basic.AttributeDefs.location_desc: foundation.Status.SUCCESS,
+            # We flip things around: `serial_number` is reported as supported
+            Basic.AttributeDefs.serial_number: foundation.Status.SUCCESS,
+            # And `product_url` is now unsupported
+            Basic.AttributeDefs.product_url: foundation.Status.UNSUPPORTED_ATTRIBUTE,
+        },
     ):
         await cluster.write_attributes(
-            {Basic.AttributeDefs.location_desc: "Test 2"},
+            {
+                Basic.AttributeDefs.location_desc: "Test 2",
+                Basic.AttributeDefs.serial_number: "abcd",
+                Basic.AttributeDefs.product_url: "efgh",
+            },
             update_cache=False,
         )
 
-    # The cache never updated to `Test 2`
+    # Nothing changes, however
     assert cluster._attr_cache.get(Basic.AttributeDefs.location_desc) == "Test"
+    assert cluster.is_attribute_unsupported(Basic.AttributeDefs.serial_number) is True
+    assert not cluster.is_attribute_unsupported(Basic.AttributeDefs.product_url)
+    assert cluster._attr_cache.get(Basic.AttributeDefs.product_url) == "5678"
 
     # No events should have been emitted
     assert events == []
