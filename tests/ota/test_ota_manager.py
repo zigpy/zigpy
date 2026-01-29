@@ -715,3 +715,64 @@ async def test_ota_manager_image_page_failure():
     result = await update_firmware(dev, FW_IMAGE, progress_callback)
 
     assert result != foundation.Status.SUCCESS
+
+
+async def test_ota_manager_deferred_download():
+    """Test that firmware is fetched at install time for trusted providers."""
+
+    app = make_app({})
+    dev = add_initialized_device(
+        app, nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77")
+    )
+    cluster = dev.endpoints[1].add_output_cluster(Ota.cluster_id)
+
+    with mock_attribute_reads(
+        cluster, {"current_file_version": FW_IMAGE.firmware.header.file_version - 10}
+    ):
+        await dev.initialize()
+
+    # Create an image without firmware (simulating deferred download)
+    deferred_image = zigpy.ota.OtaImageWithMetadata(
+        metadata=FW_IMAGE.metadata.replace(trusted=True),
+        firmware=None,
+    )
+
+    # Stop the general cluster handler from interfering
+    dev.ota_in_progress = True
+
+    async def send_packet(packet: t.ZigbeePacket):
+        if packet.cluster_id != Ota.cluster_id:
+            return
+
+        hdr, cmd = cluster.deserialize(packet.data.serialize())
+        assert FW_IMAGE.firmware is not None
+
+        if isinstance(cmd, Ota.ImageNotifyCommand):
+            # Device rejects the update to end the test quickly
+            dev.application.packet_received(
+                make_packet(
+                    dev,
+                    cluster,
+                    "query_next_image",
+                    field_control=Ota.QueryNextImageCommand.FieldControl.HardwareVersion,
+                    manufacturer_code=FW_IMAGE.firmware.header.manufacturer_id,
+                    image_type=FW_IMAGE.firmware.header.image_type,
+                    # Claim current version is higher than file version
+                    current_file_version=FW_IMAGE.firmware.header.file_version + 10,
+                    hardware_version=1,
+                )
+            )
+
+    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+
+    # Mock fetch() to return the complete image
+    mock_fetch = AsyncMock(return_value=FW_IMAGE)
+    with patch.object(OtaImageWithMetadata, "fetch", mock_fetch):
+        # Run firmware update with the deferred image
+        result = await update_firmware(dev, deferred_image)
+
+        # fetch() should have been called exactly once
+        mock_fetch.assert_awaited_once_with()
+
+    # The update itself returns NO_IMAGE_AVAILABLE because the device rejected it
+    assert result == foundation.Status.NO_IMAGE_AVAILABLE

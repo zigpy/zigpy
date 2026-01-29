@@ -468,3 +468,34 @@ async def test_ota_trusted_provider_missing_sha3_256_checksum(
     # Image should be removed due to missing SHA3-256 checksum
     assert len(images.upgrades) == 0
     assert "does not have SHA3-256 checksum" in caplog.text
+
+
+@attrs.define(frozen=True, kw_only=True)
+class NoFirmwareOtaImageMetadata(SelfContainedOtaImageMetadata):
+    """Metadata class that returns None from fetch(), simulating missing firmware."""
+
+    test_data: bytes = b""
+
+    async def fetch(self) -> None:
+        return None
+
+
+async def test_ota_untrusted_image_without_firmware(query_cmd, caplog) -> None:
+    """Untrusted images without firmware should be removed with warning (edge case)."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    index = [
+        NoFirmwareOtaImageMetadata(
+            file_version=query_cmd.current_file_version + 1,
+            manufacturer_id=query_cmd.manufacturer_code,
+        ),
+    ]
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    ota.register_provider(SelfContainedProvider(index))
+
+    images = await ota.get_ota_images(device, query_cmd)
+
+    # Image should be removed due to missing firmware (defensive check)
+    assert len(images.upgrades) == 0
+    assert "has no firmware downloaded" in caplog.text
