@@ -910,7 +910,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         # In the future, we should migrate to explicit `manufacturer_code` for every
         # attribute and command
-        if 0xFC00 <= self.cluster_id <= 0xFFFF or definition.is_manufacturer_specific:
+        if 0xFC00 <= self.cluster_id <= 0xFFFF or (
+            definition.is_manufacturer_specific
+            and self.manufacturer_id_override is not UNDEFINED
+        ):
             return (
                 self.manufacturer_id_override
                 if self.manufacturer_id_override is not UNDEFINED
