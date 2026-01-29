@@ -1420,7 +1420,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         command = self.server_commands[command_id]
 
         # Quirks override `def command` but provide their own signature that has
-        # `manufacturer` default to `None`. We treat this is UNDEFINED.
+        # `manufacturer` default to `None`. We treat this as UNDEFINED.
         if manufacturer is None:
             manufacturer = UNDEFINED
 

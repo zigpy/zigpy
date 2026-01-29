@@ -1287,10 +1287,6 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
         ):
             object.__setattr__(self, "is_manufacturer_specific", True)
 
-        # Use UNDEFINED for manufacturer-specific attributes without explicit code
-        if self.is_manufacturer_specific is True and self.manufacturer_code is None:
-            object.__setattr__(self, "manufacturer_code", UNDEFINED)
-
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("
