@@ -12,7 +12,11 @@ from tests.test_appdb import auto_kill_aiosqlite, make_app_with_db  # noqa: F401
 import zigpy.appdb
 from zigpy.appdb import sqlite3
 import zigpy.appdb_schemas
+from zigpy.quirks import CustomCluster
+from zigpy.quirks.registry import DeviceRegistry
+from zigpy.quirks.v2 import QuirkBuilder
 import zigpy.types as t
+from zigpy.zcl.foundation import BaseAttributeDefs, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
 
 
@@ -538,3 +542,46 @@ async def test_unknown_manufacturer_code_migration(test_db, caplog):
         after_total = cur.fetchone()[0]
 
         assert after_total == before_total
+
+
+async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
+    """Test that attributes on manufacturer-specific clusters get the device's manufacturer_id."""
+
+    # Simple quirk for Third Reality night light with is_manufacturer_specific=True
+    class TestCluster(CustomCluster):
+        cluster_id = 0xFC00
+
+        class AttributeDefs(BaseAttributeDefs):
+            test_attr = ZCLAttributeDef(
+                id=0x0002,
+                type=t.uint8_t,
+                is_manufacturer_specific=True,
+            )
+
+    registry = DeviceRegistry()
+
+    (
+        QuirkBuilder("Third Reality, Inc", "3RSNL02043Z", registry=registry)
+        .replaces(TestCluster)
+        .add_to_registry()
+    )
+
+    test_db_path = test_db("zigbee_puddly2.db")
+
+    with patch("zigpy.quirks.DEVICE_REGISTRY", registry):
+        app = await make_app_with_db(test_db_path)
+        await app.shutdown()
+
+    # Check that attributes on 0xFC00 got the device's manufacturer_id (0x130D = 4877)
+    with sqlite3.connect(test_db_path) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT manufacturer_code
+            FROM attributes_cache_v14
+            WHERE cluster_id = 0xFC00 AND attr_id = 0x0002
+            """
+        )
+        rows = cur.fetchall()
+
+    assert rows == [(0x130D,), (0x130D,), (0x130D,)]
