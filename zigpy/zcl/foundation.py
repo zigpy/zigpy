@@ -9,7 +9,7 @@ import typing
 from typing import Final, Self
 
 import zigpy.types as t
-from zigpy.typing import UNDEFINED
+from zigpy.typing import UNDEFINED, UndefinedType
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1113,7 +1113,7 @@ class ZCLCommandDef(t.BaseDataclassMixin):
 
     # set later
     name: str = None
-    manufacturer_code: t.uint16_t | None = None
+    manufacturer_code: t.uint16_t | UndefinedType | None = UNDEFINED
 
     def __post_init__(self) -> None:
         # Backwards compatibility with positional syntax where the name was first
@@ -1260,7 +1260,7 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
 
     # These are (optionally) computed later in the ZCL cluster subclass hook
     name: str = None
-    manufacturer_code: t.uint16_t | None = None
+    manufacturer_code: t.uint16_t | UndefinedType | None = UNDEFINED
 
     def __post_init__(self) -> None:
         # Backwards compatibility with positional syntax where the name was first
@@ -1281,8 +1281,14 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
 
         ensure_valid_name(self.name)
 
+        if (
+            self.manufacturer_code not in (None, UNDEFINED)
+            and not self.is_manufacturer_specific
+        ):
+            object.__setattr__(self, "is_manufacturer_specific", True)
+
         # Use UNDEFINED for manufacturer-specific attributes without explicit code
-        if self.is_manufacturer_specific and self.manufacturer_code is None:
+        if self.is_manufacturer_specific is True and self.manufacturer_code is None:
             object.__setattr__(self, "manufacturer_code", UNDEFINED)
 
     def __repr__(self) -> str:
