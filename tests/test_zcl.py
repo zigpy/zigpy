@@ -2054,6 +2054,7 @@ def test_manufacturer_id_override_extended_zcl_cluster(app_mock) -> None:
     """Test class-level `manufacturer_id_override` for extended ZCL clusters."""
 
     class TestCluster(Basic):
+        _skip_registry = True
         manufacturer_id_override = 0x5678
 
         class AttributeDefs(Basic.AttributeDefs):
