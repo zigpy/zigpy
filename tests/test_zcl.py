@@ -1972,3 +1972,121 @@ async def test_zcl_write_attributes_update_cache(app_mock) -> None:
 
     # No events should have been emitted
     assert events == []
+
+
+def test_manufacturer_id_override_manuf_specific_cluster(app_mock) -> None:
+    """Test class-level `manufacturer_id_override` for custom clusters."""
+
+    class TestCluster(zcl.Cluster):
+        cluster_id = 0xFEED  # Manufacturer-specific cluster range
+        ep_attribute = "test_cluster"
+        manufacturer_id_override = 0x5678
+
+        class AttributeDefs(zcl.BaseAttributeDefs):
+            test_attr1 = foundation.ZCLAttributeDef(
+                id=0xB001,
+                type=t.uint8_t,
+                # Definition-level override takes priority
+                manufacturer_code=0xABCD,
+            )
+            test_attr2 = foundation.ZCLAttributeDef(
+                id=0xB002,
+                type=t.uint8_t,
+                # Definition-level override takes priority
+                manufacturer_code=None,
+            )
+            test_attr3 = foundation.ZCLAttributeDef(
+                id=0xB003,
+                type=t.uint8_t,
+                # While not strictly necessary, it is correct
+                is_manufacturer_specific=True,
+            )
+            test_attr4 = foundation.ZCLAttributeDef(
+                id=0xB004,
+                type=t.uint8_t,
+                # This is technically incorrect but since this cluster ID is in the
+                # manufacturer range, the default value of `is_manufacturer_specific`
+                # is effectively ignored, it must be
+            )
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    dev.node_desc.manufacturer_code = 0x1234
+
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    assert (
+        cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.test_attr1)
+        == 0xABCD
+    )
+    assert (
+        cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.test_attr2)
+        is None
+    )
+    assert (
+        cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.test_attr3)
+        == 0x5678
+    )
+    assert (
+        cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.test_attr4)
+        == 0x5678
+    )
+
+
+def test_manufacturer_id_override_extended_zcl_cluster(app_mock) -> None:
+    """Test class-level `manufacturer_id_override` for extended ZCL clusters."""
+
+    class TestCluster(Basic):
+        manufacturer_id_override = 0x5678
+
+        class AttributeDefs(Basic.AttributeDefs):
+            test_attr1 = foundation.ZCLAttributeDef(
+                id=0xB001,
+                type=t.uint8_t,
+                # Definition-level override takes priority
+                manufacturer_code=0xABCD,
+            )
+            test_attr2 = foundation.ZCLAttributeDef(
+                id=0xB002,
+                type=t.uint8_t,
+                # Definition-level override takes priority
+                manufacturer_code=None,
+            )
+            test_attr3 = foundation.ZCLAttributeDef(
+                id=0xB003,
+                type=t.uint8_t,
+                # While not strictly necessary, it is correct
+                is_manufacturer_specific=True,
+            )
+            test_attr4 = foundation.ZCLAttributeDef(
+                id=0xB004,
+                type=t.uint8_t,
+                # A normal attribute
+            )
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    dev.node_desc.manufacturer_code = 0x1234
+
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    assert (
+        cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.test_attr1)
+        == 0xABCD
+    )
+    assert (
+        cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.test_attr2)
+        is None
+    )
+    assert (
+        cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.test_attr3)
+        == 0x5678
+    )
+    assert (
+        cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.test_attr4)
+        is None
+    )
+    assert (
+        cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.model)
+        is None
+    )

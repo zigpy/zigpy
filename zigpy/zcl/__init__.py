@@ -232,7 +232,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     _attributes_by_id: dict[
         int,
         dict[
-            bool,
+            bool | None,
             dict[int | UndefinedType | None, foundation.ZCLAttributeDef],
         ],
     ] = {}
@@ -381,7 +381,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         for attr_def in cls.AttributeDefs:
             if attr_def.id not in cls._attributes_by_id:
-                cls._attributes_by_id[attr_def.id] = {True: {}, False: {}}
+                cls._attributes_by_id[attr_def.id] = {True: {}, False: {}, None: {}}
 
             is_manuf = attr_def.is_manufacturer_specific
             cls._attributes_by_id[attr_def.id][is_manuf][attr_def.manufacturer_code] = (
@@ -473,10 +473,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         elif isinstance(name_or_id, str):
             return cls.attributes_by_name[name_or_id]
         elif isinstance(name_or_id, int):
+            # Integer lookups are the most complicated, since we know the ID of an
+            # attribute not there may be multiple candidates sharing it
             candidates = cls._attributes_by_id[name_or_id]
             manuf_specific = candidates[True]
             non_manuf_specific = candidates[False]
+            maybe_manuf_specific = candidates[None]
 
+            # If a manufacturer code is explicitly provided, we can narrow things down
             if manufacturer_code is not UNDEFINED:
                 if manufacturer_code is None:
                     # Explicitly no manufacturer code
@@ -486,6 +490,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     # Fall back to unspecified
                     if UNDEFINED in non_manuf_specific:
                         return non_manuf_specific[UNDEFINED]
+
+                    if UNDEFINED in maybe_manuf_specific:
+                        return maybe_manuf_specific[UNDEFINED]
                 else:
                     # Try exact manufacturer-specific match
                     if manufacturer_code in manuf_specific:
@@ -505,8 +512,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
                 raise KeyError(manufacturer_code)
 
-            all_candidates = list(manuf_specific.values()) + list(
-                non_manuf_specific.values()
+            # Otherwise, we pick the first one and hope there is only a single choice
+            all_candidates = (
+                list(manuf_specific.values())
+                + list(non_manuf_specific.values())
+                + list(maybe_manuf_specific.values())
             )
 
             if len(all_candidates) > 1:
@@ -902,18 +912,29 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         manufacturer: int | UndefinedType | None = UNDEFINED,
     ) -> int | None:
         """Get the effective manufacturer code for an attribute or command."""
+
+        # If a command overrides the manufacturer code, it takes priority
         if manufacturer is not UNDEFINED:
             return manufacturer
 
+        # Otherwise, use what the definition has set explicitly
         if definition.manufacturer_code is not UNDEFINED:
             return definition.manufacturer_code
 
-        # In the future, we should migrate to explicit `manufacturer_code` for every
-        # attribute and command
-        if 0xFC00 <= self.cluster_id <= 0xFFFF or (
-            definition.is_manufacturer_specific
-            and self.manufacturer_id_override is not UNDEFINED
-        ):
+        # Or implicitly
+        if definition.is_manufacturer_specific is not None:
+            if not definition.is_manufacturer_specific:
+                return None
+
+            return (
+                self.manufacturer_id_override
+                if self.manufacturer_id_override is not UNDEFINED
+                else self.endpoint.device.manufacturer_id
+            )
+
+        # Finally, fall back to spec-compliant behavior and use a manufacturer code for
+        # any commands destined for a manufacturer-specific cluster
+        if 0xFC00 <= self.cluster_id <= 0xFFFF:
             return (
                 self.manufacturer_id_override
                 if self.manufacturer_id_override is not UNDEFINED
