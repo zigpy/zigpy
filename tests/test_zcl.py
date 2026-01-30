@@ -2004,6 +2004,11 @@ def test_manufacturer_id_override_manuf_specific_cluster(app_mock) -> None:
             test_attr4 = foundation.ZCLAttributeDef(
                 id=0xB004,
                 type=t.uint8_t,
+            )
+            test_attr5 = foundation.ZCLAttributeDef(
+                id=0xB005,
+                type=t.uint8_t,
+                is_manufacturer_specific=False,
                 # This is technically incorrect but since this cluster ID is in the
                 # manufacturer range, the default value of `is_manufacturer_specific`
                 # is effectively ignored, it must be
@@ -2030,6 +2035,10 @@ def test_manufacturer_id_override_manuf_specific_cluster(app_mock) -> None:
     assert (
         cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.test_attr4)
         == 0x5678
+    )
+    assert (
+        cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.test_attr5)
+        is None
     )
 
 
