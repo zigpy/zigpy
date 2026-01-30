@@ -2014,32 +2014,40 @@ def test_manufacturer_id_override_manuf_specific_cluster(app_mock) -> None:
                 # is effectively ignored, it must be
             )
 
+        class ServerCommandDefs(zcl.BaseCommandDefs):
+            test_cmd1 = foundation.ZCLCommandDef(
+                id=0xB001, schema={}, manufacturer_code=0xABCD
+            )
+            test_cmd2 = foundation.ZCLCommandDef(
+                id=0xB002, schema={}, manufacturer_code=None
+            )
+            test_cmd3 = foundation.ZCLCommandDef(
+                id=0xB003, schema={}, is_manufacturer_specific=True
+            )
+            test_cmd4 = foundation.ZCLCommandDef(id=0xB004, schema={})
+            test_cmd5 = foundation.ZCLCommandDef(
+                id=0xB005, schema={}, is_manufacturer_specific=False
+            )
+
     dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
     dev.node_desc.manufacturer_code = 0x1234
 
     cluster = TestCluster(dev.endpoints[1])
     dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
 
-    assert (
-        cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.test_attr1)
-        == 0xABCD
-    )
-    assert (
-        cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.test_attr2)
-        is None
-    )
-    assert (
-        cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.test_attr3)
-        == 0x5678
-    )
-    assert (
-        cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.test_attr4)
-        == 0x5678
-    )
-    assert (
-        cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.test_attr5)
-        is None
-    )
+    for definition, expected in [
+        (TestCluster.AttributeDefs.test_attr1, 0xABCD),
+        (TestCluster.ServerCommandDefs.test_cmd1, 0xABCD),
+        (TestCluster.AttributeDefs.test_attr2, None),
+        (TestCluster.ServerCommandDefs.test_cmd2, None),
+        (TestCluster.AttributeDefs.test_attr3, 0x5678),
+        (TestCluster.ServerCommandDefs.test_cmd3, 0x5678),
+        (TestCluster.AttributeDefs.test_attr4, 0x5678),
+        (TestCluster.ServerCommandDefs.test_cmd4, 0x5678),
+        (TestCluster.AttributeDefs.test_attr5, None),
+        (TestCluster.ServerCommandDefs.test_cmd5, None),
+    ]:
+        assert cluster._get_effective_manufacturer_code(definition) is expected
 
 
 def test_manufacturer_id_override_extended_zcl_cluster(app_mock) -> None:
@@ -2072,10 +2080,25 @@ def test_manufacturer_id_override_extended_zcl_cluster(app_mock) -> None:
                 # A normal attribute
             )
             test_attr5 = foundation.ZCLAttributeDef(
-                id=0xB003,
+                id=0xB005,
                 type=t.uint8_t,
                 # While not strictly necessary, it is correct
                 is_manufacturer_specific=False,
+            )
+
+        class ServerCommandDefs(Basic.ServerCommandDefs):
+            test_cmd1 = foundation.ZCLCommandDef(
+                id=0xB001, schema={}, manufacturer_code=0xABCD
+            )
+            test_cmd2 = foundation.ZCLCommandDef(
+                id=0xB002, schema={}, manufacturer_code=None
+            )
+            test_cmd3 = foundation.ZCLCommandDef(
+                id=0xB003, schema={}, is_manufacturer_specific=True
+            )
+            test_cmd4 = foundation.ZCLCommandDef(id=0xB004, schema={})
+            test_cmd5 = foundation.ZCLCommandDef(
+                id=0xB005, schema={}, is_manufacturer_specific=False
             )
 
     dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
@@ -2084,27 +2107,18 @@ def test_manufacturer_id_override_extended_zcl_cluster(app_mock) -> None:
     cluster = TestCluster(dev.endpoints[1])
     dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
 
-    assert (
-        cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.test_attr1)
-        == 0xABCD
-    )
-    assert (
-        cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.test_attr2)
-        is None
-    )
-    assert (
-        cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.test_attr3)
-        == 0x5678
-    )
-    assert (
-        cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.test_attr4)
-        is None
-    )
-    assert (
-        cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.test_attr5)
-        is None
-    )
-    assert (
-        cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.model)
-        is None
-    )
+    for definition, expected in [
+        (TestCluster.AttributeDefs.test_attr1, 0xABCD),
+        (TestCluster.ServerCommandDefs.test_cmd1, 0xABCD),
+        (TestCluster.AttributeDefs.test_attr2, None),
+        (TestCluster.ServerCommandDefs.test_cmd2, None),
+        (TestCluster.AttributeDefs.test_attr3, 0x5678),
+        (TestCluster.ServerCommandDefs.test_cmd3, 0x5678),
+        (TestCluster.AttributeDefs.test_attr4, None),
+        (TestCluster.ServerCommandDefs.test_cmd4, None),
+        (TestCluster.AttributeDefs.test_attr5, None),
+        (TestCluster.ServerCommandDefs.test_cmd5, None),
+        (TestCluster.AttributeDefs.model, None),
+        (TestCluster.ServerCommandDefs.reset_fact_default, None),
+    ]:
+        assert cluster._get_effective_manufacturer_code(definition) is expected
