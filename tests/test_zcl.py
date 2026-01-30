@@ -2055,13 +2055,18 @@ def test_manufacturer_id_override_extended_zcl_cluster(app_mock) -> None:
             test_attr3 = foundation.ZCLAttributeDef(
                 id=0xB003,
                 type=t.uint8_t,
-                # While not strictly necessary, it is correct
                 is_manufacturer_specific=True,
             )
             test_attr4 = foundation.ZCLAttributeDef(
                 id=0xB004,
                 type=t.uint8_t,
                 # A normal attribute
+            )
+            test_attr5 = foundation.ZCLAttributeDef(
+                id=0xB003,
+                type=t.uint8_t,
+                # While not strictly necessary, it is correct
+                is_manufacturer_specific=False,
             )
 
     dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
@@ -2084,6 +2089,10 @@ def test_manufacturer_id_override_extended_zcl_cluster(app_mock) -> None:
     )
     assert (
         cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.test_attr4)
+        is None
+    )
+    assert (
+        cluster._get_effective_manufacturer_code(TestCluster.AttributeDefs.test_attr5)
         is None
     )
     assert (
