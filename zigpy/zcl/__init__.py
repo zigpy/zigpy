@@ -474,7 +474,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             return cls.attributes_by_name[name_or_id]
         elif isinstance(name_or_id, int):
             # Integer lookups are the most complicated, since we know the ID of an
-            # attribute not there may be multiple candidates sharing it
+            # attribute but there may be multiple candidates sharing it
             candidates = cls._attributes_by_id[name_or_id]
             manuf_specific = candidates[True]
             non_manuf_specific = candidates[False]
