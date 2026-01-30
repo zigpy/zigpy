@@ -1109,7 +1109,7 @@ class ZCLCommandDef(t.BaseDataclassMixin):
     id: t.uint8_t = None
     schema: type[CommandSchema] = None
     direction: Direction = None
-    is_manufacturer_specific: bool = None
+    is_manufacturer_specific: bool | None = None
 
     # set later
     name: str = None
@@ -1128,9 +1128,10 @@ class ZCLCommandDef(t.BaseDataclassMixin):
                 self, "direction", Direction._from_is_reply(self.direction)
             )
 
-        # Use UNDEFINED for manufacturer-specific commands without explicit code
-        if self.is_manufacturer_specific and self.manufacturer_code is None:
-            object.__setattr__(self, "manufacturer_code", UNDEFINED)
+        if self.manufacturer_code is not UNDEFINED:
+            object.__setattr__(
+                self, "is_manufacturer_specific", self.manufacturer_code is not None
+            )
 
     def with_compiled_schema(self) -> ZCLCommandDef:
         """Return a copy of the ZCL command definition object with its dictionary command
@@ -1256,7 +1257,7 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
         ZCLAttributeAccess.Read | ZCLAttributeAccess.Write | ZCLAttributeAccess.Report
     )
     mandatory: bool = False
-    is_manufacturer_specific: bool = False
+    is_manufacturer_specific: bool | None = None
 
     # These are (optionally) computed later in the ZCL cluster subclass hook
     name: str = None
@@ -1281,11 +1282,10 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
 
         ensure_valid_name(self.name)
 
-        if (
-            self.manufacturer_code not in (None, UNDEFINED)
-            and not self.is_manufacturer_specific
-        ):
-            object.__setattr__(self, "is_manufacturer_specific", True)
+        if self.manufacturer_code is not UNDEFINED:
+            object.__setattr__(
+                self, "is_manufacturer_specific", self.manufacturer_code is not None
+            )
 
     def __repr__(self) -> str:
         return (
