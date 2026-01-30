@@ -2016,17 +2016,17 @@ def test_manufacturer_id_override_manuf_specific_cluster(app_mock) -> None:
 
         class ServerCommandDefs(zcl.BaseCommandDefs):
             test_cmd1 = foundation.ZCLCommandDef(
-                id=0xB001, schema={}, manufacturer_code=0xABCD
+                id=0xB1, schema={}, manufacturer_code=0xABCD
             )
             test_cmd2 = foundation.ZCLCommandDef(
-                id=0xB002, schema={}, manufacturer_code=None
+                id=0xB2, schema={}, manufacturer_code=None
             )
             test_cmd3 = foundation.ZCLCommandDef(
-                id=0xB003, schema={}, is_manufacturer_specific=True
+                id=0xB3, schema={}, is_manufacturer_specific=True
             )
-            test_cmd4 = foundation.ZCLCommandDef(id=0xB004, schema={})
+            test_cmd4 = foundation.ZCLCommandDef(id=0xB4, schema={})
             test_cmd5 = foundation.ZCLCommandDef(
-                id=0xB005, schema={}, is_manufacturer_specific=False
+                id=0xB5, schema={}, is_manufacturer_specific=False
             )
 
     dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
@@ -2089,17 +2089,17 @@ def test_manufacturer_id_override_extended_zcl_cluster(app_mock) -> None:
 
         class ServerCommandDefs(Basic.ServerCommandDefs):
             test_cmd1 = foundation.ZCLCommandDef(
-                id=0xB001, schema={}, manufacturer_code=0xABCD
+                id=0xB1, schema={}, manufacturer_code=0xABCD
             )
             test_cmd2 = foundation.ZCLCommandDef(
-                id=0xB002, schema={}, manufacturer_code=None
+                id=0xB2, schema={}, manufacturer_code=None
             )
             test_cmd3 = foundation.ZCLCommandDef(
-                id=0xB003, schema={}, is_manufacturer_specific=True
+                id=0xB3, schema={}, is_manufacturer_specific=True
             )
-            test_cmd4 = foundation.ZCLCommandDef(id=0xB004, schema={})
+            test_cmd4 = foundation.ZCLCommandDef(id=0xB4, schema={})
             test_cmd5 = foundation.ZCLCommandDef(
-                id=0xB005, schema={}, is_manufacturer_specific=False
+                id=0xB5, schema={}, is_manufacturer_specific=False
             )
 
     dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
