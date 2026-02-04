@@ -51,7 +51,7 @@ class Shade(Cluster):
             id=0x0010, type=t.uint16_t, access="rw", mandatory=True
         )
         mode: Final = ZCLAttributeDef(
-            id=0x0012, type=ShadeMode, access="rw", mandatory=True
+            id=0x0011, type=ShadeMode, access="rw", mandatory=True
         )
 
 
