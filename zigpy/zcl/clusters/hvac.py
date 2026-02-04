@@ -569,9 +569,11 @@ class Fan(Cluster):
     ep_attribute: Final = "fan"
 
     class AttributeDefs(BaseAttributeDefs):
-        fan_mode: Final = ZCLAttributeDef(id=0x0000, type=FanMode, access="")
+        fan_mode: Final = ZCLAttributeDef(
+            id=0x0000, type=FanMode, access="rw", mandatory=True
+        )
         fan_mode_sequence: Final = ZCLAttributeDef(
-            id=0x0001, type=FanModeSequence, access=""
+            id=0x0001, type=FanModeSequence, access="rw", mandatory=True
         )
 
 
