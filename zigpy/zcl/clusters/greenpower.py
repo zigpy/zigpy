@@ -323,7 +323,7 @@ class GreenPowerProxy(Cluster):
         functionality: Final = ZCLAttributeDef(
             id=0x0006,
             type=GPSFunctionality,
-            access="rw",
+            access="r",
             mandatory=True,
         )
         active_functionality: Final = ZCLAttributeDef(
@@ -333,21 +333,45 @@ class GreenPowerProxy(Cluster):
             mandatory=True,
         )
         gpp_max_table_entries: Final = ZCLAttributeDef(
-            id=0x0010, type=t.uint8_t, access="r"
+            id=0x0010,
+            type=t.uint8_t,
+            access="r",
+            mandatory=True,
         )
         gpp_proxy_table: Final = ZCLAttributeDef(
-            id=0x0011, type=t.LongOctetString, access="r"
+            id=0x0011,
+            type=t.LongOctetString,
+            access="r",
+            mandatory=True,
         )
         gpp_functionality: Final = ZCLAttributeDef(
-            id=0x0016, type=GPPFunctionality, access="r"
+            id=0x0016,
+            type=GPPFunctionality,
+            access="r",
+            mandatory=True,
         )
         gpp_active_functionality: Final = ZCLAttributeDef(
-            id=0x0017, type=GPPFunctionality, access="r"
+            id=0x0017,
+            type=GPPFunctionality,
+            access="r",
+            mandatory=True,
+        )
+        gp_shared_security_key_type: Final = ZCLAttributeDef(
+            id=0x0020,
+            type=t.bitmap8,
+            access="rw",
+            mandatory=True,
+        )
+        gp_shared_security_key: Final = ZCLAttributeDef(
+            id=0x0021,
+            type=t.KeyData,
+            access="rw",
+            mandatory=True,
         )
         link_key: Final = ZCLAttributeDef(
             id=0x0022,
             type=t.KeyData,
-            access="r",
+            access="rw",
             mandatory=True,
         )
 
