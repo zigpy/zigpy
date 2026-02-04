@@ -399,7 +399,7 @@ class Metering(Cluster):
 
     class AttributeDefs(BaseAttributeDefs):
         current_summ_delivered: Final = ZCLAttributeDef(
-            id=0x0000, type=t.uint48_t, access="r"
+            id=0x0000, type=t.uint48_t, access="r", mandatory=True
         )
         current_summ_received: Final = ZCLAttributeDef(
             id=0x0001, type=t.uint48_t, access="r"
@@ -444,7 +444,7 @@ class Metering(Cluster):
         preset_reading_time: Final = ZCLAttributeDef(
             id=0x0011, type=t.uint16_t, access="r"
         )
-        volume_per_report: Final = ZCLAttributeDef(
+        summation_delivered_per_report: Final = ZCLAttributeDef(
             id=0x0012, type=t.uint16_t, access="r"
         )
         flow_restriction: Final = ZCLAttributeDef(id=0x0013, type=t.uint8_t, access="r")
@@ -467,6 +467,9 @@ class Metering(Cluster):
         )
         current_out_energy_carrier_demand: Final = ZCLAttributeDef(
             id=0x001B, type=t.int24s, access="r"
+        )
+        previous_block_period_consumption_delivered: Final = ZCLAttributeDef(
+            id=0x001C, type=t.uint48_t, access="r"
         )
         current_block_period_consumption_received: Final = ZCLAttributeDef(
             id=0x001D, type=t.uint48_t, access="r"
@@ -577,7 +580,9 @@ class Metering(Cluster):
         current_tier15_summ_received: Final = ZCLAttributeDef(
             id=0x011D, type=t.uint48_t, access="r"
         )
-        status: Final = ZCLAttributeDef(id=0x0200, type=MeteringStatus, access="r")
+        status: Final = ZCLAttributeDef(
+            id=0x0200, type=MeteringStatus, access="r", mandatory=True
+        )
         remaining_battery_life: Final = ZCLAttributeDef(
             id=0x0201, type=t.uint8_t, access="r"
         )
@@ -596,7 +601,7 @@ class Metering(Cluster):
             id=0x0207, type=AmbientConsumptionIndicator, access="r"
         )
         unit_of_measure: Final = ZCLAttributeDef(
-            id=0x0300, type=MeteringUnitofMeasure, access="r"
+            id=0x0300, type=MeteringUnitofMeasure, access="r", mandatory=True
         )
         multiplier: Final = ZCLAttributeDef(id=0x0301, type=t.uint24_t, access="r")
         divisor: Final = ZCLAttributeDef(id=0x0302, type=t.uint24_t, access="r")
@@ -609,7 +614,11 @@ class Metering(Cluster):
         # • DFTSummation
         # • Block Information attributes
         summation_formatting: Final = ZCLAttributeDef(
-            id=0x0303, zcl_type=DataTypeId.map8, type=NumberFormatting, access="r"
+            id=0x0303,
+            zcl_type=DataTypeId.map8,
+            type=NumberFormatting,
+            access="r",
+            mandatory=True,
         )
 
         # This attribute shall be used against the following attributes:
@@ -652,6 +661,7 @@ class Metering(Cluster):
             # be treated like an enum
             zcl_type=DataTypeId.map8,
             access="r",
+            mandatory=True,
         )
         site_id: Final = ZCLAttributeDef(
             id=0x0307, type=t.LimitedLVBytes(32), access="r"
@@ -805,28 +815,28 @@ class Metering(Cluster):
             id=0x0604, type=t.uint16_t, access="r"
         )
         generic_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0800, type=GenericAlarmMask, access="r"
+            id=0x0800, type=GenericAlarmMask, access="rw"
         )
         electricity_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0801, type=ElectricityAlarmMask, access="r"
+            id=0x0801, type=ElectricityAlarmMask, access="rw"
         )
         gen_flow_pressure_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0802, type=GenericFlowPressureAlarmMask, access="r"
+            id=0x0802, type=GenericFlowPressureAlarmMask, access="rw"
         )
         water_specific_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0803, type=WaterSpecificAlarmMask, access="r"
+            id=0x0803, type=WaterSpecificAlarmMask, access="rw"
         )
         heat_cool_specific_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0804, type=HeatCoolingSpecificAlarmMask, access="r"
+            id=0x0804, type=HeatCoolingSpecificAlarmMask, access="rw"
         )
         gas_specific_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0805, type=GasSpecificAlarmMask, access="r"
+            id=0x0805, type=GasSpecificAlarmMask, access="rw"
         )
         extended_generic_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0806, type=ExtendedGenericAlarmMask, access="r"
+            id=0x0806, type=ExtendedGenericAlarmMask, access="rw"
         )
         manufacture_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0807, type=ManufacturerAlarmMask, access="r"
+            id=0x0807, type=ManufacturerAlarmMask, access="rw"
         )
         bill_to_date: Final = ZCLAttributeDef(id=0x0A00, type=t.uint32_t, access="r")
         bill_to_date_time_stamp: Final = ZCLAttributeDef(

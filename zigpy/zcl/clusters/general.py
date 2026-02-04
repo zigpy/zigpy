@@ -1853,7 +1853,7 @@ class MultistateInput(Cluster):
             id=0x001C, type=t.CharacterString, access="r*w"
         )
         number_of_states: Final = ZCLAttributeDef(
-            id=0x004A, type=t.uint16_t, access="r*w"
+            id=0x004A, type=t.uint16_t, access="r*w", mandatory=True
         )
         out_of_service: Final = ZCLAttributeDef(
             id=0x0051, type=t.Bool, access="r*w", mandatory=True
