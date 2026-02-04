@@ -356,13 +356,13 @@ class ElectricalMeasurement(Cluster):
         )
         # DC Manufacturer Threshold Alarms
         dc_overload_alarms_mask: Final = ZCLAttributeDef(
-            id=0x0700, type=DCOverloadAlarmMark, access="rp"
+            id=0x0700, type=DCOverloadAlarmMark, access="rw"
         )
         dc_voltage_overload: Final = ZCLAttributeDef(
-            id=0x0701, type=t.int16s, access="rp"
+            id=0x0701, type=t.int16s, access="r"
         )
         dc_current_overload: Final = ZCLAttributeDef(
-            id=0x0702, type=t.int16s, access="rp"
+            id=0x0702, type=t.int16s, access="r"
         )
         # AC Manufacturer Threshold Alarms
         ac_alarms_mask: Final = ZCLAttributeDef(
