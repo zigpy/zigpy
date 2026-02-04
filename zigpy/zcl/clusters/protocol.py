@@ -179,7 +179,6 @@ class AnalogOutputRegular(Cluster):
         object_id: Final = ZCLAttributeDef(id=0x004B, type=t.uint32_t)
         object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=BACnetObjectType)
-        update_interval: Final = ZCLAttributeDef(id=0x0076, type=t.uint8_t)
         profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
 
 
