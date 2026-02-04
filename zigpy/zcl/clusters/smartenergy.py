@@ -374,6 +374,31 @@ class ManufacturerAlarmMask(t.bitmap16):
     # 0xB9-0xBF Reserved (bits 9-15)
 
 
+class SnapshotCause(t.bitmap32):
+    """Snapshot cause bitmap per SE 1.4a Table D-52."""
+
+    General = 0x00000001
+    End_Of_Billing_Period = 0x00000002
+    End_Of_Block_Period = 0x00000004
+    Change_Of_Tariff_Information = 0x00000008
+    Change_Of_Price_Matrix = 0x00000010
+    Change_Of_Block_Thresholds = 0x00000020
+    Change_Of_CV = 0x00000040
+    Change_Of_CF = 0x00000080
+    Change_Of_Calendar = 0x00000100
+    Critical_Peak_Pricing = 0x00000200
+    Manually_Triggered_From_Client = 0x00000400
+    End_Of_Resolve_Period = 0x00000800
+    Change_Of_Tenancy = 0x00001000
+    Change_Of_Supplier = 0x00002000
+    Change_Of_Meter_Mode = 0x00004000
+    Debt_Payment = 0x00008000
+    Scheduled_Snapshot = 0x00010000
+    OTA_Firmware_Download = 0x00020000
+    # Bits 18-19: Reserved for Prepayment cluster
+    # Bits 20-31: Reserved
+
+
 class Metering(Cluster):
     RegisteredTier: Final = RegisteredTier
     MeteringDeviceType: Final = MeteringDeviceType
@@ -848,20 +873,231 @@ class Metering(Cluster):
         )
 
     class ServerCommandDefs(BaseCommandDefs):
-        get_profile: Final = ZCLCommandDef(id=0x00, schema={})
-        req_mirror: Final = ZCLCommandDef(id=0x01, schema={})
-        mirror_rem: Final = ZCLCommandDef(id=0x02, schema={})
-        req_fast_poll_mode: Final = ZCLCommandDef(id=0x03, schema={})
-        get_snapshot: Final = ZCLCommandDef(id=0x04, schema={})
-        take_snapshot: Final = ZCLCommandDef(id=0x05, schema={})
-        mirror_report_attr_response: Final = ZCLCommandDef(id=0x06, schema={})
+        get_profile: Final = ZCLCommandDef(
+            id=0x00,
+            schema={
+                "interval_channel": t.uint8_t,
+                "end_time": t.UTCTime,
+                "number_of_periods": t.uint8_t,
+            },
+        )
+        request_mirror_response: Final = ZCLCommandDef(
+            id=0x01,
+            schema={"endpoint_id": t.uint16_t},
+        )
+        mirror_removed: Final = ZCLCommandDef(
+            id=0x02,
+            schema={"removed_endpoint_id": t.uint16_t},
+        )
+        request_fast_poll_mode: Final = ZCLCommandDef(
+            id=0x03,
+            schema={
+                "fast_poll_update_period": t.uint8_t,
+                "duration": t.uint8_t,
+            },
+        )
+        schedule_snapshot: Final = ZCLCommandDef(
+            id=0x04,
+            schema={
+                "issuer_event_id": t.uint32_t,
+                "command_index": t.uint8_t,
+                "total_number_of_commands": t.uint8_t,
+                "snapshot_schedule_payload": t.LVBytes,
+            },
+        )
+        take_snapshot: Final = ZCLCommandDef(
+            id=0x05,
+            schema={"snapshot_cause": SnapshotCause},
+        )
+        get_snapshot: Final = ZCLCommandDef(
+            id=0x06,
+            schema={
+                "earliest_start_time": t.UTCTime,
+                "latest_end_time": t.UTCTime,
+                "snapshot_offset": t.uint8_t,
+                "snapshot_cause": SnapshotCause,
+            },
+        )
+        start_sampling: Final = ZCLCommandDef(
+            id=0x07,
+            schema={
+                "issuer_event_id": t.uint32_t,
+                "start_sampling_time": t.UTCTime,
+                "sample_type": t.uint8_t,
+                "sample_request_interval": t.uint16_t,
+                "max_number_of_samples": t.uint16_t,
+            },
+        )
+        get_sampled_data: Final = ZCLCommandDef(
+            id=0x08,
+            schema={
+                "sample_id": t.uint16_t,
+                "earliest_sample_time": t.UTCTime,
+                "sample_type": t.uint8_t,
+                "number_of_samples": t.uint16_t,
+            },
+        )
+        mirror_report_attribute_response: Final = ZCLCommandDef(
+            id=0x09,
+            schema={
+                "notification_scheme": t.uint8_t,
+                "notification_flags": t.LVBytes,
+            },
+        )
+        reset_load_limit_counter: Final = ZCLCommandDef(
+            id=0x0A,
+            schema={
+                "provider_id": t.uint32_t,
+                "issuer_event_id": t.uint32_t,
+            },
+        )
+        change_supply: Final = ZCLCommandDef(
+            id=0x0B,
+            schema={
+                "provider_id": t.uint32_t,
+                "issuer_event_id": t.uint32_t,
+                "request_date_time": t.UTCTime,
+                "implementation_date_time": t.UTCTime,
+                "proposed_supply_status": t.uint8_t,
+                "supply_control_bits": t.bitmap8,
+            },
+        )
+        local_change_supply: Final = ZCLCommandDef(
+            id=0x0C,
+            schema={"proposed_supply_status": t.uint8_t},
+        )
+        set_supply_status: Final = ZCLCommandDef(
+            id=0x0D,
+            schema={
+                "issuer_event_id": t.uint32_t,
+                "supply_tamper_state": t.uint8_t,
+                "supply_depletion_state": t.uint8_t,
+                "supply_uncontrolled_flow_state": t.uint8_t,
+                "load_limit_supply_state": t.uint8_t,
+            },
+        )
+        set_uncontrolled_flow_threshold: Final = ZCLCommandDef(
+            id=0x0E,
+            schema={
+                "provider_id": t.uint32_t,
+                "issuer_event_id": t.uint32_t,
+                "uncontrolled_flow_threshold": t.uint16_t,
+                "unit_of_measure": t.uint8_t,
+                "multiplier": t.uint16_t,
+                "divisor": t.uint16_t,
+                "stabilisation_period": t.uint8_t,
+                "measurement_period": t.uint16_t,
+            },
+        )
 
     class ClientCommandDefs(BaseCommandDefs):
-        get_profile_response: Final = ZCLCommandDef(id=0x00, schema={})
-        req_mirror_response: Final = ZCLCommandDef(id=0x01, schema={})
-        mirror_rem_response: Final = ZCLCommandDef(id=0x02, schema={})
-        req_fast_poll_mode_response: Final = ZCLCommandDef(id=0x03, schema={})
-        get_snapshot_response: Final = ZCLCommandDef(id=0x04, schema={})
+        get_profile_response: Final = ZCLCommandDef(
+            id=0x00,
+            schema={
+                "end_time": t.UTCTime,
+                "status": t.uint8_t,
+                "profile_interval_period": t.uint8_t,
+                "number_of_periods_delivered": t.uint8_t,
+                "intervals": t.LVBytes,
+            },
+        )
+        request_mirror: Final = ZCLCommandDef(id=0x01, schema={})
+        remove_mirror: Final = ZCLCommandDef(id=0x02, schema={})
+        request_fast_poll_mode_response: Final = ZCLCommandDef(
+            id=0x03,
+            schema={
+                "applied_update_period": t.uint8_t,
+                "fast_poll_mode_end_time": t.UTCTime,
+            },
+        )
+        schedule_snapshot_response: Final = ZCLCommandDef(
+            id=0x04,
+            schema={
+                "issuer_event_id": t.uint32_t,
+                "snapshot_response_payload": t.LVBytes,
+            },
+        )
+        take_snapshot_response: Final = ZCLCommandDef(
+            id=0x05,
+            schema={
+                "snapshot_id": t.uint32_t,
+                "snapshot_confirmation": t.uint8_t,
+            },
+        )
+        publish_snapshot: Final = ZCLCommandDef(
+            id=0x06,
+            schema={
+                "snapshot_id": t.uint32_t,
+                "snapshot_time": t.UTCTime,
+                "total_snapshots_found": t.uint8_t,
+                "command_index": t.uint8_t,
+                "total_number_of_commands": t.uint8_t,
+                "snapshot_cause": SnapshotCause,
+                "snapshot_payload_type": t.uint8_t,
+                "snapshot_payload": t.LVBytes,
+            },
+        )
+        get_sampled_data_response: Final = ZCLCommandDef(
+            id=0x07,
+            schema={
+                "sample_id": t.uint16_t,
+                "sample_start_time": t.UTCTime,
+                "sample_type": t.uint8_t,
+                "sample_request_interval": t.uint16_t,
+                "number_of_samples": t.uint16_t,
+                "samples": t.LVBytes,
+            },
+        )
+        configure_mirror: Final = ZCLCommandDef(
+            id=0x08,
+            schema={
+                "issuer_event_id": t.uint32_t,
+                "reporting_interval": t.uint24_t,
+                "mirror_notification_reporting": t.Bool,
+                "notification_scheme": t.uint8_t,
+            },
+        )
+        configure_notification_scheme: Final = ZCLCommandDef(
+            id=0x09,
+            schema={
+                "issuer_event_id": t.uint32_t,
+                "notification_scheme": t.uint8_t,
+                "notification_flag_order": t.bitmap32,
+            },
+        )
+        configure_notification_flag: Final = ZCLCommandDef(
+            id=0x0A,
+            schema={
+                "issuer_event_id": t.uint32_t,
+                "notification_scheme": t.uint8_t,
+                "notification_flag_attribute_id": t.uint16_t,
+                "cluster_id": t.uint16_t,
+                "manufacturer_code": t.uint16_t,
+                "number_of_commands": t.uint8_t,
+                "command_ids": t.LVBytes,
+            },
+        )
+        get_notified_message: Final = ZCLCommandDef(
+            id=0x0B,
+            schema={
+                "notification_scheme": t.uint8_t,
+                "notification_flag_attribute_id": t.uint16_t,
+                "notification_flags": t.bitmap32,
+            },
+        )
+        supply_status_response: Final = ZCLCommandDef(
+            id=0x0C,
+            schema={
+                "provider_id": t.uint32_t,
+                "issuer_event_id": t.uint32_t,
+                "implementation_date_time": t.UTCTime,
+                "supply_status": t.uint8_t,
+            },
+        )
+        start_sampling_response: Final = ZCLCommandDef(
+            id=0x0D,
+            schema={"sample_id": t.uint16_t},
+        )
 
 
 class Messaging(Cluster):

@@ -113,11 +113,18 @@ class GenericTunnel(Cluster):
         protocol_addr: Final = ZCLAttributeDef(id=0x0003, type=t.LVBytes)
 
     class ServerCommandDefs(BaseCommandDefs):
-        match_protocol_addr: Final = ZCLCommandDef(id=0x00, schema={})
+        match_protocol_addr: Final = ZCLCommandDef(
+            id=0x00, schema={"protocol_address": t.LVBytes}
+        )
 
     class ClientCommandDefs(BaseCommandDefs):
-        match_protocol_addr_response: Final = ZCLCommandDef(id=0x00, schema={})
-        advertise_protocol_address: Final = ZCLCommandDef(id=0x01, schema={})
+        match_protocol_addr_response: Final = ZCLCommandDef(
+            id=0x00,
+            schema={"device_ieee_address": t.EUI64, "protocol_address": t.LVBytes},
+        )
+        advertise_protocol_address: Final = ZCLCommandDef(
+            id=0x01, schema={"protocol_address": t.LVBytes}
+        )
 
 
 class BacnetProtocolTunnel(Cluster):
@@ -161,12 +168,6 @@ class AnalogInputExtended(Cluster):
         time_delay: Final = ZCLAttributeDef(id=0x0071, type=t.uint8_t)
         # event_time_stamps: Final = ZCLAttributeDef(id=0x0082, type=t.Array[3, t.uint32_t])
         # integer, time of day, or structure of (date, time of day))
-
-    class ServerCommandDefs(BaseCommandDefs):
-        transfer_apdu: Final = ZCLCommandDef(id=0x00, schema={})
-        connect_req: Final = ZCLCommandDef(id=0x01, schema={})
-        disconnect_req: Final = ZCLCommandDef(id=0x02, schema={})
-        connect_status_noti: Final = ZCLCommandDef(id=0x03, schema={})
 
 
 class AnalogOutputRegular(Cluster):
@@ -427,3 +428,70 @@ class MultistateValueExtended(Cluster):
         time_delay: Final = ZCLAttributeDef(id=0x0071, type=t.uint8_t)
         # 0x0082: ZCLAttributeDef('event_time_stamps', type=TODO.array),  # Array[3] of (16-bit unsigned
         # integer, time of day, or structure of (date, time of day))
+
+
+class IEEE11073ConnectStatus(t.enum8):
+    """Connect status values for 11073 Protocol Tunnel."""
+
+    Disconnected = 0x00
+    Connected = 0x01
+    Not_Authorized = 0x02
+    Reconnect_Request = 0x03
+    Already_Connected = 0x04
+
+
+class IEEEProtocolTunnel11073(Cluster):
+    """11073 Protocol Tunnel cluster."""
+
+    IEEE11073ConnectStatus: Final = IEEE11073ConnectStatus
+
+    cluster_id: Final[t.uint16_t] = 0x0614
+    ep_attribute: Final = "ieee11073_tunnel"
+
+    class AttributeDefs(BaseAttributeDefs):
+        device_id_list: Final = ZCLAttributeDef(
+            id=0x0000, type=t.List[t.uint16_t], access="r"
+        )
+        manager_target: Final = ZCLAttributeDef(id=0x0001, type=t.EUI64, access="r")
+        manager_endpoint: Final = ZCLAttributeDef(id=0x0002, type=t.uint8_t, access="r")
+        connected: Final = ZCLAttributeDef(id=0x0003, type=t.Bool, access="r")
+        preemptible: Final = ZCLAttributeDef(id=0x0004, type=t.Bool, access="r")
+        idle_timeout: Final = ZCLAttributeDef(id=0x0005, type=t.uint16_t, access="r")
+
+    class ServerCommandDefs(BaseCommandDefs):
+        transfer_apdu: Final = ZCLCommandDef(
+            id=0x00, schema={"apdu": t.LongOctetString}
+        )
+        connect_req: Final = ZCLCommandDef(
+            id=0x01,
+            schema={
+                "connect_control": t.bitmap8,
+                "idle_timeout": t.uint16_t,
+                "manager_target": t.EUI64,
+                "manager_endpoint": t.uint8_t,
+            },
+        )
+        disconnect_req: Final = ZCLCommandDef(
+            id=0x02, schema={"manager_ieee_address": t.EUI64}
+        )
+        connect_status_noti: Final = ZCLCommandDef(
+            id=0x03, schema={"connect_status": IEEE11073ConnectStatus}
+        )
+
+
+class ISO7816Tunnel(Cluster):
+    """ISO 7816 Protocol Tunnel cluster."""
+
+    cluster_id: Final[t.uint16_t] = 0x0615
+    ep_attribute: Final = "iso7816_tunnel"
+
+    class AttributeDefs(BaseAttributeDefs):
+        status: Final = ZCLAttributeDef(id=0x0001, type=t.uint8_t, access="r")
+
+    class ServerCommandDefs(BaseCommandDefs):
+        transfer_apdu: Final = ZCLCommandDef(id=0x00, schema={"apdu": t.LVBytes})
+        insert_smart_card: Final = ZCLCommandDef(id=0x01, schema={})
+        extract_smart_card: Final = ZCLCommandDef(id=0x02, schema={})
+
+    class ClientCommandDefs(BaseCommandDefs):
+        transfer_apdu: Final = ZCLCommandDef(id=0x00, schema={"apdu": t.LVBytes})

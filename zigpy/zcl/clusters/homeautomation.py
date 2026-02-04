@@ -107,9 +107,18 @@ class ApplianceEventAlerts(Cluster):
         get_alerts: Final = ZCLCommandDef(id=0x00, schema={})
 
     class ClientCommandDefs(BaseCommandDefs):
-        get_alerts_response: Final = ZCLCommandDef(id=0x00, schema={})
-        alerts_notification: Final = ZCLCommandDef(id=0x01, schema={})
-        event_notification: Final = ZCLCommandDef(id=0x02, schema={})
+        get_alerts_response: Final = ZCLCommandDef(
+            id=0x00,
+            schema={"alerts_count": t.uint8_t, "alerts": t.LVList[t.uint24_t]},
+        )
+        alerts_notification: Final = ZCLCommandDef(
+            id=0x01,
+            schema={"alerts_count": t.uint8_t, "alerts": t.LVList[t.uint24_t]},
+        )
+        event_notification: Final = ZCLCommandDef(
+            id=0x02,
+            schema={"event_header": t.uint8_t, "event_id": t.uint8_t},
+        )
 
 
 class ApplianceStatistics(Cluster):
@@ -128,14 +137,36 @@ class ApplianceStatistics(Cluster):
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
     class ServerCommandDefs(BaseCommandDefs):
-        log: Final = ZCLCommandDef(id=0x00, schema={})
-        log_queue: Final = ZCLCommandDef(id=0x01, schema={})
+        log_request: Final = ZCLCommandDef(id=0x00, schema={"log_id": t.uint32_t})
+        log_queue_request: Final = ZCLCommandDef(id=0x01, schema={})
 
     class ClientCommandDefs(BaseCommandDefs):
-        log_notification: Final = ZCLCommandDef(id=0x00, schema={})
-        log_response: Final = ZCLCommandDef(id=0x01, schema={})
-        log_queue_response: Final = ZCLCommandDef(id=0x02, schema={})
-        statistics_available: Final = ZCLCommandDef(id=0x03, schema={})
+        log_notification: Final = ZCLCommandDef(
+            id=0x00,
+            schema={
+                "time_stamp": t.UTCTime,
+                "log_id": t.uint32_t,
+                "log_length": t.uint32_t,
+                "log_payload": t.LVList[t.uint8_t],
+            },
+        )
+        log_response: Final = ZCLCommandDef(
+            id=0x01,
+            schema={
+                "time_stamp": t.UTCTime,
+                "log_id": t.uint32_t,
+                "log_length": t.uint32_t,
+                "log_payload": t.LVList[t.uint8_t],
+            },
+        )
+        log_queue_response: Final = ZCLCommandDef(
+            id=0x02,
+            schema={"log_queue_size": t.uint8_t, "log_ids": t.LVList[t.uint32_t]},
+        )
+        statistics_available: Final = ZCLCommandDef(
+            id=0x03,
+            schema={"log_queue_size": t.uint8_t, "log_ids": t.LVList[t.uint32_t]},
+        )
 
 
 class MeasurementType(t.bitmap32):
@@ -531,11 +562,36 @@ class ElectricalMeasurement(Cluster):
 
     class ServerCommandDefs(BaseCommandDefs):
         get_profile_info: Final = ZCLCommandDef(id=0x00, schema={})
-        get_measurement_profile: Final = ZCLCommandDef(id=0x01, schema={})
+        get_measurement_profile: Final = ZCLCommandDef(
+            id=0x01,
+            schema={
+                "attribute_id": t.uint16_t,
+                "start_time": t.UTCTime,
+                "number_of_intervals": t.uint8_t,
+            },
+        )
 
     class ClientCommandDefs(BaseCommandDefs):
-        get_profile_info_response: Final = ZCLCommandDef(id=0x00, schema={})
-        get_measurement_profile_response: Final = ZCLCommandDef(id=0x01, schema={})
+        get_profile_info_response: Final = ZCLCommandDef(
+            id=0x00,
+            schema={
+                "profile_count": t.uint8_t,
+                "profile_interval_period": t.enum8,
+                "max_number_of_intervals": t.uint8_t,
+                "attributes": t.LVList[t.uint16_t],
+            },
+        )
+        get_measurement_profile_response: Final = ZCLCommandDef(
+            id=0x01,
+            schema={
+                "start_time": t.UTCTime,
+                "status": t.enum8,
+                "profile_interval_period": t.enum8,
+                "number_of_intervals_delivered": t.uint8_t,
+                "attribute_id": t.uint16_t,
+                "intervals": t.LVList[t.uint16_t],
+            },
+        )
 
 
 class Diagnostic(Cluster):

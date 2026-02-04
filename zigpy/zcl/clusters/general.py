@@ -1957,6 +1957,16 @@ class NetworkKeyType(t.enum8):
     Standard = 0x01
 
 
+class RestartDeviceOptions(t.bitmap8):
+    """Restart Device command options bitmap."""
+
+    # Bits 0-2: Startup Mode
+    StartupMode_RestartUsingStartupParams = 0x00
+    StartupMode_RestartUsingCurrentState = 0x01
+    # Bit 3: Immediate
+    Immediate = 0x08
+
+
 class Commissioning(Cluster):
     """Attributes and commands for commissioning and
     managing a Zigbee device.
@@ -2047,8 +2057,13 @@ class Commissioning(Cluster):
     class ServerCommandDefs(BaseCommandDefs):
         restart_device: Final = ZCLCommandDef(
             id=0x00,
-            schema={"options": t.bitmap8, "delay": t.uint8_t, "jitter": t.uint8_t},
+            schema={
+                "options": RestartDeviceOptions,
+                "delay": t.uint8_t,
+                "jitter": t.uint8_t,
+            },
         )
+        # Options field is reserved for save/restore/reset commands
         save_startup_parameters: Final = ZCLCommandDef(
             id=0x01,
             schema={"options": t.bitmap8, "index": t.uint8_t},
@@ -2081,7 +2096,23 @@ class Commissioning(Cluster):
         )
 
 
+class PartitionFragmentationOptions(t.bitmap8):
+    """Fragmentation options for TransferPartitionedFrame command."""
+
+    First_Block = 0x01
+    Indicator_Length_16bit = 0x02
+
+
+class PartitionAckOptions(t.bitmap8):
+    """ACK options for MultipleACK command."""
+
+    NACKId_Length_16bit = 0x01
+
+
 class Partition(Cluster):
+    PartitionFragmentationOptions: Final = PartitionFragmentationOptions
+    PartitionAckOptions: Final = PartitionAckOptions
+
     cluster_id: Final[t.uint16_t] = 0x0016
     ep_attribute: Final = "partition"
 
@@ -2124,6 +2155,47 @@ class Partition(Cluster):
         )
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
+
+    class ServerCommandDefs(BaseCommandDefs):
+        transfer_partitioned_frame: Final = ZCLCommandDef(
+            id=0x00,
+            schema={
+                "fragmentation_options": PartitionFragmentationOptions,
+                "partition_indicator": t.uint16_t,
+                "partitioned_frame": t.LVBytes,
+            },
+        )
+        read_handshake_param: Final = ZCLCommandDef(
+            id=0x01,
+            schema={
+                "partitioned_cluster_id": t.ClusterId,
+                "attribute_ids": t.List[t.uint16_t],
+            },
+        )
+        write_handshake_param: Final = ZCLCommandDef(
+            id=0x02,
+            schema={
+                "partitioned_cluster_id": t.ClusterId,
+                "write_attribute_records": t.List[foundation.Attribute],
+            },
+        )
+
+    class ClientCommandDefs(BaseCommandDefs):
+        multiple_ack: Final = ZCLCommandDef(
+            id=0x00,
+            schema={
+                "ack_options": PartitionAckOptions,
+                "first_frame_id": t.uint16_t,
+                "nack_ids": t.List[t.uint16_t],
+            },
+        )
+        read_handshake_param_response: Final = ZCLCommandDef(
+            id=0x01,
+            schema={
+                "partitioned_cluster_id": t.ClusterId,
+                "read_attribute_status_records": t.List[foundation.ReadAttributeRecord],
+            },
+        )
 
 
 class ImageUpgradeStatus(t.enum8):
@@ -2640,7 +2712,55 @@ class PowerProfile(Cluster):
         )
 
 
+class ApplianceCommandId(t.enum8):
+    """Command identification for Appliance Control."""
+
+    Start = 0x01
+    Stop = 0x02
+    Pause = 0x03
+    Start_Superfreezing = 0x04
+    Stop_Superfreezing = 0x05
+    Start_Supercooling = 0x06
+    Stop_Supercooling = 0x07
+    Disable_Gas = 0x08
+    Enable_Gas = 0x09
+
+
+class ApplianceWarningEvent(t.enum8):
+    """Warning event enumeration for Appliance Control."""
+
+    Warning_1_OverallPowerAboveAvailable = 0x00
+    Warning_2_OverallPowerAboveThreshold = 0x01
+    Warning_3_OverallPowerBackBelowAvailable = 0x02
+    Warning_4_OverallPowerBackBelowThreshold = 0x03
+    Warning_5_OverallPowerWillBeAboveAvailable = 0x04
+
+
+class ApplianceStatus(t.enum8):
+    """Appliance status enumeration."""
+
+    Off = 0x01
+    Stand_By = 0x02
+    Programmed = 0x03
+    Programmed_Waiting_To_Start = 0x04
+    Running = 0x05
+    Pause = 0x06
+    End_Programmed = 0x07
+    Failure = 0x08
+    Programme_Interrupted = 0x09
+    Idle = 0x0A
+    Rinse_Hold = 0x0B
+    Service = 0x0C
+    Superfreezing = 0x0D
+    Supercooling = 0x0E
+    Superheating = 0x0F
+
+
 class ApplianceControl(Cluster):
+    ApplianceCommandId: Final = ApplianceCommandId
+    ApplianceWarningEvent: Final = ApplianceWarningEvent
+    ApplianceStatus: Final = ApplianceStatus
+
     cluster_id: Final[t.uint16_t] = 0x001B
     ep_attribute: Final = "appliance_control"
 
@@ -2654,6 +2774,41 @@ class ApplianceControl(Cluster):
         remaining_time: Final = ZCLAttributeDef(id=0x0002, type=t.uint16_t, access="rp")
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
+
+    class ServerCommandDefs(BaseCommandDefs):
+        execution_of_a_command: Final = ZCLCommandDef(
+            id=0x00,
+            schema={"command_id": ApplianceCommandId},
+        )
+        signal_state: Final = ZCLCommandDef(id=0x01, schema={})
+        write_functions: Final = ZCLCommandDef(
+            id=0x02,
+            schema={"function_data": t.LVBytes},
+        )
+        overload_pause_resume: Final = ZCLCommandDef(id=0x03, schema={})
+        overload_pause: Final = ZCLCommandDef(id=0x04, schema={})
+        overload_warning: Final = ZCLCommandDef(
+            id=0x05,
+            schema={"warning_event": ApplianceWarningEvent},
+        )
+
+    class ClientCommandDefs(BaseCommandDefs):
+        signal_state_response: Final = ZCLCommandDef(
+            id=0x00,
+            schema={
+                "appliance_status": ApplianceStatus,
+                "remote_enable_flags": t.uint8_t,
+                "appliance_status_2?": t.uint24_t,
+            },
+        )
+        signal_state_notification: Final = ZCLCommandDef(
+            id=0x01,
+            schema={
+                "appliance_status": ApplianceStatus,
+                "remote_enable_flags": t.uint8_t,
+                "appliance_status_2?": t.uint24_t,
+            },
+        )
 
 
 class PollControl(Cluster):
