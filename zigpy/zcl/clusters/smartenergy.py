@@ -399,6 +399,108 @@ class SnapshotCause(t.bitmap32):
     # Bits 20-31: Reserved
 
 
+class FunctionalNotificationFlags(t.bitmap32):
+    """Functional notification flags bitmap per SE 1.4a Table D-59."""
+
+    New_OTA_Firmware = 0x00000001
+    CBKE_Update_Request = 0x00000002
+    Time_Sync = 0x00000004
+    # Bit 3: Reserved
+    Stay_Awake_Request_HAN = 0x00000010
+    Stay_Awake_Request_WAN = 0x00000020
+    # Bits 6-8: Push Historical Metering Data Attribute Set (3 bits)
+    Push_Historical_Metering_Data_Day = 0x00000040
+    Push_Historical_Metering_Data_Week = 0x00000080
+    Push_Historical_Metering_Data_Month = 0x00000100
+    # Bits 9-11: Push Historical Prepayment Data Attribute Set (3 bits)
+    Push_Historical_Prepayment_Data_Day = 0x00000200
+    Push_Historical_Prepayment_Data_Week = 0x00000400
+    Push_Historical_Prepayment_Data_Month = 0x00000800
+    Push_All_Static_Data_Basic_Cluster = 0x00001000
+    Push_All_Static_Data_Metering_Cluster = 0x00002000
+    Push_All_Static_Data_Prepayment_Cluster = 0x00004000
+    NetworkKeyActive = 0x00008000
+    Display_Message = 0x00010000
+    Cancel_All_Messages = 0x00020000
+    Change_Supply = 0x00040000
+    Local_Change_Supply = 0x00080000
+    Set_Uncontrolled_Flow_Threshold = 0x00100000
+    Tunnel_Message_Pending = 0x00200000
+    Get_Snapshot = 0x00400000
+    Get_Sampled_Data = 0x00800000
+    New_Sub_GHz_Channel_Masks_Available = 0x01000000
+    Energy_Scan_Pending = 0x02000000
+    Channel_Change_Pending = 0x04000000
+    # Bits 27-31: Reserved
+
+
+class NotificationFlags2(t.bitmap32):
+    """Notification flags 2 bitmap (Price cluster) per SE 1.4a Table D-69."""
+
+    Publish_Price = 0x00000001
+    Publish_Block_Period = 0x00000002
+    Publish_Tariff_Information = 0x00000004
+    Publish_Conversion_Factor = 0x00000008
+    Publish_Calorific_Value = 0x00000010
+    Publish_CO2_Value = 0x00000020
+    Publish_Billing_Period = 0x00000040
+    Publish_Consolidated_Bill = 0x00000080
+    Publish_Price_Matrix = 0x00000100
+    Publish_Block_Thresholds = 0x00000200
+    Publish_Currency_Conversion = 0x00000400
+    # Bit 11: Reserved
+    Publish_Credit_Payment_Info = 0x00001000
+    Publish_CPP_Event = 0x00002000
+    Publish_Tier_Labels = 0x00004000
+    Cancel_Tariff = 0x00008000
+    # Bits 16-31: Reserved
+
+
+class NotificationFlags3(t.bitmap32):
+    """Notification flags 3 bitmap (Calendar cluster) per SE 1.4a Table D-70."""
+
+    Publish_Calendar = 0x00000001
+    Publish_Special_Days = 0x00000002
+    Publish_Seasons = 0x00000004
+    Publish_Week = 0x00000008
+    Publish_Day = 0x00000010
+    Cancel_Calendar = 0x00000020
+    # Bits 6-31: Reserved
+
+
+class NotificationFlags4(t.bitmap32):
+    """Notification flags 4 bitmap (Prepayment cluster) per SE 1.4a Table D-71."""
+
+    Select_Available_Emergency_Credit = 0x00000001
+    Change_Debt = 0x00000002
+    Emergency_Credit_Setup = 0x00000004
+    Consumer_Top_Up = 0x00000008
+    Credit_Adjustment = 0x00000010
+    Change_Payment_Mode = 0x00000020
+    Get_Prepay_Snapshot = 0x00000040
+    Get_Top_Up_Log = 0x00000080
+    Set_Low_Credit_Warning_Level = 0x00000100
+    Get_Debt_Repayment_Log = 0x00000200
+    Set_Maximum_Credit_Limit = 0x00000400
+    Set_Overall_Debt_Cap = 0x00000800
+    # Bits 12-31: Reserved
+
+
+class NotificationFlags5(t.bitmap32):
+    """Notification flags 5 bitmap (Device Management cluster) per SE 1.4a Table D-72."""
+
+    Publish_Change_Of_Tenancy = 0x00000001
+    Publish_Change_Of_Supplier = 0x00000002
+    Request_New_Password_1_Response = 0x00000004
+    Request_New_Password_2_Response = 0x00000008
+    Request_New_Password_3_Response = 0x00000010
+    Request_New_Password_4_Response = 0x00000020
+    Update_Site_ID = 0x00000040
+    Reset_Battery_Counter = 0x00000080
+    Update_CIN = 0x00000100
+    # Bits 9-31: Reserved
+
+
 class Metering(Cluster):
     RegisteredTier: Final = RegisteredTier
     MeteringDeviceType: Final = MeteringDeviceType
@@ -1082,7 +1184,7 @@ class Metering(Cluster):
             schema={
                 "notification_scheme": t.uint8_t,
                 "notification_flag_attribute_id": t.uint16_t,
-                "notification_flags": t.bitmap32,
+                "notification_flags": FunctionalNotificationFlags,
             },
         )
         supply_status_response: Final = ZCLCommandDef(
