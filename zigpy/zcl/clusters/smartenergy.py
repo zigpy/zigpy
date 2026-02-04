@@ -472,7 +472,7 @@ class Metering(Cluster):
             id=0x001D, type=t.uint48_t, access="r"
         )
         current_block_received: Final = ZCLAttributeDef(
-            id=0x001E, type=t.uint48_t, access="r"
+            id=0x001E, type=CurrentBlock, access="r"
         )
         dft_summation_received: Final = ZCLAttributeDef(
             id=0x001F, type=t.uint48_t, access="r"
@@ -735,10 +735,10 @@ class Metering(Cluster):
             id=0x0404, type=t.uint24_t, access="r"
         )
         cur_part_profile_int_start_time_delivered: Final = ZCLAttributeDef(
-            id=0x0405, type=t.uint32_t, access="r"
+            id=0x0405, type=t.UTCTime, access="r"
         )
         cur_part_profile_int_start_time_received: Final = ZCLAttributeDef(
-            id=0x0406, type=t.uint32_t, access="r"
+            id=0x0406, type=t.UTCTime, access="r"
         )
         cur_part_profile_int_value_delivered: Final = ZCLAttributeDef(
             id=0x0407, type=t.uint24_t, access="r"
@@ -830,11 +830,11 @@ class Metering(Cluster):
         )
         bill_to_date: Final = ZCLAttributeDef(id=0x0A00, type=t.uint32_t, access="r")
         bill_to_date_time_stamp: Final = ZCLAttributeDef(
-            id=0x0A01, type=t.uint32_t, access="r"
+            id=0x0A01, type=t.UTCTime, access="r"
         )
         projected_bill: Final = ZCLAttributeDef(id=0x0A02, type=t.uint32_t, access="r")
         projected_bill_time_stamp: Final = ZCLAttributeDef(
-            id=0x0A03, type=t.uint32_t, access="r"
+            id=0x0A03, type=t.UTCTime, access="r"
         )
 
     class ServerCommandDefs(BaseCommandDefs):
