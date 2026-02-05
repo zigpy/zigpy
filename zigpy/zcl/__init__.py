@@ -481,17 +481,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         try:
             return self._attr_cache.get_value(attr_def)
         except KeyError:
-            pass
-
-        # When multiple attrs share an ID (different manufacturer codes),
-        # `_update_attribute` stores in legacy cache. Move it to typed cache.
-        if attr_def.id in self._attr_cache._legacy_cache:
-            cached_value = self._attr_cache._legacy_cache.pop(attr_def.id).value
-            self._attr_cache.set_value(attr_def, cached_value)
-            return cached_value
-
-        # Quirk swallowed the attribute
-        return None
+            # Quirk swallowed the attribute
+            return None
 
     @classmethod
     def find_attribute(
