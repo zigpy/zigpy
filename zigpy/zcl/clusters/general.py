@@ -1961,8 +1961,8 @@ class RestartDeviceOptions(t.bitmap8):
     """Restart Device command options bitmap."""
 
     # Bits 0-2: Startup Mode
-    StartupMode_RestartUsingStartupParams = 0x00
-    StartupMode_RestartUsingCurrentState = 0x01
+    Restart_using_startup_params = 0x00
+    Restart_using_surrent_ptate = 0x01
     # Bit 3: Immediate
     Immediate = 0x08
 
