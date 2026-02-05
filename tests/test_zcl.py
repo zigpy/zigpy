@@ -2174,35 +2174,9 @@ async def test_quirk_manufacturer_code_context_isolation(app_mock) -> None:
     cluster.on_event(AttributeUpdatedEvent.event_type, events.append)
 
     # Report the manufacturer-specific attribute
-    frame_control = foundation.FrameControl(
-        frame_type=foundation.FrameType.GLOBAL_COMMAND,
-        is_manufacturer_specific=True,
-        direction=foundation.Direction.Server_to_Client,
-        disable_default_response=True,
-        reserved=0b000,
+    await mock_attribute_report(
+        cluster, {TestCluster.AttributeDefs.manuf_attr: t.uint8_t(42)}
     )
-
-    hdr = foundation.ZCLHeader(
-        frame_control=frame_control,
-        manufacturer=0x1234,
-        tsn=1,
-        command_id=foundation.GeneralCommand.Report_Attributes,
-    )
-
-    command = foundation.GENERAL_COMMANDS[
-        foundation.GeneralCommand.Report_Attributes
-    ].schema(
-        attribute_reports=[
-            foundation.Attribute(
-                attrid=0x0001,
-                value=foundation.TypeValue(
-                    type=foundation.DataType.uint8.type_id, value=42
-                ),
-            )
-        ]
-    )
-
-    cluster.handle_cluster_general_request(hdr, command)
 
     # The legacy cache should not contain the attribute, as the typed cache was used
     assert 0x0001 not in cluster._attr_cache._legacy_cache
