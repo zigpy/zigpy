@@ -225,11 +225,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.close()
 
         # FIXME: aiosqlite's thread won't always be closed immediately
+        # No join available, skip for compatibility with Windows/SQLite
         if hasattr(self._db, "join"):
             await asyncio.get_running_loop().run_in_executor(None, self._db.join)
-        else:
-            # No join available, skip for compatibility with Windows/SQLite
-            pass
 
     def register_cluster_events(self, cluster) -> None:
         cluster.on_event(AttributeReadEvent.event_type, self.on_attribute_read)
