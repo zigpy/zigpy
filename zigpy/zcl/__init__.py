@@ -39,7 +39,7 @@ _suppressed_attribute_updates: ContextVar[frozenset[tuple[int, int]]] = ContextV
 )
 
 # Tracks the (attribute_id, manufacturer_code) for the current attribute update operation.
-# Used to preserve manufacturer code context when quirks call _update_attribute,
+# Used to preserve manufacturer code context when calling _update_attribute,
 # so that manufacturer-specific attributes with conflicting IDs are stored correctly.
 # The manufacturer code is only applied when the attribute ID matches the original.
 _attribute_update_context: ContextVar[tuple[int, int | None] | None] = ContextVar(
@@ -1136,7 +1136,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         # other clusters or attributes to emit their own events.
         suppressed = (self.cluster_id, attrid) in _suppressed_attribute_updates.get()
 
-        # Get the manufacturer code from context if set (used by quirks via
+        # Get the manufacturer code from context if set (set by
         # _legacy_apply_quirk_attribute_update to preserve manufacturer code).
         # Only apply when the attribute ID matches the original to avoid affecting
         # other attributes that quirks may update.
