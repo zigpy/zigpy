@@ -1440,6 +1440,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     # Is this even possible?
                     pass
 
+            results.extend(reporting_results)
+
         return results
 
     def command(
