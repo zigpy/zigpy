@@ -70,7 +70,7 @@ class AttributeReadEvent:
     cluster_id: int
     attribute_name: str
     attribute_id: int
-    manufacturer_code: int
+    manufacturer_code: int | None
     raw_value: Any | None
     value: Any | None
 
@@ -87,7 +87,7 @@ class AttributeReportedEvent:
     cluster_id: int
     attribute_name: str | None
     attribute_id: int
-    manufacturer_code: int
+    manufacturer_code: int | None
     raw_value: Any | None
     value: Any
 
@@ -121,7 +121,7 @@ class AttributeUpdatedEvent:
     cluster_id: int
     attribute_name: str | None
     attribute_id: int
-    manufacturer_code: int
+    manufacturer_code: int | None
     value: Any
 
 
