@@ -1380,17 +1380,28 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             if isinstance(rsp[0], list):
                 records = rsp[0]
 
-                # Single status report for all attributes
-                if len(records) == 1:
+                # Single SUCCESS means all attributes succeeded
+                if len(records) == 1 and records[0].status == foundation.Status.SUCCESS:
                     for attr_def, _cfg in reporting_configs:
                         reporting_results.append(
                             foundation.ConfigureReportingResponseRecord(
-                                status=records[0].status,
+                                status=foundation.Status.SUCCESS,
                                 attrid=attr_def.id,
                             )
                         )
                 else:
-                    reporting_results = records
+                    # Per ZCL spec, only failed attributes are returned, so
+                    # synthesize SUCCESS for attributes omitted from the response
+                    failed_attrids = {r.attrid for r in records}
+                    reporting_results = list(records)
+                    for attr_def, _cfg in reporting_configs:
+                        if attr_def.id not in failed_attrids:
+                            reporting_results.append(
+                                foundation.ConfigureReportingResponseRecord(
+                                    status=foundation.Status.SUCCESS,
+                                    attrid=attr_def.id,
+                                )
+                            )
             else:
                 # Default response: apply status to all attributes in this group
                 status = rsp[1]
