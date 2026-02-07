@@ -1380,8 +1380,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             if isinstance(rsp[0], list):
                 records = rsp[0]
 
-                # Single SUCCESS means all attributes succeeded
-                if len(records) == 1 and records[0].status == foundation.Status.SUCCESS:
+                # Check for global success (status=SUCCESS, attrid=None)
+                if (
+                    len(records) == 1
+                    and records[0].status == foundation.Status.SUCCESS
+                    and records[0].attrid is None
+                ):
+                    # Global success: all attributes succeeded
                     for attr_def, _cfg in reporting_configs:
                         reporting_results.append(
                             foundation.ConfigureReportingResponseRecord(
@@ -1390,8 +1395,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                             )
                         )
                 else:
-                    # Per ZCL spec, only failed attributes are returned, so
-                    # synthesize SUCCESS for attributes omitted from the response
+                    # Only failed reports are in the response. Attributes not
+                    # present implicitly succeeded.
                     failed_attrids = {r.attrid for r in records}
                     reporting_results = list(records)
                     for attr_def, _cfg in reporting_configs:
