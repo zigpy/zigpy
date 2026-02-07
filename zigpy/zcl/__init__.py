@@ -1398,9 +1398,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     # Only failed reports are in the response. Attributes not
                     # present implicitly succeeded.
                     failed_attrids = {r.attrid for r in records}
-                    reporting_results = list(records)
                     for attr_def, _cfg in reporting_configs:
-                        if attr_def.id not in failed_attrids:
+                        if attr_def.id in failed_attrids:
+                            reporting_results.extend(
+                                r for r in records if r.attrid == attr_def.id
+                            )
+                        else:
                             reporting_results.append(
                                 foundation.ConfigureReportingResponseRecord(
                                     status=foundation.Status.SUCCESS,
