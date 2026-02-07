@@ -1413,13 +1413,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             else:
                 # Default response: apply status to all attributes in this group
                 status = rsp[1]
-                for attr_def, _cfg in reporting_configs:
-                    reporting_results.append(
-                        foundation.ConfigureReportingResponseRecord(
-                            status=status,
-                            attrid=attr_def.id,
-                        )
+                reporting_results.extend(
+                    foundation.ConfigureReportingResponseRecord(
+                        status=status,
+                        attrid=attr_def.id,
                     )
+                    for attr_def, _cfg in reporting_configs
+                )
 
             for result in reporting_results:
                 attr_def = attr_defs_by_id[result.attrid]
