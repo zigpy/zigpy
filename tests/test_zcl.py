@@ -2049,6 +2049,99 @@ async def test_zcl_write_attributes_update_cache(app_mock) -> None:
     assert events == []
 
 
+async def test_write_attributes_multiple_manufacturer_groups(app_mock) -> None:
+    """Test write_attributes with attributes spanning multiple manufacturer groups."""
+
+    class TestCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            manuf_attr = foundation.ZCLAttributeDef(
+                id=0xB001,
+                type=t.uint8_t,
+                manufacturer_code=0x5678,
+            )
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    dev.node_desc.manufacturer_code = 0x1234
+
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    with mock_attribute_writes(
+        cluster,
+        {
+            Basic.AttributeDefs.location_desc: foundation.Status.SUCCESS,
+            TestCluster.AttributeDefs.manuf_attr: foundation.Status.SUCCESS,
+        },
+    ) as (mock_write, _):
+        [results] = await cluster.write_attributes(
+            {
+                Basic.AttributeDefs.location_desc: "Test",
+                TestCluster.AttributeDefs.manuf_attr: 42,
+            }
+        )
+
+    assert len(results) == 2
+    assert all(r.status == foundation.Status.SUCCESS for r in results)
+
+    # Two separate requests, one per manufacturer group
+    assert mock_write.call_count == 2
+    manufacturers = [c.kwargs["manufacturer"] for c in mock_write.call_args_list]
+    assert sorted(manufacturers, key=lambda x: (x is not None, x)) == [None, 0x5678]
+
+
+async def test_configure_reporting_multiple_manufacturer_groups(app_mock) -> None:
+    """Test configure_reporting_multiple with attributes spanning
+    multiple manufacturer groups.
+    """
+
+    class TestCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            manuf_attr = foundation.ZCLAttributeDef(
+                id=0xB001,
+                type=t.uint8_t,
+                manufacturer_code=0x5678,
+            )
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    dev.node_desc.manufacturer_code = 0x1234
+
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    cfg_response = zcl.foundation.ConfigureReportingResponse()
+    cfg_response.append(
+        zcl.foundation.ConfigureReportingResponseRecord(zcl.foundation.Status.SUCCESS)
+    )
+
+    with patch.object(
+        cluster,
+        "_configure_reporting",
+        new_callable=AsyncMock,
+        return_value=[cfg_response],
+    ) as mock_configure:
+        results = await cluster.configure_reporting_multiple(
+            {
+                Basic.AttributeDefs.hw_version: ReportingConfig(
+                    min_interval=5, max_interval=15, reportable_change=20
+                ),
+                TestCluster.AttributeDefs.manuf_attr: ReportingConfig(
+                    min_interval=10, max_interval=30, reportable_change=5
+                ),
+            }
+        )
+
+    # Two separate requests should have been made (one per manufacturer group)
+    assert mock_configure.await_count == 2
+    manufacturers = [c.kwargs["manufacturer"] for c in mock_configure.call_args_list]
+    assert sorted(manufacturers, key=lambda x: (x is not None, x)) == [None, 0x5678]
+    assert len(results) == 2
+    assert all(r.status == zcl.foundation.Status.SUCCESS for r in results)
+
+
 def test_manufacturer_id_override_manuf_specific_cluster(app_mock) -> None:
     """Test class-level `manufacturer_id_override` for custom clusters."""
 
