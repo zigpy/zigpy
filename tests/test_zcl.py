@@ -840,9 +840,8 @@ async def test_handle_cluster_general_request_not_attr_report(cluster):
 
 
 async def test_configure_reporting_multiple(cluster):
-    cfg_response = zcl.foundation.ConfigureReportingResponse()
-    cfg_response.append(
-        zcl.foundation.ConfigureReportingResponseRecord(zcl.foundation.Status.SUCCESS)
+    cfg_response = zcl.foundation.ConfigureReportingResponse(
+        [zcl.foundation.ConfigureReportingResponseRecord(zcl.foundation.Status.SUCCESS)]
     )
     cluster.endpoint.request.return_value = [cfg_response]
 
@@ -903,9 +902,8 @@ def _mk_cfg_rsp(responses: dict[int, zcl.foundation.Status]):
 
 async def test_configure_reporting_multiple_single_success(cluster):
     """Configure reporting returned a single global success response."""
-    cfg_response = zcl.foundation.ConfigureReportingResponse()
-    cfg_response.append(
-        zcl.foundation.ConfigureReportingResponseRecord(zcl.foundation.Status.SUCCESS)
+    cfg_response = zcl.foundation.ConfigureReportingResponse(
+        [zcl.foundation.ConfigureReportingResponseRecord(zcl.foundation.Status.SUCCESS)]
     )
     cluster.endpoint.request.return_value = [cfg_response]
 
@@ -2112,9 +2110,8 @@ async def test_configure_reporting_multiple_manufacturer_groups(app_mock) -> Non
     cluster = TestCluster(dev.endpoints[1])
     dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
 
-    cfg_response = zcl.foundation.ConfigureReportingResponse()
-    cfg_response.append(
-        zcl.foundation.ConfigureReportingResponseRecord(zcl.foundation.Status.SUCCESS)
+    cfg_response = zcl.foundation.ConfigureReportingResponse(
+        [zcl.foundation.ConfigureReportingResponseRecord(zcl.foundation.Status.SUCCESS)]
     )
 
     with patch.object(
