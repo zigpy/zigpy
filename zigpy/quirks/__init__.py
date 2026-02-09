@@ -260,6 +260,20 @@ class CustomCluster(zigpy.zcl.Cluster):
             succeeded.extend(results[0])
         return [succeeded]
 
+    def is_attribute_unsupported(
+        self, attr: int | str | foundation.ZCLAttributeDef
+    ) -> bool:
+        """Return whether an attribute is unsupported."""
+        attr_def = self.find_attribute(attr)
+
+        if (
+            self._CONSTANT_ATTRIBUTES is not None
+            and attr_def.id in self._CONSTANT_ATTRIBUTES
+        ):
+            return False
+
+        return super().is_attribute_unsupported(attr)
+
     def get(self, key: int | str, default: typing.Any | None = None) -> typing.Any:
         """Get cached attribute."""
 
