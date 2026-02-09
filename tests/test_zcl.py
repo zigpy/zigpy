@@ -2164,14 +2164,20 @@ async def test_configure_reporting_multiple_manufacturer_groups(app_mock) -> Non
     # First call: standard attribute (no manufacturer code)
     std_call = mock_configure.call_args_list[0]
     assert std_call.kwargs["manufacturer"] is None
-    assert [c.attrid for c in std_call.args[0]] == [Basic.AttributeDefs.hw_version.id]
+    assert len(std_call.args[0]) == 1
+    assert std_call.args[0][0].attrid == Basic.AttributeDefs.hw_version.id
+    assert std_call.args[0][0].min_interval == 5
+    assert std_call.args[0][0].max_interval == 15
+    assert std_call.args[0][0].reportable_change == 20
 
     # Second call: manufacturer-specific attribute
     manuf_call = mock_configure.call_args_list[1]
     assert manuf_call.kwargs["manufacturer"] == 0x5678
-    assert [c.attrid for c in manuf_call.args[0]] == [
-        TestCluster.AttributeDefs.manuf_attr.id
-    ]
+    assert len(manuf_call.args[0]) == 1
+    assert manuf_call.args[0][0].attrid == TestCluster.AttributeDefs.manuf_attr.id
+    assert manuf_call.args[0][0].min_interval == 10
+    assert manuf_call.args[0][0].max_interval == 30
+    assert manuf_call.args[0][0].reportable_change == 5
 
 
 def test_manufacturer_id_override_manuf_specific_cluster(app_mock) -> None:
