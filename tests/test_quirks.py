@@ -496,6 +496,39 @@ async def test_read_attributes_default_response():
     assert failure == {0: 0xC1, 2: 0xC1, 3: 0xC1}
 
 
+def test_is_attribute_unsupported_constant_attributes() -> None:
+    """Test that constant attributes are never reported as unsupported."""
+
+    class TestCluster(zigpy.quirks.CustomCluster):
+        cluster_id = 0x1234
+        _CONSTANT_ATTRIBUTES = {0x0001: 5}
+
+        class AttributeDefs(zcl.foundation.BaseAttributeDefs):
+            first_attribute: Final = zcl.foundation.ZCLAttributeDef(
+                id=0x0000, type=t.uint8_t
+            )
+            second_attribute: Final = zcl.foundation.ZCLAttributeDef(
+                id=0x0001, type=t.uint8_t
+            )
+
+    epmock = MagicMock()
+    cluster = TestCluster(epmock, True)
+
+    # Initially nothing is unsupported
+    assert not cluster.is_attribute_unsupported("first_attribute")
+    assert not cluster.is_attribute_unsupported("second_attribute")
+
+    # Mark both attributes as unsupported
+    cluster.add_unsupported_attribute("first_attribute")
+    cluster.add_unsupported_attribute("second_attribute")
+
+    # Non-constant attribute is unsupported
+    assert cluster.is_attribute_unsupported("first_attribute")
+
+    # Constant attribute is never unsupported, even when explicitly marked
+    assert not cluster.is_attribute_unsupported("second_attribute")
+
+
 def _mk_rar(attrid, value, status=0):
     r = zcl.foundation.ReadAttributeRecord()
     r.attrid = attrid
