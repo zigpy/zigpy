@@ -880,7 +880,7 @@ async def test_manuf_id_included(real_device):
     # The default behavior for a manufacturer-specific cluster, command, or attribute is
     # to include the manufacturer ID in the request
     with patch.object(ep, "request", AsyncMock()) as request_mock:
-        request_mock.return_value = (zcl.foundation.Status.SUCCESS, "done")
+        request_mock.return_value = (0x12, zcl.foundation.Status.SUCCESS)
         await ep.just_a_cluster.command(
             ep.just_a_cluster.commands_by_name["server_cmd0"].id,
         )
