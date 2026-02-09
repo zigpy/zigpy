@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 14
+DB_VERSION = 15
 DB_V = f"_v{DB_VERSION}"
 MIN_SQLITE_VERSION = (3, 24, 0)
 
@@ -1098,6 +1098,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 (self._migrate_to_v12, 12),
                 (self._migrate_to_v13, 13),
                 (self._migrate_to_v14, 14),
+                (self._migrate_to_v15, 15),
             ]:
                 if db_version >= min(to_db_version, DB_VERSION):
                     continue
@@ -1138,14 +1139,19 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             if new_table is None:
                 continue
 
-            async with self.execute(f"SELECT * FROM {old_table}") as cursor:
-                async for row in cursor:
-                    placeholders = ",".join("?" * len(row))
+            # Use explicit column names to skip generated columns automatically
+            async with self.execute(f"PRAGMA table_info({old_table})") as cursor:
+                columns = [row[1] async for row in cursor]
 
+            col_list = ", ".join(columns)
+            placeholders = ", ".join("?" * len(columns))
+            select_sql = f"SELECT {col_list} FROM {old_table}"
+            insert_sql = f"INSERT INTO {new_table} ({col_list}) VALUES ({placeholders})"
+
+            async with self.execute(select_sql) as cursor:
+                async for row in cursor:
                     try:
-                        await self.execute(
-                            f"INSERT INTO {new_table} VALUES ({placeholders})", row
-                        )
+                        await self.execute(insert_sql, row)
                     except sqlite3.IntegrityError as e:
                         if errors == "raise":
                             raise
@@ -1539,3 +1545,47 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         last_updated,
                     ),
                 )
+
+    async def _migrate_to_v15(self) -> None:
+        """Schema v15 prefers attributes with a value over unsupported attributes."""
+        await self._migrate_tables(
+            {
+                "devices_v14": "devices_v15",
+                "endpoints_v14": "endpoints_v15",
+                "neighbors_v14": "neighbors_v15",
+                "routes_v14": "routes_v15",
+                "node_descriptors_v14": "node_descriptors_v15",
+                "groups_v14": "groups_v15",
+                "group_members_v14": "group_members_v15",
+                "relays_v14": "relays_v15",
+                "network_backups_v14": "network_backups_v15",
+                "clusters_v14": "clusters_v15",
+                "attributes_cache_v14": "attributes_cache_v15",
+            }
+        )
+
+        # The v14 migration incorrectly gave unsupported attributes priority over cached
+        # values when merging the two tables. Restore cached values from v13 for any
+        # attribute that was marked unsupported in v14 but had a value in v13.
+        if await self._table_exists("attributes_cache_v13"):
+            await self.execute(
+                """
+                UPDATE attributes_cache_v15
+                SET
+                    status = :success,
+                    value = c13.value,
+                    last_updated = c13.last_updated
+                FROM attributes_cache_v13 c13
+                WHERE
+                    attributes_cache_v15.status = :unsupported
+                    AND c13.ieee = attributes_cache_v15.ieee
+                    AND c13.endpoint_id = attributes_cache_v15.endpoint_id
+                    AND c13.cluster_type = attributes_cache_v15.cluster_type
+                    AND c13.cluster_id = attributes_cache_v15.cluster_id
+                    AND c13.attr_id = attributes_cache_v15.attr_id
+                """,
+                {
+                    "success": Status.SUCCESS,
+                    "unsupported": Status.UNSUPPORTED_ATTRIBUTE,
+                },
+            )
