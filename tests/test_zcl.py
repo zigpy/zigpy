@@ -2131,12 +2131,13 @@ async def test_configure_reporting_multiple_manufacturer_groups(app_mock) -> Non
             }
         )
 
+    assert len(results) == 2
+    assert all(r.status == zcl.foundation.Status.SUCCESS for r in results)
+
     # Two separate requests should have been made (one per manufacturer group)
     assert mock_configure.await_count == 2
     manufacturers = [c.kwargs["manufacturer"] for c in mock_configure.call_args_list]
     assert manufacturers == [None, 0x5678]
-    assert len(results) == 2
-    assert all(r.status == zcl.foundation.Status.SUCCESS for r in results)
 
 
 def test_manufacturer_id_override_manuf_specific_cluster(app_mock) -> None:
