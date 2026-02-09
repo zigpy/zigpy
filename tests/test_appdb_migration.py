@@ -276,8 +276,11 @@ async def test_migration_missing_node_descriptor(test_db, caplog):
     [
         ("INSERT INTO node_descriptors_v4 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 0),
         ("INSERT INTO neighbors_v4 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", 5),
-        ("SELECT * FROM output_clusters", 0),
-        ("INSERT INTO neighbors_v5 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", 5),
+        ("SELECT ieee, endpoint_id, cluster FROM output_clusters", 0),
+        (
+            "INSERT INTO neighbors_v5 (device_ieee, extended_pan_id, ieee, nwk, device_type, rx_on_when_idle, relationship, reserved1, permit_joining, reserved2, depth, lqi) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            5,
+        ),
     ],
 )
 async def test_migration_failure(fail_on_sql, fail_on_count, test_db):
@@ -476,10 +479,12 @@ async def test_migration_missing_tables(app):
     # The untouched table will never be queried
     await appdb._migrate_tables({"table1_v1": "table1_v2", "table2_v1": None})
 
-    mock_execute.assert_called_once_with("SELECT * FROM table1_v1")
-
-    with pytest.raises(AssertionError):
-        mock_execute.assert_called_once_with("SELECT * FROM table2_v1")
+    # table1_v1 is queried (pragma + select), table2_v1 is not
+    assert any(
+        call.args[0].startswith("PRAGMA table_info(table1_v1)")
+        for call in mock_execute.mock_calls
+    )
+    assert not any("table2_v1" in call.args[0] for call in mock_execute.mock_calls)
 
     await appdb.shutdown()
 
@@ -588,7 +593,7 @@ async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
         cur.execute(
             """
             SELECT manufacturer_code
-            FROM attributes_cache_v14
+            FROM attributes_cache_v15
             WHERE cluster_id = 0xFC00 AND attr_id = 0x0002
             """,
         )
