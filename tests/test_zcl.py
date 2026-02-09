@@ -2173,6 +2173,9 @@ async def test_quirk_manufacturer_code_context_isolation(app_mock) -> None:
     cluster.on_event(AttributeReportedEvent.event_type, events.append)
     cluster.on_event(AttributeUpdatedEvent.event_type, events.append)
 
+    # The attribute is currently marked as unsupported
+    cluster.add_unsupported_attribute(TestCluster.AttributeDefs.manuf_attr)
+
     # Report the manufacturer-specific attribute
     await mock_attribute_report(
         cluster, {TestCluster.AttributeDefs.manuf_attr: t.uint8_t(42)}
