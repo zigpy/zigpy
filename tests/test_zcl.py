@@ -2085,19 +2085,31 @@ async def test_write_attributes_multiple_manufacturer_groups(app_mock) -> None:
 
     # Two separate requests, one per manufacturer group
     assert mock_write.call_count == 2
-
-    # First call: standard attribute (no manufacturer code)
-    std_call = mock_write.call_args_list[0]
-    assert std_call.kwargs["manufacturer"] is None
-    assert [a.attrid for a in std_call.args[0]] == [
-        Basic.AttributeDefs.location_desc.id
-    ]
-
-    # Second call: manufacturer-specific attribute
-    manuf_call = mock_write.call_args_list[1]
-    assert manuf_call.kwargs["manufacturer"] == 0x5678
-    assert [a.attrid for a in manuf_call.args[0]] == [
-        TestCluster.AttributeDefs.manuf_attr.id
+    assert mock_write.call_args_list == [
+        call(
+            [
+                foundation.Attribute(
+                    attrid=Basic.AttributeDefs.location_desc.id,
+                    value=foundation.TypeValue(
+                        type=Basic.AttributeDefs.location_desc.zcl_type,
+                        value=Basic.AttributeDefs.location_desc.type("Test"),
+                    ),
+                )
+            ],
+            manufacturer=None,
+        ),
+        call(
+            [
+                foundation.Attribute(
+                    attrid=TestCluster.AttributeDefs.manuf_attr.id,
+                    value=foundation.TypeValue(
+                        type=TestCluster.AttributeDefs.manuf_attr.zcl_type,
+                        value=TestCluster.AttributeDefs.manuf_attr.type(42),
+                    ),
+                )
+            ],
+            manufacturer=0x5678,
+        ),
     ]
 
 
