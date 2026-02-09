@@ -720,3 +720,36 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
     assert ambiguous.get("attr_c") is None
 
     await app.shutdown()
+
+
+async def test_v15_migration_restores_cached_values_over_unsupported(test_db):
+    """Test v15 migration fixes v14 unsupported attributes overriding cached values."""
+    test_db_path = test_db("zigbee_puddly2.db")
+
+    app = await make_app_with_db(test_db_path)
+    await app.shutdown()
+
+    # The v14 migration incorrectly gave unsupported attributes priority over cached
+    # values when both tables contained the same attribute. The v15 migration restores
+    # the cached value from v13 for these 7 overlapping attributes.
+    with sqlite3.connect(test_db_path) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT ieee, endpoint_id, cluster_type, cluster_id, attr_id, status, value
+            FROM attributes_cache_v15
+            WHERE (ieee, endpoint_id, cluster_type, cluster_id, attr_id) IN (
+                SELECT ieee, endpoint_id, cluster_type, cluster_id, attr_id
+                FROM attributes_cache_v13
+                INTERSECT
+                SELECT ieee, endpoint_id, cluster_type, cluster_id, attr_id
+                FROM unsupported_attributes_v13
+            )
+            ORDER BY ieee, endpoint_id, cluster_id, attr_id
+            """
+        )
+        rows = cur.fetchall()
+
+    assert len(rows) == 7
+    assert all(status == Status.SUCCESS for _, _, _, _, _, status, _ in rows)
+    assert all(value is not None for _, _, _, _, _, _, value in rows)
