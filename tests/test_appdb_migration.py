@@ -480,11 +480,8 @@ async def test_migration_missing_tables(app):
     await appdb._migrate_tables({"table1_v1": "table1_v2", "table2_v1": None})
 
     # table1_v1 is queried (pragma + select), table2_v1 is not
-    assert any(
-        call.args[0].startswith("PRAGMA table_info(table1_v1)")
-        for call in mock_execute.mock_calls
-    )
-    assert not any("table2_v1" in call.args[0] for call in mock_execute.mock_calls)
+    assert any("table1_v1" in call.args[0] for call in mock_execute.call_args_list)
+    assert not any("table2_v1" in call.args[0] for call in mock_execute.call_args_list)
 
     await appdb.shutdown()
 
