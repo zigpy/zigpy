@@ -2095,8 +2095,20 @@ async def test_write_attributes_multiple_manufacturer_groups(app_mock) -> None:
 
     # Two separate requests, one per manufacturer group
     assert mock_write.call_count == 2
-    manufacturers = [c.kwargs["manufacturer"] for c in mock_write.call_args_list]
-    assert manufacturers == [None, 0x5678]
+
+    # First call: standard attribute (no manufacturer code)
+    std_call = mock_write.call_args_list[0]
+    assert std_call.kwargs["manufacturer"] is None
+    assert [a.attrid for a in std_call.args[0]] == [
+        Basic.AttributeDefs.location_desc.id
+    ]
+
+    # Second call: manufacturer-specific attribute
+    manuf_call = mock_write.call_args_list[1]
+    assert manuf_call.kwargs["manufacturer"] == 0x5678
+    assert [a.attrid for a in manuf_call.args[0]] == [
+        TestCluster.AttributeDefs.manuf_attr.id
+    ]
 
 
 async def test_configure_reporting_multiple_manufacturer_groups(app_mock) -> None:
@@ -2142,8 +2154,18 @@ async def test_configure_reporting_multiple_manufacturer_groups(app_mock) -> Non
 
     # Two separate requests should have been made (one per manufacturer group)
     assert mock_configure.await_count == 2
-    manufacturers = [c.kwargs["manufacturer"] for c in mock_configure.call_args_list]
-    assert manufacturers == [None, 0x5678]
+
+    # First call: standard attribute (no manufacturer code)
+    std_call = mock_configure.call_args_list[0]
+    assert std_call.kwargs["manufacturer"] is None
+    assert [c.attrid for c in std_call.args[0]] == [Basic.AttributeDefs.hw_version.id]
+
+    # Second call: manufacturer-specific attribute
+    manuf_call = mock_configure.call_args_list[1]
+    assert manuf_call.kwargs["manufacturer"] == 0x5678
+    assert [c.attrid for c in manuf_call.args[0]] == [
+        TestCluster.AttributeDefs.manuf_attr.id
+    ]
 
 
 def test_manufacturer_id_override_manuf_specific_cluster(app_mock) -> None:
