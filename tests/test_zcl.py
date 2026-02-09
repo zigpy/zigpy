@@ -528,15 +528,64 @@ async def test_write_attribute_types(
     "status", [foundation.Status.SUCCESS, foundation.Status.UNSUPPORTED_ATTRIBUTE]
 )
 async def test_write_attributes_cache_default_response(cluster, status):
-    write_mock = AsyncMock(
-        return_value=[foundation.GeneralCommand.Write_Attributes, status]
+    _, default_rsp = cluster._create_request(
+        general=True,
+        command_id=foundation.GeneralCommand.Default_Response,
+        schema=foundation.GENERAL_COMMANDS[
+            foundation.GeneralCommand.Default_Response
+        ].schema,
+        disable_default_response=True,
+        direction=foundation.Direction.Server_to_Client,
+        args=(),
+        kwargs={
+            "command_id": foundation.GeneralCommand.Write_Attributes,
+            "status": status,
+        },
     )
-    with patch.object(cluster, "_write_attributes", write_mock):
-        attributes = {4: "manufacturer", 5: "model", 12: 12}
-        await cluster.write_attributes(attributes)
-        assert cluster._write_attributes.call_count == 1
+    cluster.endpoint.request.return_value = default_rsp
+
+    attributes = {
+        Basic.AttributeDefs.manufacturer: "manufacturer",
+        Basic.AttributeDefs.model: "model",
+        Basic.AttributeDefs.manufacturer_version_details: 12,
+    }
+    results = await cluster.write_attributes(attributes)
+    assert cluster.endpoint.request.call_count == 1
+
+    if status == foundation.Status.SUCCESS:
+        for attr_id in attributes:
+            assert attr_id in cluster._attr_cache
+    else:
         for attr_id in attributes:
             assert attr_id not in cluster._attr_cache
+
+    assert len(results[0]) == 3
+    assert all(r.status == status for r in results[0])
+
+
+async def test_write_attributes_default_response_status(cluster):
+    _, default_rsp = cluster._create_request(
+        general=True,
+        command_id=foundation.GeneralCommand.Default_Response,
+        schema=foundation.GENERAL_COMMANDS[
+            foundation.GeneralCommand.Default_Response
+        ].schema,
+        disable_default_response=True,
+        direction=foundation.Direction.Server_to_Client,
+        args=(),
+        kwargs={
+            "command_id": foundation.GeneralCommand.Write_Attributes,
+            "status": foundation.Status.FAILURE,
+        },
+    )
+    cluster.endpoint.request.return_value = default_rsp
+
+    results = await cluster.write_attributes(
+        {Basic.AttributeDefs.manufacturer: "manufacturer"}
+    )
+
+    # It should correctly return FAILURE (0x01), not Write_Attributes (0x02)
+    assert results[0][0].status == foundation.Status.FAILURE
 
 
 @pytest.mark.parametrize(
@@ -870,10 +919,22 @@ async def test_configure_reporting_multiple(cluster):
 
 async def test_configure_reporting_multiple_def_rsp(cluster):
     """Configure reporting returned a default response. May happen."""
-    cluster.endpoint.request.return_value = (
-        zcl.foundation.GeneralCommand.Configure_Reporting,
-        zcl.foundation.Status.UNSUP_GENERAL_COMMAND,
+    _, default_rsp = cluster._create_request(
+        general=True,
+        command_id=foundation.GeneralCommand.Default_Response,
+        schema=foundation.GENERAL_COMMANDS[
+            foundation.GeneralCommand.Default_Response
+        ].schema,
+        disable_default_response=True,
+        direction=foundation.Direction.Server_to_Client,
+        args=(),
+        kwargs={
+            "command_id": foundation.GeneralCommand.Configure_Reporting,
+            "status": foundation.Status.UNSUP_GENERAL_COMMAND,
+        },
     )
+    cluster.endpoint.request.return_value = default_rsp
+
     results = await cluster.configure_reporting_multiple(
         {
             Basic.AttributeDefs.hw_version: ReportingConfig(
