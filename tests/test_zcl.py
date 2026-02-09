@@ -2088,7 +2088,7 @@ async def test_write_attributes_multiple_manufacturer_groups(app_mock) -> None:
     # Two separate requests, one per manufacturer group
     assert mock_write.call_count == 2
     manufacturers = [c.kwargs["manufacturer"] for c in mock_write.call_args_list]
-    assert sorted(manufacturers, key=lambda x: (x is not None, x)) == [None, 0x5678]
+    assert manufacturers == [None, 0x5678]
 
 
 async def test_configure_reporting_multiple_manufacturer_groups(app_mock) -> None:
@@ -2137,7 +2137,7 @@ async def test_configure_reporting_multiple_manufacturer_groups(app_mock) -> Non
     # Two separate requests should have been made (one per manufacturer group)
     assert mock_configure.await_count == 2
     manufacturers = [c.kwargs["manufacturer"] for c in mock_configure.call_args_list]
-    assert sorted(manufacturers, key=lambda x: (x is not None, x)) == [None, 0x5678]
+    assert manufacturers == [None, 0x5678]
     assert len(results) == 2
     assert all(r.status == zcl.foundation.Status.SUCCESS for r in results)
 
