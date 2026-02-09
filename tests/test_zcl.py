@@ -840,7 +840,10 @@ async def test_handle_cluster_general_request_not_attr_report(cluster):
 
 
 async def test_configure_reporting_multiple(cluster):
-    cluster.endpoint.request.return_value = _mk_cfg_rsp()
+    cfg_response = zcl.foundation.ConfigureReportingResponse(
+        [zcl.foundation.ConfigureReportingResponseRecord(zcl.foundation.Status.SUCCESS)]
+    )
+    cluster.endpoint.request.return_value = [cfg_response]
 
     await cluster.configure_reporting(
         attribute=3,
@@ -885,37 +888,24 @@ async def test_configure_reporting_multiple_def_rsp(cluster):
     assert all(r.status == zcl.foundation.Status.UNSUP_GENERAL_COMMAND for r in results)
 
 
-def _mk_cfg_rsp(responses: dict[int, zcl.foundation.Status] | None = None):
-    """A helper to create a configure reporting response.
-
-    If responses is None or empty, returns a global success response.
-    """
-    if not responses:
-        return [
-            zcl.foundation.ConfigureReportingResponse(
-                [
-                    zcl.foundation.ConfigureReportingResponseRecord(
-                        zcl.foundation.Status.SUCCESS
-                    )
-                ]
+def _mk_cfg_rsp(responses: dict[int, zcl.foundation.Status]):
+    """A helper to create a configure response record."""
+    cfg_response = zcl.foundation.ConfigureReportingResponse()
+    for attrid, status in responses.items():
+        cfg_response.append(
+            zcl.foundation.ConfigureReportingResponseRecord(
+                status, zcl.foundation.ReportingDirection.ReceiveReports, attrid
             )
-        ]
-
-    return [
-        zcl.foundation.ConfigureReportingResponse(
-            [
-                zcl.foundation.ConfigureReportingResponseRecord(
-                    status, zcl.foundation.ReportingDirection.ReceiveReports, attrid
-                )
-                for attrid, status in responses.items()
-            ]
         )
-    ]
+    return [cfg_response]
 
 
 async def test_configure_reporting_multiple_single_success(cluster):
     """Configure reporting returned a single global success response."""
-    cluster.endpoint.request.return_value = _mk_cfg_rsp()
+    cfg_response = zcl.foundation.ConfigureReportingResponse(
+        [zcl.foundation.ConfigureReportingResponseRecord(zcl.foundation.Status.SUCCESS)]
+    )
+    cluster.endpoint.request.return_value = [cfg_response]
 
     results = await cluster.configure_reporting_multiple(
         {
@@ -2132,11 +2122,15 @@ async def test_configure_reporting_multiple_manufacturer_groups(app_mock) -> Non
     cluster = TestCluster(dev.endpoints[1])
     dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
 
+    cfg_response = zcl.foundation.ConfigureReportingResponse(
+        [zcl.foundation.ConfigureReportingResponseRecord(zcl.foundation.Status.SUCCESS)]
+    )
+
     with patch.object(
         cluster,
         "_configure_reporting",
         new_callable=AsyncMock,
-        return_value=_mk_cfg_rsp(),
+        return_value=[cfg_response],
     ) as mock_configure:
         results = await cluster.configure_reporting_multiple(
             {
