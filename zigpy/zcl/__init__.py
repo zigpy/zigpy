@@ -1380,27 +1380,46 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             if isinstance(rsp[0], list):
                 records = rsp[0]
 
-                # Single status report for all attributes
-                if len(records) == 1:
+                # Check for global success (status=SUCCESS, attrid=None)
+                if (
+                    len(records) == 1
+                    and records[0].status == foundation.Status.SUCCESS
+                    and records[0].attrid is None
+                ):
+                    # Global success: all attributes succeeded
                     for attr_def, _cfg in reporting_configs:
                         reporting_results.append(
                             foundation.ConfigureReportingResponseRecord(
-                                status=records[0].status,
+                                status=foundation.Status.SUCCESS,
                                 attrid=attr_def.id,
                             )
                         )
                 else:
-                    reporting_results = records
+                    # Only failed reports are in the response. Attributes not
+                    # present implicitly succeeded.
+                    failed_attrids = {r.attrid for r in records}
+                    for attr_def, _cfg in reporting_configs:
+                        if attr_def.id in failed_attrids:
+                            reporting_results.extend(
+                                r for r in records if r.attrid == attr_def.id
+                            )
+                        else:
+                            reporting_results.append(
+                                foundation.ConfigureReportingResponseRecord(
+                                    status=foundation.Status.SUCCESS,
+                                    attrid=attr_def.id,
+                                )
+                            )
             else:
                 # Default response: apply status to all attributes in this group
                 status = rsp[1]
-                for attr_def, _cfg in reporting_configs:
-                    reporting_results.append(
-                        foundation.ConfigureReportingResponseRecord(
-                            status=status,
-                            attrid=attr_def.id,
-                        )
+                reporting_results.extend(
+                    foundation.ConfigureReportingResponseRecord(
+                        status=status,
+                        attrid=attr_def.id,
                     )
+                    for attr_def, _cfg in reporting_configs
+                )
 
             for result in reporting_results:
                 attr_def = attr_defs_by_id[result.attrid]
@@ -1439,6 +1458,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 else:
                     # Is this even possible?
                     pass
+
+            results.extend(reporting_results)
 
         return results
 
