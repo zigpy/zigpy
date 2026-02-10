@@ -1570,19 +1570,21 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         if await self._table_exists("attributes_cache_v13"):
             await self.execute(
                 """
-                UPDATE attributes_cache_v15
-                SET
-                    status = :success,
-                    value = c13.value,
-                    last_updated = c13.last_updated
-                FROM attributes_cache_v13 c13
-                WHERE
-                    attributes_cache_v15.status = :unsupported
-                    AND c13.ieee = attributes_cache_v15.ieee
-                    AND c13.endpoint_id = attributes_cache_v15.endpoint_id
-                    AND c13.cluster_type = attributes_cache_v15.cluster_type
-                    AND c13.cluster_id = attributes_cache_v15.cluster_id
-                    AND c13.attr_id = attributes_cache_v15.attr_id
+                REPLACE INTO attributes_cache_v15
+                    (ieee, endpoint_id, cluster_type, cluster_id, attr_id,
+                     manufacturer_code, status, value, last_updated)
+                SELECT
+                    a15.ieee, a15.endpoint_id, a15.cluster_type, a15.cluster_id,
+                    a15.attr_id, a15.manufacturer_code, :success,
+                    c13.value, c13.last_updated
+                FROM attributes_cache_v15 a15
+                JOIN attributes_cache_v13 c13
+                    ON c13.ieee = a15.ieee
+                    AND c13.endpoint_id = a15.endpoint_id
+                    AND c13.cluster_type = a15.cluster_type
+                    AND c13.cluster_id = a15.cluster_id
+                    AND c13.attr_id = a15.attr_id
+                WHERE a15.status = :unsupported
                 """,
                 {
                     "success": Status.SUCCESS,
