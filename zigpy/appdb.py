@@ -1585,9 +1585,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     AND c13.cluster_id = a15.cluster_id
                     AND c13.attr_id = a15.attr_id
                 WHERE a15.status = :unsupported
+                    AND a15.manufacturer_code = :unmigrated
                 """,
                 {
                     "success": Status.SUCCESS,
                     "unsupported": Status.UNSUPPORTED_ATTRIBUTE,
+                    "unmigrated": UNMIGRATED_MANUFACTURER_CODE,
                 },
             )
