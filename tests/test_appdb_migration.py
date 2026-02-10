@@ -753,3 +753,113 @@ async def test_v15_migration_restores_cached_values_over_unsupported(test_db):
     assert len(rows) == 7
     assert all(status == Status.SUCCESS for _, _, _, _, _, status, _ in rows)
     assert all(value is not None for _, _, _, _, _, _, value in rows)
+
+
+async def test_v15_migration_skips_already_migrated_manufacturer_codes(
+    tmp_path,
+) -> None:
+    """V15 restore only touches unmigrated rows, not ones with real manufacturer codes."""
+    db_path = str(tmp_path / "test.db")
+    ieee = "aa:bb:cc:dd:ee:ff:00:11"
+
+    with sqlite3.connect(db_path) as conn:
+        # Create v14 schema
+        conn.executescript(zigpy.appdb_schemas.SCHEMAS[14])
+        conn.execute("PRAGMA user_version = 14")
+
+        # One device with a node descriptor and endpoint
+        conn.execute(
+            "INSERT INTO devices_v14 VALUES (?, ?, ?, ?)",
+            (ieee, 0x1234, 2, 1700000000.0),
+        )
+        conn.execute(
+            "INSERT INTO node_descriptors_v14 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (ieee, 1, 0, 0, 0, 0, 8, 142, 0x1234, 82, 82, 11264, 82, 0),
+        )
+        conn.execute(
+            "INSERT INTO endpoints_v14 VALUES (?, ?, ?, ?, ?)",
+            (ieee, 1, 260, 256, 1),
+        )
+        conn.execute(
+            "INSERT INTO clusters_v14 VALUES (?, ?, ?, ?)",
+            (ieee, 1, 0, 0),
+        )
+
+        # Attr 4: unmigrated overlap — UNSUPPORTED with manufacturer_code=-1
+        # This should be restored by v15.
+        conn.execute(
+            "INSERT INTO attributes_cache_v14"
+            " (ieee, endpoint_id, cluster_type, cluster_id, attr_id,"
+            "  manufacturer_code, status, value, last_updated)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (ieee, 1, 0, 0, 4, -1, Status.UNSUPPORTED_ATTRIBUTE, None, 0.0),
+        )
+
+        # Attr 5: already-migrated overlap — same situation but _run_data_migrations
+        # already updated manufacturer_code from -1 to 0x1234.
+        # This should NOT be touched by v15.
+        conn.execute(
+            "INSERT INTO attributes_cache_v14"
+            " (ieee, endpoint_id, cluster_type, cluster_id, attr_id,"
+            "  manufacturer_code, status, value, last_updated)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (ieee, 1, 0, 0, 5, 0x1234, Status.UNSUPPORTED_ATTRIBUTE, None, 0.0),
+        )
+
+        # Legacy v13 tables (not dropped by v14 migration) with cached values
+        conn.executescript("""
+            CREATE TABLE attributes_cache_v13 (
+                ieee ieee NOT NULL,
+                endpoint_id INTEGER NOT NULL,
+                cluster_type INTEGER NOT NULL,
+                cluster_id INTEGER NOT NULL,
+                attr_id INTEGER NOT NULL,
+                value BLOB NOT NULL,
+                last_updated REAL NOT NULL
+            );
+
+            CREATE TABLE unsupported_attributes_v13 (
+                ieee ieee NOT NULL,
+                endpoint_id INTEGER NOT NULL,
+                cluster_type INTEGER NOT NULL,
+                cluster_id INTEGER NOT NULL,
+                attr_id INTEGER NOT NULL
+            );
+        """)
+
+        conn.execute(
+            "INSERT INTO attributes_cache_v13 VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (ieee, 1, 0, 0, 4, "Test Manufacturer", 1699000000.0),
+        )
+        conn.execute(
+            "INSERT INTO attributes_cache_v13 VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (ieee, 1, 0, 0, 5, "Test Model", 1699000000.0),
+        )
+        conn.execute(
+            "INSERT INTO unsupported_attributes_v13 VALUES (?, ?, ?, ?, ?)",
+            (ieee, 1, 0, 0, 4),
+        )
+        conn.execute(
+            "INSERT INTO unsupported_attributes_v13 VALUES (?, ?, ?, ?, ?)",
+            (ieee, 1, 0, 0, 5),
+        )
+
+        conn.commit()
+
+    app = await make_app_with_db(db_path)
+    await app.shutdown()
+
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT attr_id, status, value FROM attributes_cache_v15"
+            " WHERE ieee = ? ORDER BY attr_id",
+            (ieee,),
+        )
+        rows = cur.fetchall()
+
+    # Attr 4 (unmigrated): restored to SUCCESS with the v13 cached value
+    assert rows[0] == (4, Status.SUCCESS, "Test Manufacturer")
+
+    # Attr 5 (already-migrated manufacturer_code): left as UNSUPPORTED
+    assert rows[1] == (5, Status.UNSUPPORTED_ATTRIBUTE, None)
