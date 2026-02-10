@@ -462,76 +462,101 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         return None
 
     @classmethod
+    def find_attributes(
+        cls,
+        name_or_id: int | str | foundation.ZCLAttributeDef,
+        *,
+        manufacturer_code: int | UndefinedType | None = UNDEFINED,
+    ) -> list[foundation.ZCLAttributeDef]:
+        if isinstance(name_or_id, foundation.ZCLAttributeDef):
+            return [cls.attributes_by_name[name_or_id.name]]
+        elif isinstance(name_or_id, str):
+            return [cls.attributes_by_name[name_or_id]]
+        elif isinstance(name_or_id, int):
+            candidates = cls._attributes_by_id[name_or_id]
+            manuf_specific = candidates[True]
+            non_manuf_specific = candidates[False]
+            maybe_manuf_specific = candidates[None]
+
+            if manufacturer_code is not UNDEFINED:
+                results = []
+
+                if manufacturer_code is None:
+                    # Explicitly no manufacturer code
+                    if None in non_manuf_specific:
+                        results.append(non_manuf_specific[None])
+                    if UNDEFINED in non_manuf_specific:
+                        results.append(non_manuf_specific[UNDEFINED])
+                    if UNDEFINED in maybe_manuf_specific:
+                        results.append(maybe_manuf_specific[UNDEFINED])
+                else:
+                    # Try exact manufacturer-specific match
+                    if manufacturer_code in manuf_specific:
+                        results.append(manuf_specific[manufacturer_code])
+
+                    # Try manufacturer-specific without explicit code (deprecation)
+                    if UNDEFINED in manuf_specific:
+                        results.append(manuf_specific[UNDEFINED])
+
+                if not results:
+                    raise KeyError(manufacturer_code)
+
+                return results
+
+            # No manufacturer code filter: return all candidates
+            return (
+                list(manuf_specific.values())
+                + list(non_manuf_specific.values())
+                + list(maybe_manuf_specific.values())
+            )
+        else:
+            raise TypeError(  # noqa: TRY004
+                f"Attribute must be a definition, string, or integer,"
+                f" not {name_or_id!r} ({type(name_or_id)!r})"
+            )
+
+    @classmethod
     def find_attribute(
         cls,
         name_or_id: int | str | foundation.ZCLAttributeDef,
         *,
         manufacturer_code: int | UndefinedType | None = UNDEFINED,
     ) -> foundation.ZCLAttributeDef:
-        if isinstance(name_or_id, foundation.ZCLAttributeDef):
-            return cls.attributes_by_name[name_or_id.name]
-        elif isinstance(name_or_id, str):
-            return cls.attributes_by_name[name_or_id]
-        elif isinstance(name_or_id, int):
-            # Integer lookups are the most complicated, since we know the ID of an
-            # attribute but there may be multiple candidates sharing it
-            candidates = cls._attributes_by_id[name_or_id]
-            manuf_specific = candidates[True]
-            non_manuf_specific = candidates[False]
-            maybe_manuf_specific = candidates[None]
+        all_candidates = cls.find_attributes(
+            name_or_id, manufacturer_code=manufacturer_code
+        )
 
-            # If a manufacturer code is explicitly provided, we can narrow things down
-            if manufacturer_code is not UNDEFINED:
-                if manufacturer_code is None:
-                    # Explicitly no manufacturer code
-                    if None in non_manuf_specific:
-                        return non_manuf_specific[None]
+        # Non-integer lookups always return a single result
+        if not isinstance(name_or_id, int):
+            return all_candidates[0]
 
-                    # Fall back to unspecified
-                    if UNDEFINED in non_manuf_specific:
-                        return non_manuf_specific[UNDEFINED]
-
-                    if UNDEFINED in maybe_manuf_specific:
-                        return maybe_manuf_specific[UNDEFINED]
-                else:
-                    # Try exact manufacturer-specific match
-                    if manufacturer_code in manuf_specific:
-                        return manuf_specific[manufacturer_code]
-
-                    # Try manufacturer-specific without explicit code (deprecation)
-                    if UNDEFINED in manuf_specific:
-                        attr_def = manuf_specific[UNDEFINED]
-                        warnings.warn(
-                            f"Attribute {attr_def.name!r} has `is_manufacturer_specific`"
-                            f" without an explicit `manufacturer_code`. Please set"
-                            f" `manufacturer_code=0x{manufacturer_code:04X}`.",
-                            DeprecationWarning,
-                            stacklevel=3,
-                        )
-                        return attr_def
-
-                raise KeyError(manufacturer_code)
-
-            # Otherwise, we pick the first one and hope there is only a single choice
-            all_candidates = (
-                list(manuf_specific.values())
-                + list(non_manuf_specific.values())
-                + list(maybe_manuf_specific.values())
-            )
-
-            if len(all_candidates) > 1:
-                raise KeyError(
-                    f"Multiple definitions exist for attribute ID {name_or_id:#06x},"
-                    f" please specify a manufacturer code: {candidates!r}"
+        if manufacturer_code is not UNDEFINED:
+            # Emit deprecation warning for manufacturer-specific attrs without
+            # an explicit manufacturer_code
+            if (
+                manufacturer_code is not None
+                and all_candidates[0].manufacturer_code is UNDEFINED
+                and all_candidates[0].is_manufacturer_specific is True
+            ):
+                warnings.warn(
+                    f"Attribute {all_candidates[0].name!r} has"
+                    f" `is_manufacturer_specific` without an explicit"
+                    f" `manufacturer_code`. Please set"
+                    f" `manufacturer_code=0x{manufacturer_code:04X}`.",
+                    DeprecationWarning,
+                    stacklevel=2,
                 )
 
-            # Pick the only one
             return all_candidates[0]
-        else:
-            raise TypeError(  # noqa: TRY004
-                f"Attribute must be a definition, string, or integer,"
-                f" not {name_or_id!r} ({type(name_or_id)!r})"
+
+        if len(all_candidates) > 1:
+            candidates = cls._attributes_by_id[name_or_id]
+            raise KeyError(
+                f"Multiple definitions exist for attribute ID {name_or_id:#06x},"
+                f" please specify a manufacturer code: {candidates!r}"
             )
+
+        return all_candidates[0]
 
     def is_attribute_unsupported(
         self, attr: int | str | foundation.ZCLAttributeDef

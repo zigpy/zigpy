@@ -1465,14 +1465,34 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     continue
 
                 try:
-                    attr_def = cluster.find_attribute(attr_id)
+                    attr_defs = cluster.find_attributes(attr_id)
                 except KeyError:
                     LOGGER.debug(
-                        "Unable to find attribute %r=%r on cluster %r for %r for data migration, skipping",
+                        "Unable to find any attributes %r=%r on cluster %r for %r for data migration, skipping",
                         attr_id,
                         value,
                         cluster,
                         dev,
+                    )
+                    continue
+
+                if len(attr_defs) == 1:
+                    attr_def = attr_defs[0]
+                elif (
+                    len(attr_defs) == 2
+                    and attr_defs[0].is_manufacturer_specific
+                    != attr_defs[1].is_manufacturer_specific
+                ):
+                    # Prefer the manufacturer specific one
+                    attr_def = next(a for a in attr_defs if a.is_manufacturer_specific)
+                else:
+                    LOGGER.debug(
+                        "Unable to find unique attribute %r=%r on cluster %r for %r for data migration, skipping (candidates: %r)",
+                        attr_id,
+                        value,
+                        cluster,
+                        dev,
+                        attr_defs,
                     )
                     continue
 
