@@ -830,6 +830,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             except KeyError:
                 LOGGER.debug("Unknown ZCL attribute, skipping")
 
+                # Unsupported unknown attributes are dropped
                 if row.status == Status.SUCCESS:
                     cluster._attr_cache.set_legacy_value(
                         row.attr_id,
@@ -870,6 +871,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     ) -> int | None | zigpy.typing.UndefinedType:
         """Try to resolve the manufacturer code for an unmigrated attribute.
 
+        When multiple attribute definitions share an ID, the manufacturer-specific one
+        is preferred if there are exactly two candidates (one standard, one
+        manufacturer-specific). Otherwise the attribute is considered ambiguous and
+        skipped (left unmigrated).
+
         Returns the resolved manufacturer code (including `None`), or UNDEFINED if
         unresolvable.
         """
@@ -895,6 +901,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         if len(attr_defs) == 1:
             attr_def = attr_defs[0]
         elif len(attr_defs) == 2 and len(manuf_attrs) == 1:
+            # One standard + one manufacturer-specific: prefer manufacturer-specific
             attr_def = manuf_attrs[0]
         else:
             LOGGER.debug(
