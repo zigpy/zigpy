@@ -17,6 +17,7 @@ from zigpy.zcl.helpers import UnsupportedAttribute
 class HelperCluster(zcl.Cluster):
     cluster_id = 0xABCD
     ep_attribute = "helper_cluster"
+    _skip_registry = True
 
     class AttributeDefs(zcl.BaseAttributeDefs):
         attr1 = foundation.ZCLAttributeDef(id=0x0001, type=t.uint8_t)

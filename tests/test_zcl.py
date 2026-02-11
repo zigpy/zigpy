@@ -1483,6 +1483,7 @@ async def test_cluster_definition_invalid_direction():
         class TestCluster2(zcl.Cluster):
             cluster_id = 0xDEF0
             ep_attribute = "test_cluster2"
+            _skip_registry = True
 
             class ClientCommandDefs(zcl.BaseCommandDefs):
                 client_command = foundation.ZCLCommandDef(
@@ -1682,6 +1683,7 @@ def test_find_attributes() -> None:
     class TestCluster(zcl.Cluster):
         cluster_id = 0xABCD
         ep_attribute = "test_cluster"
+        _skip_registry = True
 
         class AttributeDefs(zcl.BaseAttributeDefs):
             explicit_none = foundation.ZCLAttributeDef(
@@ -1904,6 +1906,7 @@ async def test_read_attribute_manufacturer_code_none_on_manuf_cluster():
     class ManufCluster(zcl.Cluster):
         cluster_id = 0xFC11  # Manufacturer-specific cluster range
         ep_attribute = "manuf_cluster"
+        _skip_registry = True
 
         class AttributeDefs(zcl.BaseAttributeDefs):
             # Explicitly no manufacturer code, even though cluster is manufacturer-specific
@@ -1931,6 +1934,7 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
 
         cluster_id = 0xABCD
         ep_attribute = "doubling"
+        _skip_registry = True
 
         class AttributeDefs(zcl.foundation.BaseAttributeDefs):
             test_attr = foundation.ZCLAttributeDef(
@@ -2342,6 +2346,7 @@ def test_manufacturer_id_override_manuf_specific_cluster(app_mock) -> None:
     class TestCluster(zcl.Cluster):
         cluster_id = 0xFEED  # Manufacturer-specific cluster range
         ep_attribute = "test_cluster"
+        _skip_registry = True
         manufacturer_id_override = 0x5678
 
         class AttributeDefs(zcl.BaseAttributeDefs):
