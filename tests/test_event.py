@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 
-from zigpy.event import EventBase
+from zigpy.event import EventBase, suppress_events
 from zigpy.event.event_base import EventListener
 
 
@@ -201,6 +201,30 @@ def test_handle_event_protocol():
 
     assert event_handler.handle_test.called
     assert event_handler.handle_test.call_args[0] == (event,)
+
+
+def test_suppress_events() -> None:
+    """Test suppress_events context manager."""
+    emitter = EventGenerator()
+    received = []
+
+    emitter.on_event("test", lambda data: received.append(data))
+
+    emitter.emit("test", "before")
+
+    with suppress_events():
+        emitter.emit("test", "during")
+
+        with pytest.raises(RuntimeError):  # noqa: PT012
+            with suppress_events():
+                emitter.emit("test", "during (nested)")
+                raise RuntimeError()
+
+        emitter.emit("test", "during (nested, after)")
+
+    emitter.emit("test", "after")
+
+    assert received == ["before", "after"]
 
 
 def test_handle_event_protocol_no_event(caplog: pytest.LogCaptureFixture):

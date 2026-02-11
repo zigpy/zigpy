@@ -1483,6 +1483,7 @@ async def test_cluster_definition_invalid_direction():
         class TestCluster2(zcl.Cluster):
             cluster_id = 0xDEF0
             ep_attribute = "test_cluster2"
+            _skip_registry = True
 
             class ClientCommandDefs(zcl.BaseCommandDefs):
                 client_command = foundation.ZCLCommandDef(
@@ -1676,6 +1677,87 @@ def test_find_attribute_unspecified_manufacturer_code() -> None:
         TestCluster.find_attribute(0x0003, manufacturer_code=0x5678)
 
 
+def test_find_attributes() -> None:
+    """Test find_attributes across all attribute specificity combinations."""
+
+    class TestCluster(zcl.Cluster):
+        cluster_id = 0xABCD
+        ep_attribute = "test_cluster"
+        _skip_registry = True
+
+        class AttributeDefs(zcl.BaseAttributeDefs):
+            explicit_none = foundation.ZCLAttributeDef(
+                id=0x0001, type=t.EUI64, manufacturer_code=None
+            )
+            explicit_false = foundation.ZCLAttributeDef(
+                id=0x0001, type=t.EUI64, is_manufacturer_specific=False
+            )
+            default = foundation.ZCLAttributeDef(id=0x0001, type=t.EUI64)
+            manuf_no_code = foundation.ZCLAttributeDef(
+                id=0x0001, type=t.EUI64, is_manufacturer_specific=True
+            )
+            manuf_1234 = foundation.ZCLAttributeDef(
+                id=0x0001, type=t.EUI64, manufacturer_code=0x1234
+            )
+            manuf_5678 = foundation.ZCLAttributeDef(
+                id=0x0001, type=t.EUI64, manufacturer_code=0x5678
+            )
+            specific_unique = foundation.ZCLAttributeDef(
+                id=0x0002, type=t.EUI64, manufacturer_code=0x1234
+            )
+
+    # An explicitly disabled manufacturer code
+    assert TestCluster.find_attributes(0x0001, manufacturer_code=None) == [
+        TestCluster.AttributeDefs.explicit_none,
+        TestCluster.AttributeDefs.explicit_false,
+        TestCluster.AttributeDefs.default,
+    ]
+
+    # A specific manufacturer code will match the specific attribute for that code and
+    # a generic manufacturer-specific one
+    assert TestCluster.find_attributes(0x0001, manufacturer_code=0x1234) == [
+        TestCluster.AttributeDefs.manuf_1234,
+        TestCluster.AttributeDefs.manuf_no_code,
+    ]
+    assert TestCluster.find_attributes(0x0001, manufacturer_code=0x5678) == [
+        TestCluster.AttributeDefs.manuf_5678,
+        TestCluster.AttributeDefs.manuf_no_code,
+    ]
+
+    # An unknown manufacturer code will match only the generic attribute
+    assert TestCluster.find_attributes(0x0001, manufacturer_code=0x9999) == [
+        TestCluster.AttributeDefs.manuf_no_code,
+    ]
+
+    # No code will match all attributes with the ID
+    assert TestCluster.find_attributes(0x0001) == [
+        TestCluster.AttributeDefs.manuf_1234,
+        TestCluster.AttributeDefs.manuf_5678,
+        TestCluster.AttributeDefs.manuf_no_code,
+        TestCluster.AttributeDefs.explicit_false,
+        TestCluster.AttributeDefs.explicit_none,
+        TestCluster.AttributeDefs.default,
+    ]
+
+    # Names and definition objects are unique
+    assert TestCluster.find_attributes("explicit_false") == [
+        TestCluster.AttributeDefs.explicit_false,
+    ]
+    assert TestCluster.find_attributes("manuf_1234") == [
+        TestCluster.AttributeDefs.manuf_1234,
+    ]
+    assert TestCluster.find_attributes(TestCluster.AttributeDefs.manuf_5678) == [
+        TestCluster.AttributeDefs.manuf_5678,
+    ]
+
+    # Missing attributes and bad combinations raise errors
+    with pytest.raises(KeyError):
+        TestCluster.find_attributes(0x9999)
+
+    with pytest.raises(KeyError):
+        TestCluster.find_attributes(0x0002, manufacturer_code=0xABCD)
+
+
 async def test_read_attributes_complex() -> None:
     """Test reading attributes, complex scenario."""
 
@@ -1824,6 +1906,7 @@ async def test_read_attribute_manufacturer_code_none_on_manuf_cluster():
     class ManufCluster(zcl.Cluster):
         cluster_id = 0xFC11  # Manufacturer-specific cluster range
         ep_attribute = "manuf_cluster"
+        _skip_registry = True
 
         class AttributeDefs(zcl.BaseAttributeDefs):
             # Explicitly no manufacturer code, even though cluster is manufacturer-specific
@@ -1851,6 +1934,7 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
 
         cluster_id = 0xABCD
         ep_attribute = "doubling"
+        _skip_registry = True
 
         class AttributeDefs(zcl.foundation.BaseAttributeDefs):
             test_attr = foundation.ZCLAttributeDef(
@@ -2262,6 +2346,7 @@ def test_manufacturer_id_override_manuf_specific_cluster(app_mock) -> None:
     class TestCluster(zcl.Cluster):
         cluster_id = 0xFEED  # Manufacturer-specific cluster range
         ep_attribute = "test_cluster"
+        _skip_registry = True
         manufacturer_id_override = 0x5678
 
         class AttributeDefs(zcl.BaseAttributeDefs):

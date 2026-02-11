@@ -208,7 +208,9 @@ def make_ieee(start=0):
 
 
 def make_node_desc(
-    *, logical_type: zdo_t.LogicalType = zdo_t.LogicalType.Router
+    *,
+    logical_type: zdo_t.LogicalType = zdo_t.LogicalType.Router,
+    manufacturer_code: int = 4174,
 ) -> zdo_t.NodeDescriptor:
     return zdo_t.NodeDescriptor(
         logical_type=logical_type,
@@ -218,7 +220,7 @@ def make_node_desc(
         aps_flags=0,
         frequency_band=zdo_t.NodeDescriptor.FrequencyBand.Freq2400MHz,
         mac_capability_flags=zdo_t.NodeDescriptor.MACCapabilityFlags.AllocateAddress,
-        manufacturer_code=4174,
+        manufacturer_code=manufacturer_code,
         maximum_buffer_size=82,
         maximum_incoming_transfer_size=82,
         server_mask=0,
