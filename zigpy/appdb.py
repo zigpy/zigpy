@@ -705,8 +705,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     cluster._attr_cache.clear()
 
         # Second pass: populate the attribute cache for the final device state and
-        # migrate attributes with unknown manufacturer codes to the correct codes
-        await self._populate_attribute_cache(all_attributes, migrate=True)
+        # migrate attributes with unknown manufacturer codes to the correct codes. Only
+        # the migration pass modifies the database so we do it in a transaction.
+        async with self._transaction():
+            await self._populate_attribute_cache(all_attributes, migrate=True)
 
         await self._load_groups()
         await self._load_group_members()
