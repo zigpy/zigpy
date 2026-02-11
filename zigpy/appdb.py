@@ -17,7 +17,6 @@ import zigpy.device
 from zigpy.device import Device, Status as DeviceStatus
 import zigpy.endpoint
 from zigpy.endpoint import Endpoint, Status as EndpointStatus
-from zigpy.event import suppress_events
 import zigpy.exceptions
 import zigpy.group
 import zigpy.profiles
@@ -781,22 +780,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
             cluster = clusters[row.cluster_id]
 
-            # Handle unsupported attributes
-            if row.status != Status.SUCCESS:
-                try:
-                    with suppress_events():
-                        cluster.add_unsupported_attribute(
-                            row.attr_id,
-                            manufacturer_code=(
-                                UNDEFINED
-                                if row.manufacturer_code == UNMIGRATED_MANUFACTURER_CODE
-                                else row.manufacturer_code
-                            ),
-                        )
-                except KeyError:
-                    LOGGER.debug("Unknown ZCL attribute, skipping")
-                continue
-
             # For unmigrated rows on the second pass, try to resolve the
             # manufacturer code using the full quirk cluster definitions
             manufacturer_code = row.manufacturer_code
@@ -846,18 +829,25 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 )
             except KeyError:
                 LOGGER.debug("Unknown ZCL attribute, skipping")
-                cluster._attr_cache.set_legacy_value(
-                    row.attr_id,
+
+                if row.status == Status.SUCCESS:
+                    cluster._attr_cache.set_legacy_value(
+                        row.attr_id,
+                        row.value,
+                        last_updated=datetime.fromtimestamp(row.last_updated, UTC),
+                    )
+
+                continue
+
+            if row.status == Status.SUCCESS:
+                cluster._attr_cache.set_value(
+                    attr_def,
                     row.value,
                     last_updated=datetime.fromtimestamp(row.last_updated, UTC),
                 )
+            else:
+                cluster._attr_cache.mark_unsupported(attr_def)
                 continue
-
-            cluster._attr_cache.set_value(
-                attr_def,
-                row.value,
-                last_updated=datetime.fromtimestamp(row.last_updated, UTC),
-            )
 
             # Populate the device's manufacturer and model attributes
             if (
