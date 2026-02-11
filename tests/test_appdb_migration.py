@@ -591,7 +591,7 @@ async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
 
 
 async def test_data_migration_ambiguous_attributes(tmp_path):
-    """Test _run_data_migrations disambiguation when find_attributes returns multiple."""
+    """Test data migration disambiguation when find_attributes returns multiple."""
 
     class DisambiguatedCluster(CustomCluster):
         cluster_id = 0xFC01
