@@ -1119,6 +1119,7 @@ def test_attr_cache_key_uses_effective_manufacturer_code():
     class TestCluster(zcl.Cluster):
         cluster_id = 0xFC01
         ep_attribute = "test_cluster"
+        _skip_registry = True
 
         class AttributeDefs(zcl.BaseAttributeDefs):
             standard_attr = foundation.ZCLAttributeDef(
@@ -1226,6 +1227,7 @@ def test_zcl_command_duplicate_name_prevention():
         class TestCluster(zcl.Cluster):
             cluster_id = 0x1234
             ep_attribute = "test_cluster"
+            _skip_registry = True
             server_commands = {
                 0x00: foundation.ZCLCommandDef(name="command1", schema={}),
                 0x01: foundation.ZCLCommandDef(name="command1", schema={}),
@@ -1336,6 +1338,7 @@ async def test_zcl_cluster_definition_backwards_compatibility():
     class TestCluster(zcl.Cluster):
         cluster_id = 0xABCD
         ep_attribute = "test_cluster"
+        _skip_registry = True
 
         attributes = {
             0x1234: ("attribute", t.uint8_t),
@@ -1384,6 +1387,7 @@ async def test_zcl_cluster_definition_invalid_name():
     class TestCluster(zcl.Cluster):
         cluster_id = 0xABCD
         ep_attribute = "test_cluster"
+        _skip_registry = True
 
         class AttributeDefs(zcl.BaseAttributeDefs):
             upgrade_server_id = foundation.ZCLAttributeDef(
@@ -1412,6 +1416,7 @@ async def test_zcl_cluster_definition_invalid_name():
         class TestCluster(zcl.Cluster):
             cluster_id = 0xABCD
             ep_attribute = "test_cluster"
+            _skip_registry = True
 
             class AttributeDefs(zcl.BaseAttributeDefs):
                 upgrade_server_id = foundation.ZCLAttributeDef(
@@ -1428,6 +1433,7 @@ async def test_zcl_cluster_definition_invalid_name():
         class TestCluster(zcl.Cluster):
             cluster_id = 0xABCD
             ep_attribute = "test_cluster"
+            _skip_registry = True
 
             class ServerCommandDefs(zcl.BaseCommandDefs):
                 upgrade_end = foundation.ZCLCommandDef(
@@ -1452,6 +1458,7 @@ async def test_cluster_definition_invalid_direction():
         class TestCluster(zcl.Cluster):
             cluster_id = 0xABCD
             ep_attribute = "test_cluster"
+            _skip_registry = True
 
             class ServerCommandDefs(zcl.BaseCommandDefs):
                 server_command = foundation.ZCLCommandDef(
@@ -1575,6 +1582,7 @@ def test_find_attribute_simple() -> None:
     class TestCluster(zcl.Cluster):
         cluster_id = 0xABCD
         ep_attribute = "test_cluster"
+        _skip_registry = True
 
         class AttributeDefs(zcl.BaseAttributeDefs):
             attribute1 = foundation.ZCLAttributeDef(id=0x0001, type=t.EUI64)
@@ -1605,6 +1613,7 @@ def test_find_attribute_colliding_manufacturer_codes() -> None:
     class TestCluster(zcl.Cluster):
         cluster_id = 0xABCD
         ep_attribute = "test_cluster"
+        _skip_registry = True
 
         class AttributeDefs(zcl.BaseAttributeDefs):
             attribute1 = foundation.ZCLAttributeDef(id=0x0001, type=t.EUI64)
@@ -1640,6 +1649,7 @@ def test_find_attribute_unspecified_manufacturer_code() -> None:
     class TestCluster(zcl.Cluster):
         cluster_id = 0xABCD
         ep_attribute = "test_cluster"
+        _skip_registry = True
 
         class AttributeDefs(zcl.BaseAttributeDefs):
             attribute1 = foundation.ZCLAttributeDef(id=0x0001, type=t.EUI64)
@@ -1672,6 +1682,7 @@ async def test_read_attributes_complex() -> None:
     class TestCluster(zcl.Cluster):
         cluster_id = 0xABCD
         ep_attribute = "test_cluster"
+        _skip_registry = True
 
         class AttributeDefs(zcl.BaseAttributeDefs):
             attribute1 = foundation.ZCLAttributeDef(id=0x0001, type=t.uint8_t)
@@ -1793,6 +1804,7 @@ async def test_command_explicit_manufacturer():
     class TestCluster(zcl.Cluster):
         cluster_id = 0xABCD
         ep_attribute = "test_cluster"
+        _skip_registry = True
 
         class ServerCommandDefs(zcl.foundation.BaseCommandDefs):
             test_cmd = foundation.ZCLCommandDef(id=0x00, schema={})
