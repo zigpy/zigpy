@@ -274,6 +274,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         # XXX: This will break if you use a semicolon anywhere but at the end of a line
         for statement in sql.split(";"):
+            # Strip SQL comments so that pysqlite3's implicit transaction DML detection
+            # (which doesn't skip comments) sees the actual statement keyword
+            statement = re.sub(r"--[^\n]*", "", statement)
+
             await self.execute(statement)
 
     def device_joined(self, device: Device) -> None:
