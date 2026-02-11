@@ -564,7 +564,7 @@ async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
                 type=t.uint8_t,
                 is_manufacturer_specific=True,
             )
-            unsupported_attr = ZCLAttributeDef(
+            unsupported_attr_with_value = ZCLAttributeDef(
                 id=0x0004,
                 type=t.uint8_t,
                 is_manufacturer_specific=True,
@@ -604,19 +604,23 @@ async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
         cur.execute(
             """
             SELECT manufacturer_code, status
-            FROM attributes_cache_v14
+            FROM attributes_cache_v15
             WHERE ieee = ? AND cluster_id = 0xFC00 AND attr_id = 0x0004
             """,
             (third_reality_ieee,),
         )
         row = cur.fetchone()
 
-    assert row == (0x130D, Status.UNSUPPORTED_ATTRIBUTE)
+    # The v15 migration restored this attribute from v13 cache, so it's now SUCCESS
+    assert row == (0x130D, Status.SUCCESS)
 
-    # Confirm it's loaded as unsupported in the device's attribute cache
+    # It is no longer unsupported since v15 restored the cached value
     dev = app.get_device(ieee=t.EUI64.convert(third_reality_ieee))
     cluster = dev.endpoints[1].in_clusters[0xFC00]
-    assert cluster.is_attribute_unsupported(TestCluster.AttributeDefs.unsupported_attr)
+    assert not cluster.is_attribute_unsupported(
+        TestCluster.AttributeDefs.unsupported_attr_with_value
+    )
+    assert cluster.get(TestCluster.AttributeDefs.unsupported_attr_with_value) == 0
 
     # Attr 0x0003 has no definition in our quirk but exists in the DB. It should be
     # stored in the legacy cache regardless.
