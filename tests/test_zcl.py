@@ -1676,7 +1676,7 @@ def test_find_attribute_unspecified_manufacturer_code() -> None:
         TestCluster.find_attribute(0x0003, manufacturer_code=0x5678)
 
 
-def test_find_attributes_non_manuf_specific_undefined() -> None:
+def test_find_attributes() -> None:
     """Test find_attributes across all attribute specificity combinations."""
 
     class TestCluster(zcl.Cluster):
@@ -1700,13 +1700,19 @@ def test_find_attributes_non_manuf_specific_undefined() -> None:
             manuf_5678 = foundation.ZCLAttributeDef(
                 id=0x0001, type=t.EUI64, manufacturer_code=0x5678
             )
+            specific_unique = foundation.ZCLAttributeDef(
+                id=0x0002, type=t.EUI64, manufacturer_code=0x1234
+            )
 
+    # An explicitly disabled manufacturer code
     assert TestCluster.find_attributes(0x0001, manufacturer_code=None) == [
         TestCluster.AttributeDefs.explicit_none,
         TestCluster.AttributeDefs.explicit_false,
         TestCluster.AttributeDefs.default,
     ]
 
+    # A specific manufacturer code will match the specific attribute for that code and
+    # a generic manufacturer-specific one
     assert TestCluster.find_attributes(0x0001, manufacturer_code=0x1234) == [
         TestCluster.AttributeDefs.manuf_1234,
         TestCluster.AttributeDefs.manuf_no_code,
@@ -1716,10 +1722,12 @@ def test_find_attributes_non_manuf_specific_undefined() -> None:
         TestCluster.AttributeDefs.manuf_no_code,
     ]
 
+    # An unknown manufacturer code will match only the generic attribute
     assert TestCluster.find_attributes(0x0001, manufacturer_code=0x9999) == [
         TestCluster.AttributeDefs.manuf_no_code,
     ]
 
+    # No code will match all attributes with the ID
     assert TestCluster.find_attributes(0x0001) == [
         TestCluster.AttributeDefs.manuf_1234,
         TestCluster.AttributeDefs.manuf_5678,
@@ -1729,6 +1737,7 @@ def test_find_attributes_non_manuf_specific_undefined() -> None:
         TestCluster.AttributeDefs.default,
     ]
 
+    # Names and definition objects are unique
     assert TestCluster.find_attributes("explicit_false") == [
         TestCluster.AttributeDefs.explicit_false,
     ]
@@ -1739,8 +1748,12 @@ def test_find_attributes_non_manuf_specific_undefined() -> None:
         TestCluster.AttributeDefs.manuf_5678,
     ]
 
+    # Missing attributes and bad combinations raise errors
     with pytest.raises(KeyError):
         TestCluster.find_attributes(0x9999)
+
+    with pytest.raises(KeyError):
+        TestCluster.find_attributes(0x0002, manufacturer_code=0xABCD)
 
 
 async def test_read_attributes_complex() -> None:

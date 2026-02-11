@@ -498,6 +498,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     if UNDEFINED in manuf_specific:
                         results.append(manuf_specific[UNDEFINED])
 
+                if not results:
+                    raise KeyError(manufacturer_code)
+
                 return results
 
             # No manufacturer code filter: return all candidates
@@ -522,9 +525,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         all_candidates = cls.find_attributes(
             name_or_id, manufacturer_code=manufacturer_code
         )
-
-        if not all_candidates:
-            raise KeyError(manufacturer_code)
 
         # Non-integer lookups always return a single result
         if not isinstance(name_or_id, int):
