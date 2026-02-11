@@ -804,6 +804,24 @@ async def test_v15_migration_restores_already_migrated_manufacturer_codes(
             (ieee, 1, 0, 0, 5, 0x1234, Status.UNSUPPORTED_ATTRIBUTE, None, 0.0),
         )
 
+        # Attr 6 (date_code): has both an unsupported row AND a separate SUCCESS row
+        # with a different manufacturer_code. The v15 migration should delete the
+        # unsupported row and NOT re-insert from v13, since a good row exists.
+        conn.execute(
+            "INSERT INTO attributes_cache_v14"
+            " (ieee, endpoint_id, cluster_type, cluster_id, attr_id,"
+            "  manufacturer_code, status, value, last_updated)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (ieee, 1, 0, 0, 6, -1, Status.UNSUPPORTED_ATTRIBUTE, None, 0.0),
+        )
+        conn.execute(
+            "INSERT INTO attributes_cache_v14"
+            " (ieee, endpoint_id, cluster_type, cluster_id, attr_id,"
+            "  manufacturer_code, status, value, last_updated)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (ieee, 1, 0, 0, 6, None, Status.SUCCESS, "20240101", 1699000000.0),
+        )
+
         # Legacy v13 tables with cached values
         conn.executescript("""
             CREATE TABLE attributes_cache_v13 (
@@ -825,7 +843,7 @@ async def test_v15_migration_restores_already_migrated_manufacturer_codes(
             );
         """)
 
-        # Both model and manufacturer exist and have values
+        # All three attrs have cached values in v13
         conn.execute(
             "INSERT INTO attributes_cache_v13 VALUES (?, ?, ?, ?, ?, ?, ?)",
             (ieee, 1, 0, 0, 4, "Test Manufacturer", 1699000000.0),
@@ -833,6 +851,10 @@ async def test_v15_migration_restores_already_migrated_manufacturer_codes(
         conn.execute(
             "INSERT INTO attributes_cache_v13 VALUES (?, ?, ?, ?, ?, ?, ?)",
             (ieee, 1, 0, 0, 5, "Test Model", 1699000000.0),
+        )
+        conn.execute(
+            "INSERT INTO attributes_cache_v13 VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (ieee, 1, 0, 0, 6, "Old Date Code", 1699000000.0),
         )
 
         # Both are marked as unsupported
@@ -851,13 +873,126 @@ async def test_v15_migration_restores_already_migrated_manufacturer_codes(
 
     dev = app.get_device(ieee=t.EUI64.convert(ieee))
 
-    # Both attributes were restored
+    # Attrs 4 and 5 were restored from v13
     basic = dev.endpoints[1].basic
     assert basic.get(Basic.AttributeDefs.manufacturer) == "Test Manufacturer"
     assert basic.get(Basic.AttributeDefs.model) == "Test Model"
 
-    # Neither is unsupported
+    # Attr 6 kept its existing SUCCESS value, not the old v13 value
+    assert basic.get(Basic.AttributeDefs.date_code) == "20240101"
+
+    # None are unsupported
     assert not basic.is_attribute_unsupported(Basic.AttributeDefs.manufacturer)
     assert not basic.is_attribute_unsupported(Basic.AttributeDefs.model)
+    assert not basic.is_attribute_unsupported(Basic.AttributeDefs.date_code)
+
+    await app.shutdown()
+
+    # No duplicate or stale unsupported rows should remain in the DB
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT attr_id, manufacturer_code, status"
+            f" FROM attributes_cache_v{zigpy.appdb.DB_VERSION}"
+            f" WHERE ieee = ? ORDER BY attr_id, manufacturer_code",
+            (ieee,),
+        )
+        rows = cur.fetchall()
+
+    assert len(rows) == 3
+    assert rows[0] == (4, None, Status.SUCCESS)
+    assert rows[1] == (5, None, Status.SUCCESS)
+    assert rows[2] == (6, None, Status.SUCCESS)
+
+
+async def test_data_migration_ambiguous_attributes(tmp_path):
+    """Test data migration disambiguation when find_attributes returns multiple."""
+
+    class DisambiguatedCluster(CustomCluster):
+        cluster_id = 0xFC01
+
+        class AttributeDefs(BaseAttributeDefs):
+            standard_attr = ZCLAttributeDef(
+                id=0x0010, type=t.uint8_t, is_manufacturer_specific=False
+            )
+            manuf_attr = ZCLAttributeDef(
+                id=0x0010, type=t.uint8_t, is_manufacturer_specific=True
+            )
+
+    class AmbiguousCluster(CustomCluster):
+        cluster_id = 0xFC02
+
+        class AttributeDefs(BaseAttributeDefs):
+            attr_a = ZCLAttributeDef(
+                id=0x0020, type=t.uint8_t, is_manufacturer_specific=True
+            )
+            attr_b = ZCLAttributeDef(
+                id=0x0020, type=t.uint8_t, manufacturer_code=0x1111
+            )
+            attr_c = ZCLAttributeDef(
+                id=0x0020, type=t.uint8_t, manufacturer_code=0x2222
+            )
+
+    registry = DeviceRegistry()
+
+    (
+        QuirkBuilder("manufacturer", "model", registry=registry)
+        .replaces(DisambiguatedCluster)
+        .replaces(AmbiguousCluster)
+        .add_to_registry()
+    )
+
+    db_path = str(tmp_path / "test.db")
+
+    app = await make_app_with_db(db_path)
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    dev.node_desc = make_node_desc(manufacturer_code=0xABCD)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = zha_profile.PROFILE_ID
+    ep.device_type = zha_profile.DeviceType.PUMP
+
+    ep.add_input_cluster(Basic.cluster_id)
+    ep.add_input_cluster(DisambiguatedCluster.cluster_id)
+    ep.add_input_cluster(AmbiguousCluster.cluster_id)
+
+    basic = dev.endpoints[1].basic
+    basic.update_attribute(Basic.AttributeDefs.manufacturer, "manufacturer")
+    basic.update_attribute(Basic.AttributeDefs.model, "model")
+
+    app.device_initialized(dev)
+    await app.shutdown()
+
+    # Insert unmigrated attribute rows (manufacturer_code=-1)
+    with sqlite3.connect(db_path) as conn:
+        insert_sql = (
+            f"INSERT INTO attributes_cache_v{zigpy.appdb.DB_VERSION}"
+            " (ieee, endpoint_id, cluster_type, cluster_id,"
+            "  attr_id, manufacturer_code, status, value, last_updated)"
+            " VALUES (?, ?, ?, ?, ?, -1, 0, ?, ?)"
+        )
+
+        conn.execute(insert_sql, (str(dev.ieee), 1, 0, 0xFC01, 0x0010, b"\x42", 0))
+        conn.execute(insert_sql, (str(dev.ieee), 1, 0, 0xFC02, 0x0020, b"\x99", 0))
+        conn.commit()
+
+    with patch("zigpy.quirks.DEVICE_REGISTRY", registry):
+        app = await make_app_with_db(db_path)
+        dev = app.get_device(ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+
+    # Migration runs during load
+    disambiguated = dev.endpoints[1].in_clusters[0xFC01]
+    ambiguous = dev.endpoints[1].in_clusters[0xFC02]
+
+    # 2 candidates (1 manuf + 1 non-manuf): picked manuf-specific
+    assert disambiguated.get("manuf_attr") == b"\x42"
+    assert disambiguated.get("standard_attr") is None
+
+    # 3 candidates: ambiguous, skipped
+    assert ambiguous.get("attr_a") is None
+    assert ambiguous.get("attr_b") is None
+    assert ambiguous.get("attr_c") is None
 
     await app.shutdown()

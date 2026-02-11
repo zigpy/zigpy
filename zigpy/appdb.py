@@ -1567,27 +1567,50 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         # The v14 migration incorrectly gave unsupported attributes priority over cached
         # values when merging the two tables. Restore cached values from v13 for any
         # attribute that was marked unsupported in v14 but had a value in v13.
-        if await self._table_exists("attributes_cache_v13"):
-            await self.execute(
-                """
-                REPLACE INTO attributes_cache_v15
-                    (ieee, endpoint_id, cluster_type, cluster_id, attr_id,
-                     manufacturer_code, status, value, last_updated)
-                SELECT
-                    a15.ieee, a15.endpoint_id, a15.cluster_type, a15.cluster_id,
-                    a15.attr_id, a15.manufacturer_code, :success,
-                    c13.value, c13.last_updated
-                FROM attributes_cache_v15 a15
-                JOIN attributes_cache_v13 c13
-                    ON c13.ieee = a15.ieee
-                    AND c13.endpoint_id = a15.endpoint_id
-                    AND c13.cluster_type = a15.cluster_type
-                    AND c13.cluster_id = a15.cluster_id
-                    AND c13.attr_id = a15.attr_id
-                WHERE a15.status = :unsupported
-                """,
-                {
-                    "success": Status.SUCCESS,
-                    "unsupported": Status.UNSUPPORTED_ATTRIBUTE,
-                },
+        if not await self._table_exists("attributes_cache_v13"):
+            return
+
+        # Delete unsupported v15 rows that have cached values in v13
+        await self.execute(
+            """
+            DELETE FROM attributes_cache_v15
+            WHERE status = :unsupported
+            AND EXISTS (
+                SELECT 1
+                FROM attributes_cache_v13 c13
+                WHERE c13.ieee = attributes_cache_v15.ieee
+                    AND c13.endpoint_id = attributes_cache_v15.endpoint_id
+                    AND c13.cluster_type = attributes_cache_v15.cluster_type
+                    AND c13.cluster_id = attributes_cache_v15.cluster_id
+                    AND c13.attr_id = attributes_cache_v15.attr_id
             )
+            """,
+            {"unsupported": Status.UNSUPPORTED_ATTRIBUTE},
+        )
+
+        # Only re-insert v13 rows that were deleted from v15. Skip v13 rows that still
+        # have a v15 counterpart (e.g. a row with a resolved manufacturer code).
+        await self.execute(
+            """
+            INSERT INTO attributes_cache_v15
+                (ieee, endpoint_id, cluster_type, cluster_id, attr_id,
+                 manufacturer_code, status, value, last_updated)
+            SELECT
+                c13.ieee, c13.endpoint_id, c13.cluster_type, c13.cluster_id,
+                c13.attr_id, :manufacturer_code, :status, c13.value, c13.last_updated
+            FROM attributes_cache_v13 c13
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM attributes_cache_v15 a15
+                WHERE a15.ieee = c13.ieee
+                    AND a15.endpoint_id = c13.endpoint_id
+                    AND a15.cluster_type = c13.cluster_type
+                    AND a15.cluster_id = c13.cluster_id
+                    AND a15.attr_id = c13.attr_id
+            )
+            """,
+            {
+                "status": Status.SUCCESS,
+                "manufacturer_code": UNMIGRATED_MANUFACTURER_CODE,
+            },
+        )
