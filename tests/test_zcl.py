@@ -1676,6 +1676,73 @@ def test_find_attribute_unspecified_manufacturer_code() -> None:
         TestCluster.find_attribute(0x0003, manufacturer_code=0x5678)
 
 
+def test_find_attributes_non_manuf_specific_undefined() -> None:
+    """Test find_attributes across all attribute specificity combinations."""
+
+    class TestCluster(zcl.Cluster):
+        cluster_id = 0xABCD
+        ep_attribute = "test_cluster"
+
+        class AttributeDefs(zcl.BaseAttributeDefs):
+            explicit_none = foundation.ZCLAttributeDef(
+                id=0x0001, type=t.EUI64, manufacturer_code=None
+            )
+            explicit_false = foundation.ZCLAttributeDef(
+                id=0x0001, type=t.EUI64, is_manufacturer_specific=False
+            )
+            default = foundation.ZCLAttributeDef(id=0x0001, type=t.EUI64)
+            manuf_no_code = foundation.ZCLAttributeDef(
+                id=0x0001, type=t.EUI64, is_manufacturer_specific=True
+            )
+            manuf_1234 = foundation.ZCLAttributeDef(
+                id=0x0001, type=t.EUI64, manufacturer_code=0x1234
+            )
+            manuf_5678 = foundation.ZCLAttributeDef(
+                id=0x0001, type=t.EUI64, manufacturer_code=0x5678
+            )
+
+    assert TestCluster.find_attributes(0x0001, manufacturer_code=None) == [
+        TestCluster.AttributeDefs.explicit_none,
+        TestCluster.AttributeDefs.explicit_false,
+        TestCluster.AttributeDefs.default,
+    ]
+
+    assert TestCluster.find_attributes(0x0001, manufacturer_code=0x1234) == [
+        TestCluster.AttributeDefs.manuf_1234,
+        TestCluster.AttributeDefs.manuf_no_code,
+    ]
+    assert TestCluster.find_attributes(0x0001, manufacturer_code=0x5678) == [
+        TestCluster.AttributeDefs.manuf_5678,
+        TestCluster.AttributeDefs.manuf_no_code,
+    ]
+
+    assert TestCluster.find_attributes(0x0001, manufacturer_code=0x9999) == [
+        TestCluster.AttributeDefs.manuf_no_code,
+    ]
+
+    assert TestCluster.find_attributes(0x0001) == [
+        TestCluster.AttributeDefs.manuf_1234,
+        TestCluster.AttributeDefs.manuf_5678,
+        TestCluster.AttributeDefs.manuf_no_code,
+        TestCluster.AttributeDefs.explicit_false,
+        TestCluster.AttributeDefs.explicit_none,
+        TestCluster.AttributeDefs.default,
+    ]
+
+    assert TestCluster.find_attributes("explicit_false") == [
+        TestCluster.AttributeDefs.explicit_false,
+    ]
+    assert TestCluster.find_attributes("manuf_1234") == [
+        TestCluster.AttributeDefs.manuf_1234,
+    ]
+    assert TestCluster.find_attributes(TestCluster.AttributeDefs.manuf_5678) == [
+        TestCluster.AttributeDefs.manuf_5678,
+    ]
+
+    with pytest.raises(KeyError):
+        TestCluster.find_attributes(0x9999)
+
+
 async def test_read_attributes_complex() -> None:
     """Test reading attributes, complex scenario."""
 
