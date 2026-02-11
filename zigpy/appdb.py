@@ -42,6 +42,7 @@ from zigpy.zdo import types as zdo_t
 
 if TYPE_CHECKING:
     from zigpy.application import ControllerApplication
+    from zigpy.zcl import Cluster
 
 LOGGER = logging.getLogger(__name__)
 
@@ -657,6 +658,19 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self.execute(q, (backup_time.isoformat(),))
         await self._db.commit()
 
+    async def _read_all_attributes(
+        self,
+    ) -> list[tuple[t.EUI64, int, int, int, int, int, int, bytes, float]]:
+        """Read all attribute rows from the database."""
+        async with self.execute(
+            f"""
+            SELECT ieee, endpoint_id, cluster_type, cluster_id, attr_id,
+                   manufacturer_code, status, value, last_updated
+            FROM attributes_cache{DB_V}
+            """
+        ) as cursor:
+            return await cursor.fetchall()
+
     async def load(self) -> None:
         LOGGER.debug("Loading application state")
         await self._load_devices()
@@ -664,19 +678,31 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_endpoints()
         await self._load_clusters()
 
-        # Load as many attributes as we can in the first pass
-        await self._load_attributes()
+        # Read all attribute rows from the database once
+        all_attributes = await self._read_all_attributes()
+
+        # First pass: populate cache on bare clusters for quirks
+        await self._populate_attribute_cache(all_attributes)
 
         for device in self._application.devices.values():
             # Populate the device signature before we apply any quirks, which can modify
             # the device structure (for now)
             device.original_signature = device.get_signature()
 
-            device = zigpy.quirks.get_device(device)
-            self._application.devices[device.ieee] = device
+            self._application.devices[device.ieee] = zigpy.quirks.get_device(device)
 
-        # Load them once more, to make sure virtual clusters get re-populated
-        await self._load_attributes()
+        # Clear the attribute cache to ensure the quirked state is correct
+        for device in self._application.devices.values():
+            for ep in device.non_zdo_endpoints:
+                for cluster in ep.in_clusters.values():
+                    cluster._attr_cache.clear()
+
+                for cluster in ep.out_clusters.values():
+                    cluster._attr_cache.clear()
+
+        # Second pass: populate the attribute cache for the final device state and
+        # migrate attributes with unknown manufacturer codes to the correct codes
+        await self._populate_attribute_cache(all_attributes, migrate=True)
 
         await self._load_groups()
         await self._load_group_members()
@@ -687,111 +713,192 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         await self._db.commit()
 
-        async with self._transaction():
-            await self._run_data_migrations()
-
         await self._register_device_listeners()
 
-    async def _load_attributes(self) -> None:
-        async with self.execute(
-            f"""
-            SELECT ieee, endpoint_id, cluster_type, cluster_id, attr_id,
-                   manufacturer_code, status, value, last_updated
-            FROM attributes_cache{DB_V}
-            """
-        ) as cursor:
-            async for (
-                ieee,
+    async def _populate_attribute_cache(
+        self,
+        rows: list[tuple[t.EUI64, int, int, int, int, int, int, bytes, float]],
+        *,
+        migrate: bool = False,
+    ) -> None:
+        """Populate cluster attribute cache from pre-loaded rows.
+
+        When `migrate` is True, unmigrated rows with ambiguous attribute IDs are
+        resolved using the (now-quirked) cluster definitions and the database is
+        updated to match.
+        """
+        for (
+            ieee,
+            endpoint_id,
+            cluster_type,
+            cluster_id,
+            attr_id,
+            manufacturer_code,
+            status,
+            value,
+            last_updated,
+        ) in rows:
+            dev = self._application.get_device(ieee)
+
+            LOGGER.debug(
+                "[0x%04x:%s:0x%04x] Loading attribute %s=%r status=%r mfg_code=%r",
+                dev.nwk,
                 endpoint_id,
-                cluster_type,
                 cluster_id,
-                attr_id,
-                manufacturer_code,
-                status,
+                (attr_id if isinstance(attr_id, str) else f"0x{attr_id:04x}"),
                 value,
-                last_updated,
-            ) in cursor:
-                dev = self._application.get_device(ieee)
+                status,
+                manufacturer_code,
+            )
 
-                LOGGER.debug(
-                    "[0x%04x:%s:0x%04x] Loading attribute %s=%r status=%r mfg_code=%r",
-                    dev.nwk,
-                    endpoint_id,
-                    cluster_id,
-                    (attr_id if isinstance(attr_id, str) else f"0x{attr_id:04x}"),
-                    value,
-                    status,
-                    manufacturer_code,
-                )
+            if endpoint_id not in dev.endpoints:
+                continue
 
-                # Some quirks create endpoints and clusters that do not exist
-                if endpoint_id not in dev.endpoints:
-                    continue
+            ep = dev.endpoints[endpoint_id]
+            clusters = (
+                ep.in_clusters
+                if cluster_type == ClusterType.Server
+                else ep.out_clusters
+            )
 
-                ep = dev.endpoints[endpoint_id]
-                clusters = (
-                    ep.in_clusters
-                    if cluster_type == ClusterType.Server
-                    else ep.out_clusters
-                )
+            if cluster_id not in clusters:
+                LOGGER.debug("Unknown ZCL cluster, skipping")
+                continue
 
-                if cluster_id not in clusters:
-                    LOGGER.debug("Unknown ZCL cluster, skipping")
-                    continue
+            cluster = clusters[cluster_id]
 
-                cluster = clusters[cluster_id]
-
-                # Handle unsupported attributes
-                if status != Status.SUCCESS:
-                    try:
-                        with suppress_events():
-                            cluster.add_unsupported_attribute(
-                                attr_id,
-                                manufacturer_code=(
-                                    UNDEFINED
-                                    if manufacturer_code == UNMIGRATED_MANUFACTURER_CODE
-                                    else manufacturer_code
-                                ),
-                            )
-                    except KeyError:
-                        LOGGER.debug("Unknown ZCL attribute, skipping")
-                    continue
-
+            # Handle unsupported attributes
+            if status != Status.SUCCESS:
                 try:
-                    attr_def = cluster.find_attribute(
-                        attr_id,
-                        manufacturer_code=(
-                            UNDEFINED
-                            if manufacturer_code == UNMIGRATED_MANUFACTURER_CODE
-                            else manufacturer_code
-                        ),
-                    )
+                    with suppress_events():
+                        cluster.add_unsupported_attribute(
+                            attr_id,
+                            manufacturer_code=(
+                                UNDEFINED
+                                if manufacturer_code == UNMIGRATED_MANUFACTURER_CODE
+                                else manufacturer_code
+                            ),
+                        )
                 except KeyError:
                     LOGGER.debug("Unknown ZCL attribute, skipping")
-                    cluster._attr_cache.set_legacy_value(
-                        attr_id,
-                        value,
-                        last_updated=datetime.fromtimestamp(last_updated, UTC),
-                    )
-                    continue
+                continue
 
-                cluster._attr_cache.set_value(
-                    attr_def,
+            # For unmigrated rows on the second pass, try to resolve the
+            # manufacturer code using the full quirk cluster definitions
+            if migrate and manufacturer_code == UNMIGRATED_MANUFACTURER_CODE:
+                resolved_manufacturer_code = self._resolve_unmigrated_attribute(
+                    cluster=cluster,
+                    attr_id=attr_id,
+                    value=value,
+                    dev=dev,
+                )
+
+                if resolved_manufacturer_code is not UNDEFINED:
+                    manufacturer_code = resolved_manufacturer_code
+
+                    await self.execute(
+                        f"""
+                        UPDATE attributes_cache{DB_V}
+                        SET manufacturer_code = :manufacturer_code
+                        WHERE
+                            ieee = :ieee
+                            AND endpoint_id = :endpoint_id
+                            AND cluster_type = :cluster_type
+                            AND cluster_id = :cluster_id
+                            AND attr_id = :attr_id
+                            AND manufacturer_code = :old_manufacturer_code
+                        """,
+                        {
+                            "manufacturer_code": manufacturer_code,
+                            "ieee": ieee,
+                            "endpoint_id": endpoint_id,
+                            "cluster_type": cluster_type,
+                            "cluster_id": cluster_id,
+                            "attr_id": attr_id,
+                            "old_manufacturer_code": UNMIGRATED_MANUFACTURER_CODE,
+                        },
+                    )
+
+            try:
+                attr_def = cluster.find_attribute(
+                    attr_id,
+                    manufacturer_code=(
+                        UNDEFINED
+                        if manufacturer_code == UNMIGRATED_MANUFACTURER_CODE
+                        else manufacturer_code
+                    ),
+                )
+            except KeyError:
+                LOGGER.debug("Unknown ZCL attribute, skipping")
+                cluster._attr_cache.set_legacy_value(
+                    attr_id,
                     value,
                     last_updated=datetime.fromtimestamp(last_updated, UTC),
                 )
+                continue
 
-                # Populate the device's manufacturer and model attributes
-                if (
-                    cluster_id == Basic.cluster_id
-                    and attr_def == Basic.AttributeDefs.manufacturer
-                ):
-                    dev.manufacturer = decode_str_attribute(value)
-                elif (
-                    cluster_id == Basic.cluster_id
-                    and attr_def == Basic.AttributeDefs.model
-                ):
-                    dev.model = decode_str_attribute(value)
+            cluster._attr_cache.set_value(
+                attr_def,
+                value,
+                last_updated=datetime.fromtimestamp(last_updated, UTC),
+            )
+
+            # Populate the device's manufacturer and model attributes
+            if (
+                cluster_id == Basic.cluster_id
+                and attr_def == Basic.AttributeDefs.manufacturer
+            ):
+                dev.manufacturer = decode_str_attribute(value)
+            elif (
+                cluster_id == Basic.cluster_id and attr_def == Basic.AttributeDefs.model
+            ):
+                dev.model = decode_str_attribute(value)
+
+    @staticmethod
+    def _resolve_unmigrated_attribute(
+        cluster: Cluster,
+        attr_id: int,
+        value: bytes,
+        dev: Device,
+    ) -> int | None | zigpy.typing.UndefinedType:
+        """Try to resolve the manufacturer code for an unmigrated attribute.
+
+        Returns the resolved manufacturer code, or UNDEFINED if unresolvable.
+        """
+        try:
+            attr_defs = cluster.find_attributes(attr_id)
+        except KeyError:
+            LOGGER.debug(
+                "Unable to find any attributes %r=%r on cluster %r for %r"
+                " for data migration, skipping",
+                attr_id,
+                value,
+                cluster,
+                dev,
+            )
+            return UNDEFINED
+
+        if len(attr_defs) == 1:
+            attr_def = attr_defs[0]
+        elif (
+            len(attr_defs) == 2
+            and attr_defs[0].is_manufacturer_specific
+            != attr_defs[1].is_manufacturer_specific
+        ):
+            attr_def = next(a for a in attr_defs if a.is_manufacturer_specific)
+        else:
+            LOGGER.debug(
+                "Unable to find unique attribute %r=%r on cluster %r for %r"
+                " for data migration, skipping (candidates: %r)",
+                attr_id,
+                value,
+                cluster,
+                dev,
+                attr_defs,
+            )
+            return UNDEFINED
+
+        return cluster._get_effective_manufacturer_code(attr_def)
 
     async def _load_devices(self) -> None:
         async with self.execute(f"SELECT * FROM devices{DB_V}") as cursor:
@@ -1414,109 +1521,4 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         value,
                         last_updated,
                     ),
-                )
-
-    async def _run_data_migrations(self) -> None:
-        """Run any data migrations needed after loading the database."""
-        async with self.execute(
-            """
-            SELECT ieee, endpoint_id, cluster_type, cluster_id, attr_id,
-                   manufacturer_code, status, value, last_updated
-            FROM attributes_cache_v14
-            WHERE manufacturer_code = :unmigrated
-            """,
-            {"unmigrated": UNMIGRATED_MANUFACTURER_CODE},
-        ) as cursor:
-            async for (
-                ieee,
-                endpoint_id,
-                cluster_type,
-                cluster_id,
-                attr_id,
-                manufacturer_code,
-                status,
-                value,
-                last_updated,
-            ) in cursor:
-                dev = self._application.get_device(ieee)
-
-                try:
-                    ep = dev.endpoints[endpoint_id]
-                except KeyError:
-                    continue
-
-                clusters = (
-                    ep.in_clusters
-                    if cluster_type == ClusterType.Server
-                    else ep.out_clusters
-                )
-
-                try:
-                    cluster = clusters[cluster_id]
-                except KeyError:
-                    LOGGER.debug(
-                        "Unable to find cluster %r for attribute %r=%r on endpoint %r for %r for data migration, skipping",
-                        cluster_id,
-                        attr_id,
-                        value,
-                        ep,
-                        dev,
-                    )
-                    continue
-
-                try:
-                    attr_defs = cluster.find_attributes(attr_id)
-                except KeyError:
-                    LOGGER.debug(
-                        "Unable to find any attributes %r=%r on cluster %r for %r for data migration, skipping",
-                        attr_id,
-                        value,
-                        cluster,
-                        dev,
-                    )
-                    continue
-
-                if len(attr_defs) == 1:
-                    attr_def = attr_defs[0]
-                elif (
-                    len(attr_defs) == 2
-                    and attr_defs[0].is_manufacturer_specific
-                    != attr_defs[1].is_manufacturer_specific
-                ):
-                    # Prefer the manufacturer specific one
-                    attr_def = next(a for a in attr_defs if a.is_manufacturer_specific)
-                else:
-                    LOGGER.debug(
-                        "Unable to find unique attribute %r=%r on cluster %r for %r for data migration, skipping (candidates: %r)",
-                        attr_id,
-                        value,
-                        cluster,
-                        dev,
-                        attr_defs,
-                    )
-                    continue
-
-                manufacturer_code = cluster._get_effective_manufacturer_code(attr_def)
-
-                await self.execute(
-                    """
-                    UPDATE attributes_cache_v14
-                    SET manufacturer_code = :manufacturer_code
-                    WHERE
-                        ieee = :ieee
-                        AND endpoint_id = :endpoint_id
-                        AND cluster_type = :cluster_type
-                        AND cluster_id = :cluster_id
-                        AND attr_id = :attr_id
-                        AND manufacturer_code = :old_manufacturer_code
-                    """,
-                    {
-                        "manufacturer_code": manufacturer_code,
-                        "ieee": ieee,
-                        "endpoint_id": endpoint_id,
-                        "cluster_type": cluster_type,
-                        "cluster_id": cluster_id,
-                        "attr_id": attr_id,
-                        "old_manufacturer_code": UNMIGRATED_MANUFACTURER_CODE,
-                    },
                 )
