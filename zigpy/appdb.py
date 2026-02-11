@@ -687,7 +687,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             FROM attributes_cache{DB_V}
             """
         ) as cursor:
-            return await cursor.fetchall()
+            return [AttributeCacheRow(*row) for row in await cursor.fetchall()]
 
     async def load(self) -> None:
         LOGGER.debug("Loading application state")
