@@ -747,56 +747,50 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         resolved using the (now-quirked) cluster definitions and the database is
         updated to match.
         """
-        for (
-            ieee,
-            endpoint_id,
-            cluster_type,
-            cluster_id,
-            attr_id,
-            manufacturer_code,
-            status,
-            value,
-            last_updated,
-        ) in rows:
-            dev = self._application.get_device(ieee)
+        for row in rows:
+            dev = self._application.get_device(row.ieee)
 
             LOGGER.debug(
                 "[0x%04x:%s:0x%04x] Loading attribute %s=%r status=%r mfg_code=%r",
                 dev.nwk,
-                endpoint_id,
-                cluster_id,
-                (attr_id if isinstance(attr_id, str) else f"0x{attr_id:04x}"),
-                value,
-                status,
-                manufacturer_code,
+                row.endpoint_id,
+                row.cluster_id,
+                (
+                    row.attr_id
+                    if isinstance(row.attr_id, str)
+                    else f"0x{row.attr_id:04x}"
+                ),
+                row.value,
+                row.status,
+                row.manufacturer_code,
             )
 
-            if endpoint_id not in dev.endpoints:
+            if row.endpoint_id not in dev.endpoints:
                 continue
 
-            ep = dev.endpoints[endpoint_id]
+            ep = dev.endpoints[row.endpoint_id]
             clusters = (
                 ep.in_clusters
-                if cluster_type == ClusterType.Server
+                if row.cluster_type == ClusterType.Server
                 else ep.out_clusters
             )
 
-            if cluster_id not in clusters:
+            if row.cluster_id not in clusters:
                 LOGGER.debug("Unknown ZCL cluster, skipping")
                 continue
 
-            cluster = clusters[cluster_id]
+            cluster = clusters[row.cluster_id]
 
             # Handle unsupported attributes
-            if status != Status.SUCCESS:
+            if row.status != Status.SUCCESS:
                 try:
                     with suppress_events():
                         cluster.add_unsupported_attribute(
-                            attr_id,
+                            row.attr_id,
                             manufacturer_code=(
                                 UNDEFINED
-                                if manufacturer_code == UNMIGRATED_MANUFACTURER_CODE
-                                else manufacturer_code
+                                if row.manufacturer_code == UNMIGRATED_MANUFACTURER_CODE
+                                else row.manufacturer_code
                             ),
                         )
                 except KeyError:
@@ -805,11 +799,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
             # For unmigrated rows on the second pass, try to resolve the
             # manufacturer code using the full quirk cluster definitions
-            if migrate and manufacturer_code == UNMIGRATED_MANUFACTURER_CODE:
+            manufacturer_code = row.manufacturer_code
+
+            if migrate and row.manufacturer_code == UNMIGRATED_MANUFACTURER_CODE:
                 resolved_manufacturer_code = self._resolve_unmigrated_attribute(
                     cluster=cluster,
-                    attr_id=attr_id,
-                    value=value,
+                    attr_id=row.attr_id,
+                    value=row.value,
                     dev=dev,
                 )
 
@@ -830,18 +826,18 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         """,
                         {
                             "manufacturer_code": manufacturer_code,
-                            "ieee": ieee,
-                            "endpoint_id": endpoint_id,
-                            "cluster_type": cluster_type,
-                            "cluster_id": cluster_id,
-                            "attr_id": attr_id,
+                            "ieee": row.ieee,
+                            "endpoint_id": row.endpoint_id,
+                            "cluster_type": row.cluster_type,
+                            "cluster_id": row.cluster_id,
+                            "attr_id": row.attr_id,
                             "old_manufacturer_code": UNMIGRATED_MANUFACTURER_CODE,
                         },
                     )
 
             try:
                 attr_def = cluster.find_attribute(
-                    attr_id,
+                    row.attr_id,
                     manufacturer_code=(
                         UNDEFINED
                         if manufacturer_code == UNMIGRATED_MANUFACTURER_CODE
@@ -851,28 +847,29 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             except KeyError:
                 LOGGER.debug("Unknown ZCL attribute, skipping")
                 cluster._attr_cache.set_legacy_value(
-                    attr_id,
-                    value,
-                    last_updated=datetime.fromtimestamp(last_updated, UTC),
+                    row.attr_id,
+                    row.value,
+                    last_updated=datetime.fromtimestamp(row.last_updated, UTC),
                 )
                 continue
 
             cluster._attr_cache.set_value(
                 attr_def,
-                value,
-                last_updated=datetime.fromtimestamp(last_updated, UTC),
+                row.value,
+                last_updated=datetime.fromtimestamp(row.last_updated, UTC),
             )
 
             # Populate the device's manufacturer and model attributes
             if (
-                cluster_id == Basic.cluster_id
+                row.cluster_id == Basic.cluster_id
                 and attr_def == Basic.AttributeDefs.manufacturer
             ):
-                dev.manufacturer = decode_str_attribute(value)
+                dev.manufacturer = decode_str_attribute(row.value)
             elif (
-                cluster_id == Basic.cluster_id and attr_def == Basic.AttributeDefs.model
+                row.cluster_id == Basic.cluster_id
+                and attr_def == Basic.AttributeDefs.model
             ):
-                dev.model = decode_str_attribute(value)
+                dev.model = decode_str_attribute(row.value)
 
     @staticmethod
     def _resolve_unmigrated_attribute(
