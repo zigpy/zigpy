@@ -1113,6 +1113,70 @@ def test_unsupported_attr_add_unknown_attribute(cluster):
         cluster.add_unsupported_attribute(0xDEED)
 
 
+def test_attr_cache_key_uses_effective_manufacturer_code():
+    """Test that the attribute cache distinguishes attributes by effective manuf code."""
+
+    class TestCluster(zcl.Cluster):
+        cluster_id = 0xFC01
+        ep_attribute = "test_cluster"
+
+        class AttributeDefs(zcl.BaseAttributeDefs):
+            standard_attr = foundation.ZCLAttributeDef(
+                id=0x0010, type=t.uint8_t, is_manufacturer_specific=False
+            )
+            manuf_attr = foundation.ZCLAttributeDef(
+                id=0x0010, type=t.uint8_t, is_manufacturer_specific=True
+            )
+
+    app = make_app({})
+    dev = add_initialized_device(app, nwk=0x1234, ieee=make_ieee(1))
+
+    ep = dev.endpoints[1]
+    ep.add_input_cluster(TestCluster.cluster_id)
+    cluster = ep.in_clusters[TestCluster.cluster_id]
+    cache = cluster._attr_cache
+
+    standard = TestCluster.AttributeDefs.standard_attr
+    manuf = TestCluster.AttributeDefs.manuf_attr
+
+    # Both start empty
+    with pytest.raises(KeyError):
+        cache.get_value(standard)
+    with pytest.raises(KeyError):
+        cache.get_value(manuf)
+
+    # Setting one does not affect the other
+    cache.set_value(standard, 100)
+    assert cache.get_value(standard) == 100
+    with pytest.raises(KeyError):
+        cache.get_value(manuf)
+
+    cache.set_value(manuf, 200)
+    assert cache.get_value(manuf) == 200
+    assert cache.get_value(standard) == 100
+
+    # Overwriting one does not affect the other
+    cache.set_value(standard, 111)
+    assert cache.get_value(standard) == 111
+    assert cache.get_value(manuf) == 200
+
+    # Marking one unsupported does not affect the other
+    cache.mark_unsupported(standard)
+    assert cache.is_unsupported(standard)
+    assert not cache.is_unsupported(manuf)
+    assert cache.get_value(manuf) == 200
+
+    # Setting a value clears the unsupported flag only for that attribute
+    cache.mark_unsupported(manuf)
+    assert cache.is_unsupported(standard)
+    assert cache.is_unsupported(manuf)
+
+    cache.set_value(manuf, 300)
+    assert not cache.is_unsupported(manuf)
+    assert cache.is_unsupported(standard)
+    assert cache.get_value(manuf) == 300
+
+
 def test_attr_cache_deprecated_setter(cluster, caplog):
     """Test deprecated _attr_cache setter logs warning and updates values."""
     cluster._attr_cache = {0x0004: "test_manufacturer", 0x0005: "test_model"}

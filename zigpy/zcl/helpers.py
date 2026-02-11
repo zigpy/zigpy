@@ -6,22 +6,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from zigpy.typing import UNDEFINED
-
 from .foundation import ZCLAttributeDef
 
 if TYPE_CHECKING:
     from . import Cluster
 
 CacheKey = tuple[int, int | None]  # attribute id, manufacturer code
-
-
-def _cache_key(attr_def: ZCLAttributeDef) -> CacheKey:
-    """Create a cache key, resolving UNDEFINED to None."""
-    manuf_code = attr_def.manufacturer_code
-    if manuf_code is UNDEFINED:
-        manuf_code = None
-    return (attr_def.id, manuf_code)
 
 
 @dataclass(kw_only=True, frozen=True)
@@ -48,31 +38,43 @@ class AttributeCache:
         # cache as generic data storage. Keyed by attr_id only.
         self._legacy_cache: dict[int, CacheItem] = {}
 
+    def _cache_key(self, attr_def: ZCLAttributeDef) -> CacheKey:
+        """Create a cache key using the effective manufacturer code."""
+        return (
+            attr_def.id,
+            self._cluster._get_effective_manufacturer_code(attr_def),
+        )
+
+    def clear(self) -> None:
+        self._cache.clear()
+        self._unsupported.clear()
+        self._legacy_cache.clear()
+
     def remove(self, attr_def: ZCLAttributeDef) -> None:
-        key = _cache_key(attr_def)
+        key = self._cache_key(attr_def)
         self._cache.pop(key, None)
         self._unsupported.discard(key)
 
     def _raise_if_unsupported(self, attr_def: ZCLAttributeDef) -> None:
-        if _cache_key(attr_def) in self._unsupported:
+        if self._cache_key(attr_def) in self._unsupported:
             raise UnsupportedAttribute(attr_def)
 
     def remove_unsupported(self, attr_def: ZCLAttributeDef) -> None:
-        self._unsupported.discard(_cache_key(attr_def))
+        self._unsupported.discard(self._cache_key(attr_def))
 
     def mark_unsupported(self, attr_def: ZCLAttributeDef) -> None:
-        self._unsupported.add(_cache_key(attr_def))
+        self._unsupported.add(self._cache_key(attr_def))
 
     def is_unsupported(self, attr_def: ZCLAttributeDef) -> bool:
-        return _cache_key(attr_def) in self._unsupported
+        return self._cache_key(attr_def) in self._unsupported
 
     def get_value(self, attr_def: ZCLAttributeDef) -> Any:
         self._raise_if_unsupported(attr_def)
-        return self._cache[_cache_key(attr_def)].value
+        return self._cache[self._cache_key(attr_def)].value
 
     def get_last_updated(self, attr_def: ZCLAttributeDef) -> datetime:
         self._raise_if_unsupported(attr_def)
-        return self._cache[_cache_key(attr_def)].last_updated
+        return self._cache[self._cache_key(attr_def)].last_updated
 
     def set_value(
         self,
@@ -82,7 +84,7 @@ class AttributeCache:
         last_updated: datetime | None = None,
     ) -> None:
         self.remove_unsupported(attr_def)
-        self._cache[_cache_key(attr_def)] = CacheItem(
+        self._cache[self._cache_key(attr_def)] = CacheItem(
             value=value,
             last_updated=datetime.now(UTC) if last_updated is None else last_updated,
         )
