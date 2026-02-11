@@ -7,7 +7,7 @@ import json
 import logging
 import re
 import types
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import aiosqlite
 
@@ -61,6 +61,10 @@ MIN_UPDATE_DELTA = timedelta(seconds=30).total_seconds()
 # attributes safely at runtime, once a device quirk has loaded and we can tell for sure
 # if the device has "colliding" attributes.
 UNMIGRATED_MANUFACTURER_CODE = -1
+
+# ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code
+# manufacturer_code_idx, status, value, last_updated
+AttributeRow = tuple[t.EUI64, int, int, int, int, int | None, int, Any, float]
 
 
 def _import_compatible_sqlite3(min_version: tuple[int, int, int]) -> types.ModuleType:
@@ -660,7 +664,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _read_all_attributes(
         self,
-    ) -> list[tuple[t.EUI64, int, int, int, int, int, int, bytes, float]]:
+    ) -> list[AttributeRow]:
         """Read all attribute rows from the database."""
         async with self.execute(
             f"""
@@ -717,7 +721,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _populate_attribute_cache(
         self,
-        rows: list[tuple[t.EUI64, int, int, int, int, int, int, bytes, float]],
+        rows: list[AttributeRow],
         *,
         migrate: bool = False,
     ) -> None:
