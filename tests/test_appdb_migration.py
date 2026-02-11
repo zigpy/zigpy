@@ -616,7 +616,7 @@ async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
     cluster = dev.endpoints[1].in_clusters[0xFC00]
     assert cluster.is_attribute_unsupported(TestCluster.AttributeDefs.unsupported_attr)
 
-    # Attr 0x0003 has no definition in our quirk but exist in the DB. It should be
+    # Attr 0x0003 has no definition in our quirk but exists in the DB. It should be
     # stored in the legacy cache regardless.
     with pytest.raises(KeyError):
         cluster.find_attribute(0x0003)
