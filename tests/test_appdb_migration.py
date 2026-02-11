@@ -666,6 +666,30 @@ async def test_v15_migration_restores_cached_values_over_unsupported(test_db):
     assert all(value is not None for _, _, _, _, _, _, value in rows)
 
 
+async def test_v15_migration_without_v13_tables(test_db) -> None:
+    """Test v15 migration works when no v13 tables exist (started from v14)."""
+    test_db_path = test_db("zigbee_puddly_v14.db")
+
+    # Count unsupported attrs before migration
+    with sqlite3.connect(test_db_path) as conn:
+        unsupported_before = conn.execute(
+            "SELECT COUNT(*) FROM attributes_cache_v14 WHERE status = ?",
+            (Status.UNSUPPORTED_ATTRIBUTE,),
+        ).fetchone()[0]
+
+    app = await make_app_with_db(test_db_path)
+    await app.shutdown()
+
+    # Unsupported attributes are preserved (no v13 to restore from)
+    with sqlite3.connect(test_db_path) as conn:
+        unsupported_after = conn.execute(
+            "SELECT COUNT(*) FROM attributes_cache_v15 WHERE status = ?",
+            (Status.UNSUPPORTED_ATTRIBUTE,),
+        ).fetchone()[0]
+
+    assert unsupported_after == unsupported_before
+
+
 async def test_v15_migration_restores_already_migrated_manufacturer_codes(
     tmp_path,
 ) -> None:
