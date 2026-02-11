@@ -895,14 +895,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             )
             return UNDEFINED
 
+        manuf_attrs = [
+            a
+            for a in attr_defs
+            if cluster._get_effective_manufacturer_code(a) is not None
+        ]
+
         if len(attr_defs) == 1:
             attr_def = attr_defs[0]
-        elif (
-            len(attr_defs) == 2
-            and attr_defs[0].is_manufacturer_specific
-            != attr_defs[1].is_manufacturer_specific
-        ):
-            attr_def = next(a for a in attr_defs if a.is_manufacturer_specific)
+        elif len(attr_defs) == 2 and len(manuf_attrs) == 1:
+            attr_def = manuf_attrs[0]
         else:
             LOGGER.debug(
                 "Unable to find unique attribute %r=%r on cluster %r for %r"
