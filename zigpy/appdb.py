@@ -7,7 +7,7 @@ import json
 import logging
 import re
 import types
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import aiosqlite
 
@@ -62,9 +62,19 @@ MIN_UPDATE_DELTA = timedelta(seconds=30).total_seconds()
 # if the device has "colliding" attributes.
 UNMIGRATED_MANUFACTURER_CODE = -1
 
-# ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code
-# manufacturer_code_idx, status, value, last_updated
-AttributeRow = tuple[t.EUI64, int, int, int, int, int | None, int, Any, float]
+
+class AttributeCacheRow(NamedTuple):
+    """A row from the attribute cache table. This format is internal and will change."""
+
+    ieee: t.EUI64
+    endpoint_id: int
+    cluster_type: ClusterType
+    cluster_id: int
+    attr_id: int
+    manufacturer_code: int | None
+    status: Status
+    value: Any
+    last_updated: float
 
 
 def _import_compatible_sqlite3(min_version: tuple[int, int, int]) -> types.ModuleType:
@@ -664,7 +674,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _read_all_attributes(
         self,
-    ) -> list[AttributeRow]:
+    ) -> list[AttributeCacheRow]:
         """Read all attribute rows from the database."""
         async with self.execute(
             f"""
@@ -723,7 +733,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _populate_attribute_cache(
         self,
-        rows: list[AttributeRow],
+        rows: list[AttributeCacheRow],
         *,
         migrate: bool = False,
     ) -> None:
