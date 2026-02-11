@@ -755,10 +755,10 @@ async def test_v15_migration_restores_cached_values_over_unsupported(test_db):
     assert all(value is not None for _, _, _, _, _, _, value in rows)
 
 
-async def test_v15_migration_skips_already_migrated_manufacturer_codes(
+async def test_v15_migration_restores_already_migrated_manufacturer_codes(
     tmp_path,
 ) -> None:
-    """V15 restore only touches unmigrated rows, not ones with real manufacturer codes."""
+    """v15 restore fixes all unsupported rows with v13 values, even already-migrated."""
     db_path = str(tmp_path / "test.db")
     ieee = "aa:bb:cc:dd:ee:ff:00:11"
 
@@ -785,8 +785,7 @@ async def test_v15_migration_skips_already_migrated_manufacturer_codes(
             (ieee, 1, 0, 0),
         )
 
-        # Attr 4: unmigrated overlap — UNSUPPORTED with manufacturer_code=-1
-        # This should be restored by v15.
+        # Attr 4: unmigrated — UNSUPPORTED with manufacturer_code=-1
         conn.execute(
             "INSERT INTO attributes_cache_v14"
             " (ieee, endpoint_id, cluster_type, cluster_id, attr_id,"
@@ -795,9 +794,8 @@ async def test_v15_migration_skips_already_migrated_manufacturer_codes(
             (ieee, 1, 0, 0, 4, -1, Status.UNSUPPORTED_ATTRIBUTE, None, 0.0),
         )
 
-        # Attr 5: already-migrated overlap — same situation but _run_data_migrations
-        # already updated manufacturer_code from -1 to 0x1234.
-        # This should NOT be touched by v15.
+        # Attr 5: already migrated: updated manufacturer_code from -1 to 0x1234, but
+        # it's still incorrectly unsupported
         conn.execute(
             "INSERT INTO attributes_cache_v14"
             " (ieee, endpoint_id, cluster_type, cluster_id, attr_id,"
@@ -806,7 +804,7 @@ async def test_v15_migration_skips_already_migrated_manufacturer_codes(
             (ieee, 1, 0, 0, 5, 0x1234, Status.UNSUPPORTED_ATTRIBUTE, None, 0.0),
         )
 
-        # Legacy v13 tables (not dropped by v14 migration) with cached values
+        # Legacy v13 tables with cached values
         conn.executescript("""
             CREATE TABLE attributes_cache_v13 (
                 ieee ieee NOT NULL,
@@ -827,6 +825,7 @@ async def test_v15_migration_skips_already_migrated_manufacturer_codes(
             );
         """)
 
+        # Both model and manufacturer exist and have values
         conn.execute(
             "INSERT INTO attributes_cache_v13 VALUES (?, ?, ?, ?, ?, ?, ?)",
             (ieee, 1, 0, 0, 4, "Test Manufacturer", 1699000000.0),
@@ -835,6 +834,8 @@ async def test_v15_migration_skips_already_migrated_manufacturer_codes(
             "INSERT INTO attributes_cache_v13 VALUES (?, ?, ?, ?, ?, ?, ?)",
             (ieee, 1, 0, 0, 5, "Test Model", 1699000000.0),
         )
+
+        # Both are marked as unsupported
         conn.execute(
             "INSERT INTO unsupported_attributes_v13 VALUES (?, ?, ?, ?, ?)",
             (ieee, 1, 0, 0, 4),
@@ -847,19 +848,16 @@ async def test_v15_migration_skips_already_migrated_manufacturer_codes(
         conn.commit()
 
     app = await make_app_with_db(db_path)
+
+    dev = app.get_device(ieee=t.EUI64.convert(ieee))
+
+    # Both attributes were restored
+    basic = dev.endpoints[1].basic
+    assert basic.get(Basic.AttributeDefs.manufacturer) == "Test Manufacturer"
+    assert basic.get(Basic.AttributeDefs.model) == "Test Model"
+
+    # Neither is unsupported
+    assert not basic.is_attribute_unsupported(Basic.AttributeDefs.manufacturer)
+    assert not basic.is_attribute_unsupported(Basic.AttributeDefs.model)
+
     await app.shutdown()
-
-    with sqlite3.connect(db_path) as conn:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT attr_id, status, value FROM attributes_cache_v15"
-            " WHERE ieee = ? ORDER BY attr_id",
-            (ieee,),
-        )
-        rows = cur.fetchall()
-
-    # Attr 4 (unmigrated): restored to SUCCESS with the v13 cached value
-    assert rows[0] == (4, Status.SUCCESS, "Test Manufacturer")
-
-    # Attr 5 (already-migrated manufacturer_code): left as UNSUPPORTED
-    assert rows[1] == (5, Status.UNSUPPORTED_ATTRIBUTE, None)
