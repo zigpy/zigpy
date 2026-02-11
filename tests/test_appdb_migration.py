@@ -663,21 +663,21 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
         conn.execute(insert_sql, (str(dev.ieee), 1, 0, 0xFC02, 0x0020, b"\x99", 0))
         conn.commit()
 
-    # Migration runs during load: attr cache is populated in the same open
     with patch("zigpy.quirks.DEVICE_REGISTRY", registry):
         app = await make_app_with_db(db_path)
-
         dev = app.get_device(ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
-        disambiguated = dev.endpoints[1].in_clusters[0xFC01]
-        ambiguous = dev.endpoints[1].in_clusters[0xFC02]
 
-        # 2 candidates (1 manuf + 1 non-manuf): picked manuf-specific
-        assert disambiguated.get("manuf_attr") == b"\x42"
-        assert disambiguated.get("standard_attr") is None
+    # Migration runs during load
+    disambiguated = dev.endpoints[1].in_clusters[0xFC01]
+    ambiguous = dev.endpoints[1].in_clusters[0xFC02]
 
-        # 3 candidates: ambiguous, skipped
-        assert ambiguous.get("attr_a") is None
-        assert ambiguous.get("attr_b") is None
-        assert ambiguous.get("attr_c") is None
+    # 2 candidates (1 manuf + 1 non-manuf): picked manuf-specific
+    assert disambiguated.get("manuf_attr") == b"\x42"
+    assert disambiguated.get("standard_attr") is None
 
-        await app.shutdown()
+    # 3 candidates: ambiguous, skipped
+    assert ambiguous.get("attr_a") is None
+    assert ambiguous.get("attr_b") is None
+    assert ambiguous.get("attr_c") is None
+
+    await app.shutdown()
