@@ -864,12 +864,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def _resolve_unmigrated_attribute(
         cluster: Cluster,
         attr_id: int,
-        value: bytes,
+        value: Any,
         dev: Device,
     ) -> int | None | zigpy.typing.UndefinedType:
         """Try to resolve the manufacturer code for an unmigrated attribute.
 
-        Returns the resolved manufacturer code, or UNDEFINED if unresolvable.
+        Returns the resolved manufacturer code (including `None`), or UNDEFINED if
+        unresolvable.
         """
         try:
             attr_defs = cluster.find_attributes(attr_id)
