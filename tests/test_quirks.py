@@ -405,10 +405,8 @@ async def test_read_attributes_uncached():
 
         return [[responses[attr_id] for attr_id in args]]
 
-    # Unknown attribute read passes through
-    with pytest.raises(KeyError):
-        cluster.get("unknown_attribute", 123)
-
+    # Unknown attribute name returns the default
+    assert cluster.get("unknown_attribute", 123) == 123
     assert "unknown_attribute" not in cluster._attr_cache
 
     # Constant attribute can be read with `get`
