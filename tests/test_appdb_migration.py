@@ -722,3 +722,20 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
     assert ambiguous.get("attr_c") is None
 
     await app.shutdown()
+
+    with sqlite3.connect(db_path) as conn:
+        # The disambiguated unmigrated row was deleted (a row with 0xABCD already existed)
+        rows = conn.execute(
+            "SELECT manufacturer_code FROM attributes_cache_v14"
+            " WHERE ieee = ? AND cluster_id = ? AND attr_id = ?",
+            (str(dev.ieee), 0xFC01, 0x0010),
+        ).fetchall()
+        assert rows == [(0xABCD,)]
+
+        # The ambiguous unmigrated row is still present
+        rows = conn.execute(
+            "SELECT manufacturer_code FROM attributes_cache_v14"
+            " WHERE ieee = ? AND cluster_id = ? AND attr_id = ?",
+            (str(dev.ieee), 0xFC02, 0x0020),
+        ).fetchall()
+        assert rows == [(-1,)]
