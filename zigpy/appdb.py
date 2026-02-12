@@ -824,7 +824,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         },
                     )
 
-                    await self.execute(
+                    async with self.execute(
                         f"""
                         INSERT OR IGNORE INTO attributes_cache{DB_V}
                             (ieee, endpoint_id, cluster_type, cluster_id,
@@ -842,7 +842,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                             "value": row.value,
                             "last_updated": row.last_updated,
                         },
-                    )
+                    ) as cursor:
+                        # A resolved row already exists, it will populate the cache
+                        if cursor.rowcount == 0:
+                            continue
 
             try:
                 attr_def = cluster.find_attribute(
