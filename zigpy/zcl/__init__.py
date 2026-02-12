@@ -1588,16 +1588,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
     def get_cached_value(self, key: int | str | foundation.ZCLAttributeDef) -> Any:
         """Get cached attribute."""
-        attr_def = self.find_attribute(key)
-        return self._attr_cache.get_value(attr_def)
+        return self._attr_cache[key]
 
-    def get(self, key: int | str, default: Any | None = None) -> Any:
+    def get(
+        self, key: int | str | foundation.ZCLAttributeDef, default: Any | None = None
+    ) -> Any:
         """Get cached attribute."""
-        attr_def = self.find_attribute(key)
-        try:
-            return self._attr_cache.get_value(attr_def)
-        except (KeyError, UnsupportedAttribute):
-            return default
+        return self._attr_cache.get(key, default=default)
 
     def __getitem__(self, key: int | str) -> Any:
         """Return cached value of the attr."""

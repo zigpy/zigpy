@@ -98,20 +98,23 @@ class AttributeCache:
             last_updated=datetime.now(UTC) if last_updated is None else last_updated,
         )
 
-    def get(self, key: int, default: Any | None = None) -> Any:
+    def get(self, key: int | str | ZCLAttributeDef, default: Any | None = None) -> Any:
         try:
             return self[key]
         except (KeyError, UnsupportedAttribute):
             return default
 
-    def __getitem__(self, key: int) -> Any:
+    def __getitem__(self, key: int | str | ZCLAttributeDef) -> Any:
         try:
-            return self.get_value(self._cluster.find_attribute(key))
+            attr_def = self._cluster.find_attribute(key)
         except KeyError:
             # Fall back to legacy cache for unknown attributes
-            if key in self._legacy_cache:
-                return self._legacy_cache[key].value
-            raise
+            if not isinstance(key, int):
+                raise
+
+            return self._legacy_cache[key].value
+        else:
+            return self.get_value(attr_def)
 
     def __setitem__(self, key: int, value: Any) -> None:
         attr_def = self._cluster.find_attribute(key)
