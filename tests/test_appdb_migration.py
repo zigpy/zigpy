@@ -687,17 +687,22 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
     app.device_initialized(dev)
     await app.shutdown()
 
-    # Insert unmigrated attribute rows (manufacturer_code=-1)
     with sqlite3.connect(db_path) as conn:
-        insert_sql = (
+        conn.executemany(
             "INSERT INTO attributes_cache_v14"
             " (ieee, endpoint_id, cluster_type, cluster_id,"
             "  attr_id, manufacturer_code, status, value, last_updated)"
-            " VALUES (?, ?, ?, ?, ?, -1, 0, ?, ?)"
+            " VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)",
+            [
+                # Unmigrated row from v13->v14 (disambiguated cluster)
+                (str(dev.ieee), 1, 0, 0xFC01, 0x0010, -1, b"\x42", 0),
+                # Unmigrated row from v13->v14 (ambiguous cluster)
+                (str(dev.ieee), 1, 0, 0xFC02, 0x0020, -1, b"\x99", 0),
+                # Manually read through the UI after v13->v14, duplicating the above
+                # but with a newer value
+                (str(dev.ieee), 1, 0, 0xFC01, 0x0010, 0xABCD, b"\x43", 1.0),
+            ],
         )
-
-        conn.execute(insert_sql, (str(dev.ieee), 1, 0, 0xFC01, 0x0010, b"\x42", 0))
-        conn.execute(insert_sql, (str(dev.ieee), 1, 0, 0xFC02, 0x0020, b"\x99", 0))
         conn.commit()
 
     with patch("zigpy.quirks.DEVICE_REGISTRY", registry):
@@ -708,8 +713,9 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
     disambiguated = dev.endpoints[1].in_clusters[0xFC01]
     ambiguous = dev.endpoints[1].in_clusters[0xFC02]
 
-    # 2 candidates (1 manuf + 1 non-manuf): picked manuf-specific
-    assert disambiguated.get("manuf_attr") == b"\x42"
+    # 2 candidates (1 manuf + 1 non-manuf): picked manuf-specific.
+    # Uses the newer value from the already-resolved row, not stale/unmigrated value.
+    assert disambiguated.get("manuf_attr") == b"\x43"
     assert disambiguated.get("standard_attr") is None
 
     # 3 candidates: ambiguous, skipped
@@ -718,3 +724,20 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
     assert ambiguous.get("attr_c") is None
 
     await app.shutdown()
+
+    with sqlite3.connect(db_path) as conn:
+        # The disambiguated unmigrated row was deleted (a row with 0xABCD already existed)
+        rows = conn.execute(
+            "SELECT manufacturer_code FROM attributes_cache_v14"
+            " WHERE ieee = ? AND cluster_id = ? AND attr_id = ?",
+            (str(dev.ieee), 0xFC01, 0x0010),
+        ).fetchall()
+        assert rows == [(0xABCD,)]
+
+        # The ambiguous unmigrated row is still present
+        rows = conn.execute(
+            "SELECT manufacturer_code FROM attributes_cache_v14"
+            " WHERE ieee = ? AND cluster_id = ? AND attr_id = ?",
+            (str(dev.ieee), 0xFC02, 0x0020),
+        ).fetchall()
+        assert rows == [(-1,)]
