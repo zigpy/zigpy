@@ -260,7 +260,11 @@ class CustomCluster(zigpy.zcl.Cluster):
             succeeded.extend(results[0])
         return [succeeded]
 
-    def get(self, key: int | str, default: typing.Any | None = None) -> typing.Any:
+    def get(
+        self,
+        key: int | str | foundation.ZCLAttributeDef,
+        default: typing.Any | None = None,
+    ) -> typing.Any:
         """Get cached attribute."""
 
         try:
