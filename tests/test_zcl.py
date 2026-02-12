@@ -466,9 +466,45 @@ async def test_item_access_attributes(cluster):
         # wrong key type
         cluster.get(None)
 
-    # Test access to cached attribute via wrong attr name
+    # Unknown attribute names return the default via `.get`
+    assert cluster.get("no_such_attribute") is None
+
+
+async def test_legacy_cache_access_via_get(cluster):
+    """Test that legacy cache values (unknown attribute IDs) are accessible via get."""
+
+    # Accessible via attribute ID
+    cluster._update_attribute(0x1234, "legacy_value")
+    assert cluster._attr_cache[0x1234] == "legacy_value"
+    assert cluster._attr_cache.get(0x1234) == "legacy_value"
+    assert cluster.get(0x1234) == "legacy_value"
+
+    # String keys do not fall back to legacy cache
     with pytest.raises(KeyError):
-        cluster.get("no_such_attribute")
+        cluster._attr_cache["no_such_attribute"]
+
+    assert cluster._attr_cache.get("no_such_attribute") is None
+    assert cluster.get("no_such_attribute") is None
+
+    # Missing legacy values still raise/return default
+    with pytest.raises(KeyError):
+        cluster._attr_cache[0xABCD]
+
+    assert cluster.get(0xABCD) is None
+    assert cluster._attr_cache.get(0xABCD, "fallback") == "fallback"
+
+
+async def test_cache_access_via_attr_def(cluster):
+    """Test that cache can be accessed via ZCLAttributeDef objects."""
+    cluster._attr_cache[Basic.AttributeDefs.model.id] = "model"
+
+    assert cluster.get(Basic.AttributeDefs.model) == "model"
+    assert cluster._attr_cache[Basic.AttributeDefs.model] == "model"
+    assert cluster._attr_cache.get(Basic.AttributeDefs.model) == "model"
+
+    # Missing attribute def returns default
+    assert cluster.get(Basic.AttributeDefs.manufacturer) is None
+    assert cluster._attr_cache.get(Basic.AttributeDefs.manufacturer, "x") == "x"
 
 
 async def test_write_attributes(cluster):
