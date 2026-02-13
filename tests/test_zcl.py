@@ -2490,3 +2490,101 @@ def test_manufacturer_id_override_extended_zcl_cluster(app_mock) -> None:
         (TestCluster.ServerCommandDefs.reset_fact_default, None),
     ]:
         assert cluster._get_effective_manufacturer_code(definition) is expected
+
+
+async def test_quirk_manufacturer_code_context_isolation(app_mock) -> None:
+    """Test that manufacturer code context is properly handled in _update_attribute.
+
+    When a manufacturer-specific attribute is reported and the cluster has multiple
+    attributes sharing the same ID (with different manufacturer codes), the
+    _update_attribute call must use the correct manufacturer code. This tests that:
+    1. The value is stored directly in the typed cache (not via legacy cache fallback)
+    2. Other attributes updated by quirks don't inherit the manufacturer code context
+    """
+
+    class TestCluster(zcl.Cluster):
+        cluster_id = 0xABCD
+        ep_attribute = "test_cluster"
+        _skip_registry = True
+
+        class AttributeDefs(zcl.foundation.BaseAttributeDefs):
+            # Two attributes sharing the same ID with different manufacturer codes
+            manuf_attr = foundation.ZCLAttributeDef(
+                id=0x0001,
+                type=t.uint8_t,
+                manufacturer_code=0x1234,
+            )
+            standard_attr = foundation.ZCLAttributeDef(
+                id=0x0001,
+                type=t.uint8_t,
+                manufacturer_code=None,
+            )
+            # A different attribute that the quirk will also update
+            other_attr = foundation.ZCLAttributeDef(
+                id=0x0002,
+                type=t.uint8_t,
+            )
+
+        def _update_attribute(self, attrid, value):
+            super()._update_attribute(attrid, value)
+
+            # When updating the manufacturer-specific attribute, also update other_attr
+            if attrid == self.AttributeDefs.manuf_attr.id:
+                super()._update_attribute(self.AttributeDefs.other_attr.id, 99)
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    events = []
+    cluster.on_event(AttributeReportedEvent.event_type, events.append)
+    cluster.on_event(AttributeUpdatedEvent.event_type, events.append)
+
+    # The attribute is currently marked as unsupported
+    cluster.add_unsupported_attribute(TestCluster.AttributeDefs.manuf_attr)
+
+    # Report the manufacturer-specific attribute
+    await mock_attribute_report(
+        cluster, {TestCluster.AttributeDefs.manuf_attr: t.uint8_t(42)}
+    )
+
+    # The legacy cache should not contain the attribute, as the typed cache was used
+    assert 0x0001 not in cluster._attr_cache._legacy_cache
+
+    # Verify that the manufacturer-specific attribute was stored correctly
+    assert cluster._attr_cache.get_value(TestCluster.AttributeDefs.manuf_attr) == 42
+
+    # Verify that the standard attribute (same ID, no manufacturer code) was NOT updated
+    with pytest.raises(KeyError):
+        cluster._attr_cache.get_value(TestCluster.AttributeDefs.standard_attr)
+
+    # Verify that other_attr was updated (by the quirk) without manufacturer code context
+    assert cluster._attr_cache.get_value(TestCluster.AttributeDefs.other_attr) == 99
+
+    # Verify the events have the correct manufacturer codes
+    assert len(events) == 2
+
+    # First event: other_attr updated by quirk (should have no manufacturer code)
+    assert events[0] == AttributeUpdatedEvent(
+        device_ieee=str(dev.ieee),
+        endpoint_id=1,
+        cluster_type=zcl.ClusterType.Server,
+        cluster_id=TestCluster.cluster_id,
+        attribute_name="other_attr",
+        attribute_id=TestCluster.AttributeDefs.other_attr.id,
+        manufacturer_code=None,
+        value=99,
+    )
+
+    # Second event: manuf_attr reported (should have the manufacturer code)
+    assert events[1] == AttributeReportedEvent(
+        device_ieee=str(dev.ieee),
+        endpoint_id=1,
+        cluster_type=zcl.ClusterType.Server,
+        cluster_id=TestCluster.cluster_id,
+        attribute_name="manuf_attr",
+        attribute_id=TestCluster.AttributeDefs.manuf_attr.id,
+        manufacturer_code=0x1234,
+        raw_value=42,
+        value=42,
+    )

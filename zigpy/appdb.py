@@ -795,10 +795,21 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 if resolved_manufacturer_code is not UNDEFINED:
                     manufacturer_code = resolved_manufacturer_code
 
+                    row_params = {
+                        "ieee": row.ieee,
+                        "endpoint_id": row.endpoint_id,
+                        "cluster_type": row.cluster_type,
+                        "cluster_id": row.cluster_id,
+                        "attr_id": row.attr_id,
+                    }
+
+                    # Delete the unmigrated row and re-insert with the resolved
+                    # manufacturer code. INSERT OR IGNORE handles the case where a row
+                    # with the resolved code already exists (e.g. the user manually
+                    # read the attribute through the UI).
                     await self.execute(
                         f"""
-                        UPDATE attributes_cache{DB_V}
-                        SET manufacturer_code = :manufacturer_code
+                        DELETE FROM attributes_cache{DB_V}
                         WHERE
                             ieee = :ieee
                             AND endpoint_id = :endpoint_id
@@ -808,15 +819,33 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                             AND manufacturer_code = :old_manufacturer_code
                         """,
                         {
-                            "manufacturer_code": manufacturer_code,
-                            "ieee": row.ieee,
-                            "endpoint_id": row.endpoint_id,
-                            "cluster_type": row.cluster_type,
-                            "cluster_id": row.cluster_id,
-                            "attr_id": row.attr_id,
+                            **row_params,
                             "old_manufacturer_code": UNMIGRATED_MANUFACTURER_CODE,
                         },
                     )
+
+                    async with self.execute(
+                        f"""
+                        INSERT OR IGNORE INTO attributes_cache{DB_V}
+                            (ieee, endpoint_id, cluster_type, cluster_id,
+                             attr_id, manufacturer_code, status, value,
+                             last_updated)
+                        VALUES
+                            (:ieee, :endpoint_id, :cluster_type, :cluster_id,
+                             :attr_id, :manufacturer_code, :status, :value,
+                             :last_updated)
+                        """,
+                        {
+                            **row_params,
+                            "manufacturer_code": manufacturer_code,
+                            "status": row.status,
+                            "value": row.value,
+                            "last_updated": row.last_updated,
+                        },
+                    ) as cursor:
+                        # A resolved row already exists, it will populate the cache
+                        if cursor.rowcount == 0:
+                            continue
 
             try:
                 attr_def = cluster.find_attribute(
