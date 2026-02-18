@@ -956,6 +956,14 @@ class StructuredAttributeRead(t.Struct):
     selector: t.LVList[t.uint16_t, t.uint8_t]
 
 
+class StructuredAttributeWrite(t.Struct):
+    attrid: t.uint16_t
+    # `selector` combines "indicator" + "index"
+    selector: t.LVList[t.uint16_t, t.uint8_t]
+    datatype: DataTypeId
+    value: typing.Any
+
+
 class FrameType(t.enum2):
     """ZCL Frame Type."""
 
@@ -1347,7 +1355,7 @@ class GeneralCommand(t.enum8):
     Discover_Attributes = 0x0C
     Discover_Attributes_rsp = 0x0D
     Read_Attributes_Structured = 0x0E
-    # Write_Attributes_Structured = 0x0f
+    Write_Attributes_Structured = 0x0F
     # Write_Attributes_Structured_rsp = 0x10
     Discover_Commands_Received = 0x11
     Discover_Commands_Received_rsp = 0x12
@@ -1418,7 +1426,10 @@ GENERAL_COMMANDS = COMMANDS = {
         schema={"attributes": t.List[StructuredAttributeRead]},
         direction=Direction.Client_to_Server,
     ),
-    # Command.Write_Attributes_Structured: ZCLCommandDef(schema=(, ), direction=Direction.Client_to_Server),
+    GeneralCommand.Write_Attributes_Structured: ZCLCommandDef(
+        schema={"attributes": t.List[StructuredAttributeWrite]},
+        direction=Direction.Client_to_Server,
+    ),
     # Command.Write_Attributes_Structured_rsp: ZCLCommandDef(schema=(, ), direction=Direction.Server_to_Client),
     GeneralCommand.Discover_Commands_Received: ZCLCommandDef(
         schema={"start_command_id": t.uint8_t, "max_command_ids": t.uint8_t},
