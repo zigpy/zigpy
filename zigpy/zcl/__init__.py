@@ -1237,6 +1237,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     "attribute_updated", attrid, value, datetime.now(UTC)
                 )
 
+    async def write_attributes_raw(
+        self,
+        attributes: list[foundation.Attribute],
+        manufacturer_code: int | None = None,
+        **kwargs,
+    ) -> list[foundation.WriteAttributesResponse]:
+        """Write attributes to the device without any validation or caching."""
+        return await self._write_attributes(
+            attributes, manufacturer=manufacturer_code, **kwargs
+        )
+
     async def write_attributes(
         self,
         attributes: dict[str | int | foundation.ZCLAttributeDef, Any],
@@ -1274,7 +1285,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 zcl_attr.value.value = attr_def.type(value)
                 zcl_attrs.append(zcl_attr)
 
-            result = await self._write_attributes(
+            result = await self.write_attributes_raw(
                 zcl_attrs, manufacturer=manufacturer_code, **kwargs
             )
 
