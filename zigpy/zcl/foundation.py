@@ -950,6 +950,12 @@ class DiscoverAttributesExtendedResponseRecord(t.Struct):
     acl: AttributeAccessControl
 
 
+class StructuredAttributeRead(t.Struct):
+    attrid: t.uint16_t
+    # `selector` combines "indicator" + "index"
+    selector: t.LVList[t.uint16_t, t.uint8_t]
+
+
 class FrameType(t.enum2):
     """ZCL Frame Type."""
 
@@ -1340,7 +1346,7 @@ class GeneralCommand(t.enum8):
     Default_Response = 0x0B
     Discover_Attributes = 0x0C
     Discover_Attributes_rsp = 0x0D
-    # Read_Attributes_Structured = 0x0e
+    Read_Attributes_Structured = 0x0E
     # Write_Attributes_Structured = 0x0f
     # Write_Attributes_Structured_rsp = 0x10
     Discover_Commands_Received = 0x11
@@ -1408,7 +1414,10 @@ GENERAL_COMMANDS = COMMANDS = {
         },
         direction=Direction.Server_to_Client,
     ),
-    # Command.Read_Attributes_Structured: ZCLCommandDef(schema=(, ), direction=Direction.Client_to_Server),
+    GeneralCommand.Read_Attributes_Structured: ZCLCommandDef(
+        schema={"attributes": t.List[StructuredAttributeRead]},
+        direction=Direction.Client_to_Server,
+    ),
     # Command.Write_Attributes_Structured: ZCLCommandDef(schema=(, ), direction=Direction.Client_to_Server),
     # Command.Write_Attributes_Structured_rsp: ZCLCommandDef(schema=(, ), direction=Direction.Server_to_Client),
     GeneralCommand.Discover_Commands_Received: ZCLCommandDef(
