@@ -200,7 +200,10 @@ class Struct:
 
             # Missing fields cause an error if strict
             if value is None and not field.optional:
-                if strict:
+                if field.length is not None:
+                    value = field.type()
+                    setattr(self, field.name, value)
+                elif strict:
                     raise ValueError(
                         f"Value for field {field.name!r} is required: {self!r}"
                     )
