@@ -949,3 +949,92 @@ def test_frozen_struct():
         frozen,
         frozen.replace(a=2),
     }
+
+
+def test_struct_field_length():
+    """Test that StructField `length` reads exactly N items from a List field."""
+
+    class TestStruct(t.Struct):
+        count: t.uint8_t
+        items: t.List[t.uint16_t] = t.StructField(length=lambda s: s.count)
+
+    s = TestStruct(count=3, items=[0x0001, 0x0002, 0x0003])
+    serialized = s.serialize()
+    assert serialized == b"\x03\x01\x00\x02\x00\x03\x00"
+
+    s2, remaining = TestStruct.deserialize(serialized + b"extra")
+    assert s2.count == 3
+    assert list(s2.items) == [0x0001, 0x0002, 0x0003]
+    assert remaining == b"extra"
+
+
+def test_struct_field_length_zero():
+    """Test that length=0 produces an empty list and consumes no data."""
+
+    class TestStruct(t.Struct):
+        count: t.uint8_t
+        items: t.List[t.uint16_t] = t.StructField(length=lambda s: s.count)
+
+    s = TestStruct(count=0, items=[])
+    serialized = s.serialize()
+    assert serialized == b"\x00"
+
+    s2, remaining = TestStruct.deserialize(serialized + b"\xff\xff")
+    assert s2.count == 0
+    assert list(s2.items) == []
+    assert remaining == b"\xff\xff"
+
+
+def test_struct_field_length_with_trailing_field():
+    """Test that length-limited List doesn't consume data needed by later fields."""
+
+    class TestStruct(t.Struct):
+        count: t.uint8_t
+        items: t.List[t.uint16_t] = t.StructField(length=lambda s: s.count)
+        trailer: t.uint8_t
+
+    s = TestStruct(count=2, items=[0x000A, 0x000B], trailer=0xFF)
+    serialized = s.serialize()
+    assert serialized == b"\x02\x0a\x00\x0b\x00\xff"
+
+    s2, remaining = TestStruct.deserialize(serialized + b"tail")
+    assert s2.count == 2
+    assert list(s2.items) == [0x000A, 0x000B]
+    assert s2.trailer == 0xFF
+    assert remaining == b"tail"
+
+
+def test_struct_field_length_with_bitfields():
+    """Test that length works with a bitfield count field."""
+
+    class TestStruct(t.Struct):
+        count: t.uint4_t
+        flags: t.uint4_t
+        items: t.List[t.uint16_t] = t.StructField(length=lambda s: s.count)
+
+    s = TestStruct(count=2, flags=0x0F, items=[0x1234, 0x5678])
+    serialized = s.serialize()
+    # Bitfields: count=2 (low nibble), flags=0xF (high nibble) => 0xF2
+    assert serialized == b"\xf2\x34\x12\x78\x56"
+
+    s2, remaining = TestStruct.deserialize(serialized + b"rest")
+    assert s2.count == 2
+    assert s2.flags == 0x0F
+    assert list(s2.items) == [0x1234, 0x5678]
+    assert remaining == b"rest"
+
+
+def test_struct_field_length_computed():
+    """Test that length lambda can compute a value from other fields."""
+
+    class TestStruct(t.Struct):
+        raw_count: t.uint8_t
+        items: t.List[t.uint16_t] = t.StructField(length=lambda s: s.raw_count * 2)
+
+    s = TestStruct(raw_count=2, items=[0x0001, 0x0002, 0x0003, 0x0004])
+    serialized = s.serialize()
+
+    s2, remaining = TestStruct.deserialize(serialized + b"tail")
+    assert s2.raw_count == 2
+    assert list(s2.items) == [0x0001, 0x0002, 0x0003, 0x0004]
+    assert remaining == b"tail"

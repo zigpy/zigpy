@@ -37,6 +37,9 @@ class StructField:
         default=None, repr=False
     )
     optional: bool | None = False
+    length: typing.Callable[[Struct], int] | None = dataclasses.field(
+        default=None, repr=False
+    )
 
     repr: typing.Callable[[typing.Any], str] | None = dataclasses.field(
         default=repr, repr=False
@@ -338,7 +341,18 @@ class Struct:
                     f" {bitfields}"
                 )
 
-            value, data = field.type.deserialize(data)
+            if field.length is not None:
+                count = field.length(temp_instance)
+                items = []
+
+                for _ in range(count):
+                    item, data = field.type._item_type.deserialize(data)
+                    items.append(item)
+
+                value = field.type(items)
+            else:
+                value, data = field.type.deserialize(data)
+
             result[field.name] = value
             setattr(temp_instance, field.name, value)
 
