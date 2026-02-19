@@ -950,13 +950,13 @@ class DiscoverAttributesExtendedResponseRecord(t.Struct):
     acl: AttributeAccessControl
 
 
-class StructuredAttributeRead(t.Struct):
+class ReadAttributeStructured(t.Struct):
     attrid: t.uint16_t
     # `selector` combines "indicator" + "index"
     selector: t.LVList[t.uint16_t, t.uint8_t]
 
 
-class StructuredAttributeWrite(t.Struct):
+class WriteAttributeStructured(t.Struct):
     attrid: t.uint16_t
     # `selector` combines "indicator" + "index"
     selector: t.LVList[t.uint16_t, t.uint8_t]
@@ -974,7 +974,7 @@ class WriteAttributesStructuredStatusRecord(t.Struct):
     )
 
 
-class StructuredAttributesWriteResponse(list):
+class WriteAttributesStructuredResponse(list):
     """Write Attributes Structured response list.
 
     Response to Write Attributes Structured request should contain only success status,
@@ -1462,15 +1462,15 @@ GENERAL_COMMANDS = COMMANDS = {
         direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Read_Attributes_Structured: ZCLCommandDef(
-        schema={"attributes": t.List[StructuredAttributeRead]},
+        schema={"attributes": t.List[ReadAttributeStructured]},
         direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Write_Attributes_Structured: ZCLCommandDef(
-        schema={"attributes": t.List[StructuredAttributeWrite]},
+        schema={"attributes": t.List[WriteAttributeStructured]},
         direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Write_Attributes_Structured_rsp: ZCLCommandDef(
-        schema={"status_records": StructuredAttributesWriteResponse},
+        schema={"status_records": WriteAttributesStructuredResponse},
         direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Discover_Commands_Received: ZCLCommandDef(
