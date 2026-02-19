@@ -972,8 +972,7 @@ class ReadAttributeStructured(t.Struct):
 class WriteAttributeStructured(t.Struct):
     attrid: t.uint16_t
     selector: Selector
-    datatype: DataTypeId
-    value: typing.Any
+    value: TypeValue
 
 
 class WriteAttributesStructuredStatusRecord(t.Struct):

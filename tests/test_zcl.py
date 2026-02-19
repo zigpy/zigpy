@@ -2588,3 +2588,94 @@ async def test_quirk_manufacturer_code_context_isolation(app_mock) -> None:
         raw_value=42,
         value=42,
     )
+
+
+async def test_read_attributes_structured_raw(cluster):
+    """Test read_attributes_structured_raw sends the correct request."""
+    mock_response = [
+        [
+            foundation.ReadAttributeRecord(
+                attrid=0x0001, status=foundation.Status.SUCCESS
+            )
+        ]
+    ]
+
+    with patch.object(
+        cluster.endpoint, "request", new=AsyncMock(return_value=mock_response)
+    ):
+        result = await cluster.read_attributes_structured_raw(
+            [
+                foundation.ReadAttributeStructured(
+                    attrid=0x0001,
+                    selector=foundation.Selector(depth=0),
+                ),
+            ]
+        )
+
+        assert result == mock_response
+        assert cluster.endpoint.request.call_count == 1
+
+        # Verify the serialized payload contains attr_id + selector
+        data = cluster.endpoint.request.mock_calls[0].kwargs["data"]
+        assert data[3:] == b"\x01\x00\x00"  # attr_id=0x0001 + indicator=0x00
+
+
+async def test_write_attributes_structured_raw(cluster):
+    """Test write_attributes_structured_raw sends the correct request."""
+    mock_response = [
+        foundation.WriteAttributesStructuredResponse(
+            [
+                foundation.WriteAttributesStructuredStatusRecord(
+                    status=foundation.Status.SUCCESS,
+                )
+            ]
+        )
+    ]
+
+    with patch.object(
+        cluster.endpoint, "request", new=AsyncMock(return_value=mock_response)
+    ):
+        result = await cluster.write_attributes_structured_raw(
+            [
+                foundation.WriteAttributeStructured(
+                    attrid=0x0001,
+                    selector=foundation.Selector(depth=0),
+                    value=foundation.TypeValue(
+                        type=foundation.DataTypeId.uint8,
+                        value=t.uint8_t(0x42),
+                    ),
+                ),
+            ]
+        )
+
+        assert result == mock_response
+        assert cluster.endpoint.request.call_count == 1
+
+
+async def test_read_attributes_structured_raw_nested(cluster):
+    """Test read_attributes_structured_raw with nested index selector."""
+    mock_response = [
+        [
+            foundation.ReadAttributeRecord(
+                attrid=0x0005, status=foundation.Status.SUCCESS
+            )
+        ]
+    ]
+
+    with patch.object(
+        cluster.endpoint, "request", new=AsyncMock(return_value=mock_response)
+    ):
+        result = await cluster.read_attributes_structured_raw(
+            [
+                foundation.ReadAttributeStructured(
+                    attrid=0x0005,
+                    selector=foundation.Selector(depth=2, indexes=[5, 3]),
+                ),
+            ]
+        )
+
+        assert result == mock_response
+
+        data = cluster.endpoint.request.mock_calls[0].kwargs["data"]
+        # attr_id=0x0005 + indicator=0x02 + index1=5 + index2=3
+        assert data[3:] == b"\x05\x00\x02\x05\x00\x03\x00"
