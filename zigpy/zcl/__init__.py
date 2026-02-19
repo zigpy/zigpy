@@ -1286,7 +1286,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 zcl_attrs.append(zcl_attr)
 
             result = await self.write_attributes_raw(
-                zcl_attrs, manufacturer=manufacturer_code, **kwargs
+                zcl_attrs, manufacturer_code=manufacturer_code, **kwargs
             )
 
             records_group: list[foundation.WriteAttributesStatusRecord] = []
