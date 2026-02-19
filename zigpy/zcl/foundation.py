@@ -950,16 +950,28 @@ class DiscoverAttributesExtendedResponseRecord(t.Struct):
     acl: AttributeAccessControl
 
 
+class SelectorOperation(t.enum4):
+    Write = 0x0
+    Add = 0x1
+    Remove = 0x2
+
+
+class Selector(t.Struct):
+    """ZCL attribute selector for structured read/write commands."""
+
+    depth: t.uint4_t
+    op: SelectorOperation = t.StructField(default=SelectorOperation.Write)
+    indexes: t.List[t.uint16_t] = t.StructField(length=lambda s: s.depth)
+
+
 class ReadAttributeStructured(t.Struct):
     attrid: t.uint16_t
-    # `selector` combines "indicator" + "index"
-    selector: t.LVList[t.uint16_t, t.uint8_t]
+    selector: Selector
 
 
 class WriteAttributeStructured(t.Struct):
     attrid: t.uint16_t
-    # `selector` combines "indicator" + "index"
-    selector: t.LVList[t.uint16_t, t.uint8_t]
+    selector: Selector
     datatype: DataTypeId
     value: typing.Any
 
@@ -969,9 +981,7 @@ class WriteAttributesStructuredStatusRecord(t.Struct):
     attrid: t.uint16_t = t.StructField(
         requires=lambda s: s.status != Status.SUCCESS, repr=_hex_uint16_repr
     )
-    selector: t.LVList[t.uint16_t, t.uint8_t] = t.StructField(
-        requires=lambda s: s.status != Status.SUCCESS
-    )
+    selector: Selector = t.StructField(requires=lambda s: s.status != Status.SUCCESS)
 
 
 class WriteAttributesStructuredResponse(list):
