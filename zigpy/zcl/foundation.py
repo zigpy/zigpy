@@ -989,7 +989,7 @@ class WriteAttributesStructuredResponse(list):
         if record.status == Status.SUCCESS:
             return r, data
 
-        while len(data) >= 3:
+        while len(data) >= 4:
             record, data = WriteAttributesStructuredStatusRecord.deserialize(data)
             r.append(record)
         return r, data
