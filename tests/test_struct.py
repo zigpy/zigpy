@@ -1038,3 +1038,26 @@ def test_struct_field_length_computed():
     assert s2.raw_count == 2
     assert list(s2.items) == [0x0001, 0x0002, 0x0003, 0x0004]
     assert remaining == b"tail"
+
+
+def test_struct_field_default(expose_global):
+    """Test that StructField `default` provides a default value for omitted fields."""
+
+    @expose_global
+    class Op(t.enum8):
+        Read = 0x0
+        Write = 0x1
+
+    class TestStruct(t.Struct):
+        value: t.uint8_t
+        op: Op = t.StructField(default=Op.Read)
+
+    # Omit op, should get default
+    s1 = TestStruct(value=0x42)
+    assert s1.op == Op.Read
+    assert s1.serialize() == b"\x42\x00"
+
+    # Provide op explicitly
+    s2 = TestStruct(value=0x42, op=Op.Write)
+    assert s2.op == Op.Write
+    assert s2.serialize() == b"\x42\x01"

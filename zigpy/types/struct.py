@@ -40,6 +40,7 @@ class StructField:
     length: typing.Callable[[Struct], int] | None = dataclasses.field(
         default=None, repr=False
     )
+    default: Any = dataclasses.field(default=None, repr=False)
 
     repr: typing.Callable[[typing.Any], str] | None = dataclasses.field(
         default=repr, repr=False
@@ -91,7 +92,7 @@ class Struct:
                 inspect.Parameter(
                     name=f.name,
                     kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                    default=None,
+                    default=f.default,
                     annotation=f.type,
                 )
                 for f in cls.fields
