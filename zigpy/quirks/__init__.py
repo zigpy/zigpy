@@ -215,6 +215,7 @@ class CustomCluster(zigpy.zcl.Cluster):
 
     _skip_registry = True
     _CONSTANT_ATTRIBUTES: dict[int, typing.Any] | None = None
+    _DEFAULT_VALUES: dict[int, typing.Any] | None = None
 
     async def read_attributes_raw(
         self, attributes: list[int], manufacturer: int | None = None, **kwargs
