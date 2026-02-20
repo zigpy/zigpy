@@ -277,7 +277,16 @@ class CustomCluster(zigpy.zcl.Cluster):
         ):
             return self._CONSTANT_ATTRIBUTES[attr_def.id]
 
-        return super().get(key, default)
+        result = super().get(key)
+        if result is not None:
+            return result
+
+        # Fall back to default values if no cached value exists. These are returned
+        # when no value is cached yet, but are overridden by any cached value.
+        if self._DEFAULT_VALUES is not None and attr_def.id in self._DEFAULT_VALUES:
+            return self._DEFAULT_VALUES[attr_def.id]
+
+        return default
 
     async def apply_custom_configuration(self, *args, **kwargs):
         """Hook for applications to instruct instances to apply custom configuration."""
