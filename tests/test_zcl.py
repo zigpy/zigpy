@@ -29,6 +29,7 @@ from zigpy.zcl import (
 )
 from zigpy.zcl.clusters.general import Basic, OnOff, Ota
 from zigpy.zcl.clusters.measurement import OccupancySensing
+from zigpy.zcl.clusters.smartenergy import Metering
 from zigpy.zcl.helpers import ReportingConfig
 
 DEFAULT_TSN = 123
@@ -314,6 +315,52 @@ def test_attribute_report(cluster):
     cluster.handle_message(hdr, cmd)
 
     assert cluster._attr_cache[4] == "manufacturer"
+
+
+def test_attribute_report_manufacturer_specific_does_not_update_zcl_attribute(
+    cluster_by_id,
+):
+    """Manufacturer-specific attribute report must not update a standard ZCL attribute.
+
+    A device reports attribute 0x0302 with manufacturer code 0x1015 on the Metering
+    cluster (0x0702). Even though 0x0302 is the standard ZCL "divisor" attribute, the
+    report is manufacturer-specific and should NOT update the standard divisor cache.
+    """
+    metering = cluster_by_id(Metering.cluster_id)
+
+    # Ensure divisor is not in the cache
+    assert Metering.AttributeDefs.divisor.id not in metering._attr_cache
+
+    attr = zcl.foundation.Attribute()
+    attr.attrid = 0x0302
+    attr.value = zcl.foundation.TypeValue()
+    attr.value.value = 0x0200
+
+    hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.GLOBAL_COMMAND,
+            is_manufacturer_specific=True,
+            direction=foundation.Direction.Server_to_Client,
+            disable_default_response=True,
+            reserved=0,
+        ),
+        manufacturer=0x1015,
+        tsn=3,
+        command_id=foundation.GeneralCommand.Report_Attributes,
+    )
+
+    cmd = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Report_Attributes
+    ].schema([attr])
+    metering.handle_message(hdr, cmd)
+
+    # The standard ZCL divisor attribute's typed cache must NOT be updated
+    with pytest.raises(KeyError):
+        metering._attr_cache.get_value(Metering.AttributeDefs.divisor)
+
+    # The value should only be stored in the legacy cache (keyed by raw attr ID)
+    assert 0x0302 in metering._attr_cache._legacy_cache
+    assert metering._attr_cache._legacy_cache[0x0302].value == 0x0200
 
 
 def test_handle_request_unknown(cluster):

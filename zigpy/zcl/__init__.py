@@ -883,7 +883,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
                 if attr_def is None:
                     # Unknown attribute, update and emit reported event
-                    with _suppress_attribute_update_event(self.cluster_id, attr.attrid):
+                    with (
+                        _suppress_attribute_update_event(self.cluster_id, attr.attrid),
+                        _set_attribute_update_context(attr.attrid, hdr.manufacturer),
+                    ):
                         self._update_attribute(attr.attrid, value)
 
                     self.emit(
