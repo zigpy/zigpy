@@ -1240,6 +1240,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     "attribute_updated", attrid, value, datetime.now(UTC)
                 )
 
+    async def write_attributes_raw(
+        self,
+        attributes: list[foundation.Attribute],
+        manufacturer_code: int | None = None,
+        **kwargs,
+    ) -> foundation.WriteAttributesResponseSchema | foundation.DefaultResponse:
+        """Write attributes to the device without any validation or caching."""
+        return await self._write_attributes(
+            attributes, manufacturer=manufacturer_code, **kwargs
+        )
+
     async def write_attributes(
         self,
         attributes: dict[str | int | foundation.ZCLAttributeDef, Any],
@@ -1277,8 +1288,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 zcl_attr.value.value = attr_def.type(value)
                 zcl_attrs.append(zcl_attr)
 
-            result = await self._write_attributes(
-                zcl_attrs, manufacturer=manufacturer_code, **kwargs
+            result = await self.write_attributes_raw(
+                zcl_attrs, manufacturer_code=manufacturer_code, **kwargs
             )
 
             records_group: list[foundation.WriteAttributesStatusRecord] = []
@@ -1368,6 +1379,30 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         # TODO: ditch the low-level return type
         return [results]
+
+    async def read_attributes_structured_raw(
+        self,
+        attributes: list[foundation.ReadAttributeStructured],
+        manufacturer_code: int | None = None,
+        **kwargs,
+    ) -> foundation.ReadAttributesResponse | foundation.DefaultResponse:
+        """Read attributes (structured) from the device."""
+        return await self._read_attributes_structured(
+            attributes, manufacturer=manufacturer_code, **kwargs
+        )
+
+    async def write_attributes_structured_raw(
+        self,
+        attributes: list[foundation.WriteAttributeStructured],
+        manufacturer_code: int | None = None,
+        **kwargs,
+    ) -> (
+        foundation.WriteAttributesStructuredResponseSchema | foundation.DefaultResponse
+    ):
+        """Write attributes (structured) to the device."""
+        return await self._write_attributes_structured(
+            attributes, manufacturer=manufacturer_code, **kwargs
+        )
 
     async def bind(self, **kwargs):
         return await self._endpoint.device.zdo.bind(cluster=self, **kwargs)
@@ -1684,6 +1719,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     )
     _write_attributes = functools.partialmethod(
         general_command, foundation.GeneralCommand.Write_Attributes
+    )
+    _read_attributes_structured = functools.partialmethod(
+        general_command, foundation.GeneralCommand.Read_Attributes_Structured
+    )
+    _write_attributes_structured = functools.partialmethod(
+        general_command, foundation.GeneralCommand.Write_Attributes_Structured
     )
     discover_attributes = functools.partialmethod(
         general_command, foundation.GeneralCommand.Discover_Attributes

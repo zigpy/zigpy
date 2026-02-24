@@ -1050,13 +1050,18 @@ class List(list, Generic[_T], metaclass=KwargTypeMeta):
         return b"".join([self._item_type(i).serialize() for i in self])
 
     @classmethod
-    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
+    def deserialize(
+        cls, data: bytes, *, count: int | None = None
+    ) -> tuple[Self, bytes]:
         assert cls._item_type is not None
         lst = cls()
 
-        while data:
+        while data and (len(lst) < count if count is not None else True):
             item, data = cls._item_type.deserialize(data)
             lst.append(item)
+
+        if count is not None and len(lst) != count:
+            raise ValueError(f"Expected {count} items, got {len(lst)}")
 
         return lst, data
 

@@ -950,6 +950,68 @@ class DiscoverAttributesExtendedResponseRecord(t.Struct):
     acl: AttributeAccessControl
 
 
+class SelectorOperation(t.enum4):
+    Write = 0x0
+    Add = 0x1
+    Remove = 0x2
+
+
+class Selector(t.Struct):
+    """ZCL attribute selector for structured read/write commands."""
+
+    depth: t.uint4_t
+    op: SelectorOperation = t.StructField(default=SelectorOperation.Write)
+    indexes: t.List[t.uint16_t] = t.StructField(length=lambda s: s.depth)
+
+
+class ReadAttributeStructured(t.Struct):
+    attrid: t.uint16_t
+    selector: Selector
+
+
+class WriteAttributeStructured(t.Struct):
+    attrid: t.uint16_t
+    selector: Selector
+    value: TypeValue
+
+
+class WriteAttributesStructuredStatusRecord(t.Struct):
+    status: Status
+    attrid: t.uint16_t = t.StructField(
+        requires=lambda s: s.status != Status.SUCCESS, repr=_hex_uint16_repr
+    )
+    selector: Selector = t.StructField(requires=lambda s: s.status != Status.SUCCESS)
+
+
+class WriteAttributesStructuredResponse(list):
+    """Write Attributes Structured response list.
+
+    Response to Write Attributes Structured request should contain only success status,
+    in case when all attributes were successfully written or list of status + attr_id
+    records for all failed writes.
+    """
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
+        record, data = WriteAttributesStructuredStatusRecord.deserialize(data)
+        r = cls([record])
+        if record.status == Status.SUCCESS:
+            return r, data
+
+        while len(data) >= 4:
+            record, data = WriteAttributesStructuredStatusRecord.deserialize(data)
+            r.append(record)
+        return r, data
+
+    def serialize(self) -> bytes:
+        failed = [record for record in self if record.status != Status.SUCCESS]
+        if failed:
+            return b"".join(
+                [WriteAttributesStructuredStatusRecord(i).serialize() for i in failed]
+            )
+        return Status.SUCCESS.serialize()
+
+
 class FrameType(t.enum2):
     """ZCL Frame Type."""
 
@@ -1211,6 +1273,23 @@ class CommandSchema(t.Struct, tuple):  # noqa: SLOT001, PLW1641
         return super().__eq__(other)
 
 
+class ReadAttributesResponse(CommandSchema):
+    status_records: t.List[ReadAttributeRecord]
+
+
+class WriteAttributesResponseSchema(CommandSchema):
+    status_records: WriteAttributesResponse
+
+
+class WriteAttributesStructuredResponseSchema(CommandSchema):
+    status_records: WriteAttributesStructuredResponse
+
+
+class DefaultResponse(CommandSchema):
+    command_id: t.uint8_t
+    status: Status
+
+
 class ZCLAttributeAccess(enum.Flag):
     NONE = 0
     Read = 1
@@ -1340,9 +1419,9 @@ class GeneralCommand(t.enum8):
     Default_Response = 0x0B
     Discover_Attributes = 0x0C
     Discover_Attributes_rsp = 0x0D
-    # Read_Attributes_Structured = 0x0e
-    # Write_Attributes_Structured = 0x0f
-    # Write_Attributes_Structured_rsp = 0x10
+    Read_Attributes_Structured = 0x0E
+    Write_Attributes_Structured = 0x0F
+    Write_Attributes_Structured_rsp = 0x10
     Discover_Commands_Received = 0x11
     Discover_Commands_Received_rsp = 0x12
     Discover_Commands_Generated = 0x13
@@ -1357,7 +1436,7 @@ GENERAL_COMMANDS = COMMANDS = {
         direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Read_Attributes_rsp: ZCLCommandDef(
-        schema={"status_records": t.List[ReadAttributeRecord]},
+        schema=ReadAttributesResponse,
         direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Write_Attributes: ZCLCommandDef(
@@ -1367,7 +1446,7 @@ GENERAL_COMMANDS = COMMANDS = {
         schema={"attributes": t.List[Attribute]}, direction=Direction.Client_to_Server
     ),
     GeneralCommand.Write_Attributes_rsp: ZCLCommandDef(
-        schema={"status_records": WriteAttributesResponse},
+        schema=WriteAttributesResponseSchema,
         direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Write_Attributes_No_Response: ZCLCommandDef(
@@ -1394,7 +1473,7 @@ GENERAL_COMMANDS = COMMANDS = {
         direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Default_Response: ZCLCommandDef(
-        schema={"command_id": t.uint8_t, "status": Status},
+        schema=DefaultResponse,
         direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Discover_Attributes: ZCLCommandDef(
@@ -1408,9 +1487,18 @@ GENERAL_COMMANDS = COMMANDS = {
         },
         direction=Direction.Server_to_Client,
     ),
-    # Command.Read_Attributes_Structured: ZCLCommandDef(schema=(, ), direction=Direction.Client_to_Server),
-    # Command.Write_Attributes_Structured: ZCLCommandDef(schema=(, ), direction=Direction.Client_to_Server),
-    # Command.Write_Attributes_Structured_rsp: ZCLCommandDef(schema=(, ), direction=Direction.Server_to_Client),
+    GeneralCommand.Read_Attributes_Structured: ZCLCommandDef(
+        schema={"attributes": t.List[ReadAttributeStructured]},
+        direction=Direction.Client_to_Server,
+    ),
+    GeneralCommand.Write_Attributes_Structured: ZCLCommandDef(
+        schema={"attributes": t.List[WriteAttributeStructured]},
+        direction=Direction.Client_to_Server,
+    ),
+    GeneralCommand.Write_Attributes_Structured_rsp: ZCLCommandDef(
+        schema=WriteAttributesStructuredResponseSchema,
+        direction=Direction.Server_to_Client,
+    ),
     GeneralCommand.Discover_Commands_Received: ZCLCommandDef(
         schema={"start_command_id": t.uint8_t, "max_command_ids": t.uint8_t},
         direction=Direction.Client_to_Server,
