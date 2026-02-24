@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 import json
 import logging
 import re
-import types
+import sqlite3
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 import aiosqlite
@@ -43,11 +43,19 @@ if TYPE_CHECKING:
     from zigpy.application import ControllerApplication
     from zigpy.zcl import Cluster
 
+
+MIN_SQLITE_VERSION = (3, 24, 0)
+
+if sqlite3.sqlite_version_info < MIN_SQLITE_VERSION:
+    raise RuntimeError(
+        f"zigpy requires SQLite {'.'.join(map(str, MIN_SQLITE_VERSION))} or newer "
+        f"(found {sqlite3.sqlite_version})."
+    )
+
 LOGGER = logging.getLogger(__name__)
 
 DB_VERSION = 14
 DB_V = f"_v{DB_VERSION}"
-MIN_SQLITE_VERSION = (3, 24, 0)
 
 UNIX_EPOCH = datetime.fromtimestamp(0, tz=UTC)
 DB_V_REGEX = re.compile(r"(?:_v\d+)?$")
@@ -74,36 +82,6 @@ class AttributeCacheRow(NamedTuple):
     status: Status
     value: Any
     last_updated: float
-
-
-def _import_compatible_sqlite3(min_version: tuple[int, int, int]) -> types.ModuleType:
-    """Loads an SQLite module with a library version matching the provided constraint."""
-
-    import sqlite3  # noqa: PLC0415
-
-    try:
-        import pysqlite3  # noqa: PLC0415
-    except ImportError:
-        pysqlite3 = None
-
-    for module in [sqlite3, pysqlite3]:
-        if module is None:
-            continue
-
-        LOGGER.debug("SQLite version for %s: %s", module, module.sqlite_version)
-
-        if module.sqlite_version_info >= min_version:
-            return module
-    min_ver = ".".join(map(str, min_version))
-
-    raise RuntimeError(
-        f"zigpy requires SQLite {min_ver} or newer. If your distribution does not"
-        f" provide a more recent release, install pysqlite3 with"
-        f" `pip install pysqlite3-binary`"
-    )
-
-
-sqlite3 = _import_compatible_sqlite3(min_version=MIN_SQLITE_VERSION)
 
 
 def _register_sqlite_adapters():
