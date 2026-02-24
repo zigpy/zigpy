@@ -47,7 +47,10 @@ if TYPE_CHECKING:
 MIN_SQLITE_VERSION = (3, 24, 0)
 
 if sqlite3.sqlite_version_info < MIN_SQLITE_VERSION:
-    raise RuntimeError(f"zigpy requires SQLite {MIN_SQLITE_VERSION} or newer.")
+    raise RuntimeError(
+        f"zigpy requires SQLite {'.'.join(map(str, MIN_SQLITE_VERSION))} or newer "
+        f"(found {sqlite3.sqlite_version})."
+    )
 
 LOGGER = logging.getLogger(__name__)
 
