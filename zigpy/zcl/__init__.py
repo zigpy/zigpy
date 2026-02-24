@@ -38,6 +38,14 @@ _suppressed_attribute_updates: ContextVar[frozenset[tuple[int, int]]] = ContextV
     "_suppressed_attribute_updates", default=frozenset()
 )
 
+# Tracks the (attribute_id, manufacturer_code) for the current attribute update operation.
+# Used to preserve manufacturer code context when calling _update_attribute,
+# so that manufacturer-specific attributes with conflicting IDs are stored correctly.
+# The manufacturer code is only applied when the attribute ID matches the original.
+_attribute_update_context: ContextVar[tuple[int, int | None] | None] = ContextVar(
+    "_attribute_update_context", default=None
+)
+
 
 @contextlib.contextmanager
 def _suppress_attribute_update_event(
@@ -51,6 +59,25 @@ def _suppress_attribute_update_event(
         yield
     finally:
         _suppressed_attribute_updates.reset(token)
+
+
+@contextlib.contextmanager
+def _set_attribute_update_context(
+    attrid: int,
+    manufacturer_code: int | None,
+) -> Generator[None, None, None]:
+    """Set the attribute update context for preserving manufacturer code.
+
+    This allows quirks that call _update_attribute to preserve the manufacturer code,
+    ensuring manufacturer-specific attributes are stored with the correct cache key.
+    The manufacturer code is only applied when the attribute ID matches.
+    """
+    token = _attribute_update_context.set((attrid, manufacturer_code))
+
+    try:
+        yield
+    finally:
+        _attribute_update_context.reset(token)
 
 
 class ClusterType(enum.IntEnum):
@@ -443,23 +470,73 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         Returns None if the quirk swallowed the attribute (no super() call).
         """
-        with _suppress_attribute_update_event(self.cluster_id, attr_def.id):
+        manufacturer_code = self._get_effective_manufacturer_code(attr_def)
+
+        with (
+            _suppress_attribute_update_event(self.cluster_id, attr_def.id),
+            _set_attribute_update_context(attr_def.id, manufacturer_code),
+        ):
             self._update_attribute(attr_def.id, value)
 
         try:
             return self._attr_cache.get_value(attr_def)
         except KeyError:
-            pass
+            # Quirk swallowed the attribute
+            return None
 
-        # When multiple attrs share an ID (different manufacturer codes),
-        # `_update_attribute` stores in legacy cache. Move it to typed cache.
-        if attr_def.id in self._attr_cache._legacy_cache:
-            cached_value = self._attr_cache._legacy_cache.pop(attr_def.id).value
-            self._attr_cache.set_value(attr_def, cached_value)
-            return cached_value
+    @classmethod
+    def find_attributes(
+        cls,
+        name_or_id: int | str | foundation.ZCLAttributeDef,
+        *,
+        manufacturer_code: int | UndefinedType | None = UNDEFINED,
+    ) -> list[foundation.ZCLAttributeDef]:
+        if isinstance(name_or_id, foundation.ZCLAttributeDef):
+            return [cls.attributes_by_name[name_or_id.name]]
+        elif isinstance(name_or_id, str):
+            return [cls.attributes_by_name[name_or_id]]
+        elif isinstance(name_or_id, int):
+            candidates = cls._attributes_by_id[name_or_id]
+            manuf_specific = candidates[True]
+            non_manuf_specific = candidates[False]
+            maybe_manuf_specific = candidates[None]
 
-        # Quirk swallowed the attribute
-        return None
+            if manufacturer_code is not UNDEFINED:
+                results = []
+
+                if manufacturer_code is None:
+                    # Explicitly no manufacturer code
+                    if None in non_manuf_specific:
+                        results.append(non_manuf_specific[None])
+                    if UNDEFINED in non_manuf_specific:
+                        results.append(non_manuf_specific[UNDEFINED])
+                    if UNDEFINED in maybe_manuf_specific:
+                        results.append(maybe_manuf_specific[UNDEFINED])
+                else:
+                    # Try exact manufacturer-specific match
+                    if manufacturer_code in manuf_specific:
+                        results.append(manuf_specific[manufacturer_code])
+
+                    # Try manufacturer-specific without explicit code (deprecation)
+                    if UNDEFINED in manuf_specific:
+                        results.append(manuf_specific[UNDEFINED])
+
+                if not results:
+                    raise KeyError(manufacturer_code)
+
+                return results
+
+            # No manufacturer code filter: return all candidates
+            return (
+                list(manuf_specific.values())
+                + list(non_manuf_specific.values())
+                + list(maybe_manuf_specific.values())
+            )
+        else:
+            raise TypeError(  # noqa: TRY004
+                f"Attribute must be a definition, string, or integer,"
+                f" not {name_or_id!r} ({type(name_or_id)!r})"
+            )
 
     @classmethod
     def find_attribute(
@@ -468,70 +545,41 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         *,
         manufacturer_code: int | UndefinedType | None = UNDEFINED,
     ) -> foundation.ZCLAttributeDef:
-        if isinstance(name_or_id, foundation.ZCLAttributeDef):
-            return cls.attributes_by_name[name_or_id.name]
-        elif isinstance(name_or_id, str):
-            return cls.attributes_by_name[name_or_id]
-        elif isinstance(name_or_id, int):
-            # Integer lookups are the most complicated, since we know the ID of an
-            # attribute but there may be multiple candidates sharing it
-            candidates = cls._attributes_by_id[name_or_id]
-            manuf_specific = candidates[True]
-            non_manuf_specific = candidates[False]
-            maybe_manuf_specific = candidates[None]
+        all_candidates = cls.find_attributes(
+            name_or_id, manufacturer_code=manufacturer_code
+        )
 
-            # If a manufacturer code is explicitly provided, we can narrow things down
-            if manufacturer_code is not UNDEFINED:
-                if manufacturer_code is None:
-                    # Explicitly no manufacturer code
-                    if None in non_manuf_specific:
-                        return non_manuf_specific[None]
+        # Non-integer lookups always return a single result
+        if not isinstance(name_or_id, int):
+            return all_candidates[0]
 
-                    # Fall back to unspecified
-                    if UNDEFINED in non_manuf_specific:
-                        return non_manuf_specific[UNDEFINED]
-
-                    if UNDEFINED in maybe_manuf_specific:
-                        return maybe_manuf_specific[UNDEFINED]
-                else:
-                    # Try exact manufacturer-specific match
-                    if manufacturer_code in manuf_specific:
-                        return manuf_specific[manufacturer_code]
-
-                    # Try manufacturer-specific without explicit code (deprecation)
-                    if UNDEFINED in manuf_specific:
-                        attr_def = manuf_specific[UNDEFINED]
-                        warnings.warn(
-                            f"Attribute {attr_def.name!r} has `is_manufacturer_specific`"
-                            f" without an explicit `manufacturer_code`. Please set"
-                            f" `manufacturer_code=0x{manufacturer_code:04X}`.",
-                            DeprecationWarning,
-                            stacklevel=3,
-                        )
-                        return attr_def
-
-                raise KeyError(manufacturer_code)
-
-            # Otherwise, we pick the first one and hope there is only a single choice
-            all_candidates = (
-                list(manuf_specific.values())
-                + list(non_manuf_specific.values())
-                + list(maybe_manuf_specific.values())
-            )
-
-            if len(all_candidates) > 1:
-                raise KeyError(
-                    f"Multiple definitions exist for attribute ID {name_or_id:#06x},"
-                    f" please specify a manufacturer code: {candidates!r}"
+        if manufacturer_code is not UNDEFINED:
+            # Emit deprecation warning for manufacturer-specific attrs without
+            # an explicit manufacturer_code
+            if (
+                manufacturer_code is not None
+                and all_candidates[0].manufacturer_code is UNDEFINED
+                and all_candidates[0].is_manufacturer_specific is True
+            ):
+                warnings.warn(
+                    f"Attribute {all_candidates[0].name!r} has"
+                    f" `is_manufacturer_specific` without an explicit"
+                    f" `manufacturer_code`. Please set"
+                    f" `manufacturer_code=0x{manufacturer_code:04X}`.",
+                    DeprecationWarning,
+                    stacklevel=2,
                 )
 
-            # Pick the only one
             return all_candidates[0]
-        else:
-            raise TypeError(  # noqa: TRY004
-                f"Attribute must be a definition, string, or integer,"
-                f" not {name_or_id!r} ({type(name_or_id)!r})"
+
+        if len(all_candidates) > 1:
+            candidates = cls._attributes_by_id[name_or_id]
+            raise KeyError(
+                f"Multiple definitions exist for attribute ID {name_or_id:#06x},"
+                f" please specify a manufacturer code: {candidates!r}"
             )
+
+        return all_candidates[0]
 
     def is_attribute_unsupported(
         self, attr: int | str | foundation.ZCLAttributeDef
@@ -835,7 +883,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
                 if attr_def is None:
                     # Unknown attribute, update and emit reported event
-                    with _suppress_attribute_update_event(self.cluster_id, attr.attrid):
+                    with (
+                        _suppress_attribute_update_event(self.cluster_id, attr.attrid),
+                        _set_attribute_update_context(attr.attrid, hdr.manufacturer),
+                    ):
                         self._update_attribute(attr.attrid, value)
 
                     self.emit(
@@ -1113,8 +1164,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         # other clusters or attributes to emit their own events.
         suppressed = (self.cluster_id, attrid) in _suppressed_attribute_updates.get()
 
+        # Get the manufacturer code from context if set (set by
+        # _legacy_apply_quirk_attribute_update to preserve manufacturer code).
+        # Only apply when the attribute ID matches the original to avoid affecting
+        # other attributes that quirks may update.
+        ctx = _attribute_update_context.get()
+
         try:
-            attr_def = self.find_attribute(attrid)
+            if ctx is not None and ctx[0] == attrid:
+                attr_def = self.find_attribute(attrid, manufacturer_code=ctx[1])
+            else:
+                attr_def = self.find_attribute(attrid)
         except KeyError:
             if value is not None:
                 self._attr_cache.set_legacy_value(attrid, value)
@@ -1180,6 +1240,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     "attribute_updated", attrid, value, datetime.now(UTC)
                 )
 
+    async def write_attributes_raw(
+        self,
+        attributes: list[foundation.Attribute],
+        manufacturer_code: int | None = None,
+        **kwargs,
+    ) -> foundation.WriteAttributesResponseSchema | foundation.DefaultResponse:
+        """Write attributes to the device without any validation or caching."""
+        return await self._write_attributes(
+            attributes, manufacturer=manufacturer_code, **kwargs
+        )
+
     async def write_attributes(
         self,
         attributes: dict[str | int | foundation.ZCLAttributeDef, Any],
@@ -1217,8 +1288,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 zcl_attr.value.value = attr_def.type(value)
                 zcl_attrs.append(zcl_attr)
 
-            result = await self._write_attributes(
-                zcl_attrs, manufacturer=manufacturer_code, **kwargs
+            result = await self.write_attributes_raw(
+                zcl_attrs, manufacturer_code=manufacturer_code, **kwargs
             )
 
             records_group: list[foundation.WriteAttributesStatusRecord] = []
@@ -1308,6 +1379,30 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         # TODO: ditch the low-level return type
         return [results]
+
+    async def read_attributes_structured_raw(
+        self,
+        attributes: list[foundation.ReadAttributeStructured],
+        manufacturer_code: int | None = None,
+        **kwargs,
+    ) -> foundation.ReadAttributesResponse | foundation.DefaultResponse:
+        """Read attributes (structured) from the device."""
+        return await self._read_attributes_structured(
+            attributes, manufacturer=manufacturer_code, **kwargs
+        )
+
+    async def write_attributes_structured_raw(
+        self,
+        attributes: list[foundation.WriteAttributeStructured],
+        manufacturer_code: int | None = None,
+        **kwargs,
+    ) -> (
+        foundation.WriteAttributesStructuredResponseSchema | foundation.DefaultResponse
+    ):
+        """Write attributes (structured) to the device."""
+        return await self._write_attributes_structured(
+            attributes, manufacturer=manufacturer_code, **kwargs
+        )
 
     async def bind(self, **kwargs):
         return await self._endpoint.device.zdo.bind(cluster=self, **kwargs)
@@ -1624,6 +1719,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     )
     _write_attributes = functools.partialmethod(
         general_command, foundation.GeneralCommand.Write_Attributes
+    )
+    _read_attributes_structured = functools.partialmethod(
+        general_command, foundation.GeneralCommand.Read_Attributes_Structured
+    )
+    _write_attributes_structured = functools.partialmethod(
+        general_command, foundation.GeneralCommand.Write_Attributes_Structured
     )
     discover_attributes = functools.partialmethod(
         general_command, foundation.GeneralCommand.Discover_Attributes

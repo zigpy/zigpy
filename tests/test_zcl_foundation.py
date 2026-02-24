@@ -836,3 +836,97 @@ def test_array():
     ]
 
     assert orig_data == hdr.serialize() + rsp.serialize()
+
+
+@pytest.mark.parametrize(
+    ("data", "depth", "op", "indexes"),
+    [
+        (b"\x00", 0, foundation.SelectorOperation.Write, []),
+        (b"\x02\x05\x00\x03\x00", 2, foundation.SelectorOperation.Write, [5, 3]),
+        (b"\x11\xab\xcd", 1, foundation.SelectorOperation.Add, [0xCDAB]),
+        (b"\x21\xab\xcd", 1, foundation.SelectorOperation.Remove, [0xCDAB]),
+    ],
+)
+def test_selector_deserialize(data, depth, op, indexes):
+    selector, rest = foundation.Selector.deserialize(data)
+    assert rest == b""
+    assert selector.depth == depth
+    assert selector.op == op
+    assert list(selector.indexes) == indexes
+    assert selector.serialize() == data
+
+
+def test_write_attrs_structured_response_deserialize():
+    """Test WriteAttributesStructuredResponse deserialization."""
+
+    # All success: single status byte
+    extra = b"\xaa\x55"
+    r, rest = foundation.WriteAttributesStructuredResponse.deserialize(b"\x00" + extra)
+    assert len(r) == 1
+    assert r[0].status == foundation.Status.SUCCESS
+    assert rest == extra
+
+    # Multiple failures: status(1) + attrid(2) + selector indicator(1) = 4 bytes each
+    data = (
+        b"\x86"  # UNSUPPORTED_ATTRIBUTE
+        b"\x34\x12"  # attrid=0x1234
+        b"\x00"  # selector: depth=0, op=Write
+        b"\x87"  # INVALID_VALUE
+        b"\x35\x12"  # attrid=0x1235
+        b"\x01\xab\xcd"  # selector: depth=1, op=Write, index=0xCDAB
+    )
+    r, rest = foundation.WriteAttributesStructuredResponse.deserialize(data + extra)
+    assert len(r) == 2
+    assert rest == extra
+    assert r[0].status == foundation.Status.UNSUPPORTED_ATTRIBUTE
+    assert r[0].attrid == 0x1234
+    assert r[0].selector.depth == 0
+    assert r[1].status == foundation.Status.INVALID_VALUE
+    assert r[1].attrid == 0x1235
+    assert r[1].selector.depth == 1
+    assert list(r[1].selector.indexes) == [0xCDAB]
+
+
+@pytest.mark.parametrize(
+    ("records", "data"),
+    [
+        # All success → single 0x00 byte
+        (
+            [
+                foundation.WriteAttributesStructuredStatusRecord(
+                    status=foundation.Status.SUCCESS,
+                ),
+            ],
+            b"\x00",
+        ),
+        # Single failure
+        (
+            [
+                foundation.WriteAttributesStructuredStatusRecord(
+                    status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
+                    attrid=0x1234,
+                    selector=foundation.Selector(depth=0),
+                ),
+            ],
+            b"\x86\x34\x12\x00",
+        ),
+        # Mixed: only failures serialized
+        (
+            [
+                foundation.WriteAttributesStructuredStatusRecord(
+                    status=foundation.Status.SUCCESS,
+                ),
+                foundation.WriteAttributesStructuredStatusRecord(
+                    status=foundation.Status.INVALID_VALUE,
+                    attrid=0x0001,
+                    selector=foundation.Selector(depth=1, indexes=[0x0002]),
+                ),
+            ],
+            b"\x87\x01\x00\x01\x02\x00",
+        ),
+    ],
+)
+def test_write_attrs_structured_response_serialize(records, data):
+    """Test WriteAttributesStructuredResponse serialization."""
+    r = foundation.WriteAttributesStructuredResponse(records)
+    assert r.serialize() == data

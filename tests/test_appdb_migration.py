@@ -7,16 +7,19 @@ from aiosqlite.context import contextmanager
 import pytest
 
 from tests.async_mock import AsyncMock, MagicMock, patch
-from tests.conftest import app  # noqa: F401
+from tests.conftest import app, make_node_desc  # noqa: F401
 from tests.test_appdb import auto_kill_aiosqlite, make_app_with_db  # noqa: F401
 import zigpy.appdb
 from zigpy.appdb import sqlite3
 import zigpy.appdb_schemas
+import zigpy.endpoint
+from zigpy.profiles import zha as zha_profile
 from zigpy.quirks import CustomCluster
 from zigpy.quirks.registry import DeviceRegistry
 from zigpy.quirks.v2 import QuirkBuilder
 import zigpy.types as t
-from zigpy.zcl.foundation import BaseAttributeDefs, ZCLAttributeDef
+from zigpy.zcl.clusters.general import Basic
+from zigpy.zcl.foundation import BaseAttributeDefs, Status, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
 
 
@@ -547,13 +550,20 @@ async def test_unknown_manufacturer_code_migration(test_db, caplog):
 async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
     """Test that attributes on manufacturer-specific clusters get the device's manufacturer_id."""
 
-    # Simple quirk for Third Reality night light with is_manufacturer_specific=True
+    # Simple quirk for Third Reality night light with is_manufacturer_specific=True.
+    # The real device (f4:42:50:c3:96:14:00:00) has cached attrs 2-5 on 0xFC00 and
+    # attr 4 is also in unsupported_attributes_v13.
     class TestCluster(CustomCluster):
         cluster_id = 0xFC00
 
         class AttributeDefs(BaseAttributeDefs):
             test_attr = ZCLAttributeDef(
                 id=0x0002,
+                type=t.uint8_t,
+                is_manufacturer_specific=True,
+            )
+            unsupported_attr = ZCLAttributeDef(
+                id=0x0004,
                 type=t.uint8_t,
                 is_manufacturer_specific=True,
             )
@@ -567,12 +577,12 @@ async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
     )
 
     test_db_path = test_db("zigbee_puddly2.db")
+    third_reality_ieee = "f4:42:50:c3:96:14:00:00"
 
     with patch("zigpy.quirks.DEVICE_REGISTRY", registry):
         app = await make_app_with_db(test_db_path)
-        await app.shutdown()
 
-    # Check that attributes on 0xFC00 got the device's manufacturer_id (0x130D = 4877)
+    # Check that cached attributes on 0xFC00 got the device's manufacturer_id
     with sqlite3.connect(test_db_path) as conn:
         cur = conn.cursor()
         cur.execute(
@@ -580,8 +590,154 @@ async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
             SELECT manufacturer_code
             FROM attributes_cache_v14
             WHERE cluster_id = 0xFC00 AND attr_id = 0x0002
-            """
+            """,
         )
         rows = cur.fetchall()
 
     assert rows == [(0x130D,), (0x130D,), (0x130D,)]
+
+    # The unsupported manufacturer-specific attr also got the correct manufacturer code
+    with sqlite3.connect(test_db_path) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT manufacturer_code, status
+            FROM attributes_cache_v14
+            WHERE ieee = ? AND cluster_id = 0xFC00 AND attr_id = 0x0004
+            """,
+            (third_reality_ieee,),
+        )
+        row = cur.fetchone()
+
+    assert row == (0x130D, Status.UNSUPPORTED_ATTRIBUTE)
+
+    # Confirm it's loaded as unsupported in the device's attribute cache
+    dev = app.get_device(ieee=t.EUI64.convert(third_reality_ieee))
+    cluster = dev.endpoints[1].in_clusters[0xFC00]
+    assert cluster.is_attribute_unsupported(TestCluster.AttributeDefs.unsupported_attr)
+
+    # Attr 0x0003 has no definition in our quirk but exists in the DB. It should be
+    # stored in the legacy cache regardless.
+    with pytest.raises(KeyError):
+        cluster.find_attribute(0x0003)
+
+    assert 0x0003 in cluster._attr_cache._legacy_cache
+    assert cluster._attr_cache.get(0x0003) == 20
+
+    await app.shutdown()
+
+
+async def test_data_migration_ambiguous_attributes(tmp_path):
+    """Test data migration disambiguation when find_attributes returns multiple."""
+
+    class DisambiguatedCluster(CustomCluster):
+        cluster_id = 0xFC01
+
+        class AttributeDefs(BaseAttributeDefs):
+            standard_attr = ZCLAttributeDef(
+                id=0x0010, type=t.uint8_t, is_manufacturer_specific=False
+            )
+            manuf_attr = ZCLAttributeDef(
+                id=0x0010, type=t.uint8_t, is_manufacturer_specific=True
+            )
+
+    class AmbiguousCluster(CustomCluster):
+        cluster_id = 0xFC02
+
+        class AttributeDefs(BaseAttributeDefs):
+            attr_a = ZCLAttributeDef(
+                id=0x0020, type=t.uint8_t, is_manufacturer_specific=True
+            )
+            attr_b = ZCLAttributeDef(
+                id=0x0020, type=t.uint8_t, manufacturer_code=0x1111
+            )
+            attr_c = ZCLAttributeDef(
+                id=0x0020, type=t.uint8_t, manufacturer_code=0x2222
+            )
+
+    registry = DeviceRegistry()
+
+    (
+        QuirkBuilder("manufacturer", "model", registry=registry)
+        .replaces(DisambiguatedCluster)
+        .replaces(AmbiguousCluster)
+        .add_to_registry()
+    )
+
+    db_path = str(tmp_path / "test.db")
+
+    app = await make_app_with_db(db_path)
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    dev.node_desc = make_node_desc(manufacturer_code=0xABCD)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = zha_profile.PROFILE_ID
+    ep.device_type = zha_profile.DeviceType.PUMP
+
+    ep.add_input_cluster(Basic.cluster_id)
+    ep.add_input_cluster(DisambiguatedCluster.cluster_id)
+    ep.add_input_cluster(AmbiguousCluster.cluster_id)
+
+    basic = dev.endpoints[1].basic
+    basic.update_attribute(Basic.AttributeDefs.manufacturer, "manufacturer")
+    basic.update_attribute(Basic.AttributeDefs.model, "model")
+
+    app.device_initialized(dev)
+    await app.shutdown()
+
+    with sqlite3.connect(db_path) as conn:
+        conn.executemany(
+            "INSERT INTO attributes_cache_v14"
+            " (ieee, endpoint_id, cluster_type, cluster_id,"
+            "  attr_id, manufacturer_code, status, value, last_updated)"
+            " VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)",
+            [
+                # Unmigrated row from v13->v14 (disambiguated cluster)
+                (str(dev.ieee), 1, 0, 0xFC01, 0x0010, -1, b"\x42", 0),
+                # Unmigrated row from v13->v14 (ambiguous cluster)
+                (str(dev.ieee), 1, 0, 0xFC02, 0x0020, -1, b"\x99", 0),
+                # Manually read through the UI after v13->v14, duplicating the above
+                # but with a newer value
+                (str(dev.ieee), 1, 0, 0xFC01, 0x0010, 0xABCD, b"\x43", 1.0),
+            ],
+        )
+        conn.commit()
+
+    with patch("zigpy.quirks.DEVICE_REGISTRY", registry):
+        app = await make_app_with_db(db_path)
+        dev = app.get_device(ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+
+    # Migration runs during load
+    disambiguated = dev.endpoints[1].in_clusters[0xFC01]
+    ambiguous = dev.endpoints[1].in_clusters[0xFC02]
+
+    # 2 candidates (1 manuf + 1 non-manuf): picked manuf-specific.
+    # Uses the newer value from the already-resolved row, not stale/unmigrated value.
+    assert disambiguated.get("manuf_attr") == b"\x43"
+    assert disambiguated.get("standard_attr") is None
+
+    # 3 candidates: ambiguous, skipped
+    assert ambiguous.get("attr_a") is None
+    assert ambiguous.get("attr_b") is None
+    assert ambiguous.get("attr_c") is None
+
+    await app.shutdown()
+
+    with sqlite3.connect(db_path) as conn:
+        # The disambiguated unmigrated row was deleted (a row with 0xABCD already existed)
+        rows = conn.execute(
+            "SELECT manufacturer_code FROM attributes_cache_v14"
+            " WHERE ieee = ? AND cluster_id = ? AND attr_id = ?",
+            (str(dev.ieee), 0xFC01, 0x0010),
+        ).fetchall()
+        assert rows == [(0xABCD,)]
+
+        # The ambiguous unmigrated row is still present
+        rows = conn.execute(
+            "SELECT manufacturer_code FROM attributes_cache_v14"
+            " WHERE ieee = ? AND cluster_id = ? AND attr_id = ?",
+            (str(dev.ieee), 0xFC02, 0x0020),
+        ).fetchall()
+        assert rows == [(-1,)]

@@ -949,3 +949,144 @@ def test_frozen_struct():
         frozen,
         frozen.replace(a=2),
     }
+
+
+def test_struct_field_length():
+    """Test that StructField `length` reads exactly N items from a List field."""
+
+    class TestStruct(t.Struct):
+        count: t.uint8_t
+        items: t.List[t.uint16_t] = t.StructField(length=lambda s: s.count)
+
+    s = TestStruct(count=3, items=[0x0001, 0x0002, 0x0003])
+    serialized = s.serialize()
+    assert serialized == b"\x03\x01\x00\x02\x00\x03\x00"
+
+    s2, remaining = TestStruct.deserialize(serialized + b"extra")
+    assert s2.count == 3
+    assert list(s2.items) == [0x0001, 0x0002, 0x0003]
+    assert remaining == b"extra"
+
+
+def test_struct_field_length_zero():
+    """Test that length=0 produces an empty list and consumes no data."""
+
+    class TestStruct(t.Struct):
+        count: t.uint8_t
+        items: t.List[t.uint16_t] = t.StructField(length=lambda s: s.count)
+
+    s = TestStruct(count=0, items=[])
+    serialized = s.serialize()
+    assert serialized == b"\x00"
+
+    s2, remaining = TestStruct.deserialize(serialized + b"\xff\xff")
+    assert s2.count == 0
+    assert list(s2.items) == []
+    assert remaining == b"\xff\xff"
+
+
+def test_struct_field_length_with_trailing_field():
+    """Test that length-limited List doesn't consume data needed by later fields."""
+
+    class TestStruct(t.Struct):
+        count: t.uint8_t
+        items: t.List[t.uint16_t] = t.StructField(length=lambda s: s.count)
+        trailer: t.uint8_t
+
+    s = TestStruct(count=2, items=[0x000A, 0x000B], trailer=0xFF)
+    serialized = s.serialize()
+    assert serialized == b"\x02\x0a\x00\x0b\x00\xff"
+
+    s2, remaining = TestStruct.deserialize(serialized + b"tail")
+    assert s2.count == 2
+    assert list(s2.items) == [0x000A, 0x000B]
+    assert s2.trailer == 0xFF
+    assert remaining == b"tail"
+
+
+def test_struct_field_length_with_bitfields():
+    """Test that length works with a bitfield count field."""
+
+    class TestStruct(t.Struct):
+        count: t.uint4_t
+        flags: t.uint4_t
+        items: t.List[t.uint16_t] = t.StructField(length=lambda s: s.count)
+
+    s = TestStruct(count=2, flags=0x0F, items=[0x1234, 0x5678])
+    serialized = s.serialize()
+    # Bitfields: count=2 (low nibble), flags=0xF (high nibble) => 0xF2
+    assert serialized == b"\xf2\x34\x12\x78\x56"
+
+    s2, remaining = TestStruct.deserialize(serialized + b"rest")
+    assert s2.count == 2
+    assert s2.flags == 0x0F
+    assert list(s2.items) == [0x1234, 0x5678]
+    assert remaining == b"rest"
+
+
+def test_struct_field_length_computed():
+    """Test that length lambda can compute a value from other fields."""
+
+    class TestStruct(t.Struct):
+        raw_count: t.uint8_t
+        items: t.List[t.uint16_t] = t.StructField(length=lambda s: s.raw_count * 2)
+
+    s = TestStruct(raw_count=2, items=[0x0001, 0x0002, 0x0003, 0x0004])
+    serialized = s.serialize()
+
+    s2, remaining = TestStruct.deserialize(serialized + b"tail")
+    assert s2.raw_count == 2
+    assert list(s2.items) == [0x0001, 0x0002, 0x0003, 0x0004]
+    assert remaining == b"tail"
+
+    with pytest.raises(ValueError):
+        # Not enough items provided
+        TestStruct(raw_count=2, items=[0x0001]).serialize()
+
+    # Zero is a special case
+    assert (
+        TestStruct(raw_count=0).serialize()
+        == TestStruct(raw_count=0, items=[]).serialize()
+        == b"\x00"
+    )
+
+    # Zero length with incongruent items array is an error
+    with pytest.raises(ValueError):
+        TestStruct(raw_count=0, items=[0x0001]).serialize()
+
+    # Deserialization will fail if the exact number of elements isn't available
+    with pytest.raises(ValueError):
+        TestStruct.deserialize(s.serialize()[:-1])
+
+
+def test_struct_field_bad_type_derived_length() -> None:
+    """Test that structs cannot be created with non-List fields with lengths."""
+
+    with pytest.raises(TypeError):
+
+        class TestStruct(t.Struct):
+            count: t.uint8_t
+            items: t.uint16_t = t.StructField(length=lambda s: s.count)
+
+
+def test_struct_field_default(expose_global):
+    """Test that StructField `default` provides a default value for omitted fields."""
+
+    @expose_global
+    class Op(t.enum8):
+        Read = 0x0
+        Write = 0x1
+
+    class TestStruct(t.Struct):
+        value: t.uint8_t
+        op: Op = t.StructField(default=Op.Read)
+
+    # Omit op, should get default
+    s1 = TestStruct(value=0x42)
+    assert s1.op == Op.Read
+    assert s1.serialize() == b"\x42\x00"
+
+    # Provide op explicitly
+    s2 = TestStruct(value=0x42, op=Op.Write)
+    assert s2.op == Op.Write
+    assert s2.serialize() == b"\x42\x01"

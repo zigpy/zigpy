@@ -29,6 +29,7 @@ from zigpy.zcl import (
 )
 from zigpy.zcl.clusters.general import Basic, OnOff, Ota
 from zigpy.zcl.clusters.measurement import OccupancySensing
+from zigpy.zcl.clusters.smartenergy import Metering
 from zigpy.zcl.helpers import ReportingConfig
 
 DEFAULT_TSN = 123
@@ -314,6 +315,52 @@ def test_attribute_report(cluster):
     cluster.handle_message(hdr, cmd)
 
     assert cluster._attr_cache[4] == "manufacturer"
+
+
+def test_attribute_report_manufacturer_specific_does_not_update_zcl_attribute(
+    cluster_by_id,
+):
+    """Manufacturer-specific attribute report must not update a standard ZCL attribute.
+
+    A device reports attribute 0x0302 with manufacturer code 0x1015 on the Metering
+    cluster (0x0702). Even though 0x0302 is the standard ZCL "divisor" attribute, the
+    report is manufacturer-specific and should NOT update the standard divisor cache.
+    """
+    metering = cluster_by_id(Metering.cluster_id)
+
+    # Ensure divisor is not in the cache
+    assert Metering.AttributeDefs.divisor.id not in metering._attr_cache
+
+    attr = zcl.foundation.Attribute()
+    attr.attrid = 0x0302
+    attr.value = zcl.foundation.TypeValue()
+    attr.value.value = 0x0200
+
+    hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.GLOBAL_COMMAND,
+            is_manufacturer_specific=True,
+            direction=foundation.Direction.Server_to_Client,
+            disable_default_response=True,
+            reserved=0,
+        ),
+        manufacturer=0x1015,
+        tsn=3,
+        command_id=foundation.GeneralCommand.Report_Attributes,
+    )
+
+    cmd = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Report_Attributes
+    ].schema([attr])
+    metering.handle_message(hdr, cmd)
+
+    # The standard ZCL divisor attribute's typed cache must NOT be updated
+    with pytest.raises(KeyError):
+        metering._attr_cache.get_value(Metering.AttributeDefs.divisor)
+
+    # The value should only be stored in the legacy cache (keyed by raw attr ID)
+    assert 0x0302 in metering._attr_cache._legacy_cache
+    assert metering._attr_cache._legacy_cache[0x0302].value == 0x0200
 
 
 def test_handle_request_unknown(cluster):
@@ -1483,6 +1530,7 @@ async def test_cluster_definition_invalid_direction():
         class TestCluster2(zcl.Cluster):
             cluster_id = 0xDEF0
             ep_attribute = "test_cluster2"
+            _skip_registry = True
 
             class ClientCommandDefs(zcl.BaseCommandDefs):
                 client_command = foundation.ZCLCommandDef(
@@ -1676,6 +1724,87 @@ def test_find_attribute_unspecified_manufacturer_code() -> None:
         TestCluster.find_attribute(0x0003, manufacturer_code=0x5678)
 
 
+def test_find_attributes() -> None:
+    """Test find_attributes across all attribute specificity combinations."""
+
+    class TestCluster(zcl.Cluster):
+        cluster_id = 0xABCD
+        ep_attribute = "test_cluster"
+        _skip_registry = True
+
+        class AttributeDefs(zcl.BaseAttributeDefs):
+            explicit_none = foundation.ZCLAttributeDef(
+                id=0x0001, type=t.EUI64, manufacturer_code=None
+            )
+            explicit_false = foundation.ZCLAttributeDef(
+                id=0x0001, type=t.EUI64, is_manufacturer_specific=False
+            )
+            default = foundation.ZCLAttributeDef(id=0x0001, type=t.EUI64)
+            manuf_no_code = foundation.ZCLAttributeDef(
+                id=0x0001, type=t.EUI64, is_manufacturer_specific=True
+            )
+            manuf_1234 = foundation.ZCLAttributeDef(
+                id=0x0001, type=t.EUI64, manufacturer_code=0x1234
+            )
+            manuf_5678 = foundation.ZCLAttributeDef(
+                id=0x0001, type=t.EUI64, manufacturer_code=0x5678
+            )
+            specific_unique = foundation.ZCLAttributeDef(
+                id=0x0002, type=t.EUI64, manufacturer_code=0x1234
+            )
+
+    # An explicitly disabled manufacturer code
+    assert TestCluster.find_attributes(0x0001, manufacturer_code=None) == [
+        TestCluster.AttributeDefs.explicit_none,
+        TestCluster.AttributeDefs.explicit_false,
+        TestCluster.AttributeDefs.default,
+    ]
+
+    # A specific manufacturer code will match the specific attribute for that code and
+    # a generic manufacturer-specific one
+    assert TestCluster.find_attributes(0x0001, manufacturer_code=0x1234) == [
+        TestCluster.AttributeDefs.manuf_1234,
+        TestCluster.AttributeDefs.manuf_no_code,
+    ]
+    assert TestCluster.find_attributes(0x0001, manufacturer_code=0x5678) == [
+        TestCluster.AttributeDefs.manuf_5678,
+        TestCluster.AttributeDefs.manuf_no_code,
+    ]
+
+    # An unknown manufacturer code will match only the generic attribute
+    assert TestCluster.find_attributes(0x0001, manufacturer_code=0x9999) == [
+        TestCluster.AttributeDefs.manuf_no_code,
+    ]
+
+    # No code will match all attributes with the ID
+    assert TestCluster.find_attributes(0x0001) == [
+        TestCluster.AttributeDefs.manuf_1234,
+        TestCluster.AttributeDefs.manuf_5678,
+        TestCluster.AttributeDefs.manuf_no_code,
+        TestCluster.AttributeDefs.explicit_false,
+        TestCluster.AttributeDefs.explicit_none,
+        TestCluster.AttributeDefs.default,
+    ]
+
+    # Names and definition objects are unique
+    assert TestCluster.find_attributes("explicit_false") == [
+        TestCluster.AttributeDefs.explicit_false,
+    ]
+    assert TestCluster.find_attributes("manuf_1234") == [
+        TestCluster.AttributeDefs.manuf_1234,
+    ]
+    assert TestCluster.find_attributes(TestCluster.AttributeDefs.manuf_5678) == [
+        TestCluster.AttributeDefs.manuf_5678,
+    ]
+
+    # Missing attributes and bad combinations raise errors
+    with pytest.raises(KeyError):
+        TestCluster.find_attributes(0x9999)
+
+    with pytest.raises(KeyError):
+        TestCluster.find_attributes(0x0002, manufacturer_code=0xABCD)
+
+
 async def test_read_attributes_complex() -> None:
     """Test reading attributes, complex scenario."""
 
@@ -1824,6 +1953,7 @@ async def test_read_attribute_manufacturer_code_none_on_manuf_cluster():
     class ManufCluster(zcl.Cluster):
         cluster_id = 0xFC11  # Manufacturer-specific cluster range
         ep_attribute = "manuf_cluster"
+        _skip_registry = True
 
         class AttributeDefs(zcl.BaseAttributeDefs):
             # Explicitly no manufacturer code, even though cluster is manufacturer-specific
@@ -1851,6 +1981,7 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
 
         cluster_id = 0xABCD
         ep_attribute = "doubling"
+        _skip_registry = True
 
         class AttributeDefs(zcl.foundation.BaseAttributeDefs):
             test_attr = foundation.ZCLAttributeDef(
@@ -2262,6 +2393,7 @@ def test_manufacturer_id_override_manuf_specific_cluster(app_mock) -> None:
     class TestCluster(zcl.Cluster):
         cluster_id = 0xFEED  # Manufacturer-specific cluster range
         ep_attribute = "test_cluster"
+        _skip_registry = True
         manufacturer_id_override = 0x5678
 
         class AttributeDefs(zcl.BaseAttributeDefs):
@@ -2405,3 +2537,192 @@ def test_manufacturer_id_override_extended_zcl_cluster(app_mock) -> None:
         (TestCluster.ServerCommandDefs.reset_fact_default, None),
     ]:
         assert cluster._get_effective_manufacturer_code(definition) is expected
+
+
+async def test_quirk_manufacturer_code_context_isolation(app_mock) -> None:
+    """Test that manufacturer code context is properly handled in _update_attribute.
+
+    When a manufacturer-specific attribute is reported and the cluster has multiple
+    attributes sharing the same ID (with different manufacturer codes), the
+    _update_attribute call must use the correct manufacturer code. This tests that:
+    1. The value is stored directly in the typed cache (not via legacy cache fallback)
+    2. Other attributes updated by quirks don't inherit the manufacturer code context
+    """
+
+    class TestCluster(zcl.Cluster):
+        cluster_id = 0xABCD
+        ep_attribute = "test_cluster"
+        _skip_registry = True
+
+        class AttributeDefs(zcl.foundation.BaseAttributeDefs):
+            # Two attributes sharing the same ID with different manufacturer codes
+            manuf_attr = foundation.ZCLAttributeDef(
+                id=0x0001,
+                type=t.uint8_t,
+                manufacturer_code=0x1234,
+            )
+            standard_attr = foundation.ZCLAttributeDef(
+                id=0x0001,
+                type=t.uint8_t,
+                manufacturer_code=None,
+            )
+            # A different attribute that the quirk will also update
+            other_attr = foundation.ZCLAttributeDef(
+                id=0x0002,
+                type=t.uint8_t,
+            )
+
+        def _update_attribute(self, attrid, value):
+            super()._update_attribute(attrid, value)
+
+            # When updating the manufacturer-specific attribute, also update other_attr
+            if attrid == self.AttributeDefs.manuf_attr.id:
+                super()._update_attribute(self.AttributeDefs.other_attr.id, 99)
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    events = []
+    cluster.on_event(AttributeReportedEvent.event_type, events.append)
+    cluster.on_event(AttributeUpdatedEvent.event_type, events.append)
+
+    # The attribute is currently marked as unsupported
+    cluster.add_unsupported_attribute(TestCluster.AttributeDefs.manuf_attr)
+
+    # Report the manufacturer-specific attribute
+    await mock_attribute_report(
+        cluster, {TestCluster.AttributeDefs.manuf_attr: t.uint8_t(42)}
+    )
+
+    # The legacy cache should not contain the attribute, as the typed cache was used
+    assert 0x0001 not in cluster._attr_cache._legacy_cache
+
+    # Verify that the manufacturer-specific attribute was stored correctly
+    assert cluster._attr_cache.get_value(TestCluster.AttributeDefs.manuf_attr) == 42
+
+    # Verify that the standard attribute (same ID, no manufacturer code) was NOT updated
+    with pytest.raises(KeyError):
+        cluster._attr_cache.get_value(TestCluster.AttributeDefs.standard_attr)
+
+    # Verify that other_attr was updated (by the quirk) without manufacturer code context
+    assert cluster._attr_cache.get_value(TestCluster.AttributeDefs.other_attr) == 99
+
+    # Verify the events have the correct manufacturer codes
+    assert len(events) == 2
+
+    # First event: other_attr updated by quirk (should have no manufacturer code)
+    assert events[0] == AttributeUpdatedEvent(
+        device_ieee=str(dev.ieee),
+        endpoint_id=1,
+        cluster_type=zcl.ClusterType.Server,
+        cluster_id=TestCluster.cluster_id,
+        attribute_name="other_attr",
+        attribute_id=TestCluster.AttributeDefs.other_attr.id,
+        manufacturer_code=None,
+        value=99,
+    )
+
+    # Second event: manuf_attr reported (should have the manufacturer code)
+    assert events[1] == AttributeReportedEvent(
+        device_ieee=str(dev.ieee),
+        endpoint_id=1,
+        cluster_type=zcl.ClusterType.Server,
+        cluster_id=TestCluster.cluster_id,
+        attribute_name="manuf_attr",
+        attribute_id=TestCluster.AttributeDefs.manuf_attr.id,
+        manufacturer_code=0x1234,
+        raw_value=42,
+        value=42,
+    )
+
+
+async def test_read_attributes_structured_raw(cluster):
+    """Test read_attributes_structured_raw sends the correct request."""
+    mock_response = [
+        [
+            foundation.ReadAttributeRecord(
+                attrid=0x0001, status=foundation.Status.SUCCESS
+            )
+        ]
+    ]
+
+    with patch.object(
+        cluster.endpoint, "request", new=AsyncMock(return_value=mock_response)
+    ):
+        result = await cluster.read_attributes_structured_raw(
+            [
+                foundation.ReadAttributeStructured(
+                    attrid=0x0001,
+                    selector=foundation.Selector(depth=0),
+                ),
+            ]
+        )
+
+        assert result == mock_response
+        assert cluster.endpoint.request.call_count == 1
+
+        # Verify the serialized payload contains attr_id + selector
+        data = cluster.endpoint.request.mock_calls[0].kwargs["data"]
+        assert data[3:] == b"\x01\x00\x00"  # attr_id=0x0001 + indicator=0x00
+
+
+async def test_write_attributes_structured_raw(cluster):
+    """Test write_attributes_structured_raw sends the correct request."""
+    mock_response = [
+        foundation.WriteAttributesStructuredResponse(
+            [
+                foundation.WriteAttributesStructuredStatusRecord(
+                    status=foundation.Status.SUCCESS,
+                )
+            ]
+        )
+    ]
+
+    with patch.object(
+        cluster.endpoint, "request", new=AsyncMock(return_value=mock_response)
+    ):
+        result = await cluster.write_attributes_structured_raw(
+            [
+                foundation.WriteAttributeStructured(
+                    attrid=0x0001,
+                    selector=foundation.Selector(depth=0),
+                    value=foundation.TypeValue(
+                        type=foundation.DataTypeId.uint8,
+                        value=t.uint8_t(0x42),
+                    ),
+                ),
+            ]
+        )
+
+        assert result == mock_response
+        assert cluster.endpoint.request.call_count == 1
+
+
+async def test_read_attributes_structured_raw_nested(cluster):
+    """Test read_attributes_structured_raw with nested index selector."""
+    mock_response = [
+        [
+            foundation.ReadAttributeRecord(
+                attrid=0x0005, status=foundation.Status.SUCCESS
+            )
+        ]
+    ]
+
+    with patch.object(
+        cluster.endpoint, "request", new=AsyncMock(return_value=mock_response)
+    ):
+        result = await cluster.read_attributes_structured_raw(
+            [
+                foundation.ReadAttributeStructured(
+                    attrid=0x0005,
+                    selector=foundation.Selector(depth=2, indexes=[5, 3]),
+                ),
+            ]
+        )
+
+        assert result == mock_response
+
+        data = cluster.endpoint.request.mock_calls[0].kwargs["data"]
+        # attr_id=0x0005 + indicator=0x02 + index1=5 + index2=3
+        assert data[3:] == b"\x05\x00\x02\x05\x00\x03\x00"
