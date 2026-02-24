@@ -1050,6 +1050,10 @@ def test_struct_field_length_computed():
         == b"\x00"
     )
 
+    # Zero length with incongruent items array is an error
+    with pytest.raises(ValueError):
+        TestStruct(raw_count=0, items=[0x0001]).serialize()
+
     # Deserialization will fail if the exact number of elements isn't available
     with pytest.raises(ValueError):
         TestStruct.deserialize(s.serialize()[:-1])

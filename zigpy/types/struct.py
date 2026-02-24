@@ -283,6 +283,12 @@ class Struct:
                 expected_length = field.length(self)
 
                 if expected_length == 0:
+                    if value:
+                        raise ValueError(
+                            f"Field {field.name!r} expected an empty array,"
+                            f" got: {value!r}"
+                        )
+
                     # Special case for a list with no elements
                     value = field._convert_type([])
                 elif value is None or len(value) != expected_length:
