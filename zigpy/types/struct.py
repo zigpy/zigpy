@@ -69,8 +69,15 @@ if TYPE_CHECKING:
 
         name: str
         type: type[Any]
+
+    class ResolvedArrayStructField(ResolvedStructField):
+        """`StructField` instance with name, type, and length resolved."""
+
+        type: type[t.List[Any]]
+        length: typing.Callable[[Struct], int]
 else:
     ResolvedStructField = StructField
+    ResolvedArrayStructField = StructField
 
 
 class Struct:
@@ -181,8 +188,18 @@ class Struct:
             elif field.type is None:
                 raise TypeError(f"Field {name!r} has no type")
 
-            fields.append(cast(ResolvedStructField, field))
-            setattr(fields, field.name, field)
+            resolved_field = cast(ResolvedStructField, field)
+
+            if resolved_field.length is not None and not issubclass(
+                resolved_field.type, t.List
+            ):
+                raise TypeError(
+                    f"Field {name!r} has a length function but is not a list type: "
+                    f"{resolved_field.type}"
+                )
+
+            fields.append(resolved_field)
+            setattr(fields, field.name, resolved_field)
 
         return fields
 
@@ -199,11 +216,8 @@ class Struct:
                 continue
 
             # Missing fields cause an error if strict
-            if value is None and not field.optional:
-                if field.length is not None:
-                    value = field.type()
-                    setattr(self, field.name, value)
-                elif strict:
+            if value is None and not field.optional and field.length is None:
+                if strict:
                     raise ValueError(
                         f"Value for field {field.name!r} is required: {self!r}"
                     )
@@ -263,6 +277,19 @@ class Struct:
                 continue
 
             value = field._convert_type(value)
+
+            # Fields with lengths dependent on other fields need to be validated
+            if field.length is not None:
+                expected_length = field.length(self)
+
+                if expected_length == 0:
+                    # Special case for a list with no elements
+                    value = field._convert_type([])
+                elif value is None or len(value) != expected_length:
+                    raise ValueError(
+                        f"Field {field.name!r} expected an array with length"
+                        f" {expected_length}, got: {value!r}"
+                    )
 
             # All integral types are compacted into one chunk, unless they start and end
             # on a byte boundary.
@@ -346,13 +373,10 @@ class Struct:
                 )
 
             if field.length is not None:
+                field = cast(ResolvedArrayStructField, field)
+
                 count = field.length(temp_instance)
-                items = []
-
-                for _ in range(count):
-                    item, data = field.type._item_type.deserialize(data)
-                    items.append(item)
-
+                items, data = field.type.deserialize(data, count=count)
                 value = field.type(items)
             else:
                 value, data = field.type.deserialize(data)

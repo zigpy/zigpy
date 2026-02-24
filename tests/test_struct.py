@@ -1039,6 +1039,31 @@ def test_struct_field_length_computed():
     assert list(s2.items) == [0x0001, 0x0002, 0x0003, 0x0004]
     assert remaining == b"tail"
 
+    with pytest.raises(ValueError):
+        # Not enough items provided
+        TestStruct(raw_count=2, items=[0x0001]).serialize()
+
+    # Zero is a special case
+    assert (
+        TestStruct(raw_count=0).serialize()
+        == TestStruct(raw_count=0, items=[]).serialize()
+        == b"\x00"
+    )
+
+    # Deserialization will fail if the exact number of elements isn't available
+    with pytest.raises(ValueError):
+        TestStruct.deserialize(s.serialize()[:-1])
+
+
+def test_struct_field_bad_type_derived_length() -> None:
+    """Test that structs cannot be created with non-List fields with lengths."""
+
+    with pytest.raises(TypeError):
+
+        class TestStruct(t.Struct):
+            count: t.uint8_t
+            items: t.uint16_t = t.StructField(length=lambda s: s.count)
+
 
 def test_struct_field_default(expose_global):
     """Test that StructField `default` provides a default value for omitted fields."""
