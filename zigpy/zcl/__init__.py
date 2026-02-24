@@ -1242,7 +1242,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         attributes: list[foundation.Attribute],
         manufacturer_code: int | None = None,
         **kwargs,
-    ) -> list[foundation.WriteAttributesResponse]:
+    ) -> foundation.WriteAttributesResponseSchema | foundation.DefaultResponse:
         """Write attributes to the device without any validation or caching."""
         return await self._write_attributes(
             attributes, manufacturer=manufacturer_code, **kwargs
@@ -1382,7 +1382,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         attributes: list[foundation.ReadAttributeStructured],
         manufacturer_code: int | None = None,
         **kwargs,
-    ) -> list[foundation.ReadAttributeRecord]:
+    ) -> foundation.ReadAttributesResponse | foundation.DefaultResponse:
         """Read attributes (structured) from the device."""
         return await self._read_attributes_structured(
             attributes, manufacturer=manufacturer_code, **kwargs
@@ -1393,7 +1393,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         attributes: list[foundation.WriteAttributeStructured],
         manufacturer_code: int | None = None,
         **kwargs,
-    ) -> foundation.WriteAttributesStructuredResponse:
+    ) -> (
+        foundation.WriteAttributesStructuredResponseSchema | foundation.DefaultResponse
+    ):
         """Write attributes (structured) to the device."""
         return await self._write_attributes_structured(
             attributes, manufacturer=manufacturer_code, **kwargs

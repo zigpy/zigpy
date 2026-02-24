@@ -1273,6 +1273,23 @@ class CommandSchema(t.Struct, tuple):  # noqa: SLOT001, PLW1641
         return super().__eq__(other)
 
 
+class ReadAttributesResponse(CommandSchema):
+    status_records: t.List[ReadAttributeRecord]
+
+
+class WriteAttributesResponseSchema(CommandSchema):
+    status_records: WriteAttributesResponse
+
+
+class WriteAttributesStructuredResponseSchema(CommandSchema):
+    status_records: WriteAttributesStructuredResponse
+
+
+class DefaultResponse(CommandSchema):
+    command_id: t.uint8_t
+    status: Status
+
+
 class ZCLAttributeAccess(enum.Flag):
     NONE = 0
     Read = 1
@@ -1419,7 +1436,7 @@ GENERAL_COMMANDS = COMMANDS = {
         direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Read_Attributes_rsp: ZCLCommandDef(
-        schema={"status_records": t.List[ReadAttributeRecord]},
+        schema=ReadAttributesResponse,
         direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Write_Attributes: ZCLCommandDef(
@@ -1429,7 +1446,7 @@ GENERAL_COMMANDS = COMMANDS = {
         schema={"attributes": t.List[Attribute]}, direction=Direction.Client_to_Server
     ),
     GeneralCommand.Write_Attributes_rsp: ZCLCommandDef(
-        schema={"status_records": WriteAttributesResponse},
+        schema=WriteAttributesResponseSchema,
         direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Write_Attributes_No_Response: ZCLCommandDef(
@@ -1456,7 +1473,7 @@ GENERAL_COMMANDS = COMMANDS = {
         direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Default_Response: ZCLCommandDef(
-        schema={"command_id": t.uint8_t, "status": Status},
+        schema=DefaultResponse,
         direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Discover_Attributes: ZCLCommandDef(
@@ -1479,7 +1496,7 @@ GENERAL_COMMANDS = COMMANDS = {
         direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Write_Attributes_Structured_rsp: ZCLCommandDef(
-        schema={"status_records": WriteAttributesStructuredResponse},
+        schema=WriteAttributesStructuredResponseSchema,
         direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Discover_Commands_Received: ZCLCommandDef(
