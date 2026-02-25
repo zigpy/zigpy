@@ -414,19 +414,19 @@ disable_error_code = [
 ]
 
 [[tool.mypy.overrides]]
-module = "zigpy.zcl"
-disable_error_code = [
-    "arg-type",  # 13
-    "assignment",  # 7
-    "attr-defined",  # 3
-]
-
-[[tool.mypy.overrides]]
 module = "zigpy.types.struct"
 disable_error_code = [
     "arg-type",  # 3
     "attr-defined",  # 19
     "misc",  # 2
+]
+
+[[tool.mypy.overrides]]
+module = "zigpy.zcl"
+disable_error_code = [
+    "arg-type",  # 13
+    "assignment",  # 7
+    "attr-defined",  # 4
 ]
 
 [[tool.mypy.overrides]]

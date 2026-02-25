@@ -1658,6 +1658,20 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             }
         )
 
+    async def configure_reporting_raw(
+        self,
+        config_records: list[foundation.AttributeReportingConfig],
+        manufacturer_code: int | None = None,
+        **kwargs,
+    ) -> foundation.CommandSchema | foundation.DefaultResponse:
+        result = await self._configure_reporting(
+            config_records,
+            manufacturer=manufacturer_code,
+            **kwargs,
+        )
+
+        return cast(foundation.CommandSchema | foundation.DefaultResponse, result)
+
     async def configure_reporting_multiple(
         self, config: dict[foundation.ZCLAttributeDef, ReportingConfig]
     ) -> dict[foundation.ZCLAttributeDef, foundation.Status]:
@@ -1695,37 +1709,45 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             for chunk in _chunk_records_by_size(
                 reporting_configs, lambda pair: len(pair[1].serialize())
             ):
-                rsp = await self._configure_reporting(
-                    [cfg for _attr_def, cfg in chunk],
-                    manufacturer=manufacturer_code,
-                )
-
-                if isinstance(rsp[0], list):
-                    records = rsp[0]
-
-                    # Check for global success (status=SUCCESS, attrid=None)
-                    if (
-                        len(records) == 1
-                        and records[0].status == foundation.Status.SUCCESS
-                        and records[0].attrid is None
-                    ):
-                        # Global success: all attributes succeeded
-                        for attr_def, _cfg in chunk:
-                            group_results[attr_def] = foundation.Status.SUCCESS
-                    else:
-                        # Only failed reports are in the response. Attributes not
-                        # present implicitly succeeded.
-                        failed_attrids = {r.attrid: r.status for r in records}
-                        for attr_def, _cfg in chunk:
-                            if attr_def.id in failed_attrids:
-                                group_results[attr_def] = failed_attrids[attr_def.id]
-                            else:
-                                group_results[attr_def] = foundation.Status.SUCCESS
-                else:
-                    # Default response: apply status to all attributes in this group
-                    status = rsp[1]
+                try:
+                    rsp = await self.configure_reporting_raw(
+                        [cfg for _attr_def, cfg in chunk],
+                        manufacturer_code=manufacturer_code,
+                    )
+                except InvalidDefaultResponse as exc:
+                    # If we get back a default response, all reports failed
                     for attr_def, _cfg in chunk:
-                        group_results[attr_def] = status
+                        group_results[attr_def] = exc.status
+
+                    continue
+
+                # A device should never send back a successful default response
+                if isinstance(rsp, foundation.DefaultResponse):
+                    for attr_def, _cfg in chunk:
+                        group_results[attr_def] = foundation.Status.FAILURE
+
+                    continue
+
+                records = rsp.status_records
+
+                # Check for global success (status=SUCCESS, attrid=None)
+                if (
+                    len(records) == 1
+                    and records[0].status == foundation.Status.SUCCESS
+                    and records[0].attrid is None
+                ):
+                    # Global success: all attributes succeeded
+                    for attr_def, _cfg in chunk:
+                        group_results[attr_def] = foundation.Status.SUCCESS
+                else:
+                    # Only failed reports are in the response. Attributes not
+                    # present implicitly succeeded.
+                    failed_attrids = {r.attrid: r.status for r in records}
+                    for attr_def, _cfg in chunk:
+                        if attr_def.id in failed_attrids:
+                            group_results[attr_def] = failed_attrids[attr_def.id]
+                        else:
+                            group_results[attr_def] = foundation.Status.SUCCESS
 
             for attr_def, status in group_results.items():
                 if status == foundation.Status.SUCCESS:
