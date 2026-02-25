@@ -349,6 +349,29 @@ def test_character_string():
     assert d == "abc"
 
 
+@pytest.mark.parametrize(
+    ("raw_payload", "expected"),
+    [
+        (
+            b"Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07",
+            "Mock Manufacturer",
+        ),
+        (
+            b"Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+            "Mock Model",
+        ),
+    ],
+)
+def test_character_string_null_padded_wire_payload(raw_payload, expected):
+    serialized = len(raw_payload).to_bytes(1, "little") + raw_payload + b"tail"
+
+    decoded, rest = t.CharacterString.deserialize(serialized)
+
+    assert decoded == expected
+    assert decoded.raw == raw_payload
+    assert rest == b"tail"
+
+
 def test_character_string_decode_failure():
     d, _ = t.CharacterString.deserialize(b"\x04\xf9123\xff\xff45")
     assert d == "�123"

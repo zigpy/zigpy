@@ -261,51 +261,6 @@ async def test_get_model_info_missing_basic_cluster(ep):
     assert manuf is None
 
 
-async def test_init_endpoint_info_null_padded_manuf(ep):
-    basic = ep.add_input_cluster(0)
-    with mock_attribute_reads(
-        basic,
-        {
-            "manufacturer": b"Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07",
-            "model": b"Mock Model",
-        },
-    ):
-        mod, man = await ep.get_model_info()
-
-    assert man == "Mock Manufacturer"
-    assert mod == "Mock Model"
-
-
-async def test_init_endpoint_info_null_padded_model(ep):
-    basic = ep.add_input_cluster(0)
-    with mock_attribute_reads(
-        basic,
-        {
-            "manufacturer": b"Mock Manufacturer",
-            "model": b"Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
-        },
-    ):
-        mod, man = await ep.get_model_info()
-
-    assert man == "Mock Manufacturer"
-    assert mod == "Mock Model"
-
-
-async def test_init_endpoint_info_null_padded_manuf_model(ep):
-    basic = ep.add_input_cluster(0)
-    with mock_attribute_reads(
-        basic,
-        {
-            "manufacturer": b"Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07",
-            "model": b"Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
-        },
-    ):
-        mod, man = await ep.get_model_info()
-
-    assert man == "Mock Manufacturer"
-    assert mod == "Mock Model"
-
-
 async def test_get_model_info_delivery_error(ep):
     basic = ep.add_input_cluster(0)
     with pytest.raises(zigpy.exceptions.ZigbeeException):
