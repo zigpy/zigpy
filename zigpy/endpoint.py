@@ -10,7 +10,7 @@ import zigpy.profiles
 import zigpy.types as t
 import zigpy.util
 import zigpy.zcl
-from zigpy.zcl.foundation import GeneralCommand, Status as ZCLStatus
+from zigpy.zcl.foundation import DefaultResponse, GeneralCommand, Status as ZCLStatus
 from zigpy.zdo.types import Status as ZDOStatus
 
 if TYPE_CHECKING:
@@ -170,10 +170,16 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             res = await self.groups.get_membership(groups=[])
         except AttributeError:
             return
-        except zigpy.exceptions.InvalidDefaultResponse:
-            self.debug("Device does not support group commands: %s", res)
+        except zigpy.exceptions.InvalidDefaultResponse as exc:
+            self.debug("Device does not support group commands: %s", exc)
+            return
         except (TimeoutError, zigpy.exceptions.ZigbeeException):
             self.debug("Failed to sync-up group membership")
+            return
+
+        # TODO: can a device send a successful default response here?
+        if isinstance(res, DefaultResponse):
+            self.debug("Device does not support group commands: %s", res)
             return
 
         groups = set(res[1])

@@ -222,15 +222,6 @@ async def test_reply_change_profile_id(ep):
     ]
 
 
-def _mk_rar(attrid, value, status=0):
-    r = zcl.foundation.ReadAttributeRecord()
-    r.attrid = attrid
-    r.status = status
-    r.value = zcl.foundation.TypeValue()
-    r.value.value = value
-    return r
-
-
 def _get_model_info(ep, attributes={}):
     clus = ep.add_input_cluster(0)
     assert 0 in ep.in_clusters
@@ -247,15 +238,25 @@ def _get_model_info(ep, attributes={}):
         for attr_id, value in zip(args, attributes[tuple(args)], strict=True):
             if isinstance(value, BaseException):
                 raise value
-            elif value is None:
-                rar = _mk_rar(attr_id, None, status=1)
+
+            if value is None:
+                rar = zcl.foundation.ReadAttributeRecord(
+                    attrid=attr_id,
+                    status=zcl.foundation.Status.FAILURE,
+                )
             else:
-                raw_attr_value = t.uint8_t(len(value)).serialize() + value
-                rar = _mk_rar(attr_id, t.CharacterString.deserialize(raw_attr_value)[0])
+                rar = zcl.foundation.ReadAttributeRecord(
+                    attrid=attr_id,
+                    status=zcl.foundation.Status.SUCCESS,
+                    value=zcl.foundation.TypeValue(
+                        type=zcl.foundation.DataTypeId.string,
+                        value=t.CharacterString(value),
+                    ),
+                )
 
             result.append(rar)
 
-        return [result]
+        return zcl.foundation.ReadAttributesResponse(status_records=result)
 
     clus.request = mockrequest
 
