@@ -77,9 +77,7 @@ class Group(ListenableMixin, dict):
             )
         )
 
-        return foundation.GENERAL_COMMANDS[
-            foundation.GeneralCommand.Default_Response
-        ].schema(
+        return foundation.DefaultResponse(
             status=foundation.Status.SUCCESS,
             command_id=data[2],
         )
