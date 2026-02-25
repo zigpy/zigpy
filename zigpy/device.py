@@ -31,7 +31,7 @@ from zigpy.const import (
 import zigpy.datastructures
 import zigpy.endpoint
 import zigpy.exceptions
-from zigpy.exceptions import DeliveryError
+from zigpy.exceptions import DeliveryError, InvalidDefaultResponse
 import zigpy.listeners
 from zigpy.ota.manager import update_firmware
 from zigpy.profiles import zha, zll
@@ -901,6 +901,17 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             ].schema,
         ):
             return False
+
+        # Default responses with non-success status should be treated as errors
+        if (
+            isinstance(cmd, foundation.DefaultResponse)
+            and cmd.status != foundation.Status.SUCCESS
+        ):
+            raise InvalidDefaultResponse(
+                f"Invalid default response {cmd.status} for command 0x{cmd.command_id:#02x}",
+                command_id=cmd.command_id,
+                status=cmd.status,
+            )
 
         try:
             if error is not None:
