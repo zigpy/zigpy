@@ -1459,8 +1459,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         **kwargs,
     ) -> foundation.WriteAttributesResponseSchema | foundation.DefaultResponse:
         """Write attributes to the device without any validation or caching."""
-        return await self._write_attributes(
+        result = await self._write_attributes(
             attributes, manufacturer=manufacturer_code, **kwargs
+        )
+
+        return cast(
+            foundation.WriteAttributesResponseSchema | foundation.DefaultResponse,
+            result,
         )
 
     async def write_attributes(
@@ -1505,16 +1510,32 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             for chunk in _chunk_records_by_size(
                 zcl_attrs, lambda a: len(a.serialize())
             ):
-                result = await self.write_attributes_raw(
-                    chunk, manufacturer_code=manufacturer_code, **kwargs
-                )
-
-                if isinstance(result[0], list):
+                try:
+                    result = await self.write_attributes_raw(
+                        chunk, manufacturer_code=manufacturer_code, **kwargs
+                    )
+                except InvalidDefaultResponse as exc:
+                    # If we get back a default response, all writes failed
+                    records_group.extend(
+                        foundation.WriteAttributesStatusRecord(
+                            status=exc.status, attrid=zcl_attr.attrid
+                        )
+                        for zcl_attr in chunk
+                    )
+                else:
+                    # A device should never send back a successful default response
+                    if isinstance(result, foundation.DefaultResponse):
+                        records_group.extend(
+                            foundation.WriteAttributesStatusRecord(
+                                status=foundation.Status.FAILURE, attrid=zcl_attr.attrid
+                            )
+                            for zcl_attr in chunk
+                        )
                     # Check for global success (status=SUCCESS, attrid=None)
-                    if (
-                        len(result[0]) == 1
-                        and result[0][0].status == foundation.Status.SUCCESS
-                        and result[0][0].attrid is None
+                    elif (
+                        len(result.status_records) == 1
+                        and result.status_records[0].status == foundation.Status.SUCCESS
+                        and result.status_records[0].attrid is None
                     ):
                         # Global success: all attributes succeeded
                         records_group.extend(
@@ -1527,11 +1548,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     else:
                         # Only failed writes are in the response. Attributes not
                         # present implicitly succeeded.
-                        failed_attrids = {r.attrid for r in result[0]}
+                        failed_attrids = {r.attrid for r in result.status_records}
                         for zcl_attr in chunk:
                             if zcl_attr.attrid in failed_attrids:
                                 records_group.extend(
-                                    r for r in result[0] if r.attrid == zcl_attr.attrid
+                                    r
+                                    for r in result.status_records
+                                    if r.attrid == zcl_attr.attrid
                                 )
                             else:
                                 records_group.append(
@@ -1540,15 +1563,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                                         attrid=zcl_attr.attrid,
                                     )
                                 )
-                else:
-                    # Default response: apply status to all attributes in this group
-                    status = result[0]
-                    records_group.extend(
-                        foundation.WriteAttributesStatusRecord(
-                            status=status, attrid=zcl_attr.attrid
-                        )
-                        for zcl_attr in chunk
-                    )
 
             results.extend(records_group)
 
