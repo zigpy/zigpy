@@ -1663,14 +1663,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         config_records: list[foundation.AttributeReportingConfig],
         manufacturer_code: int | None = None,
         **kwargs,
-    ) -> foundation.CommandSchema | foundation.DefaultResponse:
+    ) -> foundation.ConfigureReportingResponseSchema | foundation.DefaultResponse:
         result = await self._configure_reporting(
             config_records,
             manufacturer=manufacturer_code,
             **kwargs,
         )
 
-        return cast(foundation.CommandSchema | foundation.DefaultResponse, result)
+        return cast(
+            foundation.ConfigureReportingResponseSchema | foundation.DefaultResponse,
+            result,
+        )
 
     async def configure_reporting_multiple(
         self, config: dict[foundation.ZCLAttributeDef, ReportingConfig]
