@@ -12,12 +12,13 @@ import functools
 import itertools
 import logging
 import types
-from typing import TYPE_CHECKING, Any, Final, TypeVar
+from typing import TYPE_CHECKING, Any, Final, TypeVar, cast
 import warnings
 
 from zigpy import util
 from zigpy.const import APS_REPLY_TIMEOUT
 from zigpy.event import EventBase
+from zigpy.exceptions import InvalidDefaultResponse
 import zigpy.types as t
 from zigpy.typing import UNDEFINED, UndefinedType
 from zigpy.zcl import foundation
@@ -413,7 +414,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         # and cannot represent two same-ID attributes (e.g. a standard and a
         # manufacturer-specific one), so rebuilding from it would drop one of them
         if cls.__dict__.get("attributes") and "AttributeDefs" not in cls.__dict__:
-            cls.AttributeDefs = types.new_class(
+            cls.AttributeDefs = types.new_class(  # type: ignore[misc]
                 name="AttributeDefs",
                 bases=(BaseAttributeDefs,),
             )
@@ -425,7 +426,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             cls.__dict__.get("server_commands")
             and "ServerCommandDefs" not in cls.__dict__
         ):
-            cls.ServerCommandDefs = types.new_class(
+            cls.ServerCommandDefs = types.new_class(  # type: ignore[misc]
                 name="ServerCommandDefs",
                 bases=(BaseCommandDefs,),
             )
@@ -437,7 +438,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             cls.__dict__.get("client_commands")
             and "ClientCommandDefs" not in cls.__dict__
         ):
-            cls.ClientCommandDefs = types.new_class(
+            cls.ClientCommandDefs = types.new_class(  # type: ignore[misc]
                 name="ClientCommandDefs",
                 bases=(BaseCommandDefs,),
             )
@@ -1066,11 +1067,15 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 foundation.Status.SUCCESS,
             )
 
-    def read_attributes_raw(
+    async def read_attributes_raw(
         self, attributes: list[int], manufacturer: int | None = None, **kwargs
-    ):
-        return self._read_attributes(
+    ) -> foundation.ReadAttributesResponse | foundation.DefaultResponse:
+        result = await self._read_attributes(
             [t.uint16_t(a) for a in attributes], manufacturer=manufacturer, **kwargs
+        )
+
+        return cast(
+            foundation.ReadAttributesResponse | foundation.DefaultResponse, result
         )
 
     def _get_effective_manufacturer_code(
@@ -1181,11 +1186,19 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
             for i in range(0, len(attribute_group), MAX_READ_ATTRIBUTES_PER_REQ):
                 chunk = attribute_group[i : i + MAX_READ_ATTRIBUTES_PER_REQ]
-                result = await self.read_attributes_raw(
-                    [attr_def.id for attr_def in chunk],
-                    manufacturer=manufacturer_code,
-                    **kwargs,
-                )
+
+                try:
+                    result = await self.read_attributes_raw(
+                        [attr_def.id for attr_def in chunk],
+                        manufacturer=manufacturer_code,
+                        **kwargs,
+                    )
+                except InvalidDefaultResponse as exc:
+                    # If we get back a default response, all reads in the chunk failed
+                    for attr_def in chunk:
+                        failure[attribute_map[attr_def]] = exc.status
+
+                    continue
 
                 retry_attrs.extend(
                     self._process_read_attributes_response(
@@ -1206,11 +1219,15 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             # at a time, giving each value the whole frame (ZCL R8 §2.5.2.3). An
             # attribute that still does not fit when read alone is a terminal failure.
             for attr_def in retry_attrs:
-                result = await self.read_attributes_raw(
-                    [attr_def.id],
-                    manufacturer=manufacturer_code,
-                    **kwargs,
-                )
+                try:
+                    result = await self.read_attributes_raw(
+                        [attr_def.id],
+                        manufacturer=manufacturer_code,
+                        **kwargs,
+                    )
+                except InvalidDefaultResponse as exc:
+                    failure[attribute_map[attr_def]] = exc.status
+                    continue
 
                 self._process_read_attributes_response(
                     result,
@@ -1226,7 +1243,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
     def _process_read_attributes_response(
         self,
-        result: Any,
+        result: foundation.ReadAttributesResponse | foundation.DefaultResponse,
         chunk: list[foundation.ZCLAttributeDef],
         attribute_map: dict[
             foundation.ZCLAttributeDef, int | str | foundation.ZCLAttributeDef
@@ -1239,10 +1256,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     ) -> list[foundation.ZCLAttributeDef]:
         """Process a Read Attributes Response, updating `success`/`failure` in place."""
 
-        # If we get back a single response status, all reads failed
-        if not isinstance(result[0], list):
+        # A device should never send back a successful default response
+        if isinstance(result, foundation.DefaultResponse):
             for attr_def in chunk:
-                failure[attribute_map[attr_def]] = result[0]
+                failure[attribute_map[attr_def]] = foundation.Status.FAILURE
 
             return []
 
@@ -1253,7 +1270,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         potential_attributes = {attr_def.id: attr_def for attr_def in chunk}
         insufficient_space_attrs: list[foundation.ZCLAttributeDef] = []
 
-        for record in result[0]:
+        for record in result.status_records:
             attr_def = potential_attributes[record.attrid]
             seen_attr_ids.add(record.attrid)
 

@@ -435,7 +435,6 @@ disable_error_code = [
     "arg-type",  # 13
     "assignment",  # 7
     "attr-defined",  # 3
-    "misc",  # 3
 ]
 
 [[tool.mypy.overrides]]
