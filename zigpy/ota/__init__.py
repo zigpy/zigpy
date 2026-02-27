@@ -508,9 +508,11 @@ class OTA:
 
             # Calculate content hash from firmware if available, otherwise use metadata
             if img.firmware is not None:
-                content_hash = (
-                    "sha3-256:" + hashlib.sha3_256(img.firmware.serialize()).hexdigest()
+                hasher = hashlib.sha3_256()
+                await asyncio.get_running_loop().run_in_executor(
+                    None, hasher.update, img.firmware.serialize()
                 )
+                content_hash = "sha3-256:" + hasher.hexdigest()
             else:
                 assert img.metadata.checksum is not None  # Checked above
                 content_hash = img.metadata.checksum
