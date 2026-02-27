@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from asyncio import timeout as asyncio_timeout
 from collections.abc import Callable
 import contextlib
 from typing import TYPE_CHECKING
@@ -314,7 +315,7 @@ async def update_firmware(
     """Update the firmware on a Zigbee device."""
     # Fetch firmware if not already downloaded (deferred download for trusted providers)
     if image.firmware is None:
-        async with asyncio.timeout(OTA_FETCH_TIMEOUT):
+        async with asyncio_timeout(OTA_FETCH_TIMEOUT):
             image = await image.fetch()
 
     if force:
