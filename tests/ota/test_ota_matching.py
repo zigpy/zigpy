@@ -444,18 +444,18 @@ async def test_ota_trusted_provider_specificity_boost(query_cmd, ota_image) -> N
     assert images.upgrades[1].metadata.trusted is False
 
 
+@pytest.mark.parametrize("checksum", [None, "sha256:abc123"])
 async def test_ota_trusted_provider_missing_sha3_256_checksum(
-    query_cmd, caplog
+    query_cmd, checksum, caplog
 ) -> None:
     """Trusted images without SHA3-256 checksum should be removed with warning."""
     device = make_device(model="device model", manufacturer_id=0x1234)
 
-    # Trusted image with sha256 checksum instead of sha3-256
     index = [
         SelfContainedOtaImageMetadata(
             file_version=query_cmd.current_file_version + 1,
             manufacturer_id=query_cmd.manufacturer_code,
-            checksum="sha256:abc123",  # Wrong algorithm
+            checksum=checksum,
             test_data=b"",  # Won't be fetched anyway
         ),
     ]
