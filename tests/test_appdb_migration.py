@@ -276,8 +276,13 @@ async def test_migration_missing_node_descriptor(test_db, caplog):
     [
         ("INSERT INTO node_descriptors_v4 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 0),
         ("INSERT INTO neighbors_v4 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", 5),
-        ("SELECT * FROM output_clusters", 0),
-        ("INSERT INTO neighbors_v5 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", 5),
+        ("SELECT ieee, endpoint_id, cluster FROM output_clusters", 0),
+        (
+            "INSERT INTO neighbors_v5 (device_ieee, extended_pan_id, ieee, nwk,"
+            " device_type, rx_on_when_idle, relationship, reserved1, permit_joining,"
+            " reserved2, depth, lqi) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            5,
+        ),
     ],
 )
 async def test_migration_failure(fail_on_sql, fail_on_count, test_db):
@@ -476,12 +481,34 @@ async def test_migration_missing_tables(app):
     # The untouched table will never be queried
     await appdb._migrate_tables({"table1_v1": "table1_v2", "table2_v1": None})
 
-    mock_execute.assert_called_once_with("SELECT * FROM table1_v1")
-
-    with pytest.raises(AssertionError):
-        mock_execute.assert_called_once_with("SELECT * FROM table2_v1")
+    # table1_v1 is queried (pragma + select), table2_v1 is not
+    assert any("table1_v1" in call.args[0] for call in mock_execute.call_args_list)
+    assert not any("table2_v1" in call.args[0] for call in mock_execute.call_args_list)
 
     await appdb.shutdown()
+
+
+async def test_migrate_tables_integrity_error_raises(tmp_path):
+    """Test that _migrate_tables re-raises IntegrityError with errors='raise'."""
+    db_path = tmp_path / "test.db"
+    app = await make_app_with_db(db_path)
+
+    # Create two simple tables, pre-populate the destination with a conflicting row
+    await app._dblistener.execute(
+        "CREATE TABLE src_v1 (id INTEGER PRIMARY KEY, val TEXT)"
+    )
+    await app._dblistener.execute(
+        "CREATE TABLE dst_v2 (id INTEGER PRIMARY KEY, val TEXT)"
+    )
+    await app._dblistener.execute("INSERT INTO src_v1 VALUES (1, 'hello')")
+    await app._dblistener.execute("INSERT INTO dst_v2 VALUES (1, 'conflict')")
+
+    app._dblistener._get_table_versions = AsyncMock(return_value={"src_v1": "1"})
+
+    with pytest.raises(sqlite3.IntegrityError):
+        await app._dblistener._migrate_tables({"src_v1": "dst_v2"})
+
+    await app.shutdown()
 
 
 async def test_last_seen_initial_migration(test_db):
@@ -541,7 +568,7 @@ async def test_unknown_manufacturer_code_migration(test_db, caplog):
     # Count rows after migration
     with sqlite3.connect(test_db_prod) as conn:
         cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM attributes_cache_v14")
+        cur.execute(f"SELECT COUNT(*) FROM attributes_cache{zigpy.appdb.DB_V}")
         after_total = cur.fetchone()[0]
 
         assert after_total == before_total
@@ -586,9 +613,9 @@ async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
     with sqlite3.connect(test_db_path) as conn:
         cur = conn.cursor()
         cur.execute(
-            """
+            f"""
             SELECT manufacturer_code
-            FROM attributes_cache_v14
+            FROM attributes_cache{zigpy.appdb.DB_V}
             WHERE cluster_id = 0xFC00 AND attr_id = 0x0002
             """,
         )
@@ -600,9 +627,9 @@ async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
     with sqlite3.connect(test_db_path) as conn:
         cur = conn.cursor()
         cur.execute(
-            """
+            f"""
             SELECT manufacturer_code, status
-            FROM attributes_cache_v14
+            FROM attributes_cache{zigpy.appdb.DB_V}
             WHERE ieee = ? AND cluster_id = 0xFC00 AND attr_id = 0x0004
             """,
             (third_reality_ieee,),
@@ -689,7 +716,7 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
 
     with sqlite3.connect(db_path) as conn:
         conn.executemany(
-            "INSERT INTO attributes_cache_v14"
+            f"INSERT INTO attributes_cache{zigpy.appdb.DB_V}"
             " (ieee, endpoint_id, cluster_type, cluster_id,"
             "  attr_id, manufacturer_code, status, value, last_updated)"
             " VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)",
@@ -728,7 +755,7 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
     with sqlite3.connect(db_path) as conn:
         # The disambiguated unmigrated row was deleted (a row with 0xABCD already existed)
         rows = conn.execute(
-            "SELECT manufacturer_code FROM attributes_cache_v14"
+            f"SELECT manufacturer_code FROM attributes_cache{zigpy.appdb.DB_V}"
             " WHERE ieee = ? AND cluster_id = ? AND attr_id = ?",
             (str(dev.ieee), 0xFC01, 0x0010),
         ).fetchall()
@@ -736,7 +763,7 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
 
         # The ambiguous unmigrated row is still present
         rows = conn.execute(
-            "SELECT manufacturer_code FROM attributes_cache_v14"
+            f"SELECT manufacturer_code FROM attributes_cache{zigpy.appdb.DB_V}"
             " WHERE ieee = ? AND cluster_id = ? AND attr_id = ?",
             (str(dev.ieee), 0xFC02, 0x0020),
         ).fetchall()

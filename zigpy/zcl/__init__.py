@@ -200,6 +200,22 @@ class AttributeClearedEvent:
     manufacturer_code: int | None
 
 
+@dataclass(kw_only=True, frozen=True)
+class OtaQueryCacheUpdatedEvent:
+    """Event generated when OTA query_next_image fields are cached on a cluster."""
+
+    event_type: Final[str] = "ota_query_cache_updated"
+
+    device_ieee: str
+    endpoint_id: int
+    cluster_type: ClusterType
+    cluster_id: int
+    manufacturer_code: int
+    image_type: int
+    current_file_version: int
+    hardware_version: int | None
+
+
 def convert_list_schema(
     schema: Sequence[type], command_id: int, direction: foundation.Direction
 ) -> type[t.Struct]:

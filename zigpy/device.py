@@ -38,7 +38,7 @@ from zigpy.profiles import zha, zll
 import zigpy.types as t
 import zigpy.util
 from zigpy.zcl import Cluster, ClusterType, foundation
-from zigpy.zcl.clusters.general import Ota, PollControl
+from zigpy.zcl.clusters.general import Ota, PollControl, QueryNextImageCommand
 import zigpy.zdo.types as zdo_t
 
 if typing.TYPE_CHECKING:
@@ -928,6 +928,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             cluster_id=Ota.cluster_id, cluster_type=ClusterType.Client
         )
         ota.update_attribute(Ota.AttributeDefs.current_file_version.id, None)
+        ota.last_query_cmd = None
 
         await asyncio.sleep(AFTER_OTA_ATTR_READ_DELAY)
         await OTA_RETRY_DECORATOR(ota.read_attributes)(
@@ -935,6 +936,14 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         )
 
         return result
+
+    def get_last_ota_query_cmd(self) -> QueryNextImageCommand | None:
+        """Return the last cached QueryNextImageCommand from any OTA cluster."""
+        for ep in self.non_zdo_endpoints:
+            for cluster in ep.clusters:
+                if isinstance(cluster, Ota) and cluster.last_query_cmd is not None:
+                    return cluster.last_query_cmd
+        return None
 
     def radio_details(self, lqi=None, rssi=None) -> None:
         if lqi is not None:
