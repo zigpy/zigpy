@@ -1,6 +1,7 @@
 import itertools
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+import aiohttp
 import pytest
 
 from tests.conftest import (
@@ -776,3 +777,19 @@ async def test_ota_manager_deferred_download():
 
     # The update itself returns NO_IMAGE_AVAILABLE because the device rejected it
     assert result == foundation.Status.NO_IMAGE_AVAILABLE
+
+
+async def test_ota_manager_deferred_download_failure():
+    """Test that a fetch failure during deferred download propagates correctly."""
+
+    deferred_image = zigpy.ota.OtaImageWithMetadata(
+        metadata=FW_IMAGE.metadata.replace(trusted=True),
+        firmware=None,
+    )
+
+    mock_fetch = AsyncMock(side_effect=aiohttp.ClientError("Download failed"))
+    with (
+        patch.object(OtaImageWithMetadata, "fetch", mock_fetch),
+        pytest.raises(aiohttp.ClientError, match="Download failed"),
+    ):
+        await update_firmware(MagicMock(), deferred_image)
