@@ -491,13 +491,9 @@ class OTA:
 
         # Calculate content hashes for collision detection
         for img in upgrades.values():
-            # Ignore untrusted image without firmware, should not occur
-            if img.firmware is None and not img.metadata.trusted:
-                _LOGGER.warning(
-                    "Untrusted image %s has no firmware downloaded, ignoring", img
-                )
-                images_to_remove.append(img.metadata)
-                continue
+            # Untrusted images are always downloaded above and ones that failed
+            # to download were already removed; this should never happen.
+            assert img.firmware is not None or img.metadata.trusted
 
             # Ignore trusted image without SHA3-256 checksum
             if img.firmware is None and (
