@@ -480,16 +480,41 @@ class OTA:
             else:
                 upgrades[img.metadata] = img
 
-        # As a final pass, identify images with identical versions and specificity but
-        # differing contents.
+        await self._remove_colliding_images(upgrades)
+
+        return OtaImagesResult(
+            upgrades=tuple(
+                sorted(
+                    upgrades.values(),
+                    key=lambda img: (img.version, img.specificity),
+                    reverse=True,
+                )
+            ),
+            downgrades=tuple(
+                sorted(
+                    downgrades.values(),
+                    key=lambda img: (img.version, img.specificity),
+                    reverse=True,
+                )
+            ),
+        )
+
+    async def _remove_colliding_images(
+        self,
+        upgrades: dict[zigpy.ota.providers.BaseOtaImageMetadata, OtaImageWithMetadata],
+    ) -> None:
+        """Remove images with identical versions and specificity but differing contents.
+
+        Also removes trusted images that lack a SHA3-256 checksum, since their content
+        cannot be verified for collision detection.
+        """
         # Structure: {(version, specificity): {content_hash: [images]}}
-        upgrade_collisions: defaultdict[
+        collisions: defaultdict[
             tuple[int, int], defaultdict[str, list[OtaImageWithMetadata]]
         ] = defaultdict(lambda: defaultdict(list))
 
         images_to_remove: list[zigpy.ota.providers.BaseOtaImageMetadata] = []
 
-        # Calculate content hashes for collision detection
         for img in upgrades.values():
             # Untrusted images are always downloaded above and ones that failed
             # to download were already removed; this should never happen.
@@ -517,12 +542,12 @@ class OTA:
                 assert img.metadata.checksum is not None  # Checked above
                 content_hash = img.metadata.checksum
 
-            upgrade_collisions[img.version, img.specificity][content_hash].append(img)
+            collisions[img.version, img.specificity][content_hash].append(img)
 
         for meta in images_to_remove:
             upgrades.pop(meta)
 
-        for (version, specificity), buckets in upgrade_collisions.items():
+        for (version, specificity), buckets in collisions.items():
             # If there are multiple unique hashes, we have a collision
             if len(buckets) < 2:
                 continue
@@ -544,23 +569,6 @@ class OTA:
 
             for img in bad_images:
                 upgrades.pop(img.metadata)
-
-        return OtaImagesResult(
-            upgrades=tuple(
-                sorted(
-                    upgrades.values(),
-                    key=lambda img: (img.version, img.specificity),
-                    reverse=True,
-                )
-            ),
-            downgrades=tuple(
-                sorted(
-                    downgrades.values(),
-                    key=lambda img: (img.version, img.specificity),
-                    reverse=True,
-                )
-            ),
-        )
 
     async def broadcast_notify(
         self,
