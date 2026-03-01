@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 # Devices often ask for bigger blocks than radios can send
 MAXIMUM_IMAGE_BLOCK_SIZE = 40
+SONOFF_MAXIMUM_IMAGE_BLOCK_SIZE = 48
 MAX_TIME_WITHOUT_PROGRESS = 30
 
 
@@ -163,6 +164,9 @@ class OTAManager:
         if command.manufacturer_code == 4129:
             # Legrand devices (manufacturer_code == 4129) require up to 64 bytes.
             default_image_block_size = 255
+        elif command.manufacturer_code == 4742:
+            # Sonoff devices with Telink chips can require 48-byte blocks.
+            default_image_block_size = SONOFF_MAXIMUM_IMAGE_BLOCK_SIZE
         else:
             default_image_block_size = MAXIMUM_IMAGE_BLOCK_SIZE
         block = self._image_data[
