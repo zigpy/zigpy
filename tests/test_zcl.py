@@ -1691,6 +1691,10 @@ def test_find_attribute_colliding_manufacturer_codes() -> None:
     assert TestCluster.find_attribute(0x0002) is TestCluster.AttributeDefs.attribute4
 
 
+@pytest.mark.filterwarnings(
+    r"ignore:Attribute .* has `is_manufacturer_specific`"
+    r":DeprecationWarning"
+)
 def test_find_attribute_unspecified_manufacturer_code() -> None:
     """Test attribute finding when the manufacturer code is unspecified."""
 

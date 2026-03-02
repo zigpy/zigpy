@@ -590,6 +590,7 @@ async def test_form_network_tx_power(
         (FeaturelessApp, {"network": {"tx_power": 15, "country_code": "NL"}}, 15),
     ],
 )
+@pytest.mark.filterwarnings("ignore:Increasing the TX power:UserWarning")
 async def test_startup_tx_power_config(
     app_cls: type[zigpy.application.ControllerApplication],
     config_override: dict,
