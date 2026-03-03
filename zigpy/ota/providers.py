@@ -725,8 +725,8 @@ class ZigpyOtaProvider(BaseZigpyProvider):
             version_data = await rsp.json(content_type=None)
 
         # Extract the index URL from the version file
-        # Format: {"schemas": {"zigpy_v1": {"version": "...", "url": "..."}}}
-        index_url = version_data["schemas"]["zigpy_v1"]["url"]
+        # Format: {"schemas": {"zigpy_v2": {"version": "...", "url": "..."}}}
+        index_url = version_data["schemas"]["zigpy_v2"]["url"]
 
         # Now fetch the actual OTA index
         async with session.get(index_url) as rsp:

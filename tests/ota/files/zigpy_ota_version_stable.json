@@ -1,6 +1,6 @@
 {
   "schemas": {
-    "zigpy_v1": {
+    "zigpy_v2": {
       "version": "0.0.20",
       "url": "https://github.com/zigpy/zigpy-ota/releases/download/0.0.20/zigpy_v1_ota.json"
     },
