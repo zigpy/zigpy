@@ -140,7 +140,7 @@ class DeviceRegistry:
             try:
                 return candidate(device._application, device.ieee, device.nwk, device)
             except Exception:
-                _LOGGER.exception("Error creating quirk for %r: %r", device, candidate)
+                _LOGGER.exception("Failed to load quirk for %r: %r", device, candidate)
                 return device
 
         # If none match, return the original device
