@@ -1635,11 +1635,10 @@ def test_quirk_v2_loading_failure(
             raise RuntimeError("This device failed to initialize")
 
     entry = (
-        QuirkBuilder()
+        QuirkBuilder(registry=registry)
         .applies_to(
             manufacturer=device_mock.manufacturer,
             model=device_mock.model,
-            registry=registry,
         )
         .device_class(BadCustomDevice)
         .add_to_registry()
