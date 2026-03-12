@@ -1634,7 +1634,7 @@ def test_quirk_v2_loading_failure(
         def __init__(self, *args, **kwargs) -> None:
             raise RuntimeError("This device failed to initialize")
 
-    entry = (
+    _entry = (
         QuirkBuilder(registry=registry)
         .applies_to(
             manufacturer=device_mock.manufacturer,
@@ -1647,5 +1647,5 @@ def test_quirk_v2_loading_failure(
     with caplog.at_level(logging.ERROR):
         quirked = registry.get_device(device_mock)
 
-    assert quirked is entry
+    assert quirked is device_mock
     assert "Failed to load quirk for" in caplog.text

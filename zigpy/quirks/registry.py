@@ -118,7 +118,13 @@ class DeviceRegistry:
         if key in self._registry_v2:
             for entry in self._registry_v2[key]:
                 if entry.matches_device(device):
-                    return entry.create_device(device)
+                    try:
+                        return entry.create_device(device)
+                    except Exception:
+                        _LOGGER.exception(
+                            "Failed to load quirk for %r: %r", device, entry
+                        )
+                        return device
 
         # Then, fall back to v1 quirks
         for candidate in itertools.chain(
