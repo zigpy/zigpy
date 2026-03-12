@@ -35,15 +35,13 @@ _uninitialized_device_message_handlers = []
 
 
 def get_device(
-    device: zigpy.device.Device, registry: DeviceRegistry = DEVICE_REGISTRY
+    device: zigpy.device.Device, registry: DeviceRegistry | None = None
 ) -> zigpy.device.Device:
     """Get a CustomDevice object, if one is available"""
+    if registry is None:
+        return DEVICE_REGISTRY.get_device(device)
 
-    try:
-        return registry.get_device(device)
-    except Exception:
-        _LOGGER.exception("Error setting up quirk for device %r", device)
-        return device
+    return registry.get_device(device)
 
 
 def get_quirk_list(

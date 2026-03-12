@@ -136,7 +136,12 @@ class DeviceRegistry:
             _LOGGER.debug(
                 "Found custom device replacement for %s: %s", device.ieee, candidate
             )
-            return candidate(device._application, device.ieee, device.nwk, device)
+
+            try:
+                return candidate(device._application, device.ieee, device.nwk, device)
+            except Exception:
+                _LOGGER.exception("Error creating quirk for %r: %r", device, candidate)
+                return device
 
         # If none match, return the original device
         return device
