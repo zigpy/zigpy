@@ -1079,6 +1079,8 @@ QuirkBuilder("manufacturer2", "model2").adds(
 
 
 def test_quirk_v1_loading_failure(real_device, caplog) -> None:
+    """Test that v1 quirks can fail to load without crashing zigpy."""
+
     class TestQuirk(zigpy.quirks.CustomDevice):
         signature = {
             SIG_MODELS_INFO: (("manufacturer", "model"),),
