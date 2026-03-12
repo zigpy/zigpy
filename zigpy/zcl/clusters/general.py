@@ -1136,24 +1136,23 @@ class Time(Cluster):
         return t.UTCTime((now - ZIGBEE_EPOCH).total_seconds())
 
     def handle_read_attribute_time_status(self) -> TimeStatus:
-        return (
-            TimeStatus.Master
-            | TimeStatus.Synchronized
-            | TimeStatus.Master_for_Zone_and_DST
-        )
+        return TimeStatus.Master | TimeStatus.Master_for_Zone_and_DST
 
     def handle_read_attribute_time_zone(self) -> t.int32s:
-        tz_offset = datetime.now().astimezone().utcoffset()
-        assert tz_offset is not None
+        now_local = datetime.now().astimezone()
+        utc_offset = now_local.utcoffset()
+        dst = now_local.dst()
+        assert utc_offset is not None and dst is not None
 
-        return t.int32s(tz_offset.total_seconds())
+        return t.int32s((utc_offset - dst).total_seconds())
 
     def handle_read_attribute_local_time(self) -> t.LocalTime:
-        now = datetime.now(UTC)
-        tz_offset = datetime.now().astimezone().utcoffset()
-        assert tz_offset is not None
+        now_local = datetime.now().astimezone()
+        utc_offset = now_local.utcoffset()
+        assert utc_offset is not None
 
-        return t.LocalTime((now + tz_offset - ZIGBEE_EPOCH).total_seconds())
+        utc_seconds = (now_local - ZIGBEE_EPOCH).total_seconds()
+        return t.LocalTime(utc_seconds + utc_offset.total_seconds())
 
     # For backwards compatibility
     TimeStatus: Final = TimeStatus
