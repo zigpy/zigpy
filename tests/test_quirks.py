@@ -1,6 +1,7 @@
 import asyncio
 import importlib.util
 import itertools
+import logging
 import pathlib
 import pkgutil
 import sys
@@ -1075,3 +1076,43 @@ QuirkBuilder("manufacturer2", "model2").adds(
 
     assert registry.get_device(dev1) is dev1
     assert registry.get_device(dev2) is dev2
+
+
+def test_quirk_v1_loading_failure(real_device, caplog) -> None:
+    """Test that v1 quirks can fail to load without crashing zigpy."""
+
+    class TestQuirk(zigpy.quirks.CustomDevice):
+        signature = {
+            SIG_MODELS_INFO: (("manufacturer", "model"),),
+            SIG_ENDPOINTS: {
+                1: {
+                    SIG_EP_PROFILE: 255,
+                    SIG_EP_TYPE: 255,
+                    SIG_EP_INPUT: [3],
+                    SIG_EP_OUTPUT: [6],
+                }
+            },
+        }
+
+        replacement = {
+            SIG_ENDPOINTS: {
+                1: {
+                    SIG_EP_PROFILE: 255,
+                    SIG_EP_TYPE: 255,
+                    SIG_EP_INPUT: [3],
+                    SIG_EP_OUTPUT: [6],
+                }
+            },
+        }
+
+        def __init__(self, *args, **kwargs) -> None:
+            raise RuntimeError("Failed to initialize quirk")
+
+    registry = DeviceRegistry()
+    registry.add_to_registry(TestQuirk)
+
+    with caplog.at_level(logging.ERROR, logger="zigpy.quirks"):
+        quirked = zigpy.quirks.get_device(real_device, registry=registry)
+
+    assert quirked is real_device
+    assert "Failed to initialize quirk" in caplog.text

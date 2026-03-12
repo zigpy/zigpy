@@ -1,5 +1,6 @@
 """Tests for the quirks v2 module."""
 
+import logging
 import pathlib
 from typing import Any, Final
 from unittest.mock import AsyncMock
@@ -1618,3 +1619,33 @@ def test_recursive_freeze(obj, expected):
     result = recursive_freeze(obj)
     assert strict_eq(result, expected)
     hash(result)
+
+
+def test_quirk_v2_loading_failure(
+    device_mock: Device, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test that v2 quirks can fail to load without crashing zigpy."""
+
+    registry = DeviceRegistry()
+
+    class BadCustomDevice(CustomDeviceV2):
+        """Custom device with bad quirk definition."""
+
+        def __init__(self, *args, **kwargs) -> None:
+            raise RuntimeError("This device failed to initialize")
+
+    _entry = (
+        QuirkBuilder(registry=registry)
+        .applies_to(
+            manufacturer=device_mock.manufacturer,
+            model=device_mock.model,
+        )
+        .device_class(BadCustomDevice)
+        .add_to_registry()
+    )
+
+    with caplog.at_level(logging.ERROR):
+        quirked = registry.get_device(device_mock)
+
+    assert quirked is device_mock
+    assert "Failed to load quirk for" in caplog.text

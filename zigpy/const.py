@@ -22,3 +22,5 @@ INTERFERENCE_MESSAGE = (
 
 APS_REPLY_TIMEOUT = 5
 APS_REPLY_TIMEOUT_EXTENDED = 28
+
+QUIRKS_REPO_URL = "https://github.com/zigpy/zha-device-handlers"

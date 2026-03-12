@@ -9,7 +9,7 @@ import logging
 import pathlib
 from typing import TYPE_CHECKING, cast
 
-from zigpy.const import SIG_MANUFACTURER, SIG_MODEL, SIG_MODELS_INFO
+from zigpy.const import QUIRKS_REPO_URL, SIG_MANUFACTURER, SIG_MODEL, SIG_MODELS_INFO
 import zigpy.quirks
 from zigpy.util import deprecated
 
@@ -118,7 +118,18 @@ class DeviceRegistry:
         if key in self._registry_v2:
             for entry in self._registry_v2[key]:
                 if entry.matches_device(device):
-                    return entry.create_device(device)
+                    try:
+                        return entry.create_device(device)
+                    except Exception:  # noqa: BLE001
+                        _LOGGER.exception(
+                            (
+                                "Failed to load quirk for %r.\n"
+                                "This is a bug. Please report it here: %s"
+                            ),
+                            device,
+                            QUIRKS_REPO_URL,
+                        )
+                        return device
 
         # Then, fall back to v1 quirks
         for candidate in itertools.chain(
@@ -136,7 +147,20 @@ class DeviceRegistry:
             _LOGGER.debug(
                 "Found custom device replacement for %s: %s", device.ieee, candidate
             )
-            return candidate(device._application, device.ieee, device.nwk, device)
+
+            try:
+                return candidate(device._application, device.ieee, device.nwk, device)
+            except Exception:  # noqa: BLE001
+                _LOGGER.exception(
+                    (
+                        "Failed to load quirk for %r: %r\n"
+                        "This is a bug. Please report it here: %s"
+                    ),
+                    device,
+                    candidate,
+                    QUIRKS_REPO_URL,
+                )
+                return device
 
         # If none match, return the original device
         return device
