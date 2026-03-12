@@ -123,11 +123,10 @@ class DeviceRegistry:
                     except Exception:  # noqa: BLE001
                         _LOGGER.exception(
                             (
-                                "Failed to load quirk for %r: %r\n"
+                                "Failed to load quirk for %r.\n"
                                 "This is a bug. Please report it here: %s"
                             ),
                             device,
-                            entry,
                             QUIRKS_REPO_URL,
                         )
                         return device
