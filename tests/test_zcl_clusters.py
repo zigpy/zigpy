@@ -137,23 +137,11 @@ async def test_basic_cluster():
     )
 
 
-async def test_time_cluster():
-    ep = MagicMock()
-    ep.reply = AsyncMock()
-
-    cluster = Time(ep)
-
-    Read_Attributes_rsp = foundation.GENERAL_COMMANDS[
-        foundation.GeneralCommand.Read_Attributes_rsp
-    ].schema
-
-    # Datetime objects need to be subclassed to be patched so we may as well implement
-    # the patches directly
+def _make_patched_datetime(fake_now):
+    """Create a PatchedDatetime class that returns `fake_now` as the current time."""
 
     class PatchedDatetime(datetime):
-        _fake_now = datetime(
-            2000, 1, 2, 0, 0, 0, tzinfo=ZoneInfo("America/Los_Angeles")
-        )
+        _fake_now = fake_now
 
         def astimezone(self):
             return self.replace(tzinfo=self._fake_now.tzinfo)
@@ -184,6 +172,48 @@ async def test_time_cluster():
                     - cls._fake_now.utcoffset()
                 )
 
+    return PatchedDatetime
+
+
+@pytest.mark.parametrize(
+    ("fake_now", "expected_utc", "expected_tz", "expected_local"),
+    [
+        pytest.param(
+            # January: PST (UTC-8), no DST
+            datetime(2000, 1, 2, 0, 0, 0, tzinfo=ZoneInfo("America/Los_Angeles")),
+            # UTC time: midnight Jan 2 PST = 08:00 Jan 2 UTC = 1 day + 8 hours
+            24 * 60 * 60 + 8 * 60 * 60,
+            # Standard timezone offset: UTC-8
+            -(8 * 60 * 60),
+            # Local time: midnight Jan 2 = 1 day from epoch
+            24 * 60 * 60,
+            id="winter_no_dst",
+        ),
+        pytest.param(
+            # July: PDT (UTC-7), DST active
+            datetime(2000, 7, 2, 0, 0, 0, tzinfo=ZoneInfo("America/Los_Angeles")),
+            # UTC time: midnight Jul 2 PDT = 07:00 Jul 2 UTC
+            183 * 24 * 60 * 60 + 7 * 60 * 60,
+            # Standard timezone offset: still UTC-8 (DST not included)
+            -(8 * 60 * 60),
+            # Local time: midnight Jul 2 local
+            183 * 24 * 60 * 60,
+            id="summer_with_dst",
+        ),
+    ],
+)
+async def test_time_cluster(fake_now, expected_utc, expected_tz, expected_local):
+    ep = MagicMock()
+    ep.reply = AsyncMock()
+
+    cluster = Time(ep)
+
+    Read_Attributes_rsp = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Read_Attributes_rsp
+    ].schema
+
+    PatchedDatetime = _make_patched_datetime(fake_now)
+
     with patch("zigpy.zcl.clusters.general.datetime", PatchedDatetime):
         # Supported attributes
         rsp1 = await read_attributes(
@@ -201,8 +231,7 @@ async def test_time_cluster():
         status=foundation.Status.SUCCESS,
         value=foundation.TypeValue(
             type=foundation.DataTypeId.UTC,
-            # One day from the epoch, plus time zone offset
-            value=24 * 60 * 60 + 8 * 60 * 60,
+            value=expected_utc,
         ),
     )
 
@@ -220,8 +249,7 @@ async def test_time_cluster():
         status=foundation.Status.SUCCESS,
         value=foundation.TypeValue(
             type=foundation.DataTypeId.int32,
-            # Time zone offset
-            value=-(8 * 60 * 60),
+            value=expected_tz,
         ),
     )
 
@@ -230,8 +258,7 @@ async def test_time_cluster():
         status=foundation.Status.SUCCESS,
         value=foundation.TypeValue(
             type=foundation.DataTypeId.uint32,
-            # One day from the epoch, as on the clock
-            value=24 * 60 * 60,
+            value=expected_local,
         ),
     )
 
