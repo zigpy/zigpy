@@ -211,11 +211,7 @@ async def test_time_cluster():
         status=foundation.Status.SUCCESS,
         value=foundation.TypeValue(
             type=foundation.DataTypeId.map8,
-            value=(
-                Time.TimeStatus.Master
-                | Time.TimeStatus.Synchronized
-                | Time.TimeStatus.Master_for_Zone_and_DST
-            ),
+            value=(Time.TimeStatus.Master | Time.TimeStatus.Master_for_Zone_and_DST),
         ),
     )
 
