@@ -2317,16 +2317,17 @@ async def test_write_attributes_multiple_manufacturer_groups(app_mock) -> None:
 
 
 async def test_configure_reporting_multiple_manufacturer_groups(app_mock) -> None:
-    """Test configure_reporting_multiple with attributes spanning
-    multiple manufacturer groups.
+    """Test configure_reporting_multiple with attributes spanning multiple manufacturer
+    groups, including colliding attribute IDs that differ only by manufacturer code.
     """
 
     class TestCluster(Basic):
         _skip_registry = True
 
         class AttributeDefs(Basic.AttributeDefs):
-            manuf_attr = foundation.ZCLAttributeDef(
-                id=0xB001,
+            # Same numeric ID as hw_version (0x0003) but manufacturer-specific
+            manuf_hw_version = foundation.ZCLAttributeDef(
+                id=0x0003,
                 type=t.uint8_t,
                 manufacturer_code=0x5678,
             )
@@ -2337,29 +2338,46 @@ async def test_configure_reporting_multiple_manufacturer_groups(app_mock) -> Non
     cluster = TestCluster(dev.endpoints[1])
     dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
 
-    cfg_response = zcl.foundation.ConfigureReportingResponse(
+    cfg_success = zcl.foundation.ConfigureReportingResponse(
         [zcl.foundation.ConfigureReportingResponseRecord(zcl.foundation.Status.SUCCESS)]
     )
+    cfg_fail = zcl.foundation.ConfigureReportingResponse(
+        [
+            zcl.foundation.ConfigureReportingResponseRecord(
+                zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE,
+                zcl.foundation.ReportingDirection.ReceiveReports,
+                0x0003,
+            )
+        ]
+    )
 
+    # Standard fails, manufacturer-specific succeeds
     with patch.object(
         cluster,
         "_configure_reporting",
         new_callable=AsyncMock,
-        return_value=[cfg_response],
+        side_effect=[[cfg_fail], [cfg_success]],
     ) as mock_configure:
         results = await cluster.configure_reporting_multiple(
             {
                 Basic.AttributeDefs.hw_version: ReportingConfig(
                     min_interval=5, max_interval=15, reportable_change=20
                 ),
-                TestCluster.AttributeDefs.manuf_attr: ReportingConfig(
+                TestCluster.AttributeDefs.manuf_hw_version: ReportingConfig(
                     min_interval=10, max_interval=30, reportable_change=5
                 ),
             }
         )
 
     assert len(results) == 2
-    assert all(s == zcl.foundation.Status.SUCCESS for s in results.values())
+    assert (
+        results[Basic.AttributeDefs.hw_version]
+        == zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE
+    )
+    assert (
+        results[TestCluster.AttributeDefs.manuf_hw_version]
+        == zcl.foundation.Status.SUCCESS
+    )
 
     # Two separate requests should have been made (one per manufacturer group)
     assert mock_configure.await_count == 2
@@ -2373,11 +2391,11 @@ async def test_configure_reporting_multiple_manufacturer_groups(app_mock) -> Non
     assert std_call.args[0][0].max_interval == 15
     assert std_call.args[0][0].reportable_change == 20
 
-    # Second call: manufacturer-specific attribute
+    # Second call: manufacturer-specific attribute (same attrid, different manuf code)
     manuf_call = mock_configure.call_args_list[1]
     assert manuf_call.kwargs["manufacturer"] == 0x5678
     assert len(manuf_call.args[0]) == 1
-    assert manuf_call.args[0][0].attrid == TestCluster.AttributeDefs.manuf_attr.id
+    assert manuf_call.args[0][0].attrid == TestCluster.AttributeDefs.manuf_hw_version.id
     assert manuf_call.args[0][0].min_interval == 10
     assert manuf_call.args[0][0].max_interval == 30
     assert manuf_call.args[0][0].reportable_change == 5
