@@ -1862,3 +1862,90 @@ async def test_callback_wrapping_async(
             ),
         ),
     ]
+
+
+async def test_device_reinterviewed(app):
+    """Test _device_reinterviewed swaps the old device for the shadow."""
+    import zigpy.device
+    import zigpy.endpoint
+
+    ieee = make_ieee()
+    nwk = t.NWK(0x1234)
+
+    old_dev = app.add_device(ieee=ieee, nwk=nwk)
+    old_dev.node_desc = make_node_desc()
+    old_dev.model = "OldModel"
+    old_dev.manufacturer = "OldManufacturer"
+    assert app.devices[ieee] is old_dev
+
+    # Create a shadow device (as reinterview would)
+    shadow = zigpy.device.Device(app, ieee, nwk)
+    shadow.node_desc = make_node_desc()
+    shadow.model = "NewModel"
+    shadow.manufacturer = "NewManufacturer"
+    shadow.status = zigpy.device.Status.ENDPOINTS_INIT
+    ep = shadow.add_endpoint(1)
+    ep.profile_id = 260
+    ep.device_type = 0x0100
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+
+    await app._device_reinterviewed(old_dev, shadow)
+
+    # The device in app.devices should now be the shadow (or quirked version)
+    new_dev = app.devices[ieee]
+    assert new_dev is not old_dev
+    assert new_dev.model == "NewModel"
+    assert new_dev.manufacturer == "NewManufacturer"
+
+    # device_initialized and device_reinterviewed events should have been fired
+    app.listener_event.assert_any_call("device_initialized", new_dev)
+    app.listener_event.assert_any_call("device_reinterviewed", new_dev)
+
+
+async def test_device_reinterviewed_with_db(app):
+    """Test _device_reinterviewed removes old device from DB before saving new one."""
+    import zigpy.device
+    import zigpy.endpoint
+
+    ieee = make_ieee()
+    nwk = t.NWK(0x1234)
+
+    old_dev = app.add_device(ieee=ieee, nwk=nwk)
+    old_dev.node_desc = make_node_desc()
+
+    # Set up a mock DB listener
+    db_listener = MagicMock()
+    db_listener._remove_device = AsyncMock()
+    app._dblistener = db_listener
+    old_dev.add_context_listener(db_listener)
+
+    shadow = zigpy.device.Device(app, ieee, nwk)
+    shadow.node_desc = make_node_desc()
+    shadow.status = zigpy.device.Status.ENDPOINTS_INIT
+    ep = shadow.add_endpoint(1)
+    ep.profile_id = 260
+    ep.device_type = 0x0100
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+
+    await app._device_reinterviewed(old_dev, shadow)
+
+    # DB removal should have been called for the old device
+    db_listener._remove_device.assert_awaited_once_with(old_dev)
+
+
+async def test_reinterview_device_public_api(app):
+    """Test reinterview_device delegates to dev.reinterview()."""
+    ieee = make_ieee()
+    nwk = t.NWK(0x1234)
+    dev = app.add_device(ieee=ieee, nwk=nwk)
+    dev.reinterview = AsyncMock()
+
+    await app.reinterview_device(ieee)
+
+    dev.reinterview.assert_awaited_once()
+
+
+async def test_reinterview_device_not_found(app):
+    """Test reinterview_device raises KeyError for unknown device."""
+    with pytest.raises(KeyError):
+        await app.reinterview_device(make_ieee(99))

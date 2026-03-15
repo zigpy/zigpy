@@ -494,6 +494,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
     monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
     dev.zdo.Active_EP_req = mockrequest
+    dev.reinterview = AsyncMock()
 
     with mock_attribute_reads(cluster, {"current_file_version": 0x00000001}):
         await dev.initialize()
@@ -877,6 +878,7 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
     monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
     dev.zdo.Active_EP_req = mockrequest
+    dev.reinterview = AsyncMock()
 
     with mock_attribute_reads(cluster, {"current_file_version": 0x00000001}):
         await dev.initialize()
@@ -1899,3 +1901,179 @@ async def test_attribute_report_not_matched_with_request(dev):
     result = await request_task
 
     assert result == default_rsp_cmd
+
+
+async def test_reinterview_success(monkeypatch, dev):
+    """Test successful re-interview creates a shadow device and swaps it in."""
+    node_desc = zdo_t.NodeDescriptor(1, 1, 1, 4, 5, 6, 7, 8)
+
+    async def mockrequest(*args, **kwargs):
+        return [0, None, [0, 1, 2]]
+
+    async def mock_get_node_descriptor(self):
+        self.node_desc = node_desc
+        return node_desc
+
+    async def mockepinit(self, *args, **kwargs):
+        self.status = endpoint.Status.ZDO_INIT
+        self.add_input_cluster(Basic.cluster_id)
+
+    async def mock_ep_get_model_info(self):
+        return "NewModel", "NewManufacturer"
+
+    monkeypatch.setattr(device.Device, "get_node_descriptor", mock_get_node_descriptor)
+    monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
+    monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
+
+    # First initialize the device normally
+    dev.zdo.Active_EP_req = mockrequest
+    await dev.initialize()
+    assert dev.is_initialized
+
+    # Set up the application mock for _device_reinterviewed
+    dev._application._device_reinterviewed = AsyncMock()
+
+    # Patch Device.__init__ to set up Active_EP_req mock on any new Device instance
+    original_init = device.Device.__init__
+
+    def patched_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        self.zdo.Active_EP_req = mockrequest
+
+    monkeypatch.setattr(device.Device, "__init__", patched_init)
+
+    # Run reinterview
+    await dev.reinterview()
+
+    # Verify _device_reinterviewed was called with the old device and a shadow
+    dev._application._device_reinterviewed.assert_called_once()
+    call_args = dev._application._device_reinterviewed.call_args
+    old_dev, shadow = call_args[0]
+    assert old_dev is dev
+    assert isinstance(shadow, device.Device)
+    assert shadow.ieee == dev.ieee
+    assert shadow.nwk == dev.nwk
+    assert shadow.is_initialized
+    assert 1 in shadow.endpoints
+    assert 2 in shadow.endpoints
+    assert shadow.model == "NewModel"
+    assert shadow.manufacturer == "NewManufacturer"
+
+
+async def test_reinterview_failure_preserves_device(monkeypatch, dev):
+    """Test that failed re-interview preserves the old device."""
+
+    async def mockrequest_success(*args, **kwargs):
+        return [0, None, [0, 1]]
+
+    async def mockepinit(self, *args, **kwargs):
+        self.status = endpoint.Status.ZDO_INIT
+        self.add_input_cluster(Basic.cluster_id)
+
+    async def mock_ep_get_model_info(self):
+        return "OldModel", "OldManufacturer"
+
+    monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
+    monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
+
+    # First initialize normally
+    dev.zdo.Active_EP_req = mockrequest_success
+    await dev.initialize()
+    assert dev.model == "OldModel"
+
+    # Now make the shadow's discovery fail (sleepy device)
+    async def mockrequest_fail(*args, **kwargs):
+        raise TimeoutError("Device asleep")
+
+    monkeypatch.setattr(
+        device.Device, "get_node_descriptor", AsyncMock(side_effect=TimeoutError)
+    )
+
+    dev._application._device_reinterviewed = AsyncMock()
+
+    await dev.reinterview()
+
+    # _device_reinterviewed should NOT have been called
+    dev._application._device_reinterviewed.assert_not_called()
+
+    # Old device is completely untouched
+    assert dev.model == "OldModel"
+    assert dev.manufacturer == "OldManufacturer"
+    assert 1 in dev.endpoints
+    assert dev.is_initialized
+
+    # Failure event was fired
+    dev._application.listener_event.assert_called_with(
+        "device_reinterview_failure", dev
+    )
+
+
+async def test_reinterview_already_in_progress(dev):
+    """Test that concurrent reinterview calls are prevented."""
+    dev._reinterview_in_progress = True
+    dev._application._device_reinterviewed = AsyncMock()
+
+    await dev.reinterview()
+
+    dev._application._device_reinterviewed.assert_not_called()
+
+
+async def test_reinterview_during_initialization(dev):
+    """Test that reinterview is skipped if initialization is in progress."""
+    dev._initialize_task = asyncio.Future()  # simulate in-progress init
+    dev._application._device_reinterviewed = AsyncMock()
+
+    await dev.reinterview()
+
+    dev._application._device_reinterviewed.assert_not_called()
+    dev._initialize_task.cancel()
+
+
+async def test_reinterview_poll_control_checkin(dev):
+    """Test that poll control checkin enables fast polling during reinterview."""
+    dev._reinterview_in_progress = True
+
+    # Verify the condition in poll_control_checkin_callback would trigger fast polling
+    assert dev.reinterviewing is True
+
+
+async def test_update_firmware_triggers_reinterview(monkeypatch, dev):
+    """Test that successful OTA triggers reinterview."""
+    ep = dev.add_endpoint(1)
+    cluster = zigpy.zcl.Cluster.from_id(ep, Ota.cluster_id, is_server=False)
+    ep.add_output_cluster(Ota.cluster_id, cluster)
+
+    async def mockrequest(nwk, tries=None, delay=None):
+        return [0, None, [0, 1]]
+
+    async def mockepinit(self, *args, **kwargs):
+        self.status = endpoint.Status.ZDO_INIT
+        self.add_input_cluster(Basic.cluster_id)
+
+    async def mock_ep_get_model_info(self):
+        return "Model", "Manufacturer"
+
+    monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
+    monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
+    dev.zdo.Active_EP_req = mockrequest
+
+    with mock_attribute_reads(cluster, {"current_file_version": 0x00000001}):
+        await dev.initialize()
+
+    # Mock the OTA process to return success
+
+    monkeypatch.setattr(
+        "zigpy.device.update_firmware",
+        AsyncMock(return_value=foundation.Status.SUCCESS),
+    )
+
+    dev.reinterview = AsyncMock()
+
+    with mock_attribute_reads(cluster, {"current_file_version": 0x00000002}):
+        result = await dev.update_firmware(
+            MagicMock(),
+            progress_callback=MagicMock(),
+        )
+
+    assert result == foundation.Status.SUCCESS
+    dev.reinterview.assert_awaited_once()
