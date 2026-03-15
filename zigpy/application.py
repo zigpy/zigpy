@@ -608,6 +608,34 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             device.add_context_listener(self._dblistener)
         self.listener_event("device_initialized", device)
 
+    async def _device_reinterviewed(
+        self,
+        old_device: zigpy.device.Device,
+        shadow: zigpy.device.Device,
+    ) -> None:
+        """Atomically swap an old device with a successfully re-interviewed shadow."""
+        # Remove old device data from DB (cascade deletes endpoints, clusters, cache)
+        if self._dblistener is not None:
+            old_device.remove_listener(self._dblistener)
+            await self._dblistener._remove_device(old_device)
+
+        # Clean up old device's callbacks and tasks
+        old_device.on_remove()
+
+        # Finalize the shadow via the existing device_initialized path:
+        # sets original_signature, applies quirks, saves to DB, fires events
+        self.device_initialized(shadow)
+
+        self.listener_event("device_reinterviewed", self.devices[shadow.ieee])
+
+    async def reinterview_device(self, ieee: t.EUI64) -> None:
+        """Re-interview a device. Safe for sleepy end-devices.
+
+        If the device does not respond, existing state is preserved.
+        """
+        dev = self.get_device(ieee=ieee)
+        await dev.reinterview()
+
     async def remove(
         self, ieee: t.EUI64, remove_children: bool = True, rejoin: bool = False
     ) -> None:
