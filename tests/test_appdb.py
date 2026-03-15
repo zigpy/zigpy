@@ -1517,6 +1517,140 @@ async def test_attribute_cache_null_manufacturer_code_uniqueness(tmp_path):
         assert row[0] == "Model 2"
 
 
+async def test_device_scan_rows_persist_and_clear(tmp_path):
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    ieee = t.EUI64.convert("aa:bb:cc:dd:11:22:33:44")
+    dev = app.add_device(ieee=ieee, nwk=0x1234)
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = profiles.zha.PROFILE_ID
+    ep.device_type = profiles.zha.DeviceType.ON_OFF_SWITCH
+    ep.add_input_cluster(Basic.cluster_id)
+
+    await app._dblistener._save_device(dev)
+
+    await app._dblistener.upsert_device_scan_progress(
+        ieee=ieee,
+        endpoint_id=1,
+        cluster_type=ClusterType.Server,
+        cluster_id=Basic.cluster_id,
+        manufacturer_code_scope=None,
+        attr_discovery_complete=False,
+        attr_discovery_next_id=0x0020,
+        attr_reads_complete=False,
+        cmd_rx_complete=False,
+        cmd_rx_next_id=0,
+        cmd_tx_complete=False,
+        cmd_tx_next_id=0,
+        last_started=1.0,
+        last_finished=None,
+        last_error_code="transport_failure",
+        last_error="timeout",
+        last_success=None,
+    )
+    await app._dblistener.upsert_device_scan_attribute(
+        ieee=ieee,
+        endpoint_id=1,
+        cluster_type=ClusterType.Server,
+        cluster_id=Basic.cluster_id,
+        manufacturer_code_scope=None,
+        attr_id=0x0004,
+        attribute_name="manufacturer",
+        datatype=zigpy.zcl.foundation.DataTypeId.string,
+        access=0x01,
+        discovered_at=2.0,
+        read_complete=True,
+        read_status="success",
+        value=b"\x06Vendor",
+        last_read=3.0,
+        last_error_code=None,
+        last_error=None,
+    )
+    await app._dblistener.upsert_device_scan_attribute(
+        ieee=ieee,
+        endpoint_id=1,
+        cluster_type=ClusterType.Server,
+        cluster_id=Basic.cluster_id,
+        manufacturer_code_scope=0x1234,
+        attr_id=0x0004,
+        attribute_name="manufacturer",
+        datatype=zigpy.zcl.foundation.DataTypeId.string,
+        access=0x01,
+        discovered_at=2.5,
+        read_complete=False,
+        read_status="transport_failure",
+        value=None,
+        last_read=None,
+        last_error_code="transport_failure",
+        last_error="radio timeout",
+    )
+    await app._dblistener.upsert_device_scan_command(
+        ieee=ieee,
+        endpoint_id=1,
+        cluster_type=ClusterType.Server,
+        cluster_id=Basic.cluster_id,
+        manufacturer_code_scope=None,
+        direction="received",
+        command_id=0x00,
+        command_name="reset_to_factory_defaults",
+        command_schema="()",
+        discovered_at=4.0,
+    )
+
+    rows = await app._dblistener.get_device_scan_rows(ieee)
+
+    assert len(rows.progress) == 1
+    assert rows.progress[0].last_error_code == "transport_failure"
+    assert rows.progress[0].last_error == "timeout"
+
+    assert len(rows.attributes) == 2
+    assert {row.manufacturer_code_scope for row in rows.attributes} == {None, 0x1234}
+    assert rows.attributes[0].datatype == zigpy.zcl.foundation.DataTypeId.string
+    assert any(row.value == b"\x06Vendor" for row in rows.attributes)
+
+    assert len(rows.commands) == 1
+    assert rows.commands[0].direction == "received"
+
+    await app._dblistener.clear_device_scan_data(ieee)
+
+    rows = await app._dblistener.get_device_scan_rows(ieee)
+    assert rows.progress == []
+    assert rows.attributes == []
+    assert rows.commands == []
+
+    await app.shutdown()
+
+
+async def test_raw_topology_rows_preserve_null_manufacturer_code(tmp_path):
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    ieee = t.EUI64.convert("aa:bb:cc:dd:44:55:66:77")
+    dev = app.add_device(ieee=ieee, nwk=0x2345)
+    dev.node_desc = make_node_desc(
+        logical_type=zdo_t.LogicalType.Router, manufacturer_code=None
+    )
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = profiles.zha.PROFILE_ID
+    ep.device_type = profiles.zha.DeviceType.ON_OFF_SWITCH
+    ep.add_input_cluster(Basic.cluster_id)
+
+    await app._dblistener._save_device(dev)
+
+    topology = await app._dblistener.get_raw_topology_rows(ieee)
+
+    assert topology.node_descriptor is not None
+    assert topology.node_descriptor.manufacturer_code is None
+
+    await app.shutdown()
+
+
 @patch("zigpy.quirks.DEVICE_REGISTRY", new=DeviceRegistry())
 async def test_device_signature_ignores_quirks(tmp_path) -> None:
     """Test that `device.original_signature` is populated before quirks modify the device."""

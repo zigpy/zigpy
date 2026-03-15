@@ -12,6 +12,7 @@ import pytest
 import zigpy.application
 import zigpy.config as conf
 from zigpy.datastructures import RequestLimiter
+import zigpy.device_scanner
 from zigpy.exceptions import (
     DeliveryError,
     NetworkNotFormed,
@@ -220,6 +221,11 @@ def test_nwk(app):
 
 def test_config(app):
     assert app.config == app._config
+
+
+def test_device_scanner_service_property(app):
+    assert isinstance(app.device_scanner, zigpy.device_scanner.DeviceScanner)
+    assert app.device_scanner._app is app
 
 
 def test_deserialize(app, ieee):

@@ -80,6 +80,58 @@ async def test_initialize(monkeypatch, dev):
     assert dev._application.device_initialized.call_count == 3
 
 
+async def test_initialize_and_scanner_descriptor_refresh_share_raw_walk(app):
+    dev = app.add_device(
+        nwk=0x1234,
+        ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"),
+    )
+    node_desc = make_node_desc(manufacturer_code=0xABCD)
+
+    async def mock_active_ep_req(nwk):
+        assert nwk == dev.nwk
+        return [zdo_t.Status.SUCCESS, None, [1, 2]]
+
+    async def mock_simple_desc_req(nwk, endpoint_id):
+        assert nwk == dev.nwk
+
+        sd = zdo_t.SimpleDescriptor()
+        sd.endpoint = endpoint_id
+
+        if endpoint_id == 1:
+            sd.profile = zha.PROFILE_ID
+            sd.device_type = zha.DeviceType.PUMP
+            sd.input_clusters = [Basic.cluster_id]
+            sd.output_clusters = []
+            return [zdo_t.Status.SUCCESS, None, sd]
+
+        return [zdo_t.Status.NOT_ACTIVE, None, sd]
+
+    dev.zdo.Node_Desc_req = AsyncMock(
+        return_value=(zdo_t.Status.SUCCESS, dev.nwk, node_desc)
+    )
+    dev.zdo.Active_EP_req = AsyncMock(side_effect=mock_active_ep_req)
+    dev.zdo.Simple_Desc_req = AsyncMock(side_effect=mock_simple_desc_req)
+
+    with patch.object(
+        endpoint.Endpoint, "get_model_info", AsyncMock(return_value=(None, None))
+    ):
+        scan_result = await app.device_scanner._discover_raw_descriptors(dev)
+        await dev.initialize()
+
+    descriptor_by_endpoint = {
+        descriptor.endpoint_id: descriptor for descriptor in scan_result.endpoints
+    }
+
+    assert scan_result.node_descriptor == node_desc
+    assert descriptor_by_endpoint[1].profile_id == dev.endpoints[1].profile_id
+    assert descriptor_by_endpoint[1].device_type == dev.endpoints[1].device_type
+    assert descriptor_by_endpoint[1].input_clusters == tuple(
+        dev.endpoints[1].in_clusters
+    )
+    assert descriptor_by_endpoint[2].status == endpoint.Status.ENDPOINT_INACTIVE
+    assert dev.endpoints[2].status == endpoint.Status.ENDPOINT_INACTIVE
+
+
 async def test_initialize_read_ota(
     app: zigpy.application.ControllerApplication,
 ) -> None:
@@ -1898,4 +1950,144 @@ async def test_attribute_report_not_matched_with_request(dev):
     assert request_task.done()
     result = await request_task
 
+    assert result == default_rsp_cmd
+
+
+async def test_client_cluster_default_response_with_wrong_direction_matches_request(
+    dev,
+):
+    ep = dev.add_endpoint(1)
+    ep.add_output_cluster(Ota.cluster_id)
+
+    with patch.object(dev._application, "send_packet") as mock_packet_send:
+        request_task = asyncio.create_task(
+            ep.out_clusters[Ota.cluster_id].discover_attributes_extended(0, 16)
+        )
+
+        await asyncio.sleep(0)
+        assert len(mock_packet_send.mock_calls) == 1
+        sent_packet = mock_packet_send.mock_calls[0].args[0]
+
+    tsn_hdr, _ = foundation.ZCLHeader.deserialize(sent_packet.data.serialize())
+
+    default_rsp_hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.GLOBAL_COMMAND,
+            is_manufacturer_specific=False,
+            direction=foundation.Direction.Server_to_Client,
+            disable_default_response=True,
+            reserved=0,
+        ),
+        tsn=tsn_hdr.tsn,
+        command_id=foundation.GeneralCommand.Default_Response,
+    )
+    default_rsp_cmd = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Default_Response
+    ].schema(
+        command_id=foundation.GeneralCommand.Discover_Attribute_Extended,
+        status=foundation.Status.UNSUP_GENERAL_COMMAND,
+    )
+
+    dev.packet_received(
+        t.ZigbeePacket(
+            src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+            src_ep=1,
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+            dst_ep=1,
+            profile_id=260,
+            cluster_id=Ota.cluster_id,
+            data=t.SerializableBytes(
+                default_rsp_hdr.serialize() + default_rsp_cmd.serialize()
+            ),
+            lqi=255,
+            rssi=-30,
+        )
+    )
+
+    result = await asyncio.wait_for(request_task, timeout=0.2)
+    assert result == default_rsp_cmd
+
+
+async def test_client_cluster_wrong_direction_non_response_does_not_match_request(dev):
+    ep = dev.add_endpoint(1)
+    ep.add_output_cluster(Ota.cluster_id)
+
+    with patch.object(dev._application, "send_packet") as mock_packet_send:
+        request_task = asyncio.create_task(
+            ep.out_clusters[Ota.cluster_id].discover_attributes_extended(0, 16)
+        )
+
+        await asyncio.sleep(0)
+        assert len(mock_packet_send.mock_calls) == 1
+        sent_packet = mock_packet_send.mock_calls[0].args[0]
+
+    tsn_hdr, _ = foundation.ZCLHeader.deserialize(sent_packet.data.serialize())
+
+    request_hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.GLOBAL_COMMAND,
+            is_manufacturer_specific=False,
+            direction=foundation.Direction.Server_to_Client,
+            disable_default_response=True,
+            reserved=0,
+        ),
+        tsn=tsn_hdr.tsn,
+        command_id=foundation.GeneralCommand.Discover_Attributes,
+    )
+    request_cmd = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Discover_Attributes
+    ].schema(start_attribute_id=0, max_attribute_ids=16)
+
+    dev.packet_received(
+        t.ZigbeePacket(
+            src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+            src_ep=1,
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+            dst_ep=1,
+            profile_id=260,
+            cluster_id=Ota.cluster_id,
+            data=t.SerializableBytes(request_hdr.serialize() + request_cmd.serialize()),
+            lqi=255,
+            rssi=-30,
+        )
+    )
+    await asyncio.sleep(0)
+
+    assert not request_task.done()
+
+    default_rsp_hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.GLOBAL_COMMAND,
+            is_manufacturer_specific=False,
+            direction=foundation.Direction.Server_to_Client,
+            disable_default_response=True,
+            reserved=0,
+        ),
+        tsn=tsn_hdr.tsn,
+        command_id=foundation.GeneralCommand.Default_Response,
+    )
+    default_rsp_cmd = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Default_Response
+    ].schema(
+        command_id=foundation.GeneralCommand.Discover_Attribute_Extended,
+        status=foundation.Status.UNSUP_GENERAL_COMMAND,
+    )
+
+    dev.packet_received(
+        t.ZigbeePacket(
+            src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+            src_ep=1,
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+            dst_ep=1,
+            profile_id=260,
+            cluster_id=Ota.cluster_id,
+            data=t.SerializableBytes(
+                default_rsp_hdr.serialize() + default_rsp_cmd.serialize()
+            ),
+            lqi=255,
+            rssi=-30,
+        )
+    )
+
+    result = await asyncio.wait_for(request_task, timeout=0.2)
     assert result == default_rsp_cmd

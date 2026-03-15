@@ -24,6 +24,7 @@ import zigpy.config as conf
 from zigpy.const import INTERFERENCE_MESSAGE
 from zigpy.datastructures import RequestLimiter
 import zigpy.device
+import zigpy.device_scanner
 import zigpy.endpoint
 import zigpy.exceptions
 import zigpy.group
@@ -65,7 +66,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.state: zigpy.state.State = zigpy.state.State()
         self._listeners = {}
         self._config = self.SCHEMA(config)
-        self._dblistener = None
+        self._dblistener: zigpy.appdb.PersistingListener | None = None
         self._groups = zigpy.group.Groups(self)
         self._send_sequence = 0
         self._tasks: set[asyncio.Future[Any]] = set()
@@ -80,6 +81,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.ota = zigpy.ota.OTA(self._config[conf.CONF_OTA], self)
         self.backups: zigpy.backups.BackupManager = zigpy.backups.BackupManager(self)
         self.topology: zigpy.topology.Topology = zigpy.topology.Topology(self)
+        self.device_scanner: zigpy.device_scanner.DeviceScanner = (
+            zigpy.device_scanner.DeviceScanner(self)
+        )
 
         self._req_listeners: collections.defaultdict[
             zigpy.device.Device | zigpy.listeners.AnyDeviceType,

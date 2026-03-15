@@ -1895,20 +1895,25 @@ class ImageNotifyCommand(foundation.CommandSchema):
     query_jitter: t.uint8_t
     manufacturer_code: t.uint16_t = t.StructField(
         requires=(
-            lambda s: s.payload_type
-            >= ImageNotifyPayloadType.QueryJitter_ManufacturerCode
+            lambda s: (
+                s.payload_type >= ImageNotifyPayloadType.QueryJitter_ManufacturerCode
+            )
         )
     )
     image_type: t.uint16_t = t.StructField(
         requires=(
-            lambda s: s.payload_type
-            >= ImageNotifyPayloadType.QueryJitter_ManufacturerCode_ImageType
+            lambda s: (
+                s.payload_type
+                >= ImageNotifyPayloadType.QueryJitter_ManufacturerCode_ImageType
+            )
         )
     )
     new_file_version: t.uint32_t = t.StructField(
         requires=(
-            lambda s: s.payload_type
-            >= ImageNotifyPayloadType.QueryJitter_ManufacturerCode_ImageType_NewFileVersion
+            lambda s: (
+                s.payload_type
+                >= ImageNotifyPayloadType.QueryJitter_ManufacturerCode_ImageType_NewFileVersion
+            )
         )
     )
 
@@ -1926,8 +1931,9 @@ class QueryNextImageCommand(foundation.CommandSchema):
     current_file_version: t.uint32_t
     hardware_version: t.uint16_t = t.StructField(
         requires=(
-            lambda s: s.field_control
-            & QueryNextImageCommandFieldControl.HardwareVersion
+            lambda s: (
+                s.field_control & QueryNextImageCommandFieldControl.HardwareVersion
+            )
         )
     )
 

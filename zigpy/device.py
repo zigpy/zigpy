@@ -292,6 +292,15 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return self._initialize_task
 
     async def get_node_descriptor(self) -> zdo_t.NodeDescriptor:
+        self.node_desc = await self.discover_node_descriptor(refresh=True)
+        return self.node_desc
+
+    async def discover_node_descriptor(
+        self, *, refresh: bool = False
+    ) -> zdo_t.NodeDescriptor:
+        if self.node_desc is not None and not refresh:
+            return self.node_desc
+
         self.info("Requesting 'Node Descriptor'")
 
         status, _, node_desc = await self.zdo.Node_Desc_req(self.nwk)
@@ -301,10 +310,24 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 f"Requesting Node Descriptor failed: {status}"
             )
 
-        self.node_desc = node_desc
         self.info("Got Node Descriptor: %s", node_desc)
 
         return node_desc
+
+    async def discover_active_endpoints(self, *, refresh: bool = False) -> list[int]:
+        if self.has_non_zdo_endpoints and not refresh:
+            self.info("Already have endpoints: %s", self.endpoints)
+            return [ep.endpoint_id for ep in self.non_zdo_endpoints]
+
+        self.info("Discovering endpoints")
+
+        status, _, endpoints = await self.zdo.Active_EP_req(self.nwk)
+
+        if status != zdo_t.Status.SUCCESS:
+            raise zigpy.exceptions.InvalidResponse(f"Endpoint request failed: {status}")
+
+        self.info("Discovered endpoints: %s", endpoints)
+        return [endpoint_id for endpoint_id in endpoints if endpoint_id != 0]
 
     async def initialize(self) -> None:
         try:
@@ -430,26 +453,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         # Some devices are improperly initialized and are missing a node descriptor
         if self.node_desc is None:
-            await self.get_node_descriptor()
+            self.node_desc = await self.discover_node_descriptor()
 
-        # Devices should have endpoints other than ZDO
-        if self.has_non_zdo_endpoints:
-            self.info("Already have endpoints: %s", self.endpoints)
-        else:
-            self.info("Discovering endpoints")
-
-            status, _, endpoints = await self.zdo.Active_EP_req(self.nwk)
-
-            if status != zdo_t.Status.SUCCESS:
-                raise zigpy.exceptions.InvalidResponse(
-                    f"Endpoint request failed: {status}"
-                )
-
-            self.info("Discovered endpoints: %s", endpoints)
-
-            for endpoint_id in endpoints:
-                if endpoint_id != 0:
-                    self.add_endpoint(endpoint_id)
+        for endpoint_id in await self.discover_active_endpoints():
+            if endpoint_id not in self.endpoints:
+                self.add_endpoint(endpoint_id)
 
         self.status = Status.ZDO_INIT
 
@@ -758,6 +766,53 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             else:
                 return endpoint, zcl_cluster
 
+    def _get_direction_mismatch_response_key(
+        self,
+        rsp_key: ResponseKey,
+        hdr: zdo_t.ZDOHeader | foundation.ZCLHeader,
+        zcl_cluster: Cluster | None,
+        cmd: foundation.CommandSchema | list[typing.Any] | None,
+    ) -> ResponseKey | None:
+        """Return an alternate response key for packets with the wrong ZCL direction."""
+        if not isinstance(hdr, foundation.ZCLHeader):
+            return None
+
+        if (
+            hdr.frame_control.frame_type != foundation.FrameType.GLOBAL_COMMAND
+            or cmd is None
+        ):
+            return None
+
+        try:
+            general_command = foundation.GeneralCommand(hdr.command_id)
+        except ValueError:
+            return None
+
+        if (
+            general_command != foundation.GeneralCommand.Default_Response
+            and not general_command.name.endswith("_rsp")
+        ):
+            return None
+
+        if zcl_cluster is None or rsp_key.direction is None:
+            return None
+
+        expected_cluster_type = (
+            ClusterType.Client
+            if hdr.frame_control.direction == foundation.Direction.Client_to_Server
+            else ClusterType.Server
+        )
+
+        if zcl_cluster.cluster_type == expected_cluster_type:
+            return None
+
+        return ResponseKey(
+            endpoint_id=rsp_key.endpoint_id,
+            cluster_id=rsp_key.cluster_id,
+            direction=rsp_key.direction.flip(),
+            tsn=rsp_key.tsn,
+        )
+
     def _parse_packet_command(
         self, packet: t.ZigbeePacket, endpoint: typing.Any, zcl_cluster: Cluster | None
     ) -> typing.Any:
@@ -842,6 +897,14 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         # Handle response matching for pending requests
         if self._maybe_match_response(rsp_key, cmd, error):
+            return
+
+        alt_rsp_key = self._get_direction_mismatch_response_key(
+            rsp_key, hdr, zcl_cluster, cmd
+        )
+        if alt_rsp_key is not None and self._maybe_match_response(
+            alt_rsp_key, cmd, error
+        ):
             return
 
         # Skip further processing if there was a parsing error

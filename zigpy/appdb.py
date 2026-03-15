@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 import logging
 import re
@@ -34,6 +34,7 @@ from zigpy.zcl import (
     AttributeUpdatedEvent,
     AttributeWrittenEvent,
     ClusterType,
+    foundation,
 )
 from zigpy.zcl.clusters.general import Basic
 from zigpy.zcl.foundation import Status
@@ -45,6 +46,7 @@ if TYPE_CHECKING:
 
 
 MIN_SQLITE_VERSION = (3, 24, 0)
+UTC_TZ = timezone(timedelta(0))
 
 if sqlite3.sqlite_version_info < MIN_SQLITE_VERSION:
     raise RuntimeError(
@@ -54,10 +56,10 @@ if sqlite3.sqlite_version_info < MIN_SQLITE_VERSION:
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 14
+DB_VERSION = 15
 DB_V = f"_v{DB_VERSION}"
 
-UNIX_EPOCH = datetime.fromtimestamp(0, tz=UTC)
+UNIX_EPOCH = datetime.fromtimestamp(0, tz=UTC_TZ)
 DB_V_REGEX = re.compile(r"(?:_v\d+)?$")
 
 MIN_UPDATE_DELTA = timedelta(seconds=30).total_seconds()
@@ -82,6 +84,83 @@ class AttributeCacheRow(NamedTuple):
     status: Status
     value: Any
     last_updated: float
+
+
+class DeviceScanProgressRow(NamedTuple):
+    ieee: t.EUI64
+    endpoint_id: int
+    cluster_type: ClusterType
+    cluster_id: int
+    manufacturer_code_scope: int | None
+    attr_discovery_complete: bool
+    attr_discovery_next_id: int
+    attr_reads_complete: bool
+    cmd_rx_complete: bool
+    cmd_rx_next_id: int
+    cmd_tx_complete: bool
+    cmd_tx_next_id: int
+    last_started: float | None
+    last_finished: float | None
+    last_error_code: str | None
+    last_error: str | None
+    last_success: float | None
+
+
+class DeviceScanAttributeRow(NamedTuple):
+    ieee: t.EUI64
+    endpoint_id: int
+    cluster_type: ClusterType
+    cluster_id: int
+    manufacturer_code_scope: int | None
+    attr_id: int
+    attribute_name: str | None
+    datatype: int | None
+    access: int | None
+    discovered_at: float
+    read_complete: bool
+    read_status: str | None
+    value: bytes | None
+    last_read: float | None
+    last_error_code: str | None
+    last_error: str | None
+
+
+class DeviceScanCommandRow(NamedTuple):
+    ieee: t.EUI64
+    endpoint_id: int
+    cluster_type: ClusterType
+    cluster_id: int
+    manufacturer_code_scope: int | None
+    direction: str
+    command_id: int
+    command_name: str | None
+    command_schema: str | None
+    discovered_at: float
+
+
+class DeviceScanRows(NamedTuple):
+    progress: list[DeviceScanProgressRow]
+    attributes: list[DeviceScanAttributeRow]
+    commands: list[DeviceScanCommandRow]
+
+
+class RawEndpointRow(NamedTuple):
+    endpoint_id: int
+    profile_id: int
+    device_type: int
+    status: int
+
+
+class RawClusterRow(NamedTuple):
+    endpoint_id: int
+    cluster_type: int
+    cluster_id: int
+
+
+class RawTopologyRows(NamedTuple):
+    node_descriptor: zdo_t.NodeDescriptor | None
+    endpoints: list[RawEndpointRow]
+    clusters: list[RawClusterRow]
 
 
 def _register_sqlite_adapters():
@@ -515,7 +594,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 manufacturer_code,
                 Status.UNSUPPORTED_ATTRIBUTE,
                 None,
-                datetime.now(UTC).timestamp(),
+                datetime.now(UTC_TZ).timestamp(),
             )
             for cluster in ep.clusters
             for (attrid, manufacturer_code) in cluster._attr_cache._unsupported
@@ -569,7 +648,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "manufacturer_code": event.manufacturer_code,
                 "status": Status.SUCCESS,
                 "value": event.value,
-                "timestamp": datetime.now(UTC).timestamp(),
+                "timestamp": datetime.now(UTC_TZ).timestamp(),
                 "min_update_delta": MIN_UPDATE_DELTA,
             },
         )
@@ -626,7 +705,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "manufacturer_code": event.manufacturer_code,
                 "status": Status.UNSUPPORTED_ATTRIBUTE,
                 "value": None,
-                "timestamp": datetime.now(UTC).timestamp(),
+                "timestamp": datetime.now(UTC_TZ).timestamp(),
             },
         )
         await self._db.commit()
@@ -665,6 +744,1020 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             """
         ) as cursor:
             return [AttributeCacheRow(*row) for row in await cursor.fetchall()]
+
+    async def get_raw_topology_rows(self, ieee: t.EUI64) -> RawTopologyRows:
+        async with self.execute(
+            f"""
+            SELECT logical_type, complex_descriptor_available, user_descriptor_available,
+                   reserved, aps_flags, frequency_band, mac_capability_flags,
+                   manufacturer_code, maximum_buffer_size,
+                   maximum_incoming_transfer_size, server_mask,
+                   maximum_outgoing_transfer_size, descriptor_capability_field
+            FROM node_descriptors{DB_V}
+            WHERE ieee = ?
+            """,
+            (ieee,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            node_descriptor = zdo_t.NodeDescriptor(*row) if row is not None else None
+
+        async with self.execute(
+            f"""
+            SELECT endpoint_id, profile_id, device_type, status
+            FROM endpoints{DB_V}
+            WHERE ieee = ?
+            ORDER BY endpoint_id
+            """,
+            (ieee,),
+        ) as cursor:
+            endpoints = [RawEndpointRow(*row) for row in await cursor.fetchall()]
+
+        async with self.execute(
+            f"""
+            SELECT endpoint_id, cluster_type, cluster_id
+            FROM clusters{DB_V}
+            WHERE ieee = ?
+            ORDER BY endpoint_id, cluster_type, cluster_id
+            """,
+            (ieee,),
+        ) as cursor:
+            clusters = [RawClusterRow(*row) for row in await cursor.fetchall()]
+
+        return RawTopologyRows(
+            node_descriptor=node_descriptor,
+            endpoints=endpoints,
+            clusters=clusters,
+        )
+
+    def _build_valid_scan_scope_keys(
+        self,
+        *,
+        endpoints: tuple[zigpy.endpoint.DiscoveredEndpointDescriptor, ...],
+        manufacturer_code: int | None,
+    ) -> set[tuple[int, int, int, int | None]]:
+        valid_scope_keys: set[tuple[int, int, int, int | None]] = set()
+
+        for endpoint in endpoints:
+            if (
+                endpoint.status == EndpointStatus.ENDPOINT_INACTIVE
+                or endpoint.profile_id is None
+                or endpoint.device_type is None
+            ):
+                continue
+
+            for cluster_id in endpoint.input_clusters:
+                valid_scope_keys.add(
+                    (
+                        endpoint.endpoint_id,
+                        int(ClusterType.Server),
+                        int(cluster_id),
+                        None,
+                    )
+                )
+
+                if manufacturer_code is not None:
+                    valid_scope_keys.add(
+                        (
+                            endpoint.endpoint_id,
+                            int(ClusterType.Server),
+                            int(cluster_id),
+                            manufacturer_code,
+                        )
+                    )
+
+            for cluster_id in endpoint.output_clusters:
+                valid_scope_keys.add(
+                    (
+                        endpoint.endpoint_id,
+                        int(ClusterType.Client),
+                        int(cluster_id),
+                        None,
+                    )
+                )
+
+                if manufacturer_code is not None:
+                    valid_scope_keys.add(
+                        (
+                            endpoint.endpoint_id,
+                            int(ClusterType.Client),
+                            int(cluster_id),
+                            manufacturer_code,
+                        )
+                    )
+
+        return valid_scope_keys
+
+    async def _clear_invalid_device_scan_scope_rows(
+        self,
+        ieee: t.EUI64,
+        valid_scope_keys: set[tuple[int, int, int, int | None]],
+    ) -> None:
+        async with self.execute(
+            f"""
+            SELECT endpoint_id, cluster_type, cluster_id, manufacturer_code_scope
+            FROM device_scan_progress{DB_V}
+            WHERE ieee = ?
+            UNION
+            SELECT endpoint_id, cluster_type, cluster_id, manufacturer_code_scope
+            FROM device_scan_attributes{DB_V}
+            WHERE ieee = ?
+            UNION
+            SELECT endpoint_id, cluster_type, cluster_id, manufacturer_code_scope
+            FROM device_scan_commands{DB_V}
+            WHERE ieee = ?
+            """,
+            (ieee, ieee, ieee),
+        ) as cursor:
+            existing_scope_keys = {
+                (endpoint_id, cluster_type, cluster_id, manufacturer_code_scope)
+                for endpoint_id, cluster_type, cluster_id, manufacturer_code_scope in (
+                    await cursor.fetchall()
+                )
+            }
+
+        stale_scope_keys = existing_scope_keys - valid_scope_keys
+
+        if not stale_scope_keys:
+            return
+
+        delete_rows = [
+            (
+                ieee,
+                endpoint_id,
+                cluster_type,
+                cluster_id,
+                -2 if manufacturer_code_scope is None else manufacturer_code_scope,
+            )
+            for endpoint_id, cluster_type, cluster_id, manufacturer_code_scope in (
+                stale_scope_keys
+            )
+        ]
+
+        for table_name in (
+            f"device_scan_progress{DB_V}",
+            f"device_scan_attributes{DB_V}",
+            f"device_scan_commands{DB_V}",
+        ):
+            await self._db.executemany(
+                f"""
+                DELETE FROM {table_name}
+                WHERE ieee = ?
+                  AND endpoint_id = ?
+                  AND cluster_type = ?
+                  AND cluster_id = ?
+                  AND manufacturer_code_scope_idx = ?
+                """,
+                delete_rows,
+            )
+
+    async def replace_device_raw_descriptors(
+        self,
+        device: Device,
+        *,
+        node_descriptor: zdo_t.NodeDescriptor,
+        endpoints: tuple[zigpy.endpoint.DiscoveredEndpointDescriptor, ...],
+    ) -> None:
+        endpoint_rows = [
+            (
+                device.ieee,
+                endpoint.endpoint_id,
+                endpoint.profile_id,
+                endpoint.device_type,
+                endpoint.status,
+            )
+            for endpoint in endpoints
+            if endpoint.status != EndpointStatus.ENDPOINT_INACTIVE
+            and endpoint.profile_id is not None
+            and endpoint.device_type is not None
+        ]
+        cluster_rows = [
+            (
+                device.ieee,
+                endpoint.endpoint_id,
+                cluster_type,
+                cluster_id,
+            )
+            for endpoint in endpoints
+            if endpoint.status != EndpointStatus.ENDPOINT_INACTIVE
+            and endpoint.profile_id is not None
+            and endpoint.device_type is not None
+            for cluster_type, cluster_ids in (
+                (ClusterType.Server, endpoint.input_clusters),
+                (ClusterType.Client, endpoint.output_clusters),
+            )
+            for cluster_id in cluster_ids
+        ]
+        valid_scope_keys = self._build_valid_scan_scope_keys(
+            endpoints=endpoints,
+            manufacturer_code=node_descriptor.manufacturer_code,
+        )
+
+        try:
+            await self.execute("BEGIN")
+            await self.execute(
+                f"""INSERT INTO devices{DB_V} (ieee, nwk, status, last_seen)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT (ieee)
+                        DO UPDATE SET
+                            nwk=excluded.nwk,
+                            status=excluded.status,
+                            last_seen=excluded.last_seen""",
+                (
+                    device.ieee,
+                    device.nwk,
+                    device.status,
+                    (device._last_seen or UNIX_EPOCH).timestamp(),
+                ),
+            )
+            await self.execute(
+                f"""INSERT INTO node_descriptors{DB_V}
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT (ieee)
+                        DO UPDATE SET
+                    logical_type=excluded.logical_type,
+                    complex_descriptor_available=excluded.complex_descriptor_available,
+                    user_descriptor_available=excluded.user_descriptor_available,
+                    reserved=excluded.reserved,
+                    aps_flags=excluded.aps_flags,
+                    frequency_band=excluded.frequency_band,
+                    mac_capability_flags=excluded.mac_capability_flags,
+                    manufacturer_code=excluded.manufacturer_code,
+                    maximum_buffer_size=excluded.maximum_buffer_size,
+                    maximum_incoming_transfer_size=excluded.maximum_incoming_transfer_size,
+                    server_mask=excluded.server_mask,
+                    maximum_outgoing_transfer_size=excluded.maximum_outgoing_transfer_size,
+                    descriptor_capability_field=excluded.descriptor_capability_field""",
+                (device.ieee, *node_descriptor.as_tuple()),
+            )
+            if endpoint_rows:
+                await self._db.executemany(
+                    f"""INSERT INTO endpoints{DB_V} VALUES (?, ?, ?, ?, ?)
+                            ON CONFLICT (ieee, endpoint_id)
+                            DO UPDATE SET
+                                profile_id=excluded.profile_id,
+                                device_type=excluded.device_type,
+                                status=excluded.status""",
+                    endpoint_rows,
+                )
+
+            await self.execute(
+                f"DELETE FROM clusters{DB_V} WHERE ieee = ?", (device.ieee,)
+            )
+
+            if cluster_rows:
+                await self._db.executemany(
+                    f"""INSERT INTO clusters{DB_V} VALUES (?, ?, ?, ?)
+                            ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id)
+                            DO NOTHING""",
+                    cluster_rows,
+                )
+
+            endpoint_ids = [endpoint_id for _, endpoint_id, *_ in endpoint_rows]
+
+            if endpoint_ids:
+                placeholders = ",".join("?" for _ in endpoint_ids)
+                await self.execute(
+                    f"""
+                    DELETE FROM endpoints{DB_V}
+                    WHERE ieee = ?
+                      AND endpoint_id NOT IN ({placeholders})
+                    """,
+                    (device.ieee, *endpoint_ids),
+                )
+            else:
+                await self.execute(
+                    f"DELETE FROM endpoints{DB_V} WHERE ieee = ?", (device.ieee,)
+                )
+
+            await self._clear_invalid_device_scan_scope_rows(
+                device.ieee, valid_scope_keys
+            )
+            await self._db.commit()
+        except Exception:  # noqa: BLE001
+            await self._db.rollback()
+            raise
+
+    async def persist_device_scan_attribute_discovery_page(
+        self,
+        *,
+        ieee: t.EUI64,
+        endpoint_id: int,
+        cluster_type: ClusterType,
+        cluster_id: int,
+        manufacturer_code_scope: int | None,
+        attributes: list[tuple[int, str | None, int, int | None]],
+        next_attr_id: int,
+        complete: bool,
+    ) -> None:
+        discovered_at = datetime.now(UTC_TZ).timestamp()
+
+        try:
+            await self.execute("BEGIN")
+
+            if attributes:
+                await self._db.executemany(
+                    f"""
+                    INSERT INTO device_scan_attributes{DB_V} (
+                        ieee, endpoint_id, cluster_type, cluster_id,
+                        manufacturer_code_scope, attr_id, attribute_name, datatype,
+                        access, discovered_at, read_complete, read_status, value,
+                        last_read, last_error_code, last_error
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, NULL, NULL, NULL)
+                    ON CONFLICT (
+                        ieee, endpoint_id, cluster_type, cluster_id,
+                        manufacturer_code_scope_idx, attr_id
+                    ) DO UPDATE SET
+                        attribute_name=excluded.attribute_name,
+                        datatype=excluded.datatype,
+                        access=excluded.access,
+                        discovered_at=excluded.discovered_at
+                    """,
+                    [
+                        (
+                            ieee,
+                            endpoint_id,
+                            cluster_type,
+                            cluster_id,
+                            manufacturer_code_scope,
+                            attr_id,
+                            attribute_name,
+                            datatype,
+                            access,
+                            discovered_at,
+                        )
+                        for attr_id, attribute_name, datatype, access in attributes
+                    ],
+                )
+
+            await self.execute(
+                f"""
+                INSERT INTO device_scan_progress{DB_V} (
+                    ieee, endpoint_id, cluster_type, cluster_id,
+                    manufacturer_code_scope, attr_discovery_complete,
+                    attr_discovery_next_id, attr_reads_complete, cmd_rx_complete,
+                    cmd_rx_next_id, cmd_tx_complete, cmd_tx_next_id, last_started,
+                    last_finished, last_error_code, last_error, last_success
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, ?, ?, NULL, NULL, ?)
+                ON CONFLICT (
+                    ieee, endpoint_id, cluster_type, cluster_id,
+                    manufacturer_code_scope_idx
+                ) DO UPDATE SET
+                    attr_discovery_complete=excluded.attr_discovery_complete,
+                    attr_discovery_next_id=excluded.attr_discovery_next_id,
+                    last_started=COALESCE(last_started, excluded.last_started),
+                    last_finished=excluded.last_finished,
+                    last_error_code=NULL,
+                    last_error=NULL,
+                    last_success=excluded.last_success
+                """,
+                (
+                    ieee,
+                    endpoint_id,
+                    cluster_type,
+                    cluster_id,
+                    manufacturer_code_scope,
+                    complete,
+                    next_attr_id,
+                    discovered_at,
+                    discovered_at,
+                    discovered_at,
+                ),
+            )
+
+            await self._db.commit()
+        except Exception:  # noqa: BLE001
+            await self._db.rollback()
+            raise
+
+    async def get_pending_device_scan_attributes(
+        self,
+        *,
+        ieee: t.EUI64,
+        endpoint_id: int,
+        cluster_type: ClusterType,
+        cluster_id: int,
+        manufacturer_code_scope: int | None,
+    ) -> list[DeviceScanAttributeRow]:
+        async with self.execute(
+            f"""
+            SELECT ieee, endpoint_id, cluster_type, cluster_id, manufacturer_code_scope,
+                   attr_id, attribute_name, datatype, access, discovered_at,
+                   read_complete, read_status, value, last_read, last_error_code,
+                   last_error
+            FROM device_scan_attributes{DB_V}
+            WHERE ieee = ?
+              AND endpoint_id = ?
+              AND cluster_type = ?
+              AND cluster_id = ?
+              AND manufacturer_code_scope_idx = ?
+              AND read_complete = 0
+              AND (access IS NULL OR (access & ?) != 0)
+            ORDER BY attr_id
+            """,
+            (
+                ieee,
+                endpoint_id,
+                cluster_type,
+                cluster_id,
+                -2 if manufacturer_code_scope is None else manufacturer_code_scope,
+                int(foundation.AttributeAccessControl.READ),
+            ),
+        ) as cursor:
+            return [DeviceScanAttributeRow(*row) for row in await cursor.fetchall()]
+
+    async def persist_device_scan_attribute_read_results(
+        self,
+        *,
+        ieee: t.EUI64,
+        endpoint_id: int,
+        cluster_type: ClusterType,
+        cluster_id: int,
+        manufacturer_code_scope: int | None,
+        results: list[
+            tuple[
+                int,
+                int | None,
+                bool,
+                str | None,
+                bytes | None,
+                float | None,
+                str | None,
+                str | None,
+            ]
+        ],
+    ) -> None:
+        if not results:
+            return
+
+        try:
+            await self.execute("BEGIN")
+            await self._db.executemany(
+                f"""
+                UPDATE device_scan_attributes{DB_V}
+                SET datatype=COALESCE(?, datatype),
+                    read_complete=?,
+                    read_status=?,
+                    value=?,
+                    last_read=?,
+                    last_error_code=?,
+                    last_error=?
+                WHERE ieee = ?
+                  AND endpoint_id = ?
+                  AND cluster_type = ?
+                  AND cluster_id = ?
+                  AND manufacturer_code_scope_idx = ?
+                  AND attr_id = ?
+                """,
+                [
+                    (
+                        datatype,
+                        read_complete,
+                        read_status,
+                        value,
+                        last_read,
+                        last_error_code,
+                        last_error,
+                        ieee,
+                        endpoint_id,
+                        cluster_type,
+                        cluster_id,
+                        -2
+                        if manufacturer_code_scope is None
+                        else manufacturer_code_scope,
+                        attr_id,
+                    )
+                    for (
+                        attr_id,
+                        datatype,
+                        read_complete,
+                        read_status,
+                        value,
+                        last_read,
+                        last_error_code,
+                        last_error,
+                    ) in results
+                ],
+            )
+            await self._db.commit()
+        except Exception:  # noqa: BLE001
+            await self._db.rollback()
+            raise
+
+    async def set_device_scan_attr_reads_complete(
+        self,
+        *,
+        ieee: t.EUI64,
+        endpoint_id: int,
+        cluster_type: ClusterType,
+        cluster_id: int,
+        manufacturer_code_scope: int | None,
+        complete: bool,
+    ) -> None:
+        completed_at = datetime.now(UTC_TZ).timestamp()
+
+        await self.execute(
+            f"""
+            INSERT INTO device_scan_progress{DB_V} (
+                ieee, endpoint_id, cluster_type, cluster_id,
+                manufacturer_code_scope, attr_discovery_complete,
+                attr_discovery_next_id, attr_reads_complete, cmd_rx_complete,
+                cmd_rx_next_id, cmd_tx_complete, cmd_tx_next_id, last_started,
+                last_finished, last_error_code, last_error, last_success
+            )
+            VALUES (?, ?, ?, ?, ?, 0, 0, ?, 0, 0, 0, 0, ?, ?, NULL, NULL, ?)
+            ON CONFLICT (
+                ieee, endpoint_id, cluster_type, cluster_id,
+                manufacturer_code_scope_idx
+            ) DO UPDATE SET
+                attr_reads_complete=excluded.attr_reads_complete,
+                last_started=COALESCE(last_started, excluded.last_started),
+                last_finished=excluded.last_finished,
+                last_error_code=NULL,
+                last_error=NULL,
+                last_success=excluded.last_success
+            """,
+            (
+                ieee,
+                endpoint_id,
+                cluster_type,
+                cluster_id,
+                manufacturer_code_scope,
+                complete,
+                completed_at,
+                completed_at,
+                completed_at,
+            ),
+        )
+        await self._db.commit()
+
+    async def persist_device_scan_command_discovery_page(
+        self,
+        *,
+        ieee: t.EUI64,
+        endpoint_id: int,
+        cluster_type: ClusterType,
+        cluster_id: int,
+        manufacturer_code_scope: int | None,
+        direction: str,
+        commands: list[tuple[int, str | None, str | None]],
+        next_command_id: int,
+        complete: bool,
+    ) -> None:
+        discovered_at = datetime.now(UTC_TZ).timestamp()
+        complete_column = (
+            "cmd_rx_complete" if direction == "received" else "cmd_tx_complete"
+        )
+        next_column = "cmd_rx_next_id" if direction == "received" else "cmd_tx_next_id"
+
+        try:
+            await self.execute("BEGIN")
+
+            if commands:
+                await self._db.executemany(
+                    f"""
+                    INSERT INTO device_scan_commands{DB_V} (
+                        ieee, endpoint_id, cluster_type, cluster_id,
+                        manufacturer_code_scope, direction, command_id,
+                        command_name, command_schema, discovered_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (
+                        ieee, endpoint_id, cluster_type, cluster_id,
+                        manufacturer_code_scope_idx, direction, command_id
+                    ) DO UPDATE SET
+                        command_name=excluded.command_name,
+                        command_schema=excluded.command_schema,
+                        discovered_at=excluded.discovered_at
+                    """,
+                    [
+                        (
+                            ieee,
+                            endpoint_id,
+                            cluster_type,
+                            cluster_id,
+                            manufacturer_code_scope,
+                            direction,
+                            command_id,
+                            command_name,
+                            command_schema,
+                            discovered_at,
+                        )
+                        for command_id, command_name, command_schema in commands
+                    ],
+                )
+
+            await self.execute(
+                f"""
+                INSERT INTO device_scan_progress{DB_V} (
+                    ieee, endpoint_id, cluster_type, cluster_id,
+                    manufacturer_code_scope, attr_discovery_complete,
+                    attr_discovery_next_id, attr_reads_complete, cmd_rx_complete,
+                    cmd_rx_next_id, cmd_tx_complete, cmd_tx_next_id, last_started,
+                    last_finished, last_error_code, last_error, last_success
+                )
+                VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)
+                ON CONFLICT (
+                    ieee, endpoint_id, cluster_type, cluster_id,
+                    manufacturer_code_scope_idx
+                ) DO UPDATE SET
+                    {complete_column}=excluded.{complete_column},
+                    {next_column}=excluded.{next_column},
+                    last_started=COALESCE(last_started, excluded.last_started),
+                    last_finished=excluded.last_finished,
+                    last_error_code=NULL,
+                    last_error=NULL,
+                    last_success=excluded.last_success
+                """,
+                (
+                    ieee,
+                    endpoint_id,
+                    cluster_type,
+                    cluster_id,
+                    manufacturer_code_scope,
+                    complete if direction == "received" else False,
+                    next_command_id if direction == "received" else 0,
+                    complete if direction == "generated" else False,
+                    next_command_id if direction == "generated" else 0,
+                    discovered_at,
+                    discovered_at,
+                    discovered_at,
+                ),
+            )
+
+            await self._db.commit()
+        except Exception:  # noqa: BLE001
+            await self._db.rollback()
+            raise
+
+    async def set_device_scan_progress_error(
+        self,
+        *,
+        ieee: t.EUI64,
+        endpoint_id: int,
+        cluster_type: ClusterType,
+        cluster_id: int,
+        manufacturer_code_scope: int | None,
+        error_code: str,
+        error: str,
+    ) -> None:
+        failed_at = datetime.now(UTC_TZ).timestamp()
+
+        await self.execute(
+            f"""
+            INSERT INTO device_scan_progress{DB_V} (
+                ieee, endpoint_id, cluster_type, cluster_id,
+                manufacturer_code_scope, attr_discovery_complete,
+                attr_discovery_next_id, attr_reads_complete, cmd_rx_complete,
+                cmd_rx_next_id, cmd_tx_complete, cmd_tx_next_id, last_started,
+                last_finished, last_error_code, last_error, last_success
+            )
+            VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, ?, ?, ?, ?, NULL)
+            ON CONFLICT (
+                ieee, endpoint_id, cluster_type, cluster_id,
+                manufacturer_code_scope_idx
+            ) DO UPDATE SET
+                last_started=COALESCE(last_started, excluded.last_started),
+                last_finished=excluded.last_finished,
+                last_error_code=excluded.last_error_code,
+                last_error=excluded.last_error
+            """,
+            (
+                ieee,
+                endpoint_id,
+                cluster_type,
+                cluster_id,
+                manufacturer_code_scope,
+                failed_at,
+                failed_at,
+                error_code,
+                error,
+            ),
+        )
+        await self._db.commit()
+
+    async def upsert_device_scan_progress(
+        self,
+        *,
+        ieee: t.EUI64,
+        endpoint_id: int,
+        cluster_type: ClusterType,
+        cluster_id: int,
+        manufacturer_code_scope: int | None,
+        attr_discovery_complete: bool,
+        attr_discovery_next_id: int,
+        attr_reads_complete: bool,
+        cmd_rx_complete: bool,
+        cmd_rx_next_id: int,
+        cmd_tx_complete: bool,
+        cmd_tx_next_id: int,
+        last_started: float | None,
+        last_finished: float | None,
+        last_error_code: str | None,
+        last_error: str | None,
+        last_success: float | None,
+    ) -> None:
+        await self.execute(
+            f"""
+            INSERT INTO device_scan_progress{DB_V} (
+                ieee, endpoint_id, cluster_type, cluster_id, manufacturer_code_scope,
+                attr_discovery_complete, attr_discovery_next_id, attr_reads_complete,
+                cmd_rx_complete, cmd_rx_next_id, cmd_tx_complete, cmd_tx_next_id,
+                last_started, last_finished, last_error_code, last_error, last_success
+            )
+            VALUES (
+                :ieee, :endpoint_id, :cluster_type, :cluster_id, :manufacturer_code_scope,
+                :attr_discovery_complete, :attr_discovery_next_id, :attr_reads_complete,
+                :cmd_rx_complete, :cmd_rx_next_id, :cmd_tx_complete, :cmd_tx_next_id,
+                :last_started, :last_finished, :last_error_code, :last_error, :last_success
+            )
+            ON CONFLICT (
+                ieee, endpoint_id, cluster_type, cluster_id, manufacturer_code_scope_idx
+            ) DO UPDATE SET
+                attr_discovery_complete=excluded.attr_discovery_complete,
+                attr_discovery_next_id=excluded.attr_discovery_next_id,
+                attr_reads_complete=excluded.attr_reads_complete,
+                cmd_rx_complete=excluded.cmd_rx_complete,
+                cmd_rx_next_id=excluded.cmd_rx_next_id,
+                cmd_tx_complete=excluded.cmd_tx_complete,
+                cmd_tx_next_id=excluded.cmd_tx_next_id,
+                last_started=excluded.last_started,
+                last_finished=excluded.last_finished,
+                last_error_code=excluded.last_error_code,
+                last_error=excluded.last_error,
+                last_success=excluded.last_success
+            """,
+            {
+                "ieee": ieee,
+                "endpoint_id": endpoint_id,
+                "cluster_type": cluster_type,
+                "cluster_id": cluster_id,
+                "manufacturer_code_scope": manufacturer_code_scope,
+                "attr_discovery_complete": attr_discovery_complete,
+                "attr_discovery_next_id": attr_discovery_next_id,
+                "attr_reads_complete": attr_reads_complete,
+                "cmd_rx_complete": cmd_rx_complete,
+                "cmd_rx_next_id": cmd_rx_next_id,
+                "cmd_tx_complete": cmd_tx_complete,
+                "cmd_tx_next_id": cmd_tx_next_id,
+                "last_started": last_started,
+                "last_finished": last_finished,
+                "last_error_code": last_error_code,
+                "last_error": last_error,
+                "last_success": last_success,
+            },
+        )
+        await self._db.commit()
+
+    async def upsert_device_scan_attribute(
+        self,
+        *,
+        ieee: t.EUI64,
+        endpoint_id: int,
+        cluster_type: ClusterType,
+        cluster_id: int,
+        manufacturer_code_scope: int | None,
+        attr_id: int,
+        attribute_name: str | None,
+        datatype: int | None,
+        access: int | None,
+        discovered_at: float,
+        read_complete: bool,
+        read_status: str | None,
+        value: bytes | None,
+        last_read: float | None,
+        last_error_code: str | None,
+        last_error: str | None,
+    ) -> None:
+        await self.execute(
+            f"""
+            INSERT INTO device_scan_attributes{DB_V} (
+                ieee, endpoint_id, cluster_type, cluster_id, manufacturer_code_scope,
+                attr_id, attribute_name, datatype, access, discovered_at, read_complete,
+                read_status, value, last_read, last_error_code, last_error
+            )
+            VALUES (
+                :ieee, :endpoint_id, :cluster_type, :cluster_id, :manufacturer_code_scope,
+                :attr_id, :attribute_name, :datatype, :access, :discovered_at,
+                :read_complete, :read_status, :value, :last_read, :last_error_code,
+                :last_error
+            )
+            ON CONFLICT (
+                ieee, endpoint_id, cluster_type, cluster_id, manufacturer_code_scope_idx, attr_id
+            ) DO UPDATE SET
+                attribute_name=excluded.attribute_name,
+                datatype=excluded.datatype,
+                access=excluded.access,
+                discovered_at=excluded.discovered_at,
+                read_complete=excluded.read_complete,
+                read_status=excluded.read_status,
+                value=excluded.value,
+                last_read=excluded.last_read,
+                last_error_code=excluded.last_error_code,
+                last_error=excluded.last_error
+            """,
+            {
+                "ieee": ieee,
+                "endpoint_id": endpoint_id,
+                "cluster_type": cluster_type,
+                "cluster_id": cluster_id,
+                "manufacturer_code_scope": manufacturer_code_scope,
+                "attr_id": attr_id,
+                "attribute_name": attribute_name,
+                "datatype": datatype,
+                "access": access,
+                "discovered_at": discovered_at,
+                "read_complete": read_complete,
+                "read_status": read_status,
+                "value": value,
+                "last_read": last_read,
+                "last_error_code": last_error_code,
+                "last_error": last_error,
+            },
+        )
+        await self._db.commit()
+
+    async def upsert_device_scan_command(
+        self,
+        *,
+        ieee: t.EUI64,
+        endpoint_id: int,
+        cluster_type: ClusterType,
+        cluster_id: int,
+        manufacturer_code_scope: int | None,
+        direction: str,
+        command_id: int,
+        command_name: str | None,
+        command_schema: str | None,
+        discovered_at: float,
+    ) -> None:
+        await self.execute(
+            f"""
+            INSERT INTO device_scan_commands{DB_V} (
+                ieee, endpoint_id, cluster_type, cluster_id, manufacturer_code_scope,
+                direction, command_id, command_name, command_schema, discovered_at
+            )
+            VALUES (
+                :ieee, :endpoint_id, :cluster_type, :cluster_id, :manufacturer_code_scope,
+                :direction, :command_id, :command_name, :command_schema, :discovered_at
+            )
+            ON CONFLICT (
+                ieee, endpoint_id, cluster_type, cluster_id, manufacturer_code_scope_idx, direction, command_id
+            ) DO UPDATE SET
+                command_name=excluded.command_name,
+                command_schema=excluded.command_schema,
+                discovered_at=excluded.discovered_at
+            """,
+            {
+                "ieee": ieee,
+                "endpoint_id": endpoint_id,
+                "cluster_type": cluster_type,
+                "cluster_id": cluster_id,
+                "manufacturer_code_scope": manufacturer_code_scope,
+                "direction": direction,
+                "command_id": command_id,
+                "command_name": command_name,
+                "command_schema": command_schema,
+                "discovered_at": discovered_at,
+            },
+        )
+        await self._db.commit()
+
+    async def clear_device_scan_data(self, ieee: t.EUI64) -> None:
+        await self.execute(
+            f"DELETE FROM device_scan_progress{DB_V} WHERE ieee = ?", (ieee,)
+        )
+        await self.execute(
+            f"DELETE FROM device_scan_attributes{DB_V} WHERE ieee = ?", (ieee,)
+        )
+        await self.execute(
+            f"DELETE FROM device_scan_commands{DB_V} WHERE ieee = ?", (ieee,)
+        )
+        await self._db.commit()
+
+    async def get_device_scan_rows(self, ieee: t.EUI64) -> DeviceScanRows:
+        async with self.execute(
+            f"""
+            SELECT ieee, endpoint_id, cluster_type, cluster_id, manufacturer_code_scope,
+                   attr_discovery_complete, attr_discovery_next_id, attr_reads_complete,
+                   cmd_rx_complete, cmd_rx_next_id, cmd_tx_complete, cmd_tx_next_id,
+                   last_started, last_finished, last_error_code, last_error, last_success
+            FROM device_scan_progress{DB_V}
+            WHERE ieee = ?
+            ORDER BY endpoint_id, cluster_type, cluster_id, manufacturer_code_scope_idx
+            """,
+            (ieee,),
+        ) as cursor:
+            progress = [
+                DeviceScanProgressRow(
+                    ieee,
+                    endpoint_id,
+                    cluster_type,
+                    cluster_id,
+                    manufacturer_code_scope,
+                    bool(attr_discovery_complete),
+                    attr_discovery_next_id,
+                    bool(attr_reads_complete),
+                    bool(cmd_rx_complete),
+                    cmd_rx_next_id,
+                    bool(cmd_tx_complete),
+                    cmd_tx_next_id,
+                    last_started,
+                    last_finished,
+                    last_error_code,
+                    last_error,
+                    last_success,
+                )
+                for (
+                    ieee,
+                    endpoint_id,
+                    cluster_type,
+                    cluster_id,
+                    manufacturer_code_scope,
+                    attr_discovery_complete,
+                    attr_discovery_next_id,
+                    attr_reads_complete,
+                    cmd_rx_complete,
+                    cmd_rx_next_id,
+                    cmd_tx_complete,
+                    cmd_tx_next_id,
+                    last_started,
+                    last_finished,
+                    last_error_code,
+                    last_error,
+                    last_success,
+                ) in (await cursor.fetchall())
+            ]
+
+        async with self.execute(
+            f"""
+            SELECT ieee, endpoint_id, cluster_type, cluster_id, manufacturer_code_scope,
+                   attr_id, attribute_name, datatype, access, discovered_at,
+                   read_complete, read_status, value, last_read, last_error_code,
+                   last_error
+            FROM device_scan_attributes{DB_V}
+            WHERE ieee = ?
+            ORDER BY endpoint_id, cluster_type, cluster_id, manufacturer_code_scope_idx, attr_id
+            """,
+            (ieee,),
+        ) as cursor:
+            attributes = [
+                DeviceScanAttributeRow(
+                    ieee,
+                    endpoint_id,
+                    cluster_type,
+                    cluster_id,
+                    manufacturer_code_scope,
+                    attr_id,
+                    attribute_name,
+                    datatype,
+                    access,
+                    discovered_at,
+                    bool(read_complete),
+                    read_status,
+                    value,
+                    last_read,
+                    last_error_code,
+                    last_error,
+                )
+                for (
+                    ieee,
+                    endpoint_id,
+                    cluster_type,
+                    cluster_id,
+                    manufacturer_code_scope,
+                    attr_id,
+                    attribute_name,
+                    datatype,
+                    access,
+                    discovered_at,
+                    read_complete,
+                    read_status,
+                    value,
+                    last_read,
+                    last_error_code,
+                    last_error,
+                ) in (await cursor.fetchall())
+            ]
+
+        async with self.execute(
+            f"""
+            SELECT ieee, endpoint_id, cluster_type, cluster_id, manufacturer_code_scope,
+                   direction, command_id, command_name, command_schema, discovered_at
+            FROM device_scan_commands{DB_V}
+            WHERE ieee = ?
+            ORDER BY endpoint_id, cluster_type, cluster_id, manufacturer_code_scope_idx, direction, command_id
+            """,
+            (ieee,),
+        ) as cursor:
+            commands = [DeviceScanCommandRow(*row) for row in await cursor.fetchall()]
+
+        return DeviceScanRows(
+            progress=progress,
+            attributes=attributes,
+            commands=commands,
+        )
 
     async def load(self) -> None:
         LOGGER.debug("Loading application state")
@@ -842,7 +1935,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     cluster._attr_cache.set_legacy_value(
                         row.attr_id,
                         row.value,
-                        last_updated=datetime.fromtimestamp(row.last_updated, UTC),
+                        last_updated=datetime.fromtimestamp(row.last_updated, UTC_TZ),
                     )
 
                 continue
@@ -851,7 +1944,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 cluster._attr_cache.set_value(
                     attr_def,
                     row.value,
-                    last_updated=datetime.fromtimestamp(row.last_updated, UTC),
+                    last_updated=datetime.fromtimestamp(row.last_updated, UTC_TZ),
                 )
             else:
                 cluster._attr_cache.mark_unsupported(attr_def)
@@ -1105,6 +2198,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 (self._migrate_to_v12, 12),
                 (self._migrate_to_v13, 13),
                 (self._migrate_to_v14, 14),
+                (self._migrate_to_v15, 15),
             ]:
                 if db_version >= min(to_db_version, DB_VERSION):
                     continue
@@ -1515,7 +2609,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         UNMIGRATED_MANUFACTURER_CODE,
                         Status.UNSUPPORTED_ATTRIBUTE,
                         None,
-                        datetime.fromtimestamp(0, UTC).timestamp(),
+                        datetime.fromtimestamp(0, UTC_TZ).timestamp(),
                     ),
                 )
 
@@ -1546,3 +2640,35 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         last_updated,
                     ),
                 )
+
+    async def _migrate_to_v15(self) -> None:
+        """Schema v15 adds raw device scan tables."""
+
+        await self._migrate_tables(
+            {
+                "devices_v14": "devices_v15",
+                "endpoints_v14": "endpoints_v15",
+                "clusters_v14": "clusters_v15",
+                "attributes_cache_v14": None,
+                "neighbors_v14": "neighbors_v15",
+                "routes_v14": "routes_v15",
+                "node_descriptors_v14": "node_descriptors_v15",
+                "groups_v14": "groups_v15",
+                "group_members_v14": "group_members_v15",
+                "relays_v14": "relays_v15",
+                "network_backups_v14": "network_backups_v15",
+            }
+        )
+
+        await self.execute(
+            """
+            INSERT INTO attributes_cache_v15 (
+                ieee, endpoint_id, cluster_type, cluster_id, attr_id,
+                manufacturer_code, status, value, last_updated
+            )
+            SELECT
+                ieee, endpoint_id, cluster_type, cluster_id, attr_id,
+                manufacturer_code, status, value, last_updated
+            FROM attributes_cache_v14
+            """
+        )

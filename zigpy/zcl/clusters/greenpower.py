@@ -124,34 +124,41 @@ class PairingSchema(foundation.CommandSchema):
     gpd_id: zgptypes.DeviceID
     # Table 37
     sink_ieee: t.EUI64 = StructField(
-        requires=lambda s: not s.options.remove_gpd
-        and s.options.communication_mode
-        in (
-            zgptypes.CommunicationMode.Unicast,
-            zgptypes.CommunicationMode.UnicastLightweight,
+        requires=lambda s: (
+            not s.options.remove_gpd
+            and s.options.communication_mode
+            in (
+                zgptypes.CommunicationMode.Unicast,
+                zgptypes.CommunicationMode.UnicastLightweight,
+            )
         )
     )
     sink_nwk_addr: t.NWK = StructField(
-        requires=lambda s: not s.options.remove_gpd
-        and s.options.communication_mode
-        in (
-            zgptypes.CommunicationMode.Unicast,
-            zgptypes.CommunicationMode.UnicastLightweight,
+        requires=lambda s: (
+            not s.options.remove_gpd
+            and s.options.communication_mode
+            in (
+                zgptypes.CommunicationMode.Unicast,
+                zgptypes.CommunicationMode.UnicastLightweight,
+            )
         )
     )
     sink_group: t.Group = StructField(
-        requires=lambda s: not s.options.remove_gpd
-        and s.options.communication_mode
-        in (
-            zgptypes.CommunicationMode.GroupcastForwardToDGroup,
-            zgptypes.CommunicationMode.GroupcastForwardToCommGroup,
+        requires=lambda s: (
+            not s.options.remove_gpd
+            and s.options.communication_mode
+            in (
+                zgptypes.CommunicationMode.GroupcastForwardToDGroup,
+                zgptypes.CommunicationMode.GroupcastForwardToCommGroup,
+            )
         )
     )
 
     device_id: t.uint8_t = StructField(requires=lambda s: s.options.add_sink)
     frame_counter: t.uint32_t = StructField(
-        requires=lambda s: s.options.add_sink
-        and s.options.security_frame_counter_present
+        requires=lambda s: (
+            s.options.add_sink and s.options.security_frame_counter_present
+        )
     )
     key: t.KeyData = StructField(
         requires=lambda s: s.options.add_sink and s.options.security_key_present

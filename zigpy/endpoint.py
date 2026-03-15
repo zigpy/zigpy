@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import enum
 import logging
 from typing import TYPE_CHECKING, Any
@@ -30,6 +31,18 @@ class Status(enum.IntEnum):
     ENDPOINT_INACTIVE = 3
 
 
+@dataclass(frozen=True, slots=True)
+class DiscoveredEndpointDescriptor:
+    endpoint_id: int
+    status: Status
+    profile_id: int | None
+    device_type: (
+        zigpy.profiles.zha.DeviceType | zigpy.profiles.zll.DeviceType | int | None
+    )
+    input_clusters: tuple[int, ...]
+    output_clusters: tuple[int, ...]
+
+
 class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     """An endpoint on a device on the network"""
 
@@ -40,7 +53,9 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self.status: Status = Status.NEW
         self.profile_id: int | None = None
-        self.device_type: zigpy.profiles.zha.DeviceType | None = None
+        self.device_type: (
+            zigpy.profiles.zha.DeviceType | zigpy.profiles.zll.DeviceType | int | None
+        ) = None
         self.in_clusters: dict = {}
         self.out_clusters: dict = {}
         self._cluster_attr: dict = {}
@@ -50,41 +65,80 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._manufacturer: str | None = None
         self._model: str | None = None
 
-    async def initialize(self) -> None:
+    async def discover_descriptor(
+        self, *, refresh: bool = False
+    ) -> DiscoveredEndpointDescriptor:
         self.info("Discovering endpoint information")
 
-        if self.profile_id is not None or self.status == Status.ENDPOINT_INACTIVE:
+        if not refresh and (
+            self.profile_id is not None or self.status == Status.ENDPOINT_INACTIVE
+        ):
             self.info("Endpoint descriptor already queried")
-        else:
-            status, _, sd = await self._device.zdo.Simple_Desc_req(
-                self._device.nwk, self._endpoint_id
+            return DiscoveredEndpointDescriptor(
+                endpoint_id=self._endpoint_id,
+                status=self.status,
+                profile_id=self.profile_id,
+                device_type=self.device_type,
+                input_clusters=tuple(self.in_clusters),
+                output_clusters=tuple(self.out_clusters),
             )
 
-            if status == ZDOStatus.NOT_ACTIVE:
-                # These endpoints are essentially junk but this lets the device join
-                self.status = Status.ENDPOINT_INACTIVE
-                return
-            elif status != ZDOStatus.SUCCESS:
-                raise zigpy.exceptions.InvalidResponse(
-                    "Failed to retrieve service descriptor: %s", status
-                )
+        status, _, sd = await self._device.zdo.Simple_Desc_req(
+            self._device.nwk, self._endpoint_id
+        )
 
-            self.info("Discovered endpoint information: %s", sd)
-            self.profile_id = sd.profile
-            self.device_type = sd.device_type
+        if status == ZDOStatus.NOT_ACTIVE:
+            return DiscoveredEndpointDescriptor(
+                endpoint_id=self._endpoint_id,
+                status=Status.ENDPOINT_INACTIVE,
+                profile_id=None,
+                device_type=None,
+                input_clusters=(),
+                output_clusters=(),
+            )
+        elif status != ZDOStatus.SUCCESS:
+            raise zigpy.exceptions.InvalidResponse(
+                "Failed to retrieve service descriptor: %s", status
+            )
 
-            if self.profile_id == zigpy.profiles.zha.PROFILE_ID:
-                self.device_type = zigpy.profiles.zha.DeviceType(self.device_type)
-            elif self.profile_id == zigpy.profiles.zll.PROFILE_ID:
-                self.device_type = zigpy.profiles.zll.DeviceType(self.device_type)
+        self.info("Discovered endpoint information: %s", sd)
+        device_type = sd.device_type
 
-            for cluster in sd.input_clusters:
-                self.add_input_cluster(cluster)
+        if sd.profile == zigpy.profiles.zha.PROFILE_ID:
+            device_type = zigpy.profiles.zha.DeviceType(device_type)
+        elif sd.profile == zigpy.profiles.zll.PROFILE_ID:
+            device_type = zigpy.profiles.zll.DeviceType(device_type)
 
-            for cluster in sd.output_clusters:
-                self.add_output_cluster(cluster)
+        return DiscoveredEndpointDescriptor(
+            endpoint_id=self._endpoint_id,
+            status=Status.ZDO_INIT,
+            profile_id=sd.profile,
+            device_type=device_type,
+            input_clusters=tuple(sd.input_clusters),
+            output_clusters=tuple(sd.output_clusters),
+        )
 
-        self.status = Status.ZDO_INIT
+    def apply_discovered_descriptor(
+        self, descriptor: DiscoveredEndpointDescriptor
+    ) -> None:
+        if descriptor.status == Status.ENDPOINT_INACTIVE:
+            self.status = Status.ENDPOINT_INACTIVE
+            return
+
+        self.profile_id = descriptor.profile_id
+        self.device_type = descriptor.device_type
+
+        for cluster in descriptor.input_clusters:
+            self.add_input_cluster(cluster)
+
+        for cluster in descriptor.output_clusters:
+            self.add_output_cluster(cluster)
+
+        self.status = descriptor.status
+
+    async def initialize(self) -> None:
+        descriptor = await self.discover_descriptor()
+        self.apply_discovered_descriptor(descriptor)
 
     @property
     def clusters(self) -> list[zigpy.zcl.Cluster]:
