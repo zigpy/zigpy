@@ -12,6 +12,8 @@ import pytest
 import zigpy.application
 import zigpy.config as conf
 from zigpy.datastructures import RequestLimiter
+import zigpy.device
+import zigpy.endpoint
 from zigpy.exceptions import (
     DeliveryError,
     NetworkNotFormed,
@@ -1866,8 +1868,6 @@ async def test_callback_wrapping_async(
 
 async def test_device_reinterviewed(app):
     """Test _device_reinterviewed swaps the old device for the shadow."""
-    import zigpy.device
-    import zigpy.endpoint
 
     ieee = make_ieee()
     nwk = t.NWK(0x1234)
@@ -1904,8 +1904,6 @@ async def test_device_reinterviewed(app):
 
 async def test_device_reinterviewed_with_db(app):
     """Test _device_reinterviewed removes old device from DB before saving new one."""
-    import zigpy.device
-    import zigpy.endpoint
 
     ieee = make_ieee()
     nwk = t.NWK(0x1234)
