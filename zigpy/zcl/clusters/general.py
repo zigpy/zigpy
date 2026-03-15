@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Final, Self
 
 import zigpy.types as t
@@ -1140,16 +1140,14 @@ class Time(Cluster):
 
     def handle_read_attribute_time_zone(self) -> t.int32s:
         now_local = datetime.now().astimezone()
-        utc_offset = now_local.utcoffset()
-        dst = now_local.dst()
-        assert utc_offset is not None and dst is not None
+        utc_offset = now_local.utcoffset() or timedelta(0)
+        dst = now_local.dst() or timedelta(0)
 
         return t.int32s((utc_offset - dst).total_seconds())
 
     def handle_read_attribute_local_time(self) -> t.LocalTime:
         now_local = datetime.now().astimezone()
-        utc_offset = now_local.utcoffset()
-        assert utc_offset is not None
+        utc_offset = now_local.utcoffset() or timedelta(0)
 
         utc_seconds = (now_local - ZIGBEE_EPOCH).total_seconds()
         return t.LocalTime(utc_seconds + utc_offset.total_seconds())
