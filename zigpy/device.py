@@ -328,23 +328,18 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     await zigpy.util.retryable_request(tries=5, delay=0.5)(
                         shadow._discover
                     )()
+
+                # Discovery succeeded — swap the old device for the new one
+                await self._application._device_reinterviewed(self, shadow)
             except Exception:
-                # Discovery failed — restore the old device so it keeps working
+                # Ensure old device is restored in app.devices on any failure
+                # (_device_reinterviewed may have already done this for
+                # finalization failures, but the assignment is idempotent)
                 self._application.devices[self._ieee] = self
                 raise
-
-            # Discovery succeeded — swap the old device for the new one
-            await self._application._device_reinterviewed(self, shadow)
-        except (TimeoutError, zigpy.exceptions.ZigbeeException):
+        except Exception:  # noqa: BLE001
             self.warning(
                 "Re-interview failed, keeping existing device",
-                exc_info=True,
-            )
-            self._application.listener_event("device_reinterview_failure", self)
-        except Exception:  # noqa: BLE001
-            LOGGER.warning(
-                "Device %r re-interview failed due to unexpected error",
-                self,
                 exc_info=True,
             )
             self._application.listener_event("device_reinterview_failure", self)
