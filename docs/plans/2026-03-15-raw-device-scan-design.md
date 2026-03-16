@@ -559,6 +559,7 @@ For every refreshed raw cluster:
 - Wrong-direction non-response traffic must not satisfy pending requests just because the TSN matches.
 - If the device replies to `Discover_Attribute_Extended` with default-response `UNSUP_GENERAL_COMMAND`, log it and retry the same page with `Discover_Attributes`.
 - If the manufacturer-scoped pass replies with default-response `UNSUP_MANUF_GENERAL_COMMAND`, treat it as the manufacturer-specific analogue of unsupported discovery: log it and retry the same page with `Discover_Attributes`.
+- Apply the baseline pacing delay before issuing that fallback `Discover_Attributes` request.
 - If `Discover_Attributes` also replies with default-response `UNSUP_GENERAL_COMMAND`, log it, persist an empty completed page for the scope, and continue the scan.
 - If the manufacturer-scoped fallback also replies with default-response `UNSUP_MANUF_GENERAL_COMMAND`, log it, persist an empty completed page for the scope, and continue the scan.
 - Any other discovery default-response status is terminal for that scope and produces the normal partial-scan failure path.
@@ -567,6 +568,7 @@ For every refreshed raw cluster:
 - Advance the stored cursor only after the page rows are committed.
 - Mark the step complete only after the terminating page is processed.
 - Persist ACL metadata only when extended discovery succeeds; standard discovery pages leave ACL as `NULL`.
+- When a scope restarts from attribute-discovery page `0` on a non-resume scan, replace that scope's previously persisted progress, attribute rows, and command rows on the first committed page so stale inventory does not survive a fresh scan.
 
 ### Step 3: read readable attributes
 
@@ -613,6 +615,7 @@ Default resume behavior:
 - if a cluster scope has completed a step, skip that step
 - if attribute discovery completed but attribute reads did not, resume reads only
 - if command discovery partially completed, continue from the stored cursor
+- `resume=False` reruns each scope from zero; the first committed attribute-discovery page replaces any previously persisted inventory for that scope
 
 `force_full` behavior:
 

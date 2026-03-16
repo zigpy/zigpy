@@ -1499,6 +1499,7 @@ class DeviceScanner(zigpy.util.ListenableMixin):
                         target.cluster.cluster_type.name.lower(),
                         unsupported_status.name,
                     )
+                    await self._pace_requests()
                     use_extended_discovery = False
                     continue
 
@@ -1521,6 +1522,7 @@ class DeviceScanner(zigpy.util.ListenableMixin):
                         attributes=[],
                         next_attr_id=start_attr_id,
                         complete=True,
+                        reset_scope=start_attr_id == 0,
                     )
                 )
                 return
@@ -1547,6 +1549,7 @@ class DeviceScanner(zigpy.util.ListenableMixin):
                 attributes=discovered_attributes,
                 next_attr_id=next_attr_id,
                 complete=bool(attribute_response.discovery_complete),
+                reset_scope=start_attr_id == 0,
             )
 
             if attribute_response.discovery_complete:

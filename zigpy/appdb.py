@@ -1048,11 +1048,57 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         attributes: list[tuple[int, str | None, int, int | None]],
         next_attr_id: int,
         complete: bool,
+        reset_scope: bool = False,
     ) -> None:
         discovered_at = datetime.now(UTC_TZ).timestamp()
+        manufacturer_code_scope_idx = (
+            -2 if manufacturer_code_scope is None else manufacturer_code_scope
+        )
 
         try:
             await self.execute("BEGIN")
+
+            if reset_scope:
+                scope_params = (
+                    ieee,
+                    endpoint_id,
+                    cluster_type,
+                    cluster_id,
+                    manufacturer_code_scope_idx,
+                )
+                await self.execute(
+                    f"""
+                    DELETE FROM device_scan_progress{DB_V}
+                    WHERE ieee = ?
+                      AND endpoint_id = ?
+                      AND cluster_type = ?
+                      AND cluster_id = ?
+                      AND manufacturer_code_scope_idx = ?
+                    """,
+                    scope_params,
+                )
+                await self.execute(
+                    f"""
+                    DELETE FROM device_scan_attributes{DB_V}
+                    WHERE ieee = ?
+                      AND endpoint_id = ?
+                      AND cluster_type = ?
+                      AND cluster_id = ?
+                      AND manufacturer_code_scope_idx = ?
+                    """,
+                    scope_params,
+                )
+                await self.execute(
+                    f"""
+                    DELETE FROM device_scan_commands{DB_V}
+                    WHERE ieee = ?
+                      AND endpoint_id = ?
+                      AND cluster_type = ?
+                      AND cluster_id = ?
+                      AND manufacturer_code_scope_idx = ?
+                    """,
+                    scope_params,
+                )
 
             if attributes:
                 await self._db.executemany(
@@ -1310,6 +1356,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             "cmd_rx_complete" if direction == "received" else "cmd_tx_complete"
         )
         next_column = "cmd_rx_next_id" if direction == "received" else "cmd_tx_next_id"
+        other_complete_column = (
+            "cmd_tx_complete" if direction == "received" else "cmd_rx_complete"
+        )
+        clear_error_condition = (
+            "attr_discovery_complete = 1 "
+            "AND attr_reads_complete = 1 "
+            f"AND {other_complete_column} = 1 "
+            f"AND excluded.{complete_column} = 1"
+        )
 
         try:
             await self.execute("BEGIN")
@@ -1366,8 +1421,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     {next_column}=excluded.{next_column},
                     last_started=COALESCE(last_started, excluded.last_started),
                     last_finished=excluded.last_finished,
-                    last_error_code=NULL,
-                    last_error=NULL,
+                    last_error_code=CASE
+                        WHEN {clear_error_condition} THEN NULL
+                        ELSE last_error_code
+                    END,
+                    last_error=CASE
+                        WHEN {clear_error_condition} THEN NULL
+                        ELSE last_error
+                    END,
                     last_success=excluded.last_success
                 """,
                 (

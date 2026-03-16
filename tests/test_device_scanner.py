@@ -142,6 +142,383 @@ def test_device_scanner_progress_events_emit_on_scanner(app):
     assert events == [event]
 
 
+@pytest.mark.parametrize(
+    ("event_name", "payload", "expected_error"),
+    [
+        ("bogus", {"status": "queued"}, "Unknown device scan event name"),
+        ("scan_started", {"status": "bogus"}, "Unknown device scan status"),
+        (
+            "scan_finished",
+            {"status": "success", "outcome": "bogus"},
+            "Unknown device scan outcome",
+        ),
+        (
+            "scan_finished",
+            {"status": "failed", "error_code": "bogus"},
+            "Unknown device scan error code",
+        ),
+    ],
+)
+def test_device_scanner_emit_progress_rejects_unknown_vocabulary(
+    app, event_name, payload, expected_error
+):
+    with pytest.raises(ValueError, match=expected_error):
+        app.device_scanner._emit_progress(
+            event_name,
+            ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"),
+            **payload,
+        )
+
+
+def test_device_scanner_get_dblistener_requires_initialized_listener(app):
+    app._dblistener = None
+
+    with pytest.raises(
+        RuntimeError, match="DeviceScanner requires an initialized database listener"
+    ):
+        app.device_scanner._get_dblistener()
+
+
+async def test_device_scanner_noop_action_is_awaitable(app):
+    await app.device_scanner._noop_action()
+
+
+async def test_device_scanner_scan_raises_when_active_request_is_missing_task(app):
+    ieee = t.EUI64.convert("aa:bb:cc:dd:11:22:33:45")
+    app.device_scanner._active_scans[ieee] = zigpy.device_scanner._SharedScanRequest(
+        ieee=ieee,
+        resume=True,
+        force_full=False,
+    )
+
+    with pytest.raises(RuntimeError, match="missing its task"):
+        await app.device_scanner.scan(ieee)
+
+
+async def test_device_scanner_run_shared_scan_converts_internal_scan_failures(
+    tmp_path: Path,
+):
+    app, dev, _ = await _make_basic_scan_target(tmp_path)
+    request = zigpy.device_scanner._SharedScanRequest(
+        ieee=dev.ieee,
+        resume=False,
+        force_full=False,
+    )
+
+    class FakeTimeout:
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        def expired(self) -> bool:
+            return False
+
+    with (
+        patch(
+            "zigpy.device_scanner.asyncio_timeout",
+            return_value=FakeTimeout(),
+        ),
+        patch.object(
+            app.device_scanner,
+            "_run_scan_body",
+            new=AsyncMock(
+                side_effect=zigpy.device_scanner._ScanFailure(
+                    "scan broke", error_code="transport_failure"
+                )
+            ),
+        ),
+    ):
+        summary = await app.device_scanner._run_shared_scan(request)
+
+    assert summary.outcome == "failed"
+    assert summary.error_code == "transport_failure"
+    assert summary.last_error == "scan broke"
+
+    await app.shutdown()
+
+
+async def test_device_scanner_run_shared_scan_nonexpired_timeout_is_not_deadline(
+    tmp_path: Path,
+):
+    app, dev, _ = await _make_basic_scan_target(tmp_path)
+    request = zigpy.device_scanner._SharedScanRequest(
+        ieee=dev.ieee,
+        resume=False,
+        force_full=False,
+    )
+
+    class FakeTimeout:
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        def expired(self) -> bool:
+            return False
+
+    with (
+        patch(
+            "zigpy.device_scanner.asyncio_timeout",
+            return_value=FakeTimeout(),
+        ),
+        patch.object(
+            app.device_scanner,
+            "_run_scan_body",
+            new=AsyncMock(side_effect=TimeoutError()),
+        ),
+    ):
+        with pytest.raises(TimeoutError):
+            await app.device_scanner._run_shared_scan(request)
+
+    await app.shutdown()
+
+
+async def test_device_scanner_run_shared_scan_uses_exception_scan_error_code(
+    tmp_path: Path,
+):
+    app, dev, _ = await _make_basic_scan_target(tmp_path)
+    request = zigpy.device_scanner._SharedScanRequest(
+        ieee=dev.ieee,
+        resume=False,
+        force_full=False,
+    )
+
+    class FakeTimeout:
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        def expired(self) -> bool:
+            return False
+
+    exc = RuntimeError("boom")
+    exc.device_scan_error_code = "transport_failure"
+
+    with (
+        patch(
+            "zigpy.device_scanner.asyncio_timeout",
+            return_value=FakeTimeout(),
+        ),
+        patch.object(
+            app.device_scanner,
+            "_run_scan_body",
+            new=AsyncMock(side_effect=exc),
+        ),
+    ):
+        summary = await app.device_scanner._run_shared_scan(request)
+
+    assert summary.outcome == "failed"
+    assert summary.error_code == "transport_failure"
+    assert summary.last_error == "boom"
+
+    await app.shutdown()
+
+
+async def test_device_scanner_run_scope_step_reraises_unexpected_exception(
+    tmp_path: Path,
+):
+    app, _, target = await _make_basic_scan_target(tmp_path)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await app.device_scanner._run_scope_step(
+            target,
+            step=zigpy.device_scanner.SCAN_STEPS[1],
+            action=AsyncMock(side_effect=RuntimeError("boom")),
+        )
+
+    await app.shutdown()
+
+
+async def test_device_scanner_run_scope_step_reraises_timeout_when_deadline_expired(
+    tmp_path: Path,
+):
+    app, _, target = await _make_basic_scan_target(tmp_path)
+
+    with patch.object(app.device_scanner, "_scan_deadline_expired", return_value=True):
+        with pytest.raises(TimeoutError):
+            await app.device_scanner._run_scope_step(
+                target,
+                step=zigpy.device_scanner.SCAN_STEPS[1],
+                action=AsyncMock(side_effect=TimeoutError()),
+            )
+
+    await app.shutdown()
+
+
+def test_device_scanner_snapshot_helpers_cover_status_variants(app):
+    scanner = app.device_scanner
+
+    assert scanner._to_datetime(None) is None
+
+    pending_row = zigpy.appdb.DeviceScanProgressRow(
+        ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:46"),
+        endpoint_id=1,
+        cluster_type=ClusterType.Server,
+        cluster_id=Basic.cluster_id,
+        manufacturer_code_scope=None,
+        attr_discovery_complete=False,
+        attr_discovery_next_id=0,
+        attr_reads_complete=False,
+        cmd_rx_complete=False,
+        cmd_rx_next_id=0,
+        cmd_tx_complete=False,
+        cmd_tx_next_id=0,
+        last_started=None,
+        last_finished=None,
+        last_error_code=None,
+        last_error=None,
+        last_success=None,
+    )
+    failed_row = pending_row._replace(
+        last_error_code="transport_failure",
+        last_error="timeout",
+    )
+    success_row = pending_row._replace(
+        attr_discovery_complete=True,
+        attr_reads_complete=True,
+        cmd_rx_complete=True,
+        cmd_tx_complete=True,
+    )
+
+    assert (
+        scanner._make_snapshot_progress(pending_row, synthetic_skipped=False).status
+        == "pending"
+    )
+    assert (
+        scanner._make_snapshot_progress(failed_row, synthetic_skipped=False).status
+        == "failed"
+    )
+    assert (
+        scanner._make_snapshot_progress(success_row, synthetic_skipped=False).status
+        == "success"
+    )
+
+
+def test_device_scanner_decode_attribute_value_returns_none_on_decode_failure(app):
+    class BrokenDeserializer:
+        @classmethod
+        def deserialize(cls, data: bytes):
+            raise ValueError("bad value")
+
+    assert (
+        app.device_scanner._decode_attribute_value(
+            datatype=int(foundation.DataTypeId.uint8),
+            raw_value=b"\x01",
+            decode_cache={int(foundation.DataTypeId.uint8): BrokenDeserializer},
+        )
+        is None
+    )
+
+
+def test_device_scanner_coerce_device_type_variants(app):
+    scanner = app.device_scanner
+
+    assert scanner._coerce_device_type(zha.PROFILE_ID, None) is None
+    assert (
+        scanner._coerce_device_type(
+            zigpy.profiles.zll.PROFILE_ID,
+            zigpy.profiles.zll.DeviceType.COLOR_LIGHT,
+        )
+        == zigpy.profiles.zll.DeviceType.COLOR_LIGHT
+    )
+    assert scanner._coerce_device_type(0xA1E0, 0x0061) == 0x0061
+
+
+def test_device_scanner_make_ephemeral_cluster_adds_server_cluster(app):
+    dev = app.add_device(
+        nwk=0x1234,
+        ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:47"),
+    )
+    ep = zigpy.endpoint.Endpoint(dev, 1)
+
+    cluster = app.device_scanner._make_ephemeral_cluster(
+        ep,
+        cluster_id=Basic.cluster_id,
+        cluster_type=ClusterType.Server,
+    )
+
+    assert ep.in_clusters[Basic.cluster_id] is cluster
+    assert getattr(ep, cluster.ep_attribute) is cluster
+
+
+def test_device_scanner_canonicalize_attribute_value_handles_arrays(app):
+    array_value = foundation.Array(
+        type=foundation.DataTypeId.octstr,
+        value=t.LVList[t.LVBytes, t.uint16_t]([b"\x00\x01"]),
+    )
+
+    datatype, raw = app.device_scanner._canonicalize_attribute_value(array_value)
+
+    assert datatype == int(
+        foundation.DataType.from_python_type(type(array_value)).type_id
+    )
+    assert raw == array_value.serialize()
+
+
+async def test_device_scanner_translate_discovery_failure_variants(tmp_path: Path):
+    app, _, _ = await _make_basic_scan_target(tmp_path)
+
+    unsupported = app.device_scanner._translate_discovery_failure(
+        zigpy.exceptions.DeliveryError(
+            "unsupported",
+            status=int(foundation.Status.UNSUP_GENERAL_COMMAND),
+        )
+    )
+    unknown_status = app.device_scanner._translate_discovery_failure(
+        zigpy.exceptions.DeliveryError("plain failure", status=999)
+    )
+    unsupported_text = app.device_scanner._translate_discovery_failure(
+        zigpy.exceptions.DeliveryError("feature not supported")
+    )
+    unrelated = app.device_scanner._translate_discovery_failure(
+        zigpy.exceptions.DeliveryError("boom")
+    )
+
+    assert unsupported is not None
+    assert unsupported.error_code == "unsupported_discovery_command"
+    assert unknown_status is None
+    assert unsupported_text is not None
+    assert unsupported_text.error_code == "unsupported_discovery_command"
+    assert unrelated is None
+
+    await app.shutdown()
+
+
+def test_device_scanner_extract_default_response_status_handles_invalid_status(app):
+    assert (
+        app.device_scanner._extract_default_response_status(
+            (foundation.GeneralCommand.Default_Response, 999)
+        )
+        is None
+    )
+
+
+async def test_device_scanner_skip_unsupported_command_discovery_persists_empty_page(
+    tmp_path: Path,
+):
+    app, dev, target = await _make_basic_scan_target(tmp_path)
+
+    with patch.object(app.device_scanner, "_pace_requests", new=AsyncMock()):
+        await app.device_scanner._skip_unsupported_command_discovery(
+            target,
+            direction="received",
+            start_command_id=4,
+            status=foundation.Status.UNSUP_GENERAL_COMMAND,
+        )
+
+    rows = await app._dblistener.get_device_scan_rows(dev.ieee)
+    assert rows.commands == []
+    assert rows.progress[0].cmd_rx_complete is True
+    assert rows.progress[0].cmd_rx_next_id == 4
+
+    await app.shutdown()
+
+
 async def _make_basic_scan_target(tmp_path: Path):
     app = await make_app_with_db(tmp_path / "test.db")
     dev = app.add_device(
@@ -814,8 +1191,17 @@ async def test_device_scanner_attribute_discovery_falls_back_to_standard_on_unsu
         )
     )
     caplog.set_level(logging.WARNING, logger="zigpy.device_scanner")
-
-    await app.device_scanner._discover_attributes_for_target(target)
+    with (
+        patch.object(
+            app._dblistener,
+            "persist_device_scan_attribute_discovery_page",
+            new=AsyncMock(
+                wraps=app._dblistener.persist_device_scan_attribute_discovery_page
+            ),
+        ) as persist_page,
+        patch.object(app.device_scanner, "_pace_requests", new=AsyncMock()) as pace,
+    ):
+        await app.device_scanner._discover_attributes_for_target(target)
 
     rows = await app._dblistener.get_device_scan_rows(dev.ieee)
     assert [row.attr_id for row in rows.attributes] == [0x0000]
@@ -823,6 +1209,9 @@ async def test_device_scanner_attribute_discovery_falls_back_to_standard_on_unsu
     assert rows.progress[0].attr_discovery_complete is True
     target.cluster.discover_attributes_extended.assert_awaited_once()
     target.cluster.discover_attributes.assert_awaited_once()
+    assert pace.await_count == 2
+    assert persist_page.await_count == 1
+    assert persist_page.await_args.kwargs["reset_scope"] is True
     assert "falling back to discover_attributes" in caplog.text.lower()
 
     await app.shutdown()
@@ -1692,6 +2081,39 @@ async def test_device_scanner_attribute_reads_split_transport_failures_and_keep_
     await app.shutdown()
 
 
+async def test_device_scanner_attribute_discovery_raises_translated_unsupported_delivery_error(
+    tmp_path: Path,
+):
+    app, _, target = await _make_basic_scan_target(tmp_path)
+    target.cluster.discover_attributes_extended = AsyncMock(
+        side_effect=zigpy.exceptions.DeliveryError(
+            "unsupported",
+            status=int(foundation.Status.UNSUP_GENERAL_COMMAND),
+        )
+    )
+
+    with pytest.raises(zigpy.device_scanner._TerminalStepFailure) as exc_info:
+        await app.device_scanner._discover_attributes_for_target(target)
+
+    assert exc_info.value.error_code == "unsupported_discovery_command"
+
+    await app.shutdown()
+
+
+async def test_device_scanner_attribute_discovery_reraises_nonterminal_zigbee_exception(
+    tmp_path: Path,
+):
+    app, _, target = await _make_basic_scan_target(tmp_path)
+    target.cluster.discover_attributes_extended = AsyncMock(
+        side_effect=zigpy.exceptions.DeliveryError("boom")
+    )
+
+    with pytest.raises(zigpy.exceptions.DeliveryError, match="boom"):
+        await app.device_scanner._discover_attributes_for_target(target)
+
+    await app.shutdown()
+
+
 async def test_device_scanner_scan_marks_attribute_read_transport_failures_partial(
     tmp_path: Path,
 ):
@@ -1820,6 +2242,74 @@ async def test_device_scanner_scan_marks_attribute_read_transport_failures_parti
     assert failed_progress.attr_reads_complete is False
     assert failed_progress.last_error_code == "transport_failure"
     assert failed_progress.last_error == "still broken"
+
+    await app.shutdown()
+
+
+async def test_device_scanner_attribute_reads_mark_complete_when_no_rows_pending(
+    tmp_path: Path,
+):
+    app, dev, target = await _make_basic_scan_target(tmp_path)
+
+    await app.device_scanner._read_attributes_for_target(target)
+
+    rows = await app._dblistener.get_device_scan_rows(dev.ieee)
+    assert rows.progress[0].attr_reads_complete is True
+
+    await app.shutdown()
+
+
+async def test_device_scanner_attribute_reads_report_multiple_remaining_rows(
+    tmp_path: Path,
+):
+    app, _, target = await _make_basic_scan_target(tmp_path)
+    await app._dblistener.upsert_device_scan_progress(
+        ieee=target.endpoint.device.ieee,
+        endpoint_id=target.endpoint_id,
+        cluster_type=target.cluster.cluster_type,
+        cluster_id=target.cluster.cluster_id,
+        manufacturer_code_scope=target.scope.manufacturer_code_scope,
+        attr_discovery_complete=True,
+        attr_discovery_next_id=2,
+        attr_reads_complete=False,
+        cmd_rx_complete=False,
+        cmd_rx_next_id=0,
+        cmd_tx_complete=False,
+        cmd_tx_next_id=0,
+        last_started=None,
+        last_finished=None,
+        last_error_code=None,
+        last_error=None,
+        last_success=None,
+    )
+    await _seed_discovered_attribute(
+        app,
+        target,
+        attr_id=Basic.AttributeDefs.zcl_version.id,
+        attribute_name=Basic.AttributeDefs.zcl_version.name,
+        datatype=foundation.DataTypeId.uint8,
+        access=foundation.AttributeAccessControl.READ,
+    )
+    await _seed_discovered_attribute(
+        app,
+        target,
+        attr_id=Basic.AttributeDefs.app_version.id,
+        attribute_name=Basic.AttributeDefs.app_version.name,
+        datatype=foundation.DataTypeId.uint8,
+        access=foundation.AttributeAccessControl.READ,
+    )
+
+    with patch.object(
+        app.device_scanner,
+        "_read_attribute_rows_with_fallback",
+        new=AsyncMock(return_value=()),
+    ):
+        with pytest.raises(zigpy.device_scanner._TerminalStepFailure) as exc_info:
+            await app.device_scanner._read_attributes_for_target(target)
+
+    assert exc_info.value.error_code == "transport_failure"
+    assert "0x0000" in str(exc_info.value)
+    assert "0x0001" in str(exc_info.value)
 
     await app.shutdown()
 
@@ -2132,6 +2622,54 @@ async def test_device_scanner_retries_manufacturer_command_discovery_timeout_onc
     ]
     assert progress.cmd_tx_complete is True
     assert [row.command_id for row in commands] == [0x02]
+
+    await app.shutdown()
+
+
+async def test_device_scanner_standard_command_discovery_timeout_reraises(
+    tmp_path: Path,
+):
+    app, _, target = await _make_basic_scan_target(tmp_path)
+    target.cluster.discover_commands_received = AsyncMock(side_effect=TimeoutError())
+
+    with pytest.raises(TimeoutError):
+        await app.device_scanner._discover_commands_received_for_target(target)
+
+    await app.shutdown()
+
+
+async def test_device_scanner_command_discovery_translates_terminal_zigbee_exception(
+    tmp_path: Path,
+):
+    app, _, target = await _make_basic_scan_target(tmp_path)
+    target.cluster.discover_commands_generated = AsyncMock(
+        side_effect=zigpy.exceptions.DeliveryError(
+            "unsupported",
+            status=foundation.Status.UNSUP_GENERAL_COMMAND,
+        )
+    )
+
+    with pytest.raises(zigpy.device_scanner._TerminalStepFailure) as exc_info:
+        await app.device_scanner._discover_commands_generated_for_target(target)
+
+    assert (
+        exc_info.value.error_code
+        == zigpy.device_scanner.ERROR_CODE_UNSUPPORTED_DISCOVERY_COMMAND
+    )
+
+    await app.shutdown()
+
+
+async def test_device_scanner_command_discovery_reraises_nonterminal_zigbee_exception(
+    tmp_path: Path,
+):
+    app, _, target = await _make_basic_scan_target(tmp_path)
+    target.cluster.discover_commands_generated = AsyncMock(
+        side_effect=zigpy.exceptions.ZigbeeException("boom")
+    )
+
+    with pytest.raises(zigpy.exceptions.ZigbeeException, match="boom"):
+        await app.device_scanner._discover_commands_generated_for_target(target)
 
     await app.shutdown()
 

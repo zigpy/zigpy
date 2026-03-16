@@ -274,6 +274,7 @@ Implement:
 - paged attribute discovery through the shared private page-runner helper
 - `Discover_Attribute_Extended` first, then `Discover_Attributes` fallback on default-response `UNSUP_GENERAL_COMMAND`
 - manufacturer-scoped discovery uses the same fallback semantics for default-response `UNSUP_MANUF_GENERAL_COMMAND`
+- baseline pacing still applies before the fallback `Discover_Attributes` request is sent
 - empty completed attribute-discovery persistence when both discovery commands are unsupported
 - tuple and decoded `foundation.DefaultResponse` unsupported replies share the same fallback/continue behavior
 - non-`UNSUP_GENERAL_COMMAND` discovery default responses take the terminal scope-failure path
@@ -282,6 +283,7 @@ Implement:
 - discovery request timeouts take the scope-local `transport_failure` path
 - shared internal pacing reused for discovery pages
 - progress row upserts committed in the same transaction as each successful page
+- when a scope restarts from page `0`, the first committed discovery page replaces that scope's previously persisted progress, attributes, and commands so fresh non-resume scans cannot return stale inventory
 - resolved attribute name only when safe
 - read target selection from persisted ACL rows, with standard-discovery fallback rows treated as readable when ACL is unknown
 - canonical raw value persistence plus datatype metadata

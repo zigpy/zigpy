@@ -311,6 +311,17 @@ async def test_get_node_descriptor(dev):
     assert dev.zdo.Node_Desc_req.call_count == 1
 
 
+async def test_discover_node_descriptor_uses_cached_value(dev):
+    cached = make_node_desc()
+    dev.node_desc = cached
+    dev.zdo.Node_Desc_req = AsyncMock()
+
+    result = await dev.discover_node_descriptor()
+
+    assert result is cached
+    dev.zdo.Node_Desc_req.assert_not_awaited()
+
+
 async def test_get_node_descriptor_no_reply(dev):
     with pytest.raises(asyncio.TimeoutError):
         await _get_node_descriptor(dev, zdo_success=True, request_success=False)
@@ -2006,6 +2017,112 @@ async def test_client_cluster_default_response_with_wrong_direction_matches_requ
 
     result = await asyncio.wait_for(request_task, timeout=0.2)
     assert result == default_rsp_cmd
+
+
+def test_get_direction_mismatch_response_key_ignores_invalid_general_command(dev):
+    rsp_key = device.ResponseKey(
+        endpoint_id=1,
+        cluster_id=Ota.cluster_id,
+        direction=foundation.Direction.Client_to_Server,
+        tsn=1,
+    )
+    hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.GLOBAL_COMMAND,
+            is_manufacturer_specific=False,
+            direction=foundation.Direction.Server_to_Client,
+            disable_default_response=True,
+            reserved=0,
+        ),
+        tsn=1,
+        command_id=foundation.GeneralCommand.Default_Response,
+    )
+
+    with patch.object(device.foundation, "GeneralCommand", side_effect=ValueError()):
+        assert (
+            dev._get_direction_mismatch_response_key(
+                rsp_key,
+                hdr,
+                MagicMock(cluster_type=ClusterType.Client),
+                [],
+            )
+            is None
+        )
+
+
+@pytest.mark.parametrize(
+    ("zcl_cluster", "direction"),
+    [
+        (None, foundation.Direction.Client_to_Server),
+        (MagicMock(cluster_type=ClusterType.Client), None),
+    ],
+)
+def test_get_direction_mismatch_response_key_requires_cluster_and_direction(
+    dev, zcl_cluster, direction
+):
+    rsp_key = device.ResponseKey(
+        endpoint_id=1,
+        cluster_id=Ota.cluster_id,
+        direction=direction,
+        tsn=1,
+    )
+    hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.GLOBAL_COMMAND,
+            is_manufacturer_specific=False,
+            direction=foundation.Direction.Server_to_Client,
+            disable_default_response=True,
+            reserved=0,
+        ),
+        tsn=1,
+        command_id=foundation.GeneralCommand.Default_Response,
+    )
+    cmd = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Default_Response
+    ].schema(
+        command_id=foundation.GeneralCommand.Discover_Attribute_Extended,
+        status=foundation.Status.UNSUP_GENERAL_COMMAND,
+    )
+
+    assert (
+        dev._get_direction_mismatch_response_key(rsp_key, hdr, zcl_cluster, cmd) is None
+    )
+
+
+def test_get_direction_mismatch_response_key_ignores_matching_cluster_type(dev):
+    rsp_key = device.ResponseKey(
+        endpoint_id=1,
+        cluster_id=Ota.cluster_id,
+        direction=foundation.Direction.Client_to_Server,
+        tsn=1,
+    )
+    hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.GLOBAL_COMMAND,
+            is_manufacturer_specific=False,
+            direction=foundation.Direction.Server_to_Client,
+            disable_default_response=True,
+            reserved=0,
+        ),
+        tsn=1,
+        command_id=foundation.GeneralCommand.Default_Response,
+    )
+    cmd = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Default_Response
+    ].schema(
+        command_id=foundation.GeneralCommand.Discover_Attribute_Extended,
+        status=foundation.Status.UNSUP_GENERAL_COMMAND,
+    )
+
+    assert (
+        dev._get_direction_mismatch_response_key(
+            rsp_key,
+            hdr,
+            MagicMock(cluster_type=ClusterType.Server),
+            cmd,
+        )
+        is None
+    )
 
 
 async def test_client_cluster_wrong_direction_non_response_does_not_match_request(dev):
