@@ -1720,6 +1720,18 @@ async def test_attribute_read_complex_type_persists(tmp_path) -> None:
         assert isinstance(row[0], bytes)
         assert row[0] == test_value.serialize()
 
+    # Load the database again and verify the value is deserialized back
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(t.EUI64.convert("00:1f:ee:00:00:00:96:f5"))
+    ubisys2 = dev2.endpoints[232].in_clusters[0xFC00]
+
+    loaded_value = ubisys2.get_cached_value(
+        UbisysCluster.AttributeDefs.output_configurations
+    )
+    assert list(loaded_value) == list(test_value)
+
+    await app2.shutdown()
+
 
 def test_save_attribute_cache_skips_unserializable() -> None:
     """Test that _serialize_for_db raises ValueError for unserializable types,
