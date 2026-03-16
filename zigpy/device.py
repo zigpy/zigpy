@@ -330,7 +330,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 async with self._application.request_priority(
                     t.PacketPriority.CRITICAL
                 ):
-                    await zigpy.util.retryable_request(tries=5, delay=0.5)(
+                    await zigpy.util.retryable_request(tries=2, delay=0.5)(
                         shadow._discover
                     )()
 
