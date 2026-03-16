@@ -131,6 +131,16 @@ SCAN_STEPS = (
 )
 
 SCAN_STEP_DESCRIPTOR_REFRESH = SCAN_STEPS[0]
+SCAN_STEP_ATTRIBUTE_DISCOVERY = SCAN_STEPS[1]
+SCAN_STEP_ATTRIBUTE_READS = SCAN_STEPS[2]
+SCAN_STEP_COMMAND_DISCOVERY_RECEIVED = SCAN_STEPS[3]
+SCAN_STEP_COMMAND_DISCOVERY_GENERATED = SCAN_STEPS[4]
+SCAN_SCOPE_STEPS = (
+    SCAN_STEP_ATTRIBUTE_DISCOVERY,
+    SCAN_STEP_ATTRIBUTE_READS,
+    SCAN_STEP_COMMAND_DISCOVERY_RECEIVED,
+    SCAN_STEP_COMMAND_DISCOVERY_GENERATED,
+)
 
 STEP_STATUSES = SCAN_STATUSES
 
@@ -794,7 +804,7 @@ class DeviceScanner(zigpy.util.ListenableMixin):
 
             attr_discovery_result = await self._run_scope_step(
                 target,
-                step=SCAN_STEPS[1],
+                step=SCAN_STEP_ATTRIBUTE_DISCOVERY,
                 skipped=bool(resume and progress and progress.attr_discovery_complete),
                 action=functools.partial(
                     self._discover_attributes_for_target,
@@ -811,7 +821,7 @@ class DeviceScanner(zigpy.util.ListenableMixin):
 
                 attr_reads_result = await self._run_scope_step(
                     target,
-                    step=SCAN_STEPS[2],
+                    step=SCAN_STEP_ATTRIBUTE_READS,
                     skipped=bool(resume and progress and progress.attr_reads_complete),
                     action=functools.partial(self._read_attributes_for_target, target),
                 )
@@ -822,7 +832,7 @@ class DeviceScanner(zigpy.util.ListenableMixin):
 
                 cmd_rx_result = await self._run_scope_step(
                     target,
-                    step=SCAN_STEPS[3],
+                    step=SCAN_STEP_COMMAND_DISCOVERY_RECEIVED,
                     skipped=bool(resume and progress and progress.cmd_rx_complete),
                     action=functools.partial(
                         self._discover_commands_received_for_target,
@@ -839,7 +849,7 @@ class DeviceScanner(zigpy.util.ListenableMixin):
 
                 cmd_tx_result = await self._run_scope_step(
                     target,
-                    step=SCAN_STEPS[4],
+                    step=SCAN_STEP_COMMAND_DISCOVERY_GENERATED,
                     skipped=bool(resume and progress and progress.cmd_tx_complete),
                     action=functools.partial(
                         self._discover_commands_generated_for_target,
@@ -862,7 +872,7 @@ class DeviceScanner(zigpy.util.ListenableMixin):
                 # The skipped scope keeps `manufacturer_code_scope=None`, so
                 # `scope_kind` distinguishes it from the standard scope.
                 payload = self._manufacturer_scope_skip_payload(target)
-                for step in SCAN_STEPS[1:]:
+                for step in SCAN_SCOPE_STEPS:
                     self._emit_progress(
                         SCAN_EVENT_STEP_FINISHED,
                         ieee=target.endpoint.device.ieee,

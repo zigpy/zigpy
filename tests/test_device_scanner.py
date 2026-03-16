@@ -95,6 +95,12 @@ def test_device_scanner_vocabulary_is_fixed():
         "failed",
         "skipped",
     )
+    assert zigpy.device_scanner.SCAN_SCOPE_STEPS == (
+        zigpy.device_scanner.SCAN_STEP_ATTRIBUTE_DISCOVERY,
+        zigpy.device_scanner.SCAN_STEP_ATTRIBUTE_READS,
+        zigpy.device_scanner.SCAN_STEP_COMMAND_DISCOVERY_RECEIVED,
+        zigpy.device_scanner.SCAN_STEP_COMMAND_DISCOVERY_GENERATED,
+    )
     assert zigpy.device_scanner.SCAN_OUTCOMES == (
         "success",
         "partial",
@@ -328,7 +334,7 @@ async def test_device_scanner_run_scope_step_reraises_unexpected_exception(
     with pytest.raises(RuntimeError, match="boom"):
         await app.device_scanner._run_scope_step(
             target,
-            step=zigpy.device_scanner.SCAN_STEPS[1],
+            step=zigpy.device_scanner.SCAN_STEP_ATTRIBUTE_DISCOVERY,
             action=AsyncMock(side_effect=RuntimeError("boom")),
         )
 
@@ -344,7 +350,7 @@ async def test_device_scanner_run_scope_step_reraises_timeout_when_deadline_expi
         with pytest.raises(TimeoutError):
             await app.device_scanner._run_scope_step(
                 target,
-                step=zigpy.device_scanner.SCAN_STEPS[1],
+                step=zigpy.device_scanner.SCAN_STEP_ATTRIBUTE_DISCOVERY,
                 action=AsyncMock(side_effect=TimeoutError()),
             )
 
@@ -4458,6 +4464,14 @@ async def test_device_scanner_scan_ignores_live_manufacturer_override_when_raw_c
     )
     assert not any(
         event.status == "skipped" and event.scope_kind == "standard" for event in events
+    )
+    assert (
+        tuple(
+            event.step
+            for event in events
+            if event.status == "skipped" and event.scope_kind == "manufacturer_specific"
+        )
+        == zigpy.device_scanner.SCAN_SCOPE_STEPS
     )
 
     await app.shutdown()
