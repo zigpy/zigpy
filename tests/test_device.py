@@ -2008,6 +2008,55 @@ async def test_reinterview_failure_preserves_device(monkeypatch, dev):
     )
 
 
+async def test_reinterview_unexpected_failure_preserves_device(monkeypatch, dev):
+    """Test that an unexpected exception during re-interview preserves the old device."""
+
+    async def mockrequest_success(*args, **kwargs):
+        return [0, None, [0, 1]]
+
+    async def mockepinit(self, *args, **kwargs):
+        self.status = endpoint.Status.ZDO_INIT
+        self.add_input_cluster(Basic.cluster_id)
+
+    async def mock_ep_get_model_info(self):
+        return "OldModel", "OldManufacturer"
+
+    monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
+    monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
+
+    # First initialize normally
+    dev.zdo.Active_EP_req = mockrequest_success
+    await dev.initialize()
+    assert dev.model == "OldModel"
+
+    # Make discovery raise an unexpected (non-Zigbee) exception
+    monkeypatch.setattr(
+        device.Device,
+        "get_node_descriptor",
+        AsyncMock(side_effect=RuntimeError("unexpected")),
+    )
+
+    dev._application._device_reinterviewed = AsyncMock()
+
+    await dev.reinterview()
+
+    # _device_reinterviewed should NOT have been called
+    dev._application._device_reinterviewed.assert_not_called()
+
+    # Old device is completely untouched
+    assert dev.model == "OldModel"
+    assert dev.manufacturer == "OldManufacturer"
+    assert dev.is_initialized
+
+    # Failure event was fired
+    dev._application.listener_event.assert_called_with(
+        "device_reinterview_failure", dev
+    )
+
+    # Guard flag was cleared
+    assert not dev.reinterviewing
+
+
 async def test_reinterview_already_in_progress(dev):
     """Test that concurrent reinterview calls are prevented."""
     dev._reinterview_in_progress = True

@@ -613,20 +613,81 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         old_device: zigpy.device.Device,
         shadow: zigpy.device.Device,
     ) -> None:
-        """Atomically swap an old device with a successfully re-interviewed shadow."""
-        # Remove old device data from DB (cascade deletes endpoints, clusters, cache)
+        """Swap an old device with a successfully re-interviewed shadow.
+
+        Preserves non-discovery state (last_seen, relays, lqi, rssi) and group
+        memberships.  If anything goes wrong after the DB delete, the old device
+        is restored so the system stays functional.
+        """
+        # Copy non-discovery state from old device to shadow
+        shadow._last_seen = old_device._last_seen
+        shadow._relays = old_device._relays
+        shadow.lqi = old_device.lqi
+        shadow.rssi = old_device.rssi
+
+        # Collect group memberships from old endpoints before teardown
+        # Maps endpoint_id -> set of group_ids
+        old_group_memberships: dict[int, set[int]] = {}
+        for ep in old_device.non_zdo_endpoints:
+            if ep.member_of:
+                old_group_memberships[ep.endpoint_id] = set(ep.member_of)
+
+        # Remove old device from in-memory groups (prevents stale endpoint refs)
+        for ep in old_device.non_zdo_endpoints:
+            for group in list(ep.member_of.values()):
+                group.remove_member(ep, suppress_event=True)
+
+        # Remove old device data from DB (cascade deletes endpoints, clusters,
+        # attribute cache, group members, and relays)
         if self._dblistener is not None:
             old_device.remove_listener(self._dblistener)
             await self._dblistener._remove_device(old_device)
 
-        # Clean up old device's callbacks and tasks
-        old_device.on_remove()
+        try:
+            # Clean up old device's callbacks and tasks
+            old_device.on_remove()
 
-        # Finalize the shadow via the existing device_initialized path:
-        # sets original_signature, applies quirks, saves to DB, fires events
-        self.device_initialized(shadow)
+            # Finalize the shadow via the existing device_initialized path:
+            # sets original_signature, applies quirks, saves to DB, fires events
+            self.device_initialized(shadow)
+        except Exception:
+            # Finalization failed — restore the old device so the system stays
+            # functional.  DB data is gone but will be re-persisted on next save.
+            LOGGER.warning(
+                "Re-interview finalization failed for %s, restoring old device",
+                old_device.ieee,
+                exc_info=True,
+            )
+            self.devices[old_device.ieee] = old_device
+            if self._dblistener is not None:
+                old_device.add_context_listener(self._dblistener)
 
-        self.listener_event("device_reinterviewed", self.devices[shadow.ieee])
+            # Restore group memberships on the old device
+            for ep_id, group_ids in old_group_memberships.items():
+                if ep_id in old_device.endpoints:
+                    old_ep = old_device.endpoints[ep_id]
+                    for group_id in group_ids:
+                        self.groups[group_id].add_member(
+                            old_ep, suppress_event=True
+                        )
+
+            raise
+
+        new_device = self.devices[shadow.ieee]
+
+        # Restore group memberships on the new device's matching endpoints
+        for ep_id, group_ids in old_group_memberships.items():
+            if ep_id in new_device.endpoints:
+                new_ep = new_device.endpoints[ep_id]
+                for group_id in group_ids:
+                    group = self.groups[group_id]
+                    group.add_member(new_ep)
+
+        # Persist relays for the new device (cascade deleted the old row)
+        if self._dblistener is not None and new_device._relays is not None:
+            self._dblistener.device_relays_updated(new_device, new_device._relays)
+
+        self.listener_event("device_reinterviewed", new_device)
 
     async def reinterview_device(self, ieee: t.EUI64) -> None:
         """Re-interview a device. Safe for sleepy end-devices.

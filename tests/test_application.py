@@ -1868,6 +1868,7 @@ async def test_callback_wrapping_async(
 
 async def test_device_reinterviewed(app):
     """Test _device_reinterviewed swaps the old device for the shadow."""
+    from datetime import UTC, datetime
 
     ieee = make_ieee()
     nwk = t.NWK(0x1234)
@@ -1876,6 +1877,10 @@ async def test_device_reinterviewed(app):
     old_dev.node_desc = make_node_desc()
     old_dev.model = "OldModel"
     old_dev.manufacturer = "OldManufacturer"
+    old_dev._last_seen = datetime(2026, 1, 1, tzinfo=UTC)
+    old_dev._relays = t.Relays([t.NWK(0x1111), t.NWK(0x2222)])
+    old_dev.lqi = 200
+    old_dev.rssi = -40
     assert app.devices[ieee] is old_dev
 
     # Create a shadow device (as reinterview would)
@@ -1896,6 +1901,12 @@ async def test_device_reinterviewed(app):
     assert new_dev is not old_dev
     assert new_dev.model == "NewModel"
     assert new_dev.manufacturer == "NewManufacturer"
+
+    # Non-discovery state should have been preserved
+    assert new_dev._last_seen == datetime(2026, 1, 1, tzinfo=UTC)
+    assert new_dev._relays == t.Relays([t.NWK(0x1111), t.NWK(0x2222)])
+    assert new_dev.lqi == 200
+    assert new_dev.rssi == -40
 
     # device_initialized and device_reinterviewed events should have been fired
     app.listener_event.assert_any_call("device_initialized", new_dev)
@@ -1947,3 +1958,120 @@ async def test_reinterview_device_not_found(app):
     """Test reinterview_device raises KeyError for unknown device."""
     with pytest.raises(KeyError):
         await app.reinterview_device(make_ieee(99))
+
+
+async def test_device_reinterviewed_preserves_groups(app):
+    """Test _device_reinterviewed migrates group memberships to the new device."""
+    ieee = make_ieee()
+    nwk = t.NWK(0x1234)
+
+    old_dev = app.add_device(ieee=ieee, nwk=nwk)
+    old_dev.node_desc = make_node_desc()
+    old_ep = old_dev.add_endpoint(1)
+    old_ep.profile_id = 260
+    old_ep.device_type = 0x0100
+    old_ep.status = zigpy.endpoint.Status.ZDO_INIT
+
+    # Add old endpoint to groups
+    group_10 = app.groups.add_group(10, "Group 10")
+    group_20 = app.groups.add_group(20, "Group 20")
+    group_10.add_member(old_ep, suppress_event=True)
+    group_20.add_member(old_ep, suppress_event=True)
+    assert old_ep.unique_id in group_10
+    assert old_ep.unique_id in group_20
+
+    # Create shadow with matching endpoint
+    shadow = zigpy.device.Device(app, ieee, nwk)
+    shadow.node_desc = make_node_desc()
+    shadow.status = zigpy.device.Status.ENDPOINTS_INIT
+    new_ep = shadow.add_endpoint(1)
+    new_ep.profile_id = 260
+    new_ep.device_type = 0x0100
+    new_ep.status = zigpy.endpoint.Status.ZDO_INIT
+
+    await app._device_reinterviewed(old_dev, shadow)
+
+    new_dev = app.devices[ieee]
+    new_ep = new_dev.endpoints[1]
+
+    # Group members should point to new endpoint objects, not old ones
+    assert group_10[new_ep.unique_id] is new_ep
+    assert group_10[new_ep.unique_id] is not old_ep
+    assert group_20[new_ep.unique_id] is new_ep
+    assert group_20[new_ep.unique_id] is not old_ep
+
+    # New endpoint should know about its group memberships
+    assert 10 in new_ep.member_of
+    assert 20 in new_ep.member_of
+
+    # Old endpoint should no longer be a member
+    assert not old_ep.member_of
+
+
+async def test_device_reinterviewed_finalization_failure_restores_old(app):
+    """Test that if finalization fails after DB delete, old device is restored."""
+    ieee = make_ieee()
+    nwk = t.NWK(0x1234)
+
+    old_dev = app.add_device(ieee=ieee, nwk=nwk)
+    old_dev.node_desc = make_node_desc()
+    old_dev.model = "OldModel"
+    old_ep = old_dev.add_endpoint(1)
+    old_ep.profile_id = 260
+    old_ep.device_type = 0x0100
+    old_ep.status = zigpy.endpoint.Status.ZDO_INIT
+
+    # Add to a group
+    group = app.groups.add_group(42, "TestGroup")
+    group.add_member(old_ep, suppress_event=True)
+
+    shadow = zigpy.device.Device(app, ieee, nwk)
+    shadow.node_desc = make_node_desc()
+    shadow.status = zigpy.device.Status.ENDPOINTS_INIT
+
+    # Make device_initialized fail
+    app.device_initialized = Mock(side_effect=RuntimeError("finalization boom"))
+
+    with pytest.raises(RuntimeError, match="finalization boom"):
+        await app._device_reinterviewed(old_dev, shadow)
+
+    # Old device should be restored in app.devices
+    assert app.devices[ieee] is old_dev
+    assert old_dev.model == "OldModel"
+
+    # Group membership should be restored on old endpoint
+    assert old_ep.unique_id in group
+    assert 42 in old_ep.member_of
+
+
+async def test_device_reinterviewed_persists_relays(app):
+    """Test that relays are re-persisted after reinterview."""
+    ieee = make_ieee()
+    nwk = t.NWK(0x1234)
+
+    old_dev = app.add_device(ieee=ieee, nwk=nwk)
+    old_dev.node_desc = make_node_desc()
+    old_dev._relays = t.Relays([t.NWK(0xAAAA)])
+
+    db_listener = MagicMock()
+    db_listener._remove_device = AsyncMock()
+    app._dblistener = db_listener
+    old_dev.add_context_listener(db_listener)
+
+    shadow = zigpy.device.Device(app, ieee, nwk)
+    shadow.node_desc = make_node_desc()
+    shadow.status = zigpy.device.Status.ENDPOINTS_INIT
+    ep = shadow.add_endpoint(1)
+    ep.profile_id = 260
+    ep.device_type = 0x0100
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+
+    await app._device_reinterviewed(old_dev, shadow)
+
+    new_dev = app.devices[ieee]
+
+    # Relays should have been copied and re-persisted
+    assert new_dev._relays == t.Relays([t.NWK(0xAAAA)])
+    db_listener.device_relays_updated.assert_called_once_with(
+        new_dev, t.Relays([t.NWK(0xAAAA)])
+    )
