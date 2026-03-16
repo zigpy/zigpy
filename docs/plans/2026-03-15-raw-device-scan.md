@@ -348,7 +348,7 @@ Implement:
 - tuple and decoded `foundation.DefaultResponse` unsupported replies share the same command-discovery skip path
 - non-`UNSUP_GENERAL_COMMAND` command-discovery default responses share the same terminal failure path across tuple and decoded forms
 - one short retry for manufacturer-scoped command-discovery timeouts before terminal transport failure
-- skipped manufacturer-scope event emission with `error_code="missing_raw_manufacturer_code"`
+- skipped manufacturer-scope event emission with `error_code="missing_raw_manufacturer_code"`, `scope_kind="manufacturer_specific"`, and `manufacturer_code_scope=None`
 
 **Step 4: Run the tests**
 

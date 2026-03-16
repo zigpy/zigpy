@@ -322,6 +322,34 @@ async def test_discover_node_descriptor_uses_cached_value(dev):
     dev.zdo.Node_Desc_req.assert_not_awaited()
 
 
+async def test_discover_node_descriptor_populates_cache(dev):
+    node_desc = make_node_desc()
+    dev.zdo.Node_Desc_req = AsyncMock(
+        return_value=(zdo_t.Status.SUCCESS, dev.nwk, node_desc)
+    )
+
+    result = await dev.discover_node_descriptor()
+
+    assert result is node_desc
+    assert dev.node_desc is node_desc
+    dev.zdo.Node_Desc_req.assert_awaited_once()
+
+
+async def test_discover_node_descriptor_refresh_requeries_and_updates_cache(dev):
+    original = make_node_desc(manufacturer_code=0x1111)
+    refreshed = make_node_desc(manufacturer_code=0x2222)
+    dev.node_desc = original
+    dev.zdo.Node_Desc_req = AsyncMock(
+        return_value=(zdo_t.Status.SUCCESS, dev.nwk, refreshed)
+    )
+
+    result = await dev.discover_node_descriptor(refresh=True)
+
+    assert result is refreshed
+    assert dev.node_desc is refreshed
+    dev.zdo.Node_Desc_req.assert_awaited_once()
+
+
 async def test_get_node_descriptor_no_reply(dev):
     with pytest.raises(asyncio.TimeoutError):
         await _get_node_descriptor(dev, zdo_success=True, request_success=False)

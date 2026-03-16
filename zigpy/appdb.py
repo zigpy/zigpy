@@ -1697,7 +1697,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         )
         await self._db.commit()
 
-    async def get_device_scan_rows(self, ieee: t.EUI64) -> DeviceScanRows:
+    async def get_device_scan_progress_rows(
+        self, ieee: t.EUI64
+    ) -> list[DeviceScanProgressRow]:
         async with self.execute(
             f"""
             SELECT ieee, endpoint_id, cluster_type, cluster_id, manufacturer_code_scope,
@@ -1710,7 +1712,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             """,
             (ieee,),
         ) as cursor:
-            progress = [
+            return [
                 DeviceScanProgressRow(
                     ieee,
                     endpoint_id,
@@ -1750,6 +1752,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     last_success,
                 ) in (await cursor.fetchall())
             ]
+
+    async def get_device_scan_rows(self, ieee: t.EUI64) -> DeviceScanRows:
+        progress = await self.get_device_scan_progress_rows(ieee)
 
         async with self.execute(
             f"""

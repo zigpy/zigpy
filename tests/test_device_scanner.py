@@ -63,6 +63,7 @@ def test_device_scanner_public_contract_types():
         "endpoint_id",
         "cluster_id",
         "cluster_type",
+        "scope_kind",
         "manufacturer_code_scope",
         "error_code",
         "error",
@@ -4358,11 +4359,20 @@ async def test_device_scanner_scan_emits_step_cardinality_and_missing_manufactur
 
     attr_events = [event for _, event in events if event.step == "attribute_discovery"]
     assert any(
-        event.status == "started" and event.endpoint_id == 1 for event in attr_events
+        event.status == "started"
+        and event.endpoint_id == 1
+        and event.scope_kind == "standard"
+        for event in attr_events
     )
     assert any(
         event.status == "skipped"
         and event.error_code == "missing_raw_manufacturer_code"
+        and event.scope_kind == "manufacturer_specific"
+        and event.manufacturer_code_scope is None
+        for event in attr_events
+    )
+    assert not any(
+        event.status == "skipped" and event.scope_kind == "standard"
         for event in attr_events
     )
 
@@ -4442,8 +4452,56 @@ async def test_device_scanner_scan_ignores_live_manufacturer_override_when_raw_c
     assert any(
         event.status == "skipped"
         and event.error_code == "missing_raw_manufacturer_code"
+        and event.scope_kind == "manufacturer_specific"
         and event.manufacturer_code_scope is None
         for event in events
     )
+    assert not any(
+        event.status == "skipped" and event.scope_kind == "standard" for event in events
+    )
+
+    await app.shutdown()
+
+
+async def test_device_scanner_load_progress_by_scope_uses_progress_rows_query(
+    tmp_path: Path,
+):
+    app, dev, target = await _make_basic_scan_target(tmp_path)
+    progress_row = zigpy.appdb.DeviceScanProgressRow(
+        ieee=dev.ieee,
+        endpoint_id=target.endpoint_id,
+        cluster_type=target.cluster.cluster_type,
+        cluster_id=target.cluster.cluster_id,
+        manufacturer_code_scope=target.scope.manufacturer_code_scope,
+        attr_discovery_complete=True,
+        attr_discovery_next_id=1,
+        attr_reads_complete=False,
+        cmd_rx_complete=False,
+        cmd_rx_next_id=0,
+        cmd_tx_complete=False,
+        cmd_tx_next_id=0,
+        last_started=1.0,
+        last_finished=2.0,
+        last_error_code=None,
+        last_error=None,
+        last_success=2.0,
+    )
+
+    with (
+        patch.object(
+            app._dblistener,
+            "get_device_scan_progress_rows",
+            new=AsyncMock(return_value=[progress_row]),
+        ) as get_progress_rows,
+        patch.object(
+            app._dblistener,
+            "get_device_scan_rows",
+            new=AsyncMock(side_effect=AssertionError("unexpected full row load")),
+        ),
+    ):
+        progress_by_scope = await app.device_scanner._load_progress_by_scope(dev.ieee)
+
+    assert progress_by_scope == {target.scope: progress_row}
+    get_progress_rows.assert_awaited_once_with(dev.ieee)
 
     await app.shutdown()

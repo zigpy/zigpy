@@ -1730,10 +1730,12 @@ async def test_device_scan_rows_persist_and_clear(tmp_path):
     )
 
     rows = await app._dblistener.get_device_scan_rows(ieee)
+    progress_rows = await app._dblistener.get_device_scan_progress_rows(ieee)
 
     assert len(rows.progress) == 1
     assert rows.progress[0].last_error_code == "transport_failure"
     assert rows.progress[0].last_error == "timeout"
+    assert progress_rows == rows.progress
 
     assert len(rows.attributes) == 2
     assert {row.manufacturer_code_scope for row in rows.attributes} == {None, 0x1234}

@@ -278,7 +278,7 @@ Event payload fields:
 - `status`
 - optional `outcome`
 - optional `step`
-- optional scope: `endpoint_id`, `cluster_id`, `cluster_type`, `manufacturer_code_scope`
+- optional scope: `endpoint_id`, `cluster_id`, `cluster_type`, `scope_kind`, `manufacturer_code_scope`
 - optional `error_code`
 - optional `error`
 
@@ -296,8 +296,8 @@ Cardinality:
 - `scan_finished` may include terminal `outcome=success|partial|failed`
 - `step_started` and `step_finished` are used for both descriptor refresh and per-scope inventory work
 - descriptor refresh uses `step="descriptor_refresh"` and does not include scope fields
-- inventory step events are emitted per scope and include `endpoint_id`, `cluster_id`, `cluster_type`, and `manufacturer_code_scope`
-- manufacturer-scope gating uses `status="skipped"` and `error_code="missing_raw_manufacturer_code"`
+- inventory step events are emitted per scope and include `endpoint_id`, `cluster_id`, `cluster_type`, `scope_kind`, and `manufacturer_code_scope`
+- manufacturer-scope gating uses `status="skipped"`, `error_code="missing_raw_manufacturer_code"`, `scope_kind="manufacturer_specific"`, and `manufacturer_code_scope=None`
 
 ## Error-Code Vocabulary
 
@@ -523,7 +523,9 @@ scan request
         |           +--> raw manufacturer code present -> scan normally
         |           `--> raw manufacturer code absent
         |                 +--> mark scope skipped
-        |                 `--> emit step_finished(..., skipped, missing_raw_manufacturer_code)
+        |                 `--> emit step_finished(..., skipped, missing_raw_manufacturer_code,
+        |                                       scope_kind=manufacturer_specific,
+        |                                       manufacturer_code_scope=None)
         |
         `--> emit scan_finished(success|partial|failed)
 ```

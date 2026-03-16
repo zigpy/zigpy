@@ -292,8 +292,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return self._initialize_task
 
     async def get_node_descriptor(self) -> zdo_t.NodeDescriptor:
-        self.node_desc = await self.discover_node_descriptor(refresh=True)
-        return self.node_desc
+        return await self.discover_node_descriptor(refresh=True)
 
     async def discover_node_descriptor(
         self, *, refresh: bool = False
@@ -310,9 +309,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 f"Requesting Node Descriptor failed: {status}"
             )
 
+        self.node_desc = node_desc
         self.info("Got Node Descriptor: %s", node_desc)
 
-        return node_desc
+        return self.node_desc
 
     async def discover_active_endpoints(self, *, refresh: bool = False) -> list[int]:
         if self.has_non_zdo_endpoints and not refresh:

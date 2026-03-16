@@ -34,7 +34,8 @@ else:
 LOGGER = logging.getLogger(__name__)
 
 
-ScopeEventPayload: typing.TypeAlias = dict[str, int | ClusterType | None]
+ScopeKind: typing.TypeAlias = typing.Literal["standard", "manufacturer_specific"]
+ScopeEventPayload: typing.TypeAlias = dict[str, int | ClusterType | ScopeKind | None]
 SnapshotRowValue: typing.TypeAlias = t.EUI64 | int | float | str | bytes | None
 _DefaultResponseTuple: typing.TypeAlias = tuple[
     foundation.GeneralCommand, foundation.Status | int
@@ -217,6 +218,7 @@ class DeviceScanProgressEvent:
     endpoint_id: int | None = None
     cluster_id: int | None = None
     cluster_type: ClusterType | None = None
+    scope_kind: ScopeKind | None = None
     manufacturer_code_scope: int | None = None
     error_code: str | None = None
     error: str | None = None
@@ -450,7 +452,23 @@ class DeviceScanner(zigpy.util.ListenableMixin):
             "endpoint_id": target.scope.endpoint_id,
             "cluster_id": target.scope.cluster_id,
             "cluster_type": target.scope.cluster_type,
+            "scope_kind": (
+                "manufacturer_specific"
+                if target.scope.manufacturer_code_scope is not None
+                else "standard"
+            ),
             "manufacturer_code_scope": target.scope.manufacturer_code_scope,
+        }
+
+    def _manufacturer_scope_skip_payload(
+        self, target: _RawScanTarget
+    ) -> ScopeEventPayload:
+        return {
+            "endpoint_id": target.scope.endpoint_id,
+            "cluster_id": target.scope.cluster_id,
+            "cluster_type": target.scope.cluster_type,
+            "scope_kind": "manufacturer_specific",
+            "manufacturer_code_scope": None,
         }
 
     def _progress_row_key(
@@ -471,8 +489,8 @@ class DeviceScanner(zigpy.util.ListenableMixin):
     async def _load_progress_by_scope(
         self, ieee: t.EUI64
     ) -> dict[_ScanScopeKey, zigpy.appdb.DeviceScanProgressRow]:
-        rows = await self._get_dblistener().get_device_scan_rows(ieee)
-        return {self._progress_row_key(row): row for row in rows.progress}
+        rows = await self._get_dblistener().get_device_scan_progress_rows(ieee)
+        return {self._progress_row_key(row): row for row in rows}
 
     def _rows_snapshot(
         self, rows: zigpy.appdb.DeviceScanRows
@@ -835,13 +853,23 @@ class DeviceScanner(zigpy.util.ListenableMixin):
                 not has_manufacturer_scope
                 and target.scope.manufacturer_code_scope is None
             ):
+                # A missing raw manufacturer code still needs a visible
+                # manufacturer-specific scope in progress events:
+                #
+                #   standard scope ----------------> emits real step events
+                #   manufacturer-specific scope --> emits skipped step_finished only
+                #
+                # The skipped scope keeps `manufacturer_code_scope=None`, so
+                # `scope_kind` distinguishes it from the standard scope.
+                payload = self._manufacturer_scope_skip_payload(target)
                 for step in SCAN_STEPS[1:]:
-                    await self._run_scope_step(
-                        target,
+                    self._emit_progress(
+                        SCAN_EVENT_STEP_FINISHED,
+                        ieee=target.endpoint.device.ieee,
+                        status=SCAN_STATUS_SKIPPED,
                         step=step,
-                        skipped=True,
                         error_code=ERROR_CODE_MISSING_RAW_MANUFACTURER_CODE,
-                        action=self._noop_action,
+                        **payload,
                     )
 
         return DeviceScanSummary(
