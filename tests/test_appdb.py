@@ -1638,12 +1638,6 @@ def test_serialize_for_db_serializable_types():
     assert result == lv_list.serialize()
 
 
-def test_serialize_for_db_unsupported_type():
-    """Test that unsupported types raise ValueError."""
-    with pytest.raises(ValueError, match="Cannot persist attribute value"):
-        zigpy.appdb._serialize_for_db(object())
-
-
 @patch("zigpy.quirks.DEVICE_REGISTRY", new=DeviceRegistry())
 async def test_attribute_read_complex_type_persists(tmp_path) -> None:
     """Test that complex ZCL types (e.g. LVList) are serialized to bytes for storage."""
@@ -1733,19 +1727,12 @@ async def test_attribute_read_complex_type_persists(tmp_path) -> None:
     await app2.shutdown()
 
 
-def test_save_attribute_cache_skips_unserializable() -> None:
-    """Test that _serialize_for_db raises ValueError for unserializable types,
-    which _save_attribute_cache handles by skipping the value.
-    """
-
-    # Verify that unserializable types raise ValueError
+@pytest.mark.parametrize(
+    "value",
+    [object(), [1, 2, 3], {"key": "value"}],
+    ids=["object", "list", "dict"],
+)
+def test_serialize_for_db_unsupported_types(value) -> None:
+    """Test that _serialize_for_db raises ValueError for non-SQLite, non-serializable types."""
     with pytest.raises(ValueError, match="Cannot persist attribute value"):
-        zigpy.appdb._serialize_for_db(object())
-
-    # Verify that list types without serialize() also raise
-    with pytest.raises(ValueError, match="Cannot persist attribute value"):
-        zigpy.appdb._serialize_for_db([1, 2, 3])
-
-    # Verify that dict types raise
-    with pytest.raises(ValueError, match="Cannot persist attribute value"):
-        zigpy.appdb._serialize_for_db({"key": "value"})
+        zigpy.appdb._serialize_for_db(value)
