@@ -2012,21 +2012,13 @@ async def test_device_reinterviewed_preserves_groups(app):
 
 
 async def test_device_reinterviewed_finalization_failure_restores_old(app):
-    """Test that if finalization fails after DB delete, old device is restored."""
+    """Test that _device_reinterviewed lets exceptions propagate."""
     ieee = make_ieee()
     nwk = t.NWK(0x1234)
 
     old_dev = app.add_device(ieee=ieee, nwk=nwk)
     old_dev.node_desc = make_node_desc()
     old_dev.model = "OldModel"
-    old_ep = old_dev.add_endpoint(1)
-    old_ep.profile_id = 260
-    old_ep.device_type = 0x0100
-    old_ep.status = zigpy.endpoint.Status.ZDO_INIT
-
-    # Add to a group
-    group = app.groups.add_group(42, "TestGroup")
-    group.add_member(old_ep, suppress_event=True)
 
     shadow = zigpy.device.Device(app, ieee, nwk)
     shadow.node_desc = make_node_desc()
@@ -2035,16 +2027,9 @@ async def test_device_reinterviewed_finalization_failure_restores_old(app):
     # Make _finalize_device fail
     app._finalize_device = Mock(side_effect=RuntimeError("finalization boom"))
 
+    # Exception should propagate — reinterview() is responsible for restoration
     with pytest.raises(RuntimeError, match="finalization boom"):
         await app._device_reinterviewed(old_dev, shadow)
-
-    # Old device should be restored in app.devices
-    assert app.devices[ieee] is old_dev
-    assert old_dev.model == "OldModel"
-
-    # Group membership should be restored on old endpoint
-    assert old_ep.unique_id in group
-    assert 42 in old_ep.member_of
 
 
 async def test_device_reinterviewed_persists_relays(app):

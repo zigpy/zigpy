@@ -627,8 +627,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """Swap an old device with a successfully re-interviewed shadow.
 
         Preserves non-discovery state (last_seen, relays, lqi, rssi) and group
-        memberships.  If anything goes wrong after the DB delete, the old device
-        is restored so the system stays functional.
+        memberships.  On any exception, ``reinterview()`` restores the old
+        device in ``app.devices``.
         """
         # Copy non-discovery state from old device to shadow
         shadow._last_seen = old_device._last_seen
@@ -637,7 +637,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         shadow.rssi = old_device.rssi
 
         # Collect group memberships from old endpoints before teardown
-        # Maps endpoint_id -> set of group_ids
         old_group_memberships: dict[int, set[int]] = {}
         for ep in old_device.non_zdo_endpoints:
             if ep.member_of:
@@ -654,34 +653,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             old_device.remove_listener(self._dblistener)
             await self._dblistener._remove_device(old_device)
 
-        try:
-            # Clean up old device's callbacks and tasks
-            old_device.on_remove()
+        # Clean up old device's callbacks and tasks
+        old_device.on_remove()
 
-            # Apply quirks, persist to DB, and register the device — but do NOT
-            # fire the device_initialized listener event.  Callers (and ZHA)
-            # should listen for device_reinterviewed instead.
-            self._finalize_device(shadow)
-        except Exception:
-            # Finalization failed — restore the old device so the system stays
-            # functional.  DB data is gone but will be re-persisted on next save.
-            LOGGER.warning(
-                "Re-interview finalization failed for %s, restoring old device",
-                old_device.ieee,
-                exc_info=True,
-            )
-            self.devices[old_device.ieee] = old_device
-            if self._dblistener is not None:
-                old_device.add_context_listener(self._dblistener)
-
-            # Restore group memberships on the old device
-            for ep_id, group_ids in old_group_memberships.items():
-                if ep_id in old_device.endpoints:
-                    old_ep = old_device.endpoints[ep_id]
-                    for group_id in group_ids:
-                        self.groups[group_id].add_member(old_ep, suppress_event=True)
-
-            raise
+        # Apply quirks, persist to DB, and register the device — but do NOT
+        # fire the device_initialized listener event.  Callers (and ZHA)
+        # should listen for device_reinterviewed instead.
+        self._finalize_device(shadow)
 
         new_device = self.devices[shadow.ieee]
 
@@ -690,8 +668,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             if ep_id in new_device.endpoints:
                 new_ep = new_device.endpoints[ep_id]
                 for group_id in group_ids:
-                    group = self.groups[group_id]
-                    group.add_member(new_ep)
+                    self.groups[group_id].add_member(new_ep)
 
         # Persist relays for the new device (cascade deleted the old row)
         if self._dblistener is not None and new_device._relays is not None:
