@@ -110,6 +110,23 @@ def aiosqlite_connect(
     )
 
 
+_SQLITE_TYPES = (type(None), int, float, str, bytes)
+
+
+def _serialize_for_db(value: Any) -> None | int | float | str | bytes:
+    """Convert a ZCL attribute value to a type SQLite can store natively."""
+    if isinstance(value, _SQLITE_TYPES):
+        return value
+
+    if hasattr(value, "serialize"):
+        return value.serialize()
+
+    raise ValueError(
+        f"Cannot persist attribute value of type {type(value).__name__!r} to the "
+        f"database: {value!r}"
+    )
+
+
 def decode_str_attribute(value: str | bytes) -> str:
     if isinstance(value, str):
         return value
@@ -480,24 +497,37 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.executemany(q, clusters)
 
     async def _save_attribute_cache(self, ep: Endpoint) -> None:
-        clusters = [
-            (
-                ep.device.ieee,
-                ep.endpoint_id,
-                cluster.cluster_type,
-                cluster.cluster_id,
-                attrid,
-                manufacturer_code,
-                Status.SUCCESS,
-                cache_item.value,
-                cache_item.last_updated.timestamp(),
-            )
-            for cluster in ep.clusters
+        clusters = []
+
+        for cluster in ep.clusters:
             for (
                 attrid,
                 manufacturer_code,
-            ), cache_item in cluster._attr_cache._cache.items()
-        ]
+            ), cache_item in cluster._attr_cache._cache.items():
+                try:
+                    value = _serialize_for_db(cache_item.value)
+                except ValueError:
+                    LOGGER.debug(
+                        "Cannot serialize attribute 0x%04x value for storage,"
+                        " skipping: %r",
+                        attrid,
+                        cache_item.value,
+                    )
+                    continue
+
+                clusters.append(
+                    (
+                        ep.device.ieee,
+                        ep.endpoint_id,
+                        cluster.cluster_type,
+                        cluster.cluster_id,
+                        attrid,
+                        manufacturer_code,
+                        Status.SUCCESS,
+                        value,
+                        cache_item.last_updated.timestamp(),
+                    )
+                )
         q = f"""INSERT INTO attributes_cache{DB_V} (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code, status, value, last_updated)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code_idx)
@@ -568,7 +598,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "attr_id": event.attribute_id,
                 "manufacturer_code": event.manufacturer_code,
                 "status": Status.SUCCESS,
-                "value": event.value,
+                "value": _serialize_for_db(event.value),
                 "timestamp": datetime.now(UTC).timestamp(),
                 "min_update_delta": MIN_UPDATE_DELTA,
             },
