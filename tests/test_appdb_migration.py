@@ -703,12 +703,12 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
             " VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)",
             [
                 # Unmigrated row from v13->v14 (disambiguated cluster)
-                (str(dev.ieee), 1, 0, 0xFC01, 0x0010, -1, b"\x42", 0),
+                (str(dev.ieee), 1, 0, 0xFC01, 0x0010, -1, 42, 0),
                 # Unmigrated row from v13->v14 (ambiguous cluster)
-                (str(dev.ieee), 1, 0, 0xFC02, 0x0020, -1, b"\x99", 0),
+                (str(dev.ieee), 1, 0, 0xFC02, 0x0020, -1, 99, 0),
                 # Manually read through the UI after v13->v14, duplicating the above
                 # but with a newer value
-                (str(dev.ieee), 1, 0, 0xFC01, 0x0010, 0xABCD, b"\x43", 1.0),
+                (str(dev.ieee), 1, 0, 0xFC01, 0x0010, 0xABCD, 43, 1.0),
             ],
         )
         conn.commit()
@@ -723,7 +723,7 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
 
     # 2 candidates (1 manuf + 1 non-manuf): picked manuf-specific.
     # Uses the newer value from the already-resolved row, not stale/unmigrated value.
-    assert disambiguated.get("manuf_attr") == b"\x43"
+    assert disambiguated.get("manuf_attr") == 43
     assert disambiguated.get("standard_attr") is None
 
     # 3 candidates: ambiguous, skipped
