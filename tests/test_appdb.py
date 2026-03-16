@@ -1649,6 +1649,9 @@ def test_serialize_for_db_serializable_types():
         (b"\x01\x02", t.LVBytes, b"\x01\x02"),
         # Bytes value with no attr_type is returned as-is
         (b"\x01\x02", None, b"\x01\x02"),
+        # Legacy bytes value for int-subclass attr_type is not deserialized
+        (b"\x43", t.uint8_t, b"\x43"),
+        (b"\x34\x12", t.uint16_t, b"\x34\x12"),
     ],
 )
 def test_deserialize_from_db_passthrough(value, attr_type, expected):

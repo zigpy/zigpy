@@ -130,12 +130,17 @@ def _serialize_for_db(value: Any) -> None | int | float | str | bytes:
 def _deserialize_from_db(value: Any, attr_type: type | None) -> Any:
     """Attempt to deserialize a bytes value loaded from the database back into its
     original ZCL type, if applicable.
+
+    Only applies to types whose live values are not natively storable in SQLite (i.e.
+    types that were serialized to bytes by ``_serialize_for_db``). Types that subclass
+    ``int``, ``float``, ``str``, or ``bytes`` are stored natively, so a ``bytes`` DB
+    value for those types is legacy data and must not be deserialized.
     """
     if (
         not isinstance(value, bytes)
         or attr_type is None
         or not hasattr(attr_type, "deserialize")
-        or issubclass(attr_type, bytes)
+        or issubclass(attr_type, (*_SQLITE_TYPES,))
     ):
         return value
 
