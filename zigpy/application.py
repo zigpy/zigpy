@@ -596,9 +596,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.devices[ieee] = dev
         return dev
 
-    def device_initialized(self, device: zigpy.device.Device) -> None:
-        """Used by a device to signal that it is initialized"""
-        LOGGER.debug("Device is initialized %s", device)
+    def _finalize_device(self, device: zigpy.device.Device) -> zigpy.device.Device:
+        """Apply quirks, persist to DB, and register the device.
+
+        Returns the (possibly quirked) device stored in ``self.devices``.
+        Does **not** fire any listener events beyond ``raw_device_initialized``
+        (which triggers the DB save).
+        """
         device.original_signature = device.get_signature()
 
         self.listener_event("raw_device_initialized", device)
@@ -606,6 +610,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.devices[device.ieee] = device
         if self._dblistener is not None:
             device.add_context_listener(self._dblistener)
+
+        return device
+
+    def device_initialized(self, device: zigpy.device.Device) -> None:
+        """Used by a device to signal that it is initialized"""
+        LOGGER.debug("Device is initialized %s", device)
+        device = self._finalize_device(device)
         self.listener_event("device_initialized", device)
 
     async def _device_reinterviewed(
@@ -647,9 +658,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             # Clean up old device's callbacks and tasks
             old_device.on_remove()
 
-            # Finalize the shadow via the existing device_initialized path:
-            # sets original_signature, applies quirks, saves to DB, fires events
-            self.device_initialized(shadow)
+            # Apply quirks, persist to DB, and register the device — but do NOT
+            # fire the device_initialized listener event.  Callers (and ZHA)
+            # should listen for device_reinterviewed instead.
+            self._finalize_device(shadow)
         except Exception:
             # Finalization failed — restore the old device so the system stays
             # functional.  DB data is gone but will be re-persisted on next save.
@@ -667,9 +679,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 if ep_id in old_device.endpoints:
                     old_ep = old_device.endpoints[ep_id]
                     for group_id in group_ids:
-                        self.groups[group_id].add_member(
-                            old_ep, suppress_event=True
-                        )
+                        self.groups[group_id].add_member(old_ep, suppress_event=True)
 
             raise
 

@@ -1908,9 +1908,12 @@ async def test_device_reinterviewed(app):
     assert new_dev.lqi == 200
     assert new_dev.rssi == -40
 
-    # device_initialized and device_reinterviewed events should have been fired
-    app.listener_event.assert_any_call("device_initialized", new_dev)
+    # device_reinterviewed should be fired, but NOT device_initialized
     app.listener_event.assert_any_call("device_reinterviewed", new_dev)
+    device_initialized_calls = [
+        c for c in app.listener_event.call_args_list if c[0][0] == "device_initialized"
+    ]
+    assert len(device_initialized_calls) == 0
 
 
 async def test_device_reinterviewed_with_db(app):
@@ -2029,8 +2032,8 @@ async def test_device_reinterviewed_finalization_failure_restores_old(app):
     shadow.node_desc = make_node_desc()
     shadow.status = zigpy.device.Status.ENDPOINTS_INIT
 
-    # Make device_initialized fail
-    app.device_initialized = Mock(side_effect=RuntimeError("finalization boom"))
+    # Make _finalize_device fail
+    app._finalize_device = Mock(side_effect=RuntimeError("finalization boom"))
 
     with pytest.raises(RuntimeError, match="finalization boom"):
         await app._device_reinterviewed(old_dev, shadow)
