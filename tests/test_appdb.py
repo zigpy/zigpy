@@ -1638,6 +1638,37 @@ def test_serialize_for_db_serializable_types():
     assert result == lv_list.serialize()
 
 
+@pytest.mark.parametrize(
+    ("value", "attr_type", "expected"),
+    [
+        # Non-bytes values are returned as-is regardless of attr_type
+        (42, t.uint16_t, 42),
+        ("hello", t.CharacterString, "hello"),
+        (None, t.uint8_t, None),
+        # Bytes value with a bytes-subclass attr_type is returned as-is
+        (b"\x01\x02", t.LVBytes, b"\x01\x02"),
+        # Bytes value with no attr_type is returned as-is
+        (b"\x01\x02", None, b"\x01\x02"),
+    ],
+)
+def test_deserialize_from_db_passthrough(value, attr_type, expected):
+    """Test that _deserialize_from_db does not alter values that should stay as-is."""
+    assert zigpy.appdb._deserialize_from_db(value, attr_type) == expected
+
+
+def test_deserialize_from_db_complex_type():
+    """Test that _deserialize_from_db restores serialized complex types."""
+    original = t.LVList[t.LVBytes, t.uint16_t](
+        [b"\x13\x47\x06\xb1\xef\x4e", b"\x14\xa0\x39\x1d\x82\xd3"]
+    )
+    serialized = original.serialize()
+
+    result = zigpy.appdb._deserialize_from_db(
+        serialized, t.LVList[t.LVBytes, t.uint16_t]
+    )
+    assert list(result) == list(original)
+
+
 async def test_save_attribute_cache_serializes_complex_types(tmp_path) -> None:
     """Test that _save_attribute_cache serializes complex ZCL types to bytes."""
     db = tmp_path / "test.db"
