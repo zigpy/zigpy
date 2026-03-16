@@ -1981,10 +1981,10 @@ async def test_reinterview_failure_preserves_device(monkeypatch, dev):
     await dev.initialize()
     assert dev.model == "OldModel"
 
-    # Now make the shadow's discovery fail (sleepy device)
-    async def mockrequest_fail(*args, **kwargs):
-        raise TimeoutError("Device asleep")
+    # Use a real dict for devices so we can verify restoration
+    dev._application.devices = {dev.ieee: dev}
 
+    # Now make the shadow's discovery fail (sleepy device)
     monkeypatch.setattr(
         device.Device, "get_node_descriptor", AsyncMock(side_effect=TimeoutError)
     )
@@ -1995,6 +1995,9 @@ async def test_reinterview_failure_preserves_device(monkeypatch, dev):
 
     # _device_reinterviewed should NOT have been called
     dev._application._device_reinterviewed.assert_not_called()
+
+    # Old device should be restored in app.devices
+    assert dev._application.devices[dev.ieee] is dev
 
     # Old device is completely untouched
     assert dev.model == "OldModel"
@@ -2029,6 +2032,9 @@ async def test_reinterview_unexpected_failure_preserves_device(monkeypatch, dev)
     await dev.initialize()
     assert dev.model == "OldModel"
 
+    # Use a real dict for devices so we can verify restoration
+    dev._application.devices = {dev.ieee: dev}
+
     # Make discovery raise an unexpected (non-Zigbee) exception
     monkeypatch.setattr(
         device.Device,
@@ -2042,6 +2048,9 @@ async def test_reinterview_unexpected_failure_preserves_device(monkeypatch, dev)
 
     # _device_reinterviewed should NOT have been called
     dev._application._device_reinterviewed.assert_not_called()
+
+    # Old device should be restored in app.devices
+    assert dev._application.devices[dev.ieee] is dev
 
     # Old device is completely untouched
     assert dev.model == "OldModel"

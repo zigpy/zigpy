@@ -317,10 +317,21 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         try:
             shadow = Device(self._application, self._ieee, self.nwk)
 
-            async with self._application.request_priority(t.PacketPriority.CRITICAL):
-                await zigpy.util.retryable_request(tries=5, delay=0.5)(
-                    shadow._discover
-                )()
+            # Temporarily register the shadow in app.devices so it receives
+            # ZDO responses routed by packet_received().
+            self._application.devices[self._ieee] = shadow
+
+            try:
+                async with self._application.request_priority(
+                    t.PacketPriority.CRITICAL
+                ):
+                    await zigpy.util.retryable_request(tries=5, delay=0.5)(
+                        shadow._discover
+                    )()
+            except Exception:
+                # Discovery failed — restore the old device so it keeps working
+                self._application.devices[self._ieee] = self
+                raise
 
             # Discovery succeeded — swap the old device for the new one
             await self._application._device_reinterviewed(self, shadow)
