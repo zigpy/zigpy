@@ -1638,6 +1638,56 @@ def test_serialize_for_db_serializable_types():
     assert result == lv_list.serialize()
 
 
+async def test_save_attribute_cache_serializes_complex_types(tmp_path) -> None:
+    """Test that _save_attribute_cache serializes complex ZCL types to bytes."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+
+    basic = ep.add_input_cluster(Basic.cluster_id)
+    basic.update_attribute(Basic.AttributeDefs.model, "some model")
+    basic.update_attribute(Basic.AttributeDefs.manufacturer, "some manufacturer")
+
+    # Let the device be fully saved so parent rows exist
+    app.device_initialized(dev)
+    await app._dblistener._callback_handlers.join()
+
+    # Now inject a complex type (LVList) directly into the cache
+    lv_list = t.LVList[t.LVBytes, t.uint16_t](
+        [b"\x13\x47\x06\xb1\xef\x4e", b"\x14\xa0\x39\x1d\x82\xd3"]
+    )
+    basic._attr_cache._cache[(Basic.AttributeDefs.product_label.id, None)] = (
+        zigpy.zcl.helpers.CacheItem(
+            value=lv_list,
+            last_updated=datetime.now(UTC),
+        )
+    )
+
+    await app._dblistener._save_attribute_cache(ep)
+    await app._dblistener._db.commit()
+
+    # Verify it was stored as serialized bytes
+    async with app._dblistener.execute(
+        f"SELECT value FROM attributes_cache{zigpy.appdb.DB_V}"
+        " WHERE ieee = :ieee AND attr_id = :attr_id",
+        {"ieee": str(dev.ieee), "attr_id": Basic.AttributeDefs.product_label.id},
+    ) as cursor:
+        row = await cursor.fetchone()
+
+    assert row is not None
+    assert isinstance(row[0], bytes)
+    assert row[0] == lv_list.serialize()
+
+    await app.shutdown()
+
+
 @patch("zigpy.quirks.DEVICE_REGISTRY", new=DeviceRegistry())
 async def test_attribute_read_complex_type_persists(tmp_path) -> None:
     """Test that complex ZCL types (e.g. LVList) are serialized to bytes for storage."""
