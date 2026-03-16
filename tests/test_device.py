@@ -2047,6 +2047,62 @@ async def test_client_cluster_default_response_with_wrong_direction_matches_requ
     assert result == default_rsp_cmd
 
 
+async def test_client_cluster_wrong_direction_parse_error_matches_request(dev):
+    ep = dev.add_endpoint(1)
+    ep.add_output_cluster(Ota.cluster_id)
+    ep.out_clusters[Ota.cluster_id].deserialize = MagicMock(side_effect=RuntimeError())
+
+    with patch.object(dev._application, "send_packet") as mock_packet_send:
+        request_task = asyncio.create_task(
+            ep.out_clusters[Ota.cluster_id].discover_attributes_extended(0, 16)
+        )
+
+        await asyncio.sleep(0)
+        assert len(mock_packet_send.mock_calls) == 1
+        sent_packet = mock_packet_send.mock_calls[0].args[0]
+
+    tsn_hdr, _ = foundation.ZCLHeader.deserialize(sent_packet.data.serialize())
+
+    default_rsp_hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.GLOBAL_COMMAND,
+            is_manufacturer_specific=False,
+            direction=foundation.Direction.Server_to_Client,
+            disable_default_response=True,
+            reserved=0,
+        ),
+        tsn=tsn_hdr.tsn,
+        command_id=foundation.GeneralCommand.Default_Response,
+    )
+    default_rsp_cmd = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Default_Response
+    ].schema(
+        command_id=foundation.GeneralCommand.Discover_Attribute_Extended,
+        status=foundation.Status.UNSUP_GENERAL_COMMAND,
+    )
+
+    dev.packet_received(
+        t.ZigbeePacket(
+            src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+            src_ep=1,
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+            dst_ep=1,
+            profile_id=260,
+            cluster_id=Ota.cluster_id,
+            data=t.SerializableBytes(
+                default_rsp_hdr.serialize() + default_rsp_cmd.serialize()
+            ),
+            lqi=255,
+            rssi=-30,
+        )
+    )
+
+    with pytest.raises(zigpy.exceptions.ParsingError) as exc:
+        await asyncio.wait_for(request_task, timeout=0.2)
+
+    assert type(exc.value.__cause__) is RuntimeError
+
+
 def test_get_direction_mismatch_response_key_ignores_invalid_general_command(dev):
     rsp_key = device.ResponseKey(
         endpoint_id=1,

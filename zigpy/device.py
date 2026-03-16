@@ -777,10 +777,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         if not isinstance(hdr, foundation.ZCLHeader):
             return None
 
-        if (
-            hdr.frame_control.frame_type != foundation.FrameType.GLOBAL_COMMAND
-            or cmd is None
-        ):
+        if hdr.frame_control.frame_type != foundation.FrameType.GLOBAL_COMMAND:
             return None
 
         try:
