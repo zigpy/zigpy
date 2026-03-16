@@ -290,6 +290,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self._application.device_initialized(self)
             return None
 
+        if self.reinterviewing:
+            self.debug("Skipping initialization, re-interview in progress")
+            return None
+
         self.debug("Scheduling initialization")
 
         self.cancel_initialization()
@@ -316,6 +320,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         try:
             shadow = Device(self._application, self._ieee, self.nwk)
+            shadow._reinterview_in_progress = True  # prevent auto-initialization
 
             # Temporarily register the shadow in app.devices so it receives
             # ZDO responses routed by packet_received().

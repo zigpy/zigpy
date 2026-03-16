@@ -2066,6 +2066,16 @@ async def test_reinterview_unexpected_failure_preserves_device(monkeypatch, dev)
     assert not dev.reinterviewing
 
 
+async def test_reinterview_shadow_blocks_auto_init(dev):
+    """Test that schedule_initialize is a no-op on a reinterview shadow device."""
+    dev._reinterview_in_progress = True
+
+    result = dev.schedule_initialize()
+
+    assert result is None
+    assert not dev.initializing
+
+
 async def test_reinterview_already_in_progress(dev):
     """Test that concurrent reinterview calls are prevented."""
     dev._reinterview_in_progress = True
