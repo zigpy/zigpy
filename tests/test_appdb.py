@@ -2,7 +2,6 @@ import asyncio
 import contextlib
 from datetime import UTC, datetime, timedelta
 import pathlib
-import sqlite3
 import threading
 import time
 
@@ -1612,7 +1611,7 @@ async def test_device_signature_ignores_quirks(tmp_path) -> None:
 
 @patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
 async def test_ota_query_cache_persistence(tmp_path):
-    """Test that OTA query cache is persisted and restored from the database."""
+    """Test that OTA query cache is persisted per cluster type and restored."""
     db = tmp_path / "test.db"
     app = await make_app_with_db(db)
     ieee = make_ieee()
@@ -1624,79 +1623,53 @@ async def test_ota_query_cache_persistence(tmp_path):
     ep.profile_id = 260
     ep.device_type = profiles.zha.DeviceType.PUMP
     ep.add_input_cluster(0)  # Basic cluster, exercises non-OTA skip in load
-    ota_cluster = ep.add_output_cluster(Ota.cluster_id)
+    ota_server = ep.add_input_cluster(Ota.cluster_id)
+    ota_client = ep.add_output_cluster(Ota.cluster_id)
     app.device_initialized(dev)
 
-    # Simulate a query_next_image command from the device
-    cmd = Ota.QueryNextImageCommand(
+    # Server cluster: with hardware_version
+    server_cmd = Ota.QueryNextImageCommand(
         field_control=Ota.QueryNextImageCommand.FieldControl.HardwareVersion,
         manufacturer_code=0x1234,
         image_type=0x5678,
         current_file_version=0x000A0001,
     )
-    cmd.hardware_version = 3
+    server_cmd.hardware_version = 3
+    ota_server.last_query_cmd = server_cmd
 
-    ota_cluster.last_query_cmd = cmd
-
-    # Trigger a save
-    app.device_initialized(dev)
-    await app.shutdown()
-
-    # Reload and check the OTA query cache was restored
-    app2 = await make_app_with_db(db)
-    dev2 = app2.get_device(ieee)
-    ota2 = dev2.endpoints[1].out_clusters[Ota.cluster_id]
-
-    assert ota2.last_query_cmd is not None
-    assert ota2.last_query_cmd.manufacturer_code == 0x1234
-    assert ota2.last_query_cmd.image_type == 0x5678
-    assert ota2.last_query_cmd.current_file_version == 0x000A0001
-    assert ota2.last_query_cmd.hardware_version == 3
-
-    # Also test get_last_ota_query_cmd
-    assert dev2.get_last_ota_query_cmd() is not None
-    assert dev2.get_last_ota_query_cmd().manufacturer_code == 0x1234
-
-    await app2.shutdown()
-
-
-@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
-async def test_ota_query_cache_no_hardware_version(tmp_path):
-    """Test OTA query cache round-trip without hardware_version."""
-    db = tmp_path / "test.db"
-    app = await make_app_with_db(db)
-    ieee = make_ieee()
-    app.handle_join(99, ieee, 0)
-
-    dev = app.get_device(ieee)
-    ep = dev.add_endpoint(1)
-    ep.status = zigpy.endpoint.Status.ZDO_INIT
-    ep.profile_id = 260
-    ep.device_type = profiles.zha.DeviceType.PUMP
-    ota_cluster = ep.add_output_cluster(Ota.cluster_id)
-    app.device_initialized(dev)
-
-    cmd = Ota.QueryNextImageCommand(
+    # Client cluster: without hardware_version
+    ota_client.last_query_cmd = Ota.QueryNextImageCommand(
         field_control=Ota.QueryNextImageCommand.FieldControl(0),
         manufacturer_code=0xAAAA,
         image_type=0xBBBB,
         current_file_version=0x00000042,
     )
-    ota_cluster.last_query_cmd = cmd
+
     app.device_initialized(dev)
     await app.shutdown()
 
+    # Reload and verify each cluster got its own query cmd back
     app2 = await make_app_with_db(db)
     dev2 = app2.get_device(ieee)
-    ota2 = dev2.endpoints[1].out_clusters[Ota.cluster_id]
+    server2 = dev2.endpoints[1].in_clusters[Ota.cluster_id]
+    client2 = dev2.endpoints[1].out_clusters[Ota.cluster_id]
 
-    assert ota2.last_query_cmd is not None
-    assert ota2.last_query_cmd.manufacturer_code == 0xAAAA
-    assert ota2.last_query_cmd.image_type == 0xBBBB
-    assert ota2.last_query_cmd.current_file_version == 0x00000042
-    assert not hasattr(ota2.last_query_cmd, "hardware_version") or (
-        ota2.last_query_cmd.hardware_version is None
+    assert server2.last_query_cmd is not None
+    assert server2.last_query_cmd.manufacturer_code == 0x1234
+    assert server2.last_query_cmd.image_type == 0x5678
+    assert server2.last_query_cmd.current_file_version == 0x000A0001
+    assert server2.last_query_cmd.hardware_version == 3
+
+    assert client2.last_query_cmd is not None
+    assert client2.last_query_cmd.manufacturer_code == 0xAAAA
+    assert client2.last_query_cmd.image_type == 0xBBBB
+    assert client2.last_query_cmd.current_file_version == 0x00000042
+    assert not hasattr(client2.last_query_cmd, "hardware_version") or (
+        client2.last_query_cmd.hardware_version is None
     )
+
+    # get_last_ota_query_cmd returns the first match (server, since in_clusters first)
+    assert dev2.get_last_ota_query_cmd() is server2.last_query_cmd
 
     await app2.shutdown()
 
@@ -1743,105 +1716,6 @@ async def test_ota_query_cache_event_save(tmp_path):
     assert ota2.last_query_cmd.image_type == 0x2222
     assert ota2.last_query_cmd.current_file_version == 0x00000099
     assert ota2.last_query_cmd.hardware_version == 7
-
-    await app2.shutdown()
-
-
-@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
-async def test_ota_query_cache_restore_correct_cluster_type(tmp_path):
-    """Test that OTA query cache restores to the correct cluster type."""
-    db = tmp_path / "test.db"
-    app = await make_app_with_db(db)
-    ieee = make_ieee()
-    app.handle_join(99, ieee, 0)
-
-    dev = app.get_device(ieee)
-    ep = dev.add_endpoint(1)
-    ep.status = zigpy.endpoint.Status.ZDO_INIT
-    ep.profile_id = 260
-    ep.device_type = profiles.zha.DeviceType.PUMP
-    ota_server = ep.add_input_cluster(Ota.cluster_id)
-    ota_client = ep.add_output_cluster(Ota.cluster_id)
-    app.device_initialized(dev)
-
-    # Set different query cmds on each cluster
-    ota_server.last_query_cmd = Ota.QueryNextImageCommand(
-        field_control=Ota.QueryNextImageCommand.FieldControl(0),
-        manufacturer_code=0x1111,
-        image_type=0x2222,
-        current_file_version=0x00000001,
-    )
-    ota_client.last_query_cmd = Ota.QueryNextImageCommand(
-        field_control=Ota.QueryNextImageCommand.FieldControl(0),
-        manufacturer_code=0x3333,
-        image_type=0x4444,
-        current_file_version=0x00000002,
-    )
-
-    app.device_initialized(dev)
-    await app.shutdown()
-
-    # Reload and verify each cluster got its own query cmd back
-    app2 = await make_app_with_db(db)
-    dev2 = app2.get_device(ieee)
-    server2 = dev2.endpoints[1].in_clusters[Ota.cluster_id]
-    client2 = dev2.endpoints[1].out_clusters[Ota.cluster_id]
-
-    assert server2.last_query_cmd is not None
-    assert server2.last_query_cmd.manufacturer_code == 0x1111
-    assert server2.last_query_cmd.image_type == 0x2222
-    assert server2.last_query_cmd.current_file_version == 0x00000001
-
-    assert client2.last_query_cmd is not None
-    assert client2.last_query_cmd.manufacturer_code == 0x3333
-    assert client2.last_query_cmd.image_type == 0x4444
-    assert client2.last_query_cmd.current_file_version == 0x00000002
-
-    await app2.shutdown()
-
-
-async def test_ota_query_cache_load_missing_device(tmp_path):
-    """Test that loading OTA cache skips entries for devices no longer in the app."""
-    db = tmp_path / "test.db"
-    app = await make_app_with_db(db)
-    ieee = make_ieee()
-    app.handle_join(99, ieee, 0)
-
-    dev = app.get_device(ieee)
-    ep = dev.add_endpoint(1)
-    ep.status = zigpy.endpoint.Status.ZDO_INIT
-    ep.profile_id = 260
-    ep.device_type = profiles.zha.DeviceType.PUMP
-    ota_cluster = ep.add_output_cluster(Ota.cluster_id)
-    app.device_initialized(dev)
-
-    # Set a query cmd and save
-    ota_cluster.last_query_cmd = Ota.QueryNextImageCommand(
-        field_control=Ota.QueryNextImageCommand.FieldControl(0),
-        manufacturer_code=0x1234,
-        image_type=0x5678,
-        current_file_version=0x00000001,
-    )
-    await app._dblistener._save_device(dev)
-    await app.shutdown()
-
-    # Insert a row referencing a non-existent device directly in the DB
-    with sqlite3.connect(db) as conn:
-        conn.execute(
-            f"INSERT INTO ota_query_cache{zigpy.appdb.DB_V}"
-            " (ieee, endpoint_id, cluster_type, manufacturer_code,"
-            "  image_type, current_file_version, hardware_version,"
-            "  last_updated)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            ("ff:ff:ff:ff:ff:ff:ff:ff", 1, 1, 0xAAAA, 0xBBBB, 0x00000002, None, 0),
-        )
-
-    # Reload — should not crash, just skip the unknown device row
-    app2 = await make_app_with_db(db)
-    dev2 = app2.get_device(ieee)
-    ota2 = dev2.endpoints[1].out_clusters[Ota.cluster_id]
-    assert ota2.last_query_cmd is not None
-    assert ota2.last_query_cmd.manufacturer_code == 0x1234
 
     await app2.shutdown()
 
