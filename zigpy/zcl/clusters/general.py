@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Final, Self
 
 import zigpy.types as t
@@ -1136,24 +1136,21 @@ class Time(Cluster):
         return t.UTCTime((now - ZIGBEE_EPOCH).total_seconds())
 
     def handle_read_attribute_time_status(self) -> TimeStatus:
-        return (
-            TimeStatus.Master
-            | TimeStatus.Synchronized
-            | TimeStatus.Master_for_Zone_and_DST
-        )
+        return TimeStatus.Master | TimeStatus.Master_for_Zone_and_DST
 
     def handle_read_attribute_time_zone(self) -> t.int32s:
-        tz_offset = datetime.now().astimezone().utcoffset()
-        assert tz_offset is not None
+        now_local = datetime.now().astimezone()
+        utc_offset = now_local.utcoffset() or timedelta(0)
+        dst = now_local.dst() or timedelta(0)
 
-        return t.int32s(tz_offset.total_seconds())
+        return t.int32s((utc_offset - dst).total_seconds())
 
     def handle_read_attribute_local_time(self) -> t.LocalTime:
-        now = datetime.now(UTC)
-        tz_offset = datetime.now().astimezone().utcoffset()
-        assert tz_offset is not None
+        now_local = datetime.now().astimezone()
+        utc_offset = now_local.utcoffset() or timedelta(0)
 
-        return t.LocalTime((now + tz_offset - ZIGBEE_EPOCH).total_seconds())
+        utc_seconds = (now_local - ZIGBEE_EPOCH).total_seconds()
+        return t.LocalTime(utc_seconds + utc_offset.total_seconds())
 
     # For backwards compatibility
     TimeStatus: Final = TimeStatus
