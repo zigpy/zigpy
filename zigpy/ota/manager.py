@@ -24,9 +24,23 @@ if TYPE_CHECKING:
     from zigpy.ota.providers import OtaImageWithMetadata
 
 
-# Devices often ask for bigger blocks than radios can send
-MAXIMUM_IMAGE_BLOCK_SIZE = 40
 MAX_TIME_WITHOUT_PROGRESS = 30
+
+
+def _image_block_size_for_manufacturer(
+    manufacturer_code: int, requested_size: int
+) -> int:
+    if manufacturer_code in (4474, 4405):
+        # Insta (4474) and Dresden Elektronik (4405) have issues above 40 bytes
+        base_size = 40
+    elif manufacturer_code == 4129:
+        # Legrand (4129) is not capped
+        base_size = requested_size
+    else:
+        # Cap everything else
+        base_size = 50
+
+    return min(base_size, requested_size)
 
 
 class OTAManager:
@@ -160,14 +174,11 @@ class OTAManager:
         self, hdr: foundation.ZCLHeader, command: ImageBlockCommand
     ) -> None:
         """Handle image block request."""
-        if command.manufacturer_code == 4129:
-            # Legrand devices (manufacturer_code == 4129) require up to 64 bytes.
-            default_image_block_size = 255
-        else:
-            default_image_block_size = MAXIMUM_IMAGE_BLOCK_SIZE
+        default_image_block_size = _image_block_size_for_manufacturer(
+            command.manufacturer_code, command.maximum_data_size
+        )
         block = self._image_data[
-            command.file_offset : command.file_offset
-            + min(default_image_block_size, command.maximum_data_size)
+            command.file_offset : command.file_offset + default_image_block_size
         ]
 
         if not block:
@@ -206,6 +217,9 @@ class OTAManager:
     ) -> None:
         """Handle image page request."""
         offset = command.file_offset
+        max_block_size = _image_block_size_for_manufacturer(
+            command.manufacturer_code, command.maximum_data_size
+        )
         bytes_remaining = min(
             command.page_size, len(self._image_data) - command.file_offset
         )
@@ -218,11 +232,7 @@ class OTAManager:
             return
 
         while bytes_remaining > 0:
-            block_size = min(
-                MAXIMUM_IMAGE_BLOCK_SIZE,
-                command.maximum_data_size,
-                bytes_remaining,
-            )
+            block_size = min(max_block_size, bytes_remaining)
             block = self._image_data[offset : offset + block_size]
             offset += block_size
             bytes_remaining -= block_size

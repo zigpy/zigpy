@@ -547,6 +547,10 @@ async def test_unknown_manufacturer_code_migration(test_db, caplog):
         assert after_total == before_total
 
 
+@pytest.mark.filterwarnings(
+    r"ignore:Attribute .* has `is_manufacturer_specific`"
+    r":DeprecationWarning"
+)
 async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
     """Test that attributes on manufacturer-specific clusters get the device's manufacturer_id."""
 
@@ -627,6 +631,10 @@ async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
     await app.shutdown()
 
 
+@pytest.mark.filterwarnings(
+    r"ignore:Attribute .* has `is_manufacturer_specific`"
+    r":DeprecationWarning"
+)
 async def test_data_migration_ambiguous_attributes(tmp_path):
     """Test data migration disambiguation when find_attributes returns multiple."""
 
