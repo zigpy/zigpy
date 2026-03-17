@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 from datetime import UTC, datetime, timedelta
 import pathlib
+import sqlite3
 import threading
 import time
 
@@ -42,7 +43,7 @@ from zigpy.quirks.registry import DeviceRegistry
 from zigpy.quirks.v2 import QuirkBuilder
 import zigpy.types as t
 import zigpy.zcl
-from zigpy.zcl import ClusterType, UnsupportedAttribute
+from zigpy.zcl import ClusterType, OtaQueryCacheUpdatedEvent, UnsupportedAttribute
 from zigpy.zcl.clusters.general import Basic, Identify, OnOff, Ota
 from zigpy.zcl.foundation import Status as ZCLStatus, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
@@ -1717,8 +1718,6 @@ async def test_ota_query_cache_event_save(tmp_path):
     app.device_initialized(dev)
 
     # Simulate the event that _handle_query_next_image would emit
-    from zigpy.zcl import OtaQueryCacheUpdatedEvent
-
     event = OtaQueryCacheUpdatedEvent(
         device_ieee=str(ieee),
         endpoint_id=1,
@@ -1774,8 +1773,6 @@ async def test_ota_query_cache_load_missing_device(tmp_path):
     await app.shutdown()
 
     # Insert a row referencing a non-existent device directly in the DB
-    import sqlite3
-
     with sqlite3.connect(db) as conn:
         conn.execute(
             f"INSERT INTO ota_query_cache{zigpy.appdb.DB_V}"
