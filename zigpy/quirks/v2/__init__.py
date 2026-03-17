@@ -682,7 +682,7 @@ class QuirkBuilder:
         """Register this quirks v2 entry for the specified manufacturer and model."""
         if manufacturer is None and model is None:
             raise ValueError(
-                "At least one manufacturer and model must be specified for a v2 quirk."
+                "A manufacturer and/or model must be specified for a v2 quirk."
             )
 
         self.manufacturer_model_metadata.append(

@@ -203,7 +203,7 @@ async def test_quirks_v2_model_manufacturer(device_mock):
 
     with pytest.raises(
         ValueError,
-        match="At least one manufacturer and model must be specified for a v2 quirk.",
+        match="A manufacturer and/or model must be specified for a v2 quirk.",
     ):
         (
             QuirkBuilder(registry=registry)
