@@ -1096,7 +1096,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 try:
                     dev = self._application.get_device(ieee)
                     ep = dev.endpoints[endpoint_id]
-                except (KeyError, AttributeError):
+                except KeyError:
                     # Quirks or firmware updates can remove endpoints/clusters
                     continue
 
