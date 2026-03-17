@@ -17,7 +17,7 @@ import zigpy.exceptions
 from zigpy.exceptions import DeliveryError
 from zigpy.ota import OtaImageWithMetadata
 import zigpy.ota.image
-from zigpy.ota.manager import update_firmware
+from zigpy.ota.manager import _image_block_size_for_manufacturer, update_firmware
 import zigpy.state
 import zigpy.types as t
 import zigpy.util
@@ -93,6 +93,26 @@ def make_packet(dev: zigpy.device.Device, cluster: Cluster, cmd_name: str, **kwa
         data=t.SerializableBytes(req_hdr.serialize() + req_cmd.serialize()),
         lqi=255,
         rssi=-30,
+    )
+
+
+@pytest.mark.parametrize(
+    ("manufacturer_code", "requested_size", "expected_size"),
+    [
+        (4474, 64, 40),  # Insta
+        (4405, 64, 40),  # Dresden Elektronik
+        (4129, 64, 64),  # Legrand
+        (4742, 64, 50),  # Sonoff/default behavior
+        (4742, 48, 48),  # Sonoff requested 48-byte chunks
+        (0x1234, 64, 50),  # Generic/default behavior
+    ],
+)
+def test_image_block_size_for_manufacturer(
+    manufacturer_code: int, requested_size: int, expected_size: int
+) -> None:
+    assert (
+        _image_block_size_for_manufacturer(manufacturer_code, requested_size)
+        == expected_size
     )
 
 

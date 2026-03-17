@@ -11,7 +11,7 @@ import inspect
 import logging
 import pathlib
 from types import FrameType
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, Self, overload
 
 import attrs
 from frozendict import frozendict
@@ -33,6 +33,7 @@ from zigpy.quirks.v2.homeassistant.binary_sensor import BinarySensorDeviceClass
 from zigpy.quirks.v2.homeassistant.number import NumberDeviceClass
 from zigpy.quirks.v2.homeassistant.sensor import SensorDeviceClass, SensorStateClass
 import zigpy.types as t
+from zigpy.typing import UNDEFINED, UndefinedType
 from zigpy.zcl import ClusterType
 from zigpy.zcl.clusters.general import Ota
 from zigpy.zdo import ZDO
@@ -421,8 +422,8 @@ class ZCLCommandButtonMetadata(EntityMetadata):
 class ManufacturerModelMetadata:
     """Metadata for manufacturers and models to apply this quirk to."""
 
-    manufacturer: str = attrs.field(default=None)
-    model: str = attrs.field(default=None)
+    manufacturer: str | None = attrs.field(default=None)
+    model: str | None = attrs.field(default=None)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -604,16 +605,11 @@ class QuirkBuilder:
 
     def __init__(
         self,
-        manufacturer: str | None = None,
-        model: str | None = None,
+        manufacturer: str | None | UndefinedType = UNDEFINED,
+        model: str | None | UndefinedType = UNDEFINED,
         registry: DeviceRegistry | None = None,
     ) -> None:
         """Initialize the quirk builder."""
-        if manufacturer and not model or model and not manufacturer:
-            raise ValueError(
-                "manufacturer and model must be provided together or completely omitted."
-            )
-
         self.registry: DeviceRegistry = (
             registry if registry is not None else DEVICE_REGISTRY
         )
@@ -655,8 +651,11 @@ class QuirkBuilder:
         self.quirk_file = pathlib.Path(caller.f_code.co_filename)
         self.quirk_file_line = caller.f_lineno
 
-        if manufacturer and model:
-            self.applies_to(manufacturer, model)
+        if manufacturer is not UNDEFINED or model is not UNDEFINED:
+            self.applies_to(
+                manufacturer=manufacturer if manufacturer is not UNDEFINED else None,
+                model=model if model is not UNDEFINED else None,
+            )
 
         UNBUILT_QUIRK_BUILDERS.append(self)
 
@@ -670,8 +669,22 @@ class QuirkBuilder:
         self.entity_metadata.append(entity_metadata)
         return self
 
-    def applies_to(self, manufacturer: str, model: str) -> Self:
+    @overload
+    def applies_to(self, manufacturer: str, model: str) -> Self: ...
+
+    @overload
+    def applies_to(self, manufacturer: str, model: str | None) -> Self: ...
+
+    @overload
+    def applies_to(self, manufacturer: None, model: str) -> Self: ...
+
+    def applies_to(self, manufacturer: str | None, model: str | None) -> Self:
         """Register this quirks v2 entry for the specified manufacturer and model."""
+        if manufacturer is None and model is None:
+            raise ValueError(
+                "A manufacturer and/or model must be specified for a v2 quirk."
+            )
+
         self.manufacturer_model_metadata.append(
             ManufacturerModelMetadata(manufacturer=manufacturer, model=model)
         )
@@ -1369,7 +1382,9 @@ class QuirkBuilder:
 
 
 def add_to_registry_v2(
-    manufacturer: str, model: str, registry: DeviceRegistry = DEVICE_REGISTRY
+    manufacturer: str | None,
+    model: str | None,
+    registry: DeviceRegistry = DEVICE_REGISTRY,
 ) -> QuirkBuilder:
     """Add an entry to the registry."""
     _LOGGER.error(

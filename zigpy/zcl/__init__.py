@@ -1416,7 +1416,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         min_interval: int,
         max_interval: int,
         reportable_change: int,
-    ) -> list[foundation.ConfigureReportingResponseRecord]:
+    ) -> dict[foundation.ZCLAttributeDef, foundation.Status]:
         """Configure attribute reporting for a single attribute."""
         attr_def = self.find_attribute(attribute)
         return await self.configure_reporting_multiple(
@@ -1431,7 +1431,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
     async def configure_reporting_multiple(
         self, config: dict[foundation.ZCLAttributeDef, ReportingConfig]
-    ) -> list[foundation.ConfigureReportingResponseRecord]:
+    ) -> dict[foundation.ZCLAttributeDef, foundation.Status]:
         """Configure attribute reporting for multiple attributes in the same request."""
 
         # Group attributes by effective manufacturer code
@@ -1458,19 +1458,16 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             effective_manuf = self._get_effective_manufacturer_code(attr_def)
             reporting_by_manuf_code[effective_manuf].append((attr_def, cfg))
 
-        results: list[foundation.ConfigureReportingResponseRecord] = []
+        results: dict[foundation.ZCLAttributeDef, foundation.Status] = {}
 
         for manufacturer_code, reporting_configs in reporting_by_manuf_code.items():
             configs = [cfg for _attr_def, cfg in reporting_configs]
-            attr_defs_by_id = {
-                attr_def.id: attr_def for attr_def, _cfg in reporting_configs
-            }
 
             rsp = await self._configure_reporting(
                 configs, manufacturer=manufacturer_code
             )
 
-            reporting_results = []
+            group_results: dict[foundation.ZCLAttributeDef, foundation.Status] = {}
 
             if isinstance(rsp[0], list):
                 records = rsp[0]
@@ -1483,43 +1480,24 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 ):
                     # Global success: all attributes succeeded
                     for attr_def, _cfg in reporting_configs:
-                        reporting_results.append(
-                            foundation.ConfigureReportingResponseRecord(
-                                status=foundation.Status.SUCCESS,
-                                attrid=attr_def.id,
-                            )
-                        )
+                        group_results[attr_def] = foundation.Status.SUCCESS
                 else:
                     # Only failed reports are in the response. Attributes not
                     # present implicitly succeeded.
-                    failed_attrids = {r.attrid for r in records}
+                    failed_attrids = {r.attrid: r.status for r in records}
                     for attr_def, _cfg in reporting_configs:
                         if attr_def.id in failed_attrids:
-                            reporting_results.extend(
-                                r for r in records if r.attrid == attr_def.id
-                            )
+                            group_results[attr_def] = failed_attrids[attr_def.id]
                         else:
-                            reporting_results.append(
-                                foundation.ConfigureReportingResponseRecord(
-                                    status=foundation.Status.SUCCESS,
-                                    attrid=attr_def.id,
-                                )
-                            )
+                            group_results[attr_def] = foundation.Status.SUCCESS
             else:
                 # Default response: apply status to all attributes in this group
                 status = rsp[1]
-                reporting_results.extend(
-                    foundation.ConfigureReportingResponseRecord(
-                        status=status,
-                        attrid=attr_def.id,
-                    )
-                    for attr_def, _cfg in reporting_configs
-                )
+                for attr_def, _cfg in reporting_configs:
+                    group_results[attr_def] = status
 
-            for result in reporting_results:
-                attr_def = attr_defs_by_id[result.attrid]
-
-                if result.status == foundation.Status.SUCCESS:
+            for attr_def, status in group_results.items():
+                if status == foundation.Status.SUCCESS:
                     self._attr_cache.remove_unsupported(attr_def)
                     self.emit(
                         AttributeReportingConfiguredEvent.event_type,
@@ -1536,7 +1514,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                             reportable_change=config[attr_def].reportable_change,
                         ),
                     )
-                elif result.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
+                elif status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
                     self._attr_cache.mark_unsupported(attr_def)
                     self.emit(
                         AttributeUnsupportedEvent.event_type,
@@ -1550,11 +1528,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                             manufacturer_code=manufacturer_code,
                         ),
                     )
-                else:
-                    # Is this even possible?
-                    pass
 
-            results.extend(reporting_results)
+            results.update(group_results)
 
         return results
 
