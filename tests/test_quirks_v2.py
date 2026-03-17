@@ -186,38 +186,6 @@ async def test_quirks_v2_model_manufacturer(device_mock):
 
     with pytest.raises(
         ValueError,
-        match="manufacturer and model must be provided together or completely omitted.",
-    ):
-        (
-            QuirkBuilder(device_mock.manufacturer, model=None, registry=registry)
-            .adds(Basic.cluster_id)
-            .adds(OnOff.cluster_id)
-            .enum(
-                OnOff.AttributeDefs.start_up_on_off.name,
-                OnOff.StartUpOnOff,
-                OnOff.cluster_id,
-            )
-            .add_to_registry()
-        )
-
-    with pytest.raises(
-        ValueError,
-        match="manufacturer and model must be provided together or completely omitted.",
-    ):
-        (
-            QuirkBuilder(manufacturer=None, model=device_mock.model, registry=registry)
-            .adds(Basic.cluster_id)
-            .adds(OnOff.cluster_id)
-            .enum(
-                OnOff.AttributeDefs.start_up_on_off.name,
-                OnOff.StartUpOnOff,
-                OnOff.cluster_id,
-            )
-            .add_to_registry()
-        )
-
-    with pytest.raises(
-        ValueError,
         match="At least one manufacturer and model must be specified for a v2 quirk.",
     ):
         (
@@ -233,6 +201,59 @@ async def test_quirks_v2_model_manufacturer(device_mock):
             )
             .add_to_registry()
         )
+
+    with pytest.raises(
+        ValueError,
+        match="A manufacturer and/or model must be specified for a v2 quirk.",
+    ):
+        (
+            QuirkBuilder(registry=registry)
+            # Fails early, before we even add it to the registry
+            .applies_to(manufacturer=None, model=None)
+        )
+
+
+@pytest.mark.parametrize(
+    ("manufacturer", "model"),
+    [
+        ("manufacturer", "model"),  # has both
+        ("manufacturer", None),  # missing model
+        (None, "model"),  # missing manufacturer
+    ],
+)
+async def test_quirks_v2_missing_model_manufacturer(
+    app_mock, manufacturer: str | None, model: str | None
+):
+    """Test that v2 quirks can match devices with missing model/manufacturer."""
+    registry = DeviceRegistry()
+
+    quirk = (
+        QuirkBuilder(manufacturer, model, registry=registry)
+        .adds(Basic.cluster_id)
+        .adds(OnOff.cluster_id)
+        .add_to_registry()
+    )
+
+    device = Device(app_mock, sentinel.ieee, 0x2233)
+    device.add_endpoint(1)
+    device[1].profile_id = 255
+    device[1].device_type = 255
+    device[1].add_input_cluster(3)
+    device[1].add_output_cluster(6)
+
+    if manufacturer is not None:
+        device.manufacturer = manufacturer
+
+    if model is not None:
+        device.model = model
+
+    quirked = registry.get_device(device)
+    assert isinstance(quirked, CustomDeviceV2)
+    assert quirked.quirk_metadata is quirk
+
+    assert quirked in registry
+    registry.remove(quirked)
+    assert quirked not in registry
 
 
 async def test_quirks_v2_quirk_builder_cloning(device_mock):
