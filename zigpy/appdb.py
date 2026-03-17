@@ -542,6 +542,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         (
                             device.ieee,
                             ep.endpoint_id,
+                            cluster.cluster_type,
                             cmd.manufacturer_code,
                             cmd.image_type,
                             cmd.current_file_version,
@@ -551,10 +552,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     )
         if rows:
             q = f"""INSERT INTO ota_query_cache{DB_V}
-                        (ieee, endpoint_id, manufacturer_code, image_type,
-                         current_file_version, hardware_version, last_updated)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT (ieee, endpoint_id) DO UPDATE SET
+                        (ieee, endpoint_id, cluster_type, manufacturer_code,
+                         image_type, current_file_version, hardware_version,
+                         last_updated)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (ieee, endpoint_id, cluster_type) DO UPDATE SET
                         manufacturer_code=excluded.manufacturer_code,
                         image_type=excluded.image_type,
                         current_file_version=excluded.current_file_version,
@@ -674,10 +676,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self, event: OtaQueryCacheUpdatedEvent
     ) -> None:
         q = f"""INSERT INTO ota_query_cache{DB_V}
-                    (ieee, endpoint_id, manufacturer_code, image_type,
-                     current_file_version, hardware_version, last_updated)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT (ieee, endpoint_id) DO UPDATE SET
+                    (ieee, endpoint_id, cluster_type, manufacturer_code,
+                     image_type, current_file_version, hardware_version,
+                     last_updated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (ieee, endpoint_id, cluster_type) DO UPDATE SET
                     manufacturer_code=excluded.manufacturer_code,
                     image_type=excluded.image_type,
                     current_file_version=excluded.current_file_version,
@@ -689,6 +692,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             (
                 event.device_ieee,
                 event.endpoint_id,
+                event.cluster_type,
                 event.manufacturer_code,
                 event.image_type,
                 event.current_file_version,
@@ -1087,6 +1091,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             async for (
                 ieee,
                 endpoint_id,
+                cluster_type,
                 manufacturer_code,
                 image_type,
                 current_file_version,
@@ -1099,24 +1104,31 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 except (KeyError, AttributeError):
                     continue
 
-                for cluster in ep.clusters:
-                    if not isinstance(cluster, Ota):
-                        continue
+                cluster_type = ClusterType(cluster_type)
 
-                    field_control = (
-                        Ota.QueryNextImageCommand.FieldControl(0)
-                        if hardware_version is None
-                        else Ota.QueryNextImageCommand.FieldControl.HardwareVersion
-                    )
-                    cmd = Ota.QueryNextImageCommand(
-                        field_control=field_control,
-                        manufacturer_code=manufacturer_code,
-                        image_type=image_type,
-                        current_file_version=current_file_version,
-                    )
-                    if hardware_version is not None:
-                        cmd.hardware_version = hardware_version
-                    cluster.last_query_cmd = cmd
+                if cluster_type == ClusterType.Server:
+                    clusters = ep.in_clusters
+                else:
+                    clusters = ep.out_clusters
+
+                cluster = clusters.get(Ota.cluster_id)
+                if not isinstance(cluster, Ota):
+                    continue
+
+                field_control = (
+                    Ota.QueryNextImageCommand.FieldControl(0)
+                    if hardware_version is None
+                    else Ota.QueryNextImageCommand.FieldControl.HardwareVersion
+                )
+                cmd = Ota.QueryNextImageCommand(
+                    field_control=field_control,
+                    manufacturer_code=manufacturer_code,
+                    image_type=image_type,
+                    current_file_version=current_file_version,
+                )
+                if hardware_version is not None:
+                    cmd.hardware_version = hardware_version
+                cluster.last_query_cmd = cmd
 
     async def _register_device_listeners(self) -> None:
         for dev in self._application.devices.values():

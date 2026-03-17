@@ -203,6 +203,7 @@ DROP TABLE IF EXISTS ota_query_cache_v15;
 CREATE TABLE ota_query_cache_v15 (
     ieee ieee NOT NULL,
     endpoint_id INTEGER NOT NULL,
+    cluster_type INTEGER NOT NULL,
     manufacturer_code INTEGER NOT NULL,
     image_type INTEGER NOT NULL,
     current_file_version INTEGER NOT NULL,
@@ -215,4 +216,4 @@ CREATE TABLE ota_query_cache_v15 (
 );
 
 CREATE UNIQUE INDEX ota_query_cache_idx_v15
-    ON ota_query_cache_v15(ieee, endpoint_id);
+    ON ota_query_cache_v15(ieee, endpoint_id, cluster_type);

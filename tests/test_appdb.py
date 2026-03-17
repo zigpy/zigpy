@@ -1776,10 +1776,11 @@ async def test_ota_query_cache_load_missing_device(tmp_path):
     with sqlite3.connect(db) as conn:
         conn.execute(
             f"INSERT INTO ota_query_cache{zigpy.appdb.DB_V}"
-            " (ieee, endpoint_id, manufacturer_code, image_type,"
-            "  current_file_version, hardware_version, last_updated)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("ff:ff:ff:ff:ff:ff:ff:ff", 1, 0xAAAA, 0xBBBB, 0x00000002, None, 0),
+            " (ieee, endpoint_id, cluster_type, manufacturer_code,"
+            "  image_type, current_file_version, hardware_version,"
+            "  last_updated)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            ("ff:ff:ff:ff:ff:ff:ff:ff", 1, 1, 0xAAAA, 0xBBBB, 0x00000002, None, 0),
         )
 
     # Reload — should not crash, just skip the unknown device row
