@@ -1720,6 +1720,59 @@ async def test_ota_query_cache_event_save(tmp_path):
     await app2.shutdown()
 
 
+@patch("zigpy.quirks.DEVICE_REGISTRY", new=DeviceRegistry())
+async def test_ota_query_cache_skips_quirk_removed_endpoint(tmp_path):
+    """Test that OTA cache load skips entries for endpoints removed by quirks."""
+    # Register a quirk that removes endpoint 2
+    (
+        QuirkBuilder(
+            "ota manufacturer", "ota model", registry=zigpy.quirks.DEVICE_REGISTRY
+        )
+        .removes_endpoint(2)
+        .add_to_registry()
+    )
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+    dev.model = "ota model"
+    dev.manufacturer = "ota manufacturer"
+
+    ep1 = dev.add_endpoint(1)
+    ep1.status = zigpy.endpoint.Status.ZDO_INIT
+    ep1.profile_id = 260
+    ep1.device_type = profiles.zha.DeviceType.PUMP
+    basic = ep1.add_input_cluster(Basic.cluster_id)
+    basic.update_attribute(Basic.AttributeDefs.model, "ota model")
+    basic.update_attribute(Basic.AttributeDefs.manufacturer, "ota manufacturer")
+
+    ep2 = dev.add_endpoint(2)
+    ep2.status = zigpy.endpoint.Status.ZDO_INIT
+    ep2.profile_id = 260
+    ep2.device_type = profiles.zha.DeviceType.PUMP
+    ota_cluster = ep2.add_output_cluster(Ota.cluster_id)
+
+    ota_cluster.last_query_cmd = Ota.QueryNextImageCommand(
+        field_control=Ota.QueryNextImageCommand.FieldControl(0),
+        manufacturer_code=0x1234,
+        image_type=0x5678,
+        current_file_version=0x00000001,
+    )
+
+    app.device_initialized(dev)
+    await app.shutdown()
+
+    # Reload — quirk removes endpoint 2, OTA cache load should skip it
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    assert 2 not in dev2.endpoints
+    assert dev2.get_last_ota_query_cmd() is None
+
+    await app2.shutdown()
+
+
 async def test_get_last_ota_query_cmd_returns_none(tmp_path):
     """Test that get_last_ota_query_cmd returns None when no query has been cached."""
     db = tmp_path / "test.db"
