@@ -1747,6 +1747,59 @@ async def test_ota_query_cache_event_save(tmp_path):
     await app2.shutdown()
 
 
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_ota_query_cache_restore_correct_cluster_type(tmp_path):
+    """Test that OTA query cache restores to the correct cluster type."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ota_server = ep.add_input_cluster(Ota.cluster_id)
+    ota_client = ep.add_output_cluster(Ota.cluster_id)
+    app.device_initialized(dev)
+
+    # Set different query cmds on each cluster
+    ota_server.last_query_cmd = Ota.QueryNextImageCommand(
+        field_control=Ota.QueryNextImageCommand.FieldControl(0),
+        manufacturer_code=0x1111,
+        image_type=0x2222,
+        current_file_version=0x00000001,
+    )
+    ota_client.last_query_cmd = Ota.QueryNextImageCommand(
+        field_control=Ota.QueryNextImageCommand.FieldControl(0),
+        manufacturer_code=0x3333,
+        image_type=0x4444,
+        current_file_version=0x00000002,
+    )
+
+    app.device_initialized(dev)
+    await app.shutdown()
+
+    # Reload and verify each cluster got its own query cmd back
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(ieee)
+    server2 = dev2.endpoints[1].in_clusters[Ota.cluster_id]
+    client2 = dev2.endpoints[1].out_clusters[Ota.cluster_id]
+
+    assert server2.last_query_cmd is not None
+    assert server2.last_query_cmd.manufacturer_code == 0x1111
+    assert server2.last_query_cmd.image_type == 0x2222
+    assert server2.last_query_cmd.current_file_version == 0x00000001
+
+    assert client2.last_query_cmd is not None
+    assert client2.last_query_cmd.manufacturer_code == 0x3333
+    assert client2.last_query_cmd.image_type == 0x4444
+    assert client2.last_query_cmd.current_file_version == 0x00000002
+
+    await app2.shutdown()
+
+
 async def test_ota_query_cache_load_missing_device(tmp_path):
     """Test that loading OTA cache skips entries for devices no longer in the app."""
     db = tmp_path / "test.db"
