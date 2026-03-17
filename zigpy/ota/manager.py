@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+from asyncio import timeout as asyncio_timeout
 from collections.abc import Callable
 import contextlib
 from typing import TYPE_CHECKING
 
 import zigpy.datastructures
+from zigpy.ota import OTA_FETCH_TIMEOUT
 import zigpy.types as t
 from zigpy.zcl import ClusterType, foundation
 from zigpy.zcl.clusters.general import (
@@ -321,6 +323,11 @@ async def update_firmware(
     force: bool = False,
 ) -> foundation.Status:
     """Update the firmware on a Zigbee device."""
+    # Fetch firmware if not already downloaded (deferred download for trusted providers)
+    if image.firmware is None:
+        async with asyncio_timeout(OTA_FETCH_TIMEOUT):
+            image = await image.fetch()
+
     if force:
         # Force it to send the image even if it's the same version
         image = image.replace(

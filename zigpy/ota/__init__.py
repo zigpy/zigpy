@@ -7,6 +7,7 @@ from asyncio import timeout as asyncio_timeout
 from collections import defaultdict
 import contextlib
 import dataclasses
+import hashlib
 import logging
 import typing
 
@@ -139,6 +140,10 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
         # Boost the specificity
         if self.metadata.specificity is not None:
             total += self.metadata.specificity
+
+        # Prefer images from trusted providers (e.g. zigpy-ota has richer metadata)
+        if self.metadata.trusted:
+            total += 10000
 
         return total
 
@@ -410,6 +415,9 @@ class OTA:
             # caller will cache these images
             for meta in index:
                 if meta not in self._image_cache:
+                    # Mark metadata as trusted if it comes from a trusted provider
+                    if provider.TRUSTED and not meta.trusted:
+                        meta = meta.replace(trusted=True)
                     self._image_cache[meta] = OtaImageWithMetadata(
                         metadata=meta, firmware=None
                     )
@@ -435,9 +443,13 @@ class OTA:
             img.metadata: img for img in candidates if img.metadata not in upgrades
         }
 
-        # Only download upgrade images, downgrades are used just to indicate the latest
-        # version
-        undownloaded_images = [img for img in upgrades.values() if img.firmware is None]
+        # Only download upgrade images from untrusted providers; trusted providers have
+        # complete metadata so we can defer the download until install time
+        undownloaded_images = [
+            img
+            for img in upgrades.values()
+            if img.firmware is None and not img.metadata.trusted
+        ]
 
         # Fetch all the candidates that are missing from the cache
         results = await asyncio.gather(
@@ -468,20 +480,75 @@ class OTA:
             else:
                 upgrades[img.metadata] = img
 
-        # As a final pass, identify images with identical versions and specificity but
-        # differing contents.
-        # Structure: {(version, specificity): {serialized_firmware: [images]}}
-        upgrade_collisions: defaultdict[
-            tuple[int, int], defaultdict[bytes, list[OtaImageWithMetadata]]
+        await self._remove_colliding_images(upgrades)
+
+        return OtaImagesResult(
+            upgrades=tuple(
+                sorted(
+                    upgrades.values(),
+                    key=lambda img: (img.version, img.specificity),
+                    reverse=True,
+                )
+            ),
+            downgrades=tuple(
+                sorted(
+                    downgrades.values(),
+                    key=lambda img: (img.version, img.specificity),
+                    reverse=True,
+                )
+            ),
+        )
+
+    async def _remove_colliding_images(
+        self,
+        upgrades: dict[zigpy.ota.providers.BaseOtaImageMetadata, OtaImageWithMetadata],
+    ) -> None:
+        """Remove images with identical versions and specificity but differing contents.
+
+        Also removes trusted images that lack a SHA3-256 checksum, since their content
+        cannot be verified for collision detection.
+        """
+        # Structure: {(version, specificity): {content_hash: [images]}}
+        collisions: defaultdict[
+            tuple[int, int], defaultdict[str, list[OtaImageWithMetadata]]
         ] = defaultdict(lambda: defaultdict(list))
 
-        for img in upgrades.values():
-            assert img.firmware is not None
-            upgrade_collisions[img.version, img.specificity][
-                img.firmware.serialize()
-            ].append(img)
+        images_to_remove: list[zigpy.ota.providers.BaseOtaImageMetadata] = []
 
-        for (version, specificity), buckets in upgrade_collisions.items():
+        for img in upgrades.values():
+            # Untrusted images are always downloaded above and ones that failed
+            # to download were already removed; this should never happen.
+            assert img.firmware is not None or img.metadata.trusted
+
+            # Ignore trusted image without SHA3-256 checksum
+            if img.firmware is None and (
+                img.metadata.checksum is None
+                or not img.metadata.checksum.startswith("sha3-256:")
+            ):
+                _LOGGER.warning(
+                    "Trusted image %s does not have SHA3-256 checksum, ignoring", img
+                )
+                images_to_remove.append(img.metadata)
+                continue
+
+            # Calculate content hash from firmware if available, otherwise use metadata
+            if img.firmware is not None:
+                hasher = hashlib.sha3_256()
+                await asyncio.get_running_loop().run_in_executor(
+                    None, hasher.update, img.firmware.serialize()
+                )
+                content_hash = "sha3-256:" + hasher.hexdigest()
+            else:
+                assert img.metadata.checksum is not None  # Checked above
+                content_hash = img.metadata.checksum
+
+            collisions[img.version, img.specificity][content_hash].append(img)
+
+        for meta in images_to_remove:
+            upgrades.pop(meta)
+
+        for (version, specificity), buckets in collisions.items():
+            # If there are multiple unique hashes, we have a collision
             if len(buckets) < 2:
                 continue
 
@@ -502,23 +569,6 @@ class OTA:
 
             for img in bad_images:
                 upgrades.pop(img.metadata)
-
-        return OtaImagesResult(
-            upgrades=tuple(
-                sorted(
-                    upgrades.values(),
-                    key=lambda img: (img.version, img.specificity),
-                    reverse=True,
-                )
-            ),
-            downgrades=tuple(
-                sorted(
-                    downgrades.values(),
-                    key=lambda img: (img.version, img.specificity),
-                    reverse=True,
-                )
-            ),
-        )
 
     async def broadcast_notify(
         self,
