@@ -1145,6 +1145,14 @@ class Time(Cluster):
 
         return t.int32s((utc_offset - dst).total_seconds())
 
+    def handle_read_attribute_standard_time(self) -> t.StandardTime:
+        now_local = datetime.now().astimezone()
+        utc_offset = now_local.utcoffset() or timedelta(0)
+        dst = now_local.dst() or timedelta(0)
+
+        utc_seconds = (now_local - ZIGBEE_EPOCH).total_seconds()
+        return t.StandardTime(utc_seconds + (utc_offset - dst).total_seconds())
+
     def handle_read_attribute_local_time(self) -> t.LocalTime:
         now_local = datetime.now().astimezone()
         utc_offset = now_local.utcoffset() or timedelta(0)
