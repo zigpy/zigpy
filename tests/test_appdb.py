@@ -1611,7 +1611,7 @@ async def test_device_signature_ignores_quirks(tmp_path) -> None:
 
 @patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
 async def test_ota_query_cache_persistence(tmp_path):
-    """Test that OTA query cache is persisted per cluster type and restored."""
+    """Test that OTA query cache is persisted and restored from the database."""
     db = tmp_path / "test.db"
     app = await make_app_with_db(db)
     ieee = make_ieee()
@@ -1623,55 +1623,55 @@ async def test_ota_query_cache_persistence(tmp_path):
     ep.profile_id = 260
     ep.device_type = profiles.zha.DeviceType.PUMP
     ep.add_input_cluster(0)  # Basic cluster, exercises non-OTA skip in load
-    ota_server = ep.add_input_cluster(Ota.cluster_id)
-    ota_client = ep.add_output_cluster(Ota.cluster_id)
+    ota_cluster = ep.add_output_cluster(Ota.cluster_id)
     app.device_initialized(dev)
 
-    # Server cluster: with hardware_version
-    server_cmd = Ota.QueryNextImageCommand(
+    # With hardware_version
+    cmd = Ota.QueryNextImageCommand(
         field_control=Ota.QueryNextImageCommand.FieldControl.HardwareVersion,
         manufacturer_code=0x1234,
         image_type=0x5678,
         current_file_version=0x000A0001,
     )
-    server_cmd.hardware_version = 3
-    ota_server.last_query_cmd = server_cmd
+    cmd.hardware_version = 3
+    ota_cluster.last_query_cmd = cmd
 
-    # Client cluster: without hardware_version
-    ota_client.last_query_cmd = Ota.QueryNextImageCommand(
+    app.device_initialized(dev)
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(ieee)
+    ota2 = dev2.endpoints[1].out_clusters[Ota.cluster_id]
+
+    assert ota2.last_query_cmd is not None
+    assert ota2.last_query_cmd.manufacturer_code == 0x1234
+    assert ota2.last_query_cmd.image_type == 0x5678
+    assert ota2.last_query_cmd.current_file_version == 0x000A0001
+    assert ota2.last_query_cmd.hardware_version == 3
+    assert dev2.get_last_ota_query_cmd() is ota2.last_query_cmd
+
+    # Update to a command without hardware_version
+    ota2.last_query_cmd = Ota.QueryNextImageCommand(
         field_control=Ota.QueryNextImageCommand.FieldControl(0),
         manufacturer_code=0xAAAA,
         image_type=0xBBBB,
         current_file_version=0x00000042,
     )
+    app2.device_initialized(dev2)
+    await app2.shutdown()
 
-    app.device_initialized(dev)
-    await app.shutdown()
+    app3 = await make_app_with_db(db)
+    dev3 = app3.get_device(ieee)
+    ota3 = dev3.endpoints[1].out_clusters[Ota.cluster_id]
 
-    # Reload and verify each cluster got its own query cmd back
-    app2 = await make_app_with_db(db)
-    dev2 = app2.get_device(ieee)
-    server2 = dev2.endpoints[1].in_clusters[Ota.cluster_id]
-    client2 = dev2.endpoints[1].out_clusters[Ota.cluster_id]
-
-    assert server2.last_query_cmd is not None
-    assert server2.last_query_cmd.manufacturer_code == 0x1234
-    assert server2.last_query_cmd.image_type == 0x5678
-    assert server2.last_query_cmd.current_file_version == 0x000A0001
-    assert server2.last_query_cmd.hardware_version == 3
-
-    assert client2.last_query_cmd is not None
-    assert client2.last_query_cmd.manufacturer_code == 0xAAAA
-    assert client2.last_query_cmd.image_type == 0xBBBB
-    assert client2.last_query_cmd.current_file_version == 0x00000042
-    assert not hasattr(client2.last_query_cmd, "hardware_version") or (
-        client2.last_query_cmd.hardware_version is None
+    assert ota3.last_query_cmd is not None
+    assert ota3.last_query_cmd.manufacturer_code == 0xAAAA
+    assert ota3.last_query_cmd.current_file_version == 0x00000042
+    assert not hasattr(ota3.last_query_cmd, "hardware_version") or (
+        ota3.last_query_cmd.hardware_version is None
     )
 
-    # get_last_ota_query_cmd returns the first match (server, since in_clusters first)
-    assert dev2.get_last_ota_query_cmd() is server2.last_query_cmd
-
-    await app2.shutdown()
+    await app3.shutdown()
 
 
 @patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
