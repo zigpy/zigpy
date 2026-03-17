@@ -201,6 +201,16 @@ async def test_quirks_v2_model_manufacturer(device_mock):
             .add_to_registry()
         )
 
+    with pytest.raises(
+        ValueError,
+        match="At least one manufacturer and model must be specified for a v2 quirk.",
+    ):
+        (
+            QuirkBuilder(registry=registry)
+            # Fails early, before we even add it to the registry
+            .applies_to(manufacturer=None, model=None)
+        )
+
 
 @pytest.mark.parametrize(
     ("manufacturer", "model"),

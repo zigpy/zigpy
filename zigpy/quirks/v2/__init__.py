@@ -11,7 +11,7 @@ import inspect
 import logging
 import pathlib
 from types import FrameType
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, Self, overload
 
 import attrs
 from frozendict import frozendict
@@ -669,8 +669,22 @@ class QuirkBuilder:
         self.entity_metadata.append(entity_metadata)
         return self
 
+    @overload
+    def applies_to(self, manufacturer: str, model: str) -> Self: ...
+
+    @overload
+    def applies_to(self, manufacturer: str, model: str | None) -> Self: ...
+
+    @overload
+    def applies_to(self, manufacturer: None, model: str) -> Self: ...
+
     def applies_to(self, manufacturer: str | None, model: str | None) -> Self:
         """Register this quirks v2 entry for the specified manufacturer and model."""
+        if manufacturer is None and model is None:
+            raise ValueError(
+                "At least one manufacturer and model must be specified for a v2 quirk."
+            )
+
         self.manufacturer_model_metadata.append(
             ManufacturerModelMetadata(manufacturer=manufacturer, model=model)
         )
