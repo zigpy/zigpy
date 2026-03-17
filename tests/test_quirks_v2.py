@@ -215,9 +215,9 @@ async def test_quirks_v2_model_manufacturer(device_mock):
 @pytest.mark.parametrize(
     ("manufacturer", "model"),
     [
+        ("manufacturer", "model"),  # has both
         ("manufacturer", None),  # missing model
         (None, "model"),  # missing manufacturer
-        (None, None),  # missing both
     ],
 )
 async def test_quirks_v2_missing_model_manufacturer(
