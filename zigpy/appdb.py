@@ -1102,6 +1102,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     dev = self._application.get_device(ieee)
                     ep = dev.endpoints[endpoint_id]
                 except (KeyError, AttributeError):
+                    # Quirks or firmware updates can remove endpoints/clusters
                     continue
 
                 cluster_type = ClusterType(cluster_type)
