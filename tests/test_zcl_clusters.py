@@ -176,7 +176,7 @@ def _make_patched_datetime(fake_now):
 
 
 @pytest.mark.parametrize(
-    ("fake_now", "expected_utc", "expected_tz", "expected_local"),
+    ("fake_now", "expected_utc", "expected_tz", "expected_standard", "expected_local"),
     [
         pytest.param(
             # January: PST (UTC-8), no DST
@@ -185,6 +185,8 @@ def _make_patched_datetime(fake_now):
             24 * 60 * 60 + 8 * 60 * 60,
             # Standard timezone offset: UTC-8
             -(8 * 60 * 60),
+            # Standard time: Time + TimeZone = midnight Jan 2 local (no DST)
+            24 * 60 * 60,
             # Local time: midnight Jan 2 = 1 day from epoch
             24 * 60 * 60,
             id="winter_no_dst",
@@ -196,13 +198,17 @@ def _make_patched_datetime(fake_now):
             183 * 24 * 60 * 60 + 7 * 60 * 60,
             # Standard timezone offset: still UTC-8 (DST not included)
             -(8 * 60 * 60),
+            # Standard time: Time + TimeZone = 11 PM Jul 1 standard (no DST adjustment)
+            183 * 24 * 60 * 60 - 1 * 60 * 60,
             # Local time: midnight Jul 2 local
             183 * 24 * 60 * 60,
             id="summer_with_dst",
         ),
     ],
 )
-async def test_time_cluster(fake_now, expected_utc, expected_tz, expected_local):
+async def test_time_cluster(
+    fake_now, expected_utc, expected_tz, expected_standard, expected_local
+):
     ep = MagicMock()
     ep.reply = AsyncMock()
 
@@ -222,6 +228,7 @@ async def test_time_cluster(fake_now, expected_utc, expected_tz, expected_local)
                 Time.AttributeDefs.time.id,
                 Time.AttributeDefs.time_status.id,
                 Time.AttributeDefs.time_zone.id,
+                Time.AttributeDefs.standard_time.id,
                 Time.AttributeDefs.local_time.id,
             ],
         )
@@ -254,6 +261,15 @@ async def test_time_cluster(fake_now, expected_utc, expected_tz, expected_local)
     )
 
     assert rsp1.status_records[3] == foundation.ReadAttributeRecord(
+        attrid=Time.AttributeDefs.standard_time.id,
+        status=foundation.Status.SUCCESS,
+        value=foundation.TypeValue(
+            type=foundation.DataTypeId.uint32,
+            value=expected_standard,
+        ),
+    )
+
+    assert rsp1.status_records[4] == foundation.ReadAttributeRecord(
         attrid=Time.AttributeDefs.local_time.id,
         status=foundation.Status.SUCCESS,
         value=foundation.TypeValue(
