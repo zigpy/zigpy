@@ -37,7 +37,7 @@ if typing.TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def auto_kill_aiosqlite():
     """Aiosqlite's background thread does not let pytest exit when a failure occurs."""
     yield

@@ -45,6 +45,8 @@ from zigpy.zcl.clusters.general import Basic, Identify, OnOff, Ota
 from zigpy.zcl.foundation import Status as ZCLStatus, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
 
+pytestmark = pytest.mark.usefixtures("auto_kill_aiosqlite")
+
 
 async def make_app_with_db(database_file):
     if isinstance(database_file, pathlib.Path):
