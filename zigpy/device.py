@@ -938,9 +938,12 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return result
 
     def get_last_ota_query_cmd(self) -> QueryNextImageCommand | None:
-        """Return the last cached QueryNextImageCommand from any OTA cluster."""
+        """Return the last cached QueryNextImageCommand, preferring client clusters."""
         for ep in self.non_zdo_endpoints:
-            for cluster in ep.clusters:
+            # Prefer client (out) clusters since runtime routing places
+            # query_next_image there when both cluster types exist.
+            for clusters in (ep.out_clusters, ep.in_clusters):
+                cluster = clusters.get(Ota.cluster_id)
                 if isinstance(cluster, Ota) and cluster.last_query_cmd is not None:
                     return cluster.last_query_cmd
         return None
