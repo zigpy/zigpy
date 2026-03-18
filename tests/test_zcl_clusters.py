@@ -323,6 +323,7 @@ async def test_ota_handle_query_next_image(ota_cluster):
     assert listener.device_ota_image_query_result.mock_calls == [
         call(OtaImagesResult(upgrades=(), downgrades=()), cmd)
     ]
+    assert ota_cluster.last_query_cmd is cmd
 
     ota_cluster.query_next_image_response.reset_mock()
     listener.device_ota_image_query_result.reset_mock()
