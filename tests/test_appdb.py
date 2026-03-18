@@ -1764,7 +1764,7 @@ async def test_ota_query_cache_skips_quirk_removed_endpoint(tmp_path):
     app.device_initialized(dev)
     await app.shutdown()
 
-    # Reload — quirk removes endpoint 2, OTA cache load should skip it
+    # Reload: quirk removes endpoint 2, OTA cache load should skip it
     app2 = await make_app_with_db(db)
     dev2 = app2.get_device(t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
     assert 2 not in dev2.endpoints
