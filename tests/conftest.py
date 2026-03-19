@@ -55,6 +55,7 @@ def auto_kill_aiosqlite():
                 conn.close()
 
         thread._stop_running()
+        thread.join(timeout=1)
 
 
 NCP_IEEE = t.EUI64.convert("aa:11:22:bb:33:44:be:ef")
