@@ -339,6 +339,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             except Exception:
                 # Ensure old device is restored in app.devices on any failure
                 self._application.devices[self._ieee] = self
+                # Re-register DB listener if it was removed during the swap
+                if self._application._dblistener is not None:
+                    self.add_context_listener(self._application._dblistener)
                 # Clean up shadow's callbacks/tasks (e.g. PollControl listener)
                 shadow.on_remove()
                 raise
