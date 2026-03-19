@@ -627,8 +627,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """Swap an old device with a successfully re-interviewed shadow.
 
         Preserves non-discovery state (last_seen, relays, lqi, rssi) and group
-        memberships.  On any exception, ``reinterview()`` restores the old
-        device in ``app.devices``.
+        memberships.  Exceptions propagate to ``reinterview()`` which logs them
+        and fires the ``device_reinterview_failure`` event.
         """
         # Copy non-discovery state from old device to shadow
         shadow._last_seen = old_device._last_seen
