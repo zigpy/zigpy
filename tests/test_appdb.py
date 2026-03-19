@@ -1703,8 +1703,6 @@ async def test_ota_query_cache_event_save(tmp_path):
     )
 
     ota_cluster.emit(OtaQueryCacheUpdatedEvent.event_type, event)
-    await asyncio.sleep(0.2)
-
     await app.shutdown()
 
     app2 = await make_app_with_db(db)
