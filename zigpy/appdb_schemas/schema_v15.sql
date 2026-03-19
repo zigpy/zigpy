@@ -209,8 +209,8 @@ CREATE TABLE ota_query_cache_v15 (
     hardware_version INTEGER,
     last_updated REAL NOT NULL,
 
-    FOREIGN KEY(ieee)
-        REFERENCES devices_v15(ieee)
+    FOREIGN KEY(ieee, endpoint_id)
+        REFERENCES endpoints_v15(ieee, endpoint_id)
         ON DELETE CASCADE
 );
 
