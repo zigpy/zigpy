@@ -508,6 +508,97 @@ def test_db_version_is_latest_schema_version():
     assert max(zigpy.appdb_schemas.SCHEMAS.keys()) == zigpy.appdb.DB_VERSION
 
 
+async def test_migration_v14_to_v15_adds_device_scan_tables(tmp_path):
+    db_path = tmp_path / "test_v14_to_v15.db"
+
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(zigpy.appdb_schemas.SCHEMAS[14])
+        conn.commit()
+
+    app = await make_app_with_db(db_path)
+    await app.shutdown()
+
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.cursor()
+
+        cur.execute("PRAGMA user_version")
+        assert cur.fetchone() == (zigpy.appdb.DB_VERSION,)
+
+        table_columns = {}
+
+        for table in (
+            "device_scan_progress_v15",
+            "device_scan_attributes_v15",
+            "device_scan_commands_v15",
+        ):
+            cur.execute(f"PRAGMA table_info({table})")
+            table_columns[table] = {row[1] for row in cur.fetchall()}
+
+        cur.execute("PRAGMA table_info(node_descriptors_v15)")
+        node_descriptor_columns = {row[1]: row for row in cur.fetchall()}
+
+        assert {
+            "ieee",
+            "endpoint_id",
+            "cluster_type",
+            "cluster_id",
+            "manufacturer_code_scope",
+            "attr_discovery_complete",
+            "attr_discovery_next_id",
+            "attr_reads_complete",
+            "cmd_rx_complete",
+            "cmd_rx_next_id",
+            "cmd_tx_complete",
+            "cmd_tx_next_id",
+            "last_started",
+            "last_finished",
+            "last_error_code",
+            "last_error",
+            "last_success",
+        } <= table_columns["device_scan_progress_v15"]
+
+        assert {
+            "ieee",
+            "endpoint_id",
+            "cluster_type",
+            "cluster_id",
+            "manufacturer_code_scope",
+            "attr_id",
+            "attribute_name",
+            "datatype",
+            "access",
+            "discovered_at",
+            "read_complete",
+            "read_status",
+            "value",
+            "last_read",
+            "last_error_code",
+            "last_error",
+        } <= table_columns["device_scan_attributes_v15"]
+
+        assert {
+            "ieee",
+            "endpoint_id",
+            "cluster_type",
+            "cluster_id",
+            "manufacturer_code_scope",
+            "direction",
+            "command_id",
+            "command_name",
+            "command_schema",
+            "discovered_at",
+        } <= table_columns["device_scan_commands_v15"]
+
+        cur.execute("SELECT name FROM sqlite_master WHERE type='index'")
+        indexes = {row[0] for row in cur.fetchall()}
+
+        assert "idx_device_scan_progress_v15_ieee" in indexes
+        assert "idx_device_scan_attributes_v15_ieee" in indexes
+        assert "idx_device_scan_attributes_v15_pending_reads" in indexes
+        assert "idx_device_scan_commands_v15_ieee" in indexes
+        assert node_descriptor_columns["manufacturer_code"][3] == 0
+
+
 async def test_last_seen_migration_v8_to_v9(test_db):
     test_db_v8 = test_db("simple_v8.sql")
 
@@ -541,9 +632,11 @@ async def test_unknown_manufacturer_code_migration(test_db, caplog):
     await app.shutdown()
 
     # Count rows after migration
+    attr_cache_table = f"attributes_cache{zigpy.appdb.DB_V}"
+
     with sqlite3.connect(test_db_prod) as conn:
         cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM attributes_cache_v14")
+        cur.execute(f"SELECT COUNT(*) FROM {attr_cache_table}")
         after_total = cur.fetchone()[0]
 
         assert after_total == before_total
@@ -555,6 +648,7 @@ async def test_unknown_manufacturer_code_migration(test_db, caplog):
 )
 async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
     """Test that attributes on manufacturer-specific clusters get the device's manufacturer_id."""
+    attr_cache_table = f"attributes_cache{zigpy.appdb.DB_V}"
 
     # Simple quirk for Third Reality night light with is_manufacturer_specific=True.
     # The real device (f4:42:50:c3:96:14:00:00) has cached attrs 2-5 on 0xFC00 and
@@ -592,9 +686,9 @@ async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
     with sqlite3.connect(test_db_path) as conn:
         cur = conn.cursor()
         cur.execute(
-            """
+            f"""
             SELECT manufacturer_code
-            FROM attributes_cache_v14
+            FROM {attr_cache_table}
             WHERE cluster_id = 0xFC00 AND attr_id = 0x0002
             """,
         )
@@ -606,9 +700,9 @@ async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
     with sqlite3.connect(test_db_path) as conn:
         cur = conn.cursor()
         cur.execute(
-            """
+            f"""
             SELECT manufacturer_code, status
-            FROM attributes_cache_v14
+            FROM {attr_cache_table}
             WHERE ieee = ? AND cluster_id = 0xFC00 AND attr_id = 0x0004
             """,
             (third_reality_ieee,),
@@ -639,6 +733,7 @@ async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
 )
 async def test_data_migration_ambiguous_attributes(tmp_path):
     """Test data migration disambiguation when find_attributes returns multiple."""
+    attr_cache_table = f"attributes_cache{zigpy.appdb.DB_V}"
 
     class DisambiguatedCluster(CustomCluster):
         cluster_id = 0xFC01
@@ -699,7 +794,7 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
 
     with sqlite3.connect(db_path) as conn:
         conn.executemany(
-            "INSERT INTO attributes_cache_v14"
+            f"INSERT INTO {attr_cache_table}"
             " (ieee, endpoint_id, cluster_type, cluster_id,"
             "  attr_id, manufacturer_code, status, value, last_updated)"
             " VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)",
@@ -738,7 +833,7 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
     with sqlite3.connect(db_path) as conn:
         # The disambiguated unmigrated row was deleted (a row with 0xABCD already existed)
         rows = conn.execute(
-            "SELECT manufacturer_code FROM attributes_cache_v14"
+            f"SELECT manufacturer_code FROM {attr_cache_table}"
             " WHERE ieee = ? AND cluster_id = ? AND attr_id = ?",
             (str(dev.ieee), 0xFC01, 0x0010),
         ).fetchall()
@@ -746,7 +841,7 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
 
         # The ambiguous unmigrated row is still present
         rows = conn.execute(
-            "SELECT manufacturer_code FROM attributes_cache_v14"
+            f"SELECT manufacturer_code FROM {attr_cache_table}"
             " WHERE ieee = ? AND cluster_id = ? AND attr_id = ?",
             (str(dev.ieee), 0xFC02, 0x0020),
         ).fetchall()

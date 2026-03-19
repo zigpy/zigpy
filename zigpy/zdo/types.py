@@ -389,8 +389,9 @@ class NwkUpdate(t.Struct):
     ScanDuration: t.uint8_t
     ScanCount: t.uint8_t = t.StructField(requires=lambda s: s.ScanDuration <= 0x05)
     nwkUpdateId: t.uint8_t = t.StructField(  # noqa: N815
-        requires=lambda s: s.ScanDuration
-        in (CHANNEL_CHANGE_REQ, CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ)
+        requires=lambda s: (
+            s.ScanDuration in (CHANNEL_CHANGE_REQ, CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ)
+        )
     )
     nwkManagerAddr: t.NWK = t.StructField(  # noqa: N815
         requires=lambda s: s.ScanDuration == CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ

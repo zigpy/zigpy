@@ -1497,6 +1497,699 @@ async def test_attribute_cache_null_manufacturer_code_uniqueness(tmp_path):
         assert row[0] == "Model 2"
 
 
+async def _make_device_scan_db_device(tmp_path, *, ieee: str):
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev = app.add_device(ieee=t.EUI64.convert(ieee), nwk=0x1234)
+    dev.node_desc = make_node_desc(
+        logical_type=zdo_t.LogicalType.Router, manufacturer_code=0x1234
+    )
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = profiles.zha.PROFILE_ID
+    ep.device_type = profiles.zha.DeviceType.ON_OFF_SWITCH
+    ep.add_input_cluster(Basic.cluster_id)
+    ep.add_output_cluster(OnOff.cluster_id)
+
+    await app._dblistener._save_device(dev)
+    return app, dev
+
+
+async def test_build_valid_scan_scope_keys_skips_inactive_and_null_descriptors(
+    tmp_path,
+):
+    app, _ = await _make_device_scan_db_device(tmp_path, ieee="aa:bb:cc:dd:11:22:33:40")
+
+    keys = app._dblistener._build_valid_scan_scope_keys(
+        endpoints=(
+            zigpy.endpoint.DiscoveredEndpointDescriptor(
+                endpoint_id=1,
+                status=zigpy.endpoint.Status.ZDO_INIT,
+                profile_id=profiles.zha.PROFILE_ID,
+                device_type=profiles.zha.DeviceType.ON_OFF_SWITCH,
+                input_clusters=(Basic.cluster_id,),
+                output_clusters=(OnOff.cluster_id,),
+            ),
+            zigpy.endpoint.DiscoveredEndpointDescriptor(
+                endpoint_id=2,
+                status=zigpy.endpoint.Status.ENDPOINT_INACTIVE,
+                profile_id=profiles.zha.PROFILE_ID,
+                device_type=profiles.zha.DeviceType.ON_OFF_SWITCH,
+                input_clusters=(Basic.cluster_id,),
+                output_clusters=(OnOff.cluster_id,),
+            ),
+            zigpy.endpoint.DiscoveredEndpointDescriptor(
+                endpoint_id=3,
+                status=zigpy.endpoint.Status.ZDO_INIT,
+                profile_id=None,
+                device_type=profiles.zha.DeviceType.ON_OFF_SWITCH,
+                input_clusters=(Basic.cluster_id,),
+                output_clusters=(OnOff.cluster_id,),
+            ),
+            zigpy.endpoint.DiscoveredEndpointDescriptor(
+                endpoint_id=4,
+                status=zigpy.endpoint.Status.ZDO_INIT,
+                profile_id=profiles.zha.PROFILE_ID,
+                device_type=None,
+                input_clusters=(Basic.cluster_id,),
+                output_clusters=(OnOff.cluster_id,),
+            ),
+        ),
+        manufacturer_code=0x1234,
+    )
+
+    assert keys == {
+        (1, int(ClusterType.Server), Basic.cluster_id, None),
+        (1, int(ClusterType.Server), Basic.cluster_id, 0x1234),
+        (1, int(ClusterType.Client), OnOff.cluster_id, None),
+        (1, int(ClusterType.Client), OnOff.cluster_id, 0x1234),
+    }
+
+    await app.shutdown()
+
+
+async def test_replace_device_raw_descriptors_deletes_all_endpoints_when_scan_finds_none(
+    tmp_path,
+):
+    app, dev = await _make_device_scan_db_device(
+        tmp_path, ieee="aa:bb:cc:dd:11:22:33:41"
+    )
+
+    await app._dblistener.replace_device_raw_descriptors(
+        device=dev,
+        node_descriptor=dev.node_desc,
+        endpoints=(),
+    )
+
+    rows = await app._dblistener.get_raw_topology_rows(dev.ieee)
+    assert rows.endpoints == []
+    assert rows.clusters == []
+
+    await app.shutdown()
+
+
+async def test_replace_device_raw_descriptors_rolls_back_on_scope_cleanup_failure(
+    tmp_path,
+):
+    app, dev = await _make_device_scan_db_device(
+        tmp_path, ieee="aa:bb:cc:dd:11:22:33:42"
+    )
+    original_rollback = app._dblistener._db.rollback
+
+    with (
+        patch.object(
+            app._dblistener,
+            "_clear_invalid_device_scan_scope_rows",
+            new=AsyncMock(side_effect=RuntimeError("boom")),
+        ),
+        patch.object(
+            app._dblistener._db,
+            "rollback",
+            new=AsyncMock(wraps=original_rollback),
+        ) as rollback,
+    ):
+        with pytest.raises(RuntimeError, match="boom"):
+            await app._dblistener.replace_device_raw_descriptors(
+                device=dev,
+                node_descriptor=dev.node_desc,
+                endpoints=(),
+            )
+
+    rows = await app._dblistener.get_raw_topology_rows(dev.ieee)
+    assert len(rows.endpoints) == 1
+    assert len(rows.clusters) == 2
+    rollback.assert_awaited_once()
+
+    await app.shutdown()
+
+
+async def test_device_scan_rows_persist_and_clear(tmp_path):
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    ieee = t.EUI64.convert("aa:bb:cc:dd:11:22:33:44")
+    dev = app.add_device(ieee=ieee, nwk=0x1234)
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = profiles.zha.PROFILE_ID
+    ep.device_type = profiles.zha.DeviceType.ON_OFF_SWITCH
+    ep.add_input_cluster(Basic.cluster_id)
+
+    await app._dblistener._save_device(dev)
+
+    await app._dblistener.upsert_device_scan_progress(
+        ieee=ieee,
+        endpoint_id=1,
+        cluster_type=ClusterType.Server,
+        cluster_id=Basic.cluster_id,
+        manufacturer_code_scope=None,
+        attr_discovery_complete=False,
+        attr_discovery_next_id=0x0020,
+        attr_reads_complete=False,
+        cmd_rx_complete=False,
+        cmd_rx_next_id=0,
+        cmd_tx_complete=False,
+        cmd_tx_next_id=0,
+        last_started=1.0,
+        last_finished=None,
+        last_error_code="transport_failure",
+        last_error="timeout",
+        last_success=None,
+    )
+    await app._dblistener.upsert_device_scan_attribute(
+        ieee=ieee,
+        endpoint_id=1,
+        cluster_type=ClusterType.Server,
+        cluster_id=Basic.cluster_id,
+        manufacturer_code_scope=None,
+        attr_id=0x0004,
+        attribute_name="manufacturer",
+        datatype=zigpy.zcl.foundation.DataTypeId.string,
+        access=0x01,
+        discovered_at=2.0,
+        read_complete=True,
+        read_status="success",
+        value=b"\x06Vendor",
+        last_read=3.0,
+        last_error_code=None,
+        last_error=None,
+    )
+    await app._dblistener.upsert_device_scan_attribute(
+        ieee=ieee,
+        endpoint_id=1,
+        cluster_type=ClusterType.Server,
+        cluster_id=Basic.cluster_id,
+        manufacturer_code_scope=0x1234,
+        attr_id=0x0004,
+        attribute_name="manufacturer",
+        datatype=zigpy.zcl.foundation.DataTypeId.string,
+        access=0x01,
+        discovered_at=2.5,
+        read_complete=False,
+        read_status="transport_failure",
+        value=None,
+        last_read=None,
+        last_error_code="transport_failure",
+        last_error="radio timeout",
+    )
+    await app._dblistener.upsert_device_scan_command(
+        ieee=ieee,
+        endpoint_id=1,
+        cluster_type=ClusterType.Server,
+        cluster_id=Basic.cluster_id,
+        manufacturer_code_scope=None,
+        direction="received",
+        command_id=0x00,
+        command_name="reset_to_factory_defaults",
+        command_schema="()",
+        discovered_at=4.0,
+    )
+
+    rows = await app._dblistener.get_device_scan_rows(ieee)
+    progress_rows = await app._dblistener.get_device_scan_progress_rows(ieee)
+
+    assert len(rows.progress) == 1
+    assert rows.progress[0].last_error_code == "transport_failure"
+    assert rows.progress[0].last_error == "timeout"
+    assert progress_rows == rows.progress
+
+    assert len(rows.attributes) == 2
+    assert {row.manufacturer_code_scope for row in rows.attributes} == {None, 0x1234}
+    assert rows.attributes[0].datatype == zigpy.zcl.foundation.DataTypeId.string
+    assert any(row.value == b"\x06Vendor" for row in rows.attributes)
+
+    assert len(rows.commands) == 1
+    assert rows.commands[0].direction == "received"
+
+    await app._dblistener.clear_device_scan_data(ieee)
+
+    rows = await app._dblistener.get_device_scan_rows(ieee)
+    assert rows.progress == []
+    assert rows.attributes == []
+    assert rows.commands == []
+
+    await app.shutdown()
+
+
+async def test_device_scan_command_discovery_progress_preserves_prior_error_until_scope_complete(
+    tmp_path,
+):
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    ieee = t.EUI64.convert("aa:bb:cc:dd:11:22:33:45")
+    dev = app.add_device(ieee=ieee, nwk=0x1234)
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = profiles.zha.PROFILE_ID
+    ep.device_type = profiles.zha.DeviceType.ON_OFF_SWITCH
+    ep.add_input_cluster(Basic.cluster_id)
+
+    await app._dblistener._save_device(dev)
+    await app._dblistener.upsert_device_scan_progress(
+        ieee=ieee,
+        endpoint_id=1,
+        cluster_type=ClusterType.Server,
+        cluster_id=Basic.cluster_id,
+        manufacturer_code_scope=None,
+        attr_discovery_complete=True,
+        attr_discovery_next_id=0x0020,
+        attr_reads_complete=False,
+        cmd_rx_complete=False,
+        cmd_rx_next_id=0,
+        cmd_tx_complete=False,
+        cmd_tx_next_id=0,
+        last_started=1.0,
+        last_finished=None,
+        last_error_code="transport_failure",
+        last_error="timeout",
+        last_success=None,
+    )
+
+    await app._dblistener.persist_device_scan_command_discovery_page(
+        ieee=ieee,
+        endpoint_id=1,
+        cluster_type=ClusterType.Server,
+        cluster_id=Basic.cluster_id,
+        manufacturer_code_scope=None,
+        direction="received",
+        commands=[(0x01, "reset", "()")],
+        next_command_id=0x02,
+        complete=True,
+    )
+    await app._dblistener.persist_device_scan_command_discovery_page(
+        ieee=ieee,
+        endpoint_id=1,
+        cluster_type=ClusterType.Server,
+        cluster_id=Basic.cluster_id,
+        manufacturer_code_scope=None,
+        direction="generated",
+        commands=[(0x02, "response", "()")],
+        next_command_id=0x03,
+        complete=True,
+    )
+
+    rows = await app._dblistener.get_device_scan_rows(ieee)
+
+    assert len(rows.progress) == 1
+    assert rows.progress[0].cmd_rx_complete is True
+    assert rows.progress[0].cmd_tx_complete is True
+    assert rows.progress[0].attr_reads_complete is False
+    assert rows.progress[0].last_error_code == "transport_failure"
+    assert rows.progress[0].last_error == "timeout"
+
+    await app.shutdown()
+
+
+async def test_device_scan_final_command_page_clears_stale_scope_error(
+    tmp_path,
+):
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    ieee = t.EUI64.convert("aa:bb:cc:dd:11:22:33:46")
+    dev = app.add_device(ieee=ieee, nwk=0x1234)
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = profiles.zha.PROFILE_ID
+    ep.device_type = profiles.zha.DeviceType.ON_OFF_SWITCH
+    ep.add_input_cluster(Basic.cluster_id)
+
+    await app._dblistener._save_device(dev)
+    await app._dblistener.upsert_device_scan_progress(
+        ieee=ieee,
+        endpoint_id=1,
+        cluster_type=ClusterType.Server,
+        cluster_id=Basic.cluster_id,
+        manufacturer_code_scope=None,
+        attr_discovery_complete=True,
+        attr_discovery_next_id=0x0020,
+        attr_reads_complete=True,
+        cmd_rx_complete=True,
+        cmd_rx_next_id=0x05,
+        cmd_tx_complete=False,
+        cmd_tx_next_id=0,
+        last_started=1.0,
+        last_finished=None,
+        last_error_code="transport_failure",
+        last_error="timeout",
+        last_success=None,
+    )
+
+    await app._dblistener.persist_device_scan_command_discovery_page(
+        ieee=ieee,
+        endpoint_id=1,
+        cluster_type=ClusterType.Server,
+        cluster_id=Basic.cluster_id,
+        manufacturer_code_scope=None,
+        direction="generated",
+        commands=[(0x02, "response", "()")],
+        next_command_id=0x03,
+        complete=True,
+    )
+
+    rows = await app._dblistener.get_device_scan_rows(ieee)
+
+    assert len(rows.progress) == 1
+    assert rows.progress[0].cmd_rx_complete is True
+    assert rows.progress[0].cmd_tx_complete is True
+    assert rows.progress[0].attr_reads_complete is True
+    assert rows.progress[0].last_error_code is None
+    assert rows.progress[0].last_error is None
+
+    await app.shutdown()
+
+
+async def test_persist_device_scan_attribute_discovery_page_rolls_back_on_commit_failure(
+    tmp_path,
+):
+    app, dev = await _make_device_scan_db_device(
+        tmp_path, ieee="aa:bb:cc:dd:11:22:33:47"
+    )
+    original_rollback = app._dblistener._db.rollback
+
+    with (
+        patch.object(
+            app._dblistener._db,
+            "commit",
+            new=AsyncMock(side_effect=RuntimeError("boom")),
+        ),
+        patch.object(
+            app._dblistener._db,
+            "rollback",
+            new=AsyncMock(wraps=original_rollback),
+        ) as rollback,
+    ):
+        with pytest.raises(RuntimeError, match="boom"):
+            await app._dblistener.persist_device_scan_attribute_discovery_page(
+                ieee=dev.ieee,
+                endpoint_id=1,
+                cluster_type=ClusterType.Server,
+                cluster_id=Basic.cluster_id,
+                manufacturer_code_scope=None,
+                attributes=[
+                    (
+                        0x0000,
+                        "zcl_version",
+                        int(zigpy.zcl.foundation.DataTypeId.uint8),
+                        None,
+                    )
+                ],
+                next_attr_id=0x0001,
+                complete=True,
+            )
+
+    rows = await app._dblistener.get_device_scan_rows(dev.ieee)
+    assert rows.attributes == []
+    rollback.assert_awaited_once()
+
+    await app.shutdown()
+
+
+async def test_persist_device_scan_attribute_discovery_page_reset_scope_replaces_stale_scope_rows(
+    tmp_path,
+):
+    app, dev = await _make_device_scan_db_device(
+        tmp_path, ieee="aa:bb:cc:dd:11:22:33:49"
+    )
+
+    await app._dblistener.upsert_device_scan_progress(
+        ieee=dev.ieee,
+        endpoint_id=1,
+        cluster_type=ClusterType.Server,
+        cluster_id=Basic.cluster_id,
+        manufacturer_code_scope=None,
+        attr_discovery_complete=True,
+        attr_discovery_next_id=5,
+        attr_reads_complete=True,
+        cmd_rx_complete=True,
+        cmd_rx_next_id=2,
+        cmd_tx_complete=True,
+        cmd_tx_next_id=3,
+        last_started=1.0,
+        last_finished=2.0,
+        last_error_code="transport_failure",
+        last_error="stale error",
+        last_success=2.0,
+    )
+    await app._dblistener.upsert_device_scan_attribute(
+        ieee=dev.ieee,
+        endpoint_id=1,
+        cluster_type=ClusterType.Server,
+        cluster_id=Basic.cluster_id,
+        manufacturer_code_scope=None,
+        attr_id=0x0000,
+        attribute_name="zcl_version",
+        datatype=int(zigpy.zcl.foundation.DataTypeId.uint8),
+        access=int(zigpy.zcl.foundation.AttributeAccessControl.READ),
+        discovered_at=1.0,
+        read_complete=True,
+        read_status="success",
+        value=b"\x04",
+        last_read=1.5,
+        last_error_code=None,
+        last_error=None,
+    )
+    await app._dblistener.upsert_device_scan_attribute(
+        ieee=dev.ieee,
+        endpoint_id=1,
+        cluster_type=ClusterType.Server,
+        cluster_id=Basic.cluster_id,
+        manufacturer_code_scope=None,
+        attr_id=0x0001,
+        attribute_name="app_version",
+        datatype=int(zigpy.zcl.foundation.DataTypeId.uint8),
+        access=int(zigpy.zcl.foundation.AttributeAccessControl.READ),
+        discovered_at=1.0,
+        read_complete=True,
+        read_status="success",
+        value=b"\x05",
+        last_read=1.5,
+        last_error_code=None,
+        last_error=None,
+    )
+    await app._dblistener.upsert_device_scan_command(
+        ieee=dev.ieee,
+        endpoint_id=1,
+        cluster_type=ClusterType.Server,
+        cluster_id=Basic.cluster_id,
+        manufacturer_code_scope=None,
+        direction="received",
+        command_id=1,
+        command_name="reset_to_factory_defaults",
+        command_schema=None,
+        discovered_at=1.0,
+    )
+
+    await app._dblistener.persist_device_scan_attribute_discovery_page(
+        ieee=dev.ieee,
+        endpoint_id=1,
+        cluster_type=ClusterType.Server,
+        cluster_id=Basic.cluster_id,
+        manufacturer_code_scope=None,
+        attributes=[
+            (
+                0x0000,
+                "zcl_version",
+                int(zigpy.zcl.foundation.DataTypeId.uint8),
+                None,
+            )
+        ],
+        next_attr_id=1,
+        complete=True,
+        reset_scope=True,
+    )
+
+    rows = await app._dblistener.get_device_scan_rows(dev.ieee)
+
+    assert [row.attr_id for row in rows.attributes] == [0x0000]
+    assert rows.attributes[0].read_complete is False
+    assert rows.attributes[0].read_status is None
+    assert rows.attributes[0].value is None
+    assert rows.attributes[0].last_read is None
+    assert rows.attributes[0].last_error_code is None
+    assert rows.attributes[0].last_error is None
+    assert rows.commands == []
+    assert len(rows.progress) == 1
+    assert rows.progress[0].attr_discovery_complete is True
+    assert rows.progress[0].attr_discovery_next_id == 1
+    assert rows.progress[0].attr_reads_complete is False
+    assert rows.progress[0].cmd_rx_complete is False
+    assert rows.progress[0].cmd_rx_next_id == 0
+    assert rows.progress[0].cmd_tx_complete is False
+    assert rows.progress[0].cmd_tx_next_id == 0
+    assert rows.progress[0].last_error_code is None
+    assert rows.progress[0].last_error is None
+
+    await app.shutdown()
+
+
+async def test_persist_device_scan_attribute_read_results_returns_early_for_empty_results(
+    tmp_path,
+):
+    app, dev = await _make_device_scan_db_device(
+        tmp_path, ieee="aa:bb:cc:dd:11:22:33:48"
+    )
+
+    with patch.object(
+        app._dblistener._db, "executemany", new=AsyncMock()
+    ) as executemany:
+        await app._dblistener.persist_device_scan_attribute_read_results(
+            ieee=dev.ieee,
+            endpoint_id=1,
+            cluster_type=ClusterType.Server,
+            cluster_id=Basic.cluster_id,
+            manufacturer_code_scope=None,
+            results=[],
+        )
+
+    executemany.assert_not_awaited()
+
+    await app.shutdown()
+
+
+async def test_persist_device_scan_attribute_read_results_rolls_back_on_commit_failure(
+    tmp_path,
+):
+    app, dev = await _make_device_scan_db_device(
+        tmp_path, ieee="aa:bb:cc:dd:11:22:33:49"
+    )
+    original_rollback = app._dblistener._db.rollback
+
+    await app._dblistener.upsert_device_scan_attribute(
+        ieee=dev.ieee,
+        endpoint_id=1,
+        cluster_type=ClusterType.Server,
+        cluster_id=Basic.cluster_id,
+        manufacturer_code_scope=None,
+        attr_id=0x0000,
+        attribute_name="zcl_version",
+        datatype=zigpy.zcl.foundation.DataTypeId.uint8,
+        access=None,
+        discovered_at=1.0,
+        read_complete=False,
+        read_status=None,
+        value=None,
+        last_read=None,
+        last_error_code=None,
+        last_error=None,
+    )
+
+    with (
+        patch.object(
+            app._dblistener._db,
+            "commit",
+            new=AsyncMock(side_effect=RuntimeError("boom")),
+        ),
+        patch.object(
+            app._dblistener._db,
+            "rollback",
+            new=AsyncMock(wraps=original_rollback),
+        ) as rollback,
+    ):
+        with pytest.raises(RuntimeError, match="boom"):
+            await app._dblistener.persist_device_scan_attribute_read_results(
+                ieee=dev.ieee,
+                endpoint_id=1,
+                cluster_type=ClusterType.Server,
+                cluster_id=Basic.cluster_id,
+                manufacturer_code_scope=None,
+                results=[
+                    (
+                        0x0000,
+                        int(zigpy.zcl.foundation.DataTypeId.uint8),
+                        True,
+                        "success",
+                        b"\x20\x01",
+                        2.0,
+                        None,
+                        None,
+                    )
+                ],
+            )
+
+    rows = await app._dblistener.get_device_scan_rows(dev.ieee)
+    assert len(rows.attributes) == 1
+    assert rows.attributes[0].read_complete is False
+    rollback.assert_awaited_once()
+
+    await app.shutdown()
+
+
+async def test_persist_device_scan_command_discovery_page_rolls_back_on_commit_failure(
+    tmp_path,
+):
+    app, dev = await _make_device_scan_db_device(
+        tmp_path, ieee="aa:bb:cc:dd:11:22:33:4a"
+    )
+    original_rollback = app._dblistener._db.rollback
+
+    with (
+        patch.object(
+            app._dblistener._db,
+            "commit",
+            new=AsyncMock(side_effect=RuntimeError("boom")),
+        ),
+        patch.object(
+            app._dblistener._db,
+            "rollback",
+            new=AsyncMock(wraps=original_rollback),
+        ) as rollback,
+    ):
+        with pytest.raises(RuntimeError, match="boom"):
+            await app._dblistener.persist_device_scan_command_discovery_page(
+                ieee=dev.ieee,
+                endpoint_id=1,
+                cluster_type=ClusterType.Server,
+                cluster_id=Basic.cluster_id,
+                manufacturer_code_scope=None,
+                direction="received",
+                commands=[(0x00, "reset_to_factory_defaults", "()")],
+                next_command_id=0x01,
+                complete=True,
+            )
+
+    rows = await app._dblistener.get_device_scan_rows(dev.ieee)
+    assert rows.commands == []
+    rollback.assert_awaited_once()
+
+    await app.shutdown()
+
+
+async def test_raw_topology_rows_preserve_null_manufacturer_code(tmp_path):
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    ieee = t.EUI64.convert("aa:bb:cc:dd:44:55:66:77")
+    dev = app.add_device(ieee=ieee, nwk=0x2345)
+    dev.node_desc = make_node_desc(
+        logical_type=zdo_t.LogicalType.Router, manufacturer_code=None
+    )
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = profiles.zha.PROFILE_ID
+    ep.device_type = profiles.zha.DeviceType.ON_OFF_SWITCH
+    ep.add_input_cluster(Basic.cluster_id)
+
+    await app._dblistener._save_device(dev)
+
+    topology = await app._dblistener.get_raw_topology_rows(ieee)
+
+    assert topology.node_descriptor is not None
+    assert topology.node_descriptor.manufacturer_code is None
+
+    await app.shutdown()
+
+
 @patch("zigpy.quirks.DEVICE_REGISTRY", new=DeviceRegistry())
 async def test_device_signature_ignores_quirks(tmp_path) -> None:
     """Test that `device.original_signature` is populated before quirks modify the device."""
