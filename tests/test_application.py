@@ -12,6 +12,7 @@ import pytest
 import zigpy.application
 import zigpy.config as conf
 from zigpy.datastructures import RequestLimiter
+import zigpy.device
 from zigpy.exceptions import (
     DeliveryError,
     NetworkNotFormed,
