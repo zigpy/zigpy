@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import pathlib
+import hashlib
 import typing
 from unittest.mock import patch
 
 import aiohttp
 import attrs
+import pytest
 
 from tests.ota.test_ota_providers import SelfContainedOtaImageMetadata, make_device
 from zigpy import config
@@ -15,6 +16,47 @@ import zigpy.ota
 from zigpy.ota.image import FieldControl
 from zigpy.ota.providers import BaseOtaImageMetadata, BaseOtaProvider
 from zigpy.zcl.clusters.general import Ota
+
+
+@pytest.fixture
+def query_cmd():
+    """Common query command for OTA tests."""
+    return Ota.ServerCommandDefs.query_next_image.schema(
+        field_control=FieldControl.HARDWARE_VERSIONS_PRESENT,
+        manufacturer_code=0x1234,
+        image_type=0xABCD,
+        current_file_version=1,
+        hardware_version=1,
+    )
+
+
+@pytest.fixture
+def ota_hdr(query_cmd):
+    """Common OTA image header for tests (can be customized with .replace())."""
+    return zigpy.ota.image.OTAImageHeader(
+        upgrade_file_id=zigpy.ota.image.OTAImageHeader.MAGIC_VALUE,
+        file_version=query_cmd.current_file_version + 1,
+        image_type=query_cmd.image_type,
+        manufacturer_id=query_cmd.manufacturer_code,
+        header_version=256,
+        header_length=56,
+        field_control=0,
+        stack_version=2,
+        header_string="This is a test header!",
+        image_size=56 + 2 + 4 + 8,
+    )
+
+
+@pytest.fixture
+def ota_subelements():
+    """Common OTA subelements for tests."""
+    return [zigpy.ota.image.SubElement(tag_id=0x0000, data=b"fw_image")]
+
+
+@pytest.fixture
+def ota_image(ota_hdr, ota_subelements):
+    """Common OTA image for tests."""
+    return zigpy.ota.image.OTAImage(header=ota_hdr, subelements=ota_subelements)
 
 
 class SelfContainedProvider(BaseOtaProvider):
@@ -53,31 +95,8 @@ class BrokenOtaImageMetadata(BaseOtaImageMetadata):
         raise RuntimeError("Some problem")
 
 
-async def test_ota_matching_priority(tmp_path: pathlib.Path) -> None:
+async def test_ota_matching_priority(query_cmd, ota_hdr, ota_subelements) -> None:
     device = make_device(model="device model", manufacturer_id=0x1234)
-
-    query_cmd = Ota.ServerCommandDefs.query_next_image.schema(
-        field_control=FieldControl.HARDWARE_VERSIONS_PRESENT,
-        manufacturer_code=0x1234,
-        image_type=0xABCD,
-        current_file_version=1,
-        hardware_version=1,
-    )
-
-    ota_hdr = zigpy.ota.image.OTAImageHeader(
-        upgrade_file_id=zigpy.ota.image.OTAImageHeader.MAGIC_VALUE,
-        file_version=query_cmd.current_file_version + 1,
-        image_type=query_cmd.image_type,
-        manufacturer_id=query_cmd.manufacturer_code,
-        header_version=256,
-        header_length=56,
-        field_control=0,
-        stack_version=2,
-        header_string="This is a test header!",
-        image_size=56 + 2 + 4 + 8,
-    )
-
-    ota_subelements = [zigpy.ota.image.SubElement(tag_id=0x0000, data=b"fw_image")]
 
     index = [
         # Manufacturer ID
@@ -159,29 +178,11 @@ async def test_ota_matching_priority(tmp_path: pathlib.Path) -> None:
     assert images2 == images1
 
 
-async def test_ota_matching_ambiguous_error() -> None:
+async def test_ota_matching_ambiguous_error(query_cmd, ota_hdr) -> None:
     device = make_device(model="device model", manufacturer_id=0x1234)
 
-    query_cmd = Ota.ServerCommandDefs.query_next_image.schema(
-        field_control=FieldControl.HARDWARE_VERSIONS_PRESENT,
-        manufacturer_code=0x1234,
-        image_type=0xABCD,
-        current_file_version=1,
-        hardware_version=1,
-    )
-
-    ota_hdr = zigpy.ota.image.OTAImageHeader(
-        upgrade_file_id=zigpy.ota.image.OTAImageHeader.MAGIC_VALUE,
-        file_version=query_cmd.current_file_version + 1,
-        image_type=query_cmd.image_type,
-        manufacturer_id=query_cmd.manufacturer_code,
-        header_version=256,
-        header_length=56,
-        field_control=0,
-        stack_version=2,
-        header_string="This is a test header!",
-        image_size=56 + 2 + 4 + 10,
-    )
+    # Adjust header size for different firmware content
+    ota_hdr = ota_hdr.replace(image_size=56 + 2 + 4 + 10)
 
     index = [
         SelfContainedOtaImageMetadata(
@@ -214,29 +215,13 @@ async def test_ota_matching_ambiguous_error() -> None:
     assert not images.upgrades
 
 
-async def test_ota_matching_ambiguous_specificity_tie_breaker() -> None:
+async def test_ota_matching_ambiguous_specificity_tie_breaker(
+    query_cmd, ota_hdr
+) -> None:
     device = make_device(model="device model", manufacturer_id=0x1234)
 
-    query_cmd = Ota.ServerCommandDefs.query_next_image.schema(
-        field_control=FieldControl.HARDWARE_VERSIONS_PRESENT,
-        manufacturer_code=0x1234,
-        image_type=0xABCD,
-        current_file_version=1,
-        hardware_version=1,
-    )
-
-    ota_hdr = zigpy.ota.image.OTAImageHeader(
-        upgrade_file_id=zigpy.ota.image.OTAImageHeader.MAGIC_VALUE,
-        file_version=query_cmd.current_file_version + 1,
-        image_type=query_cmd.image_type,
-        manufacturer_id=query_cmd.manufacturer_code,
-        header_version=256,
-        header_length=56,
-        field_control=0,
-        stack_version=2,
-        header_string="This is a test header!",
-        image_size=56 + 2 + 4 + 10,
-    )
+    # Adjust header size for different firmware content
+    ota_hdr = ota_hdr.replace(image_size=56 + 2 + 4 + 10)
 
     index = [
         SelfContainedOtaImageMetadata(
@@ -276,34 +261,18 @@ async def test_ota_matching_ambiguous_specificity_tie_breaker() -> None:
     )
 
 
-async def test_ota_concurrent_fetching() -> None:
+async def test_ota_concurrent_fetching(query_cmd, ota_hdr) -> None:
     device = make_device(model="device model", manufacturer_id=0x1234)
 
-    query_cmd = Ota.ServerCommandDefs.query_next_image.schema(
-        field_control=FieldControl.HARDWARE_VERSIONS_PRESENT,
-        manufacturer_code=0x1234,
-        image_type=0xABCD,
-        current_file_version=1,
-        hardware_version=1,
-    )
+    # Adjust header size for different firmware content
+    ota_hdr = ota_hdr.replace(image_size=56 + 2 + 4 + 10)
 
     index = [
         SelfContainedOtaImageMetadata(
             file_version=query_cmd.current_file_version + 1,
             manufacturer_id=query_cmd.manufacturer_code,
             test_data=zigpy.ota.image.OTAImage(
-                header=zigpy.ota.image.OTAImageHeader(
-                    upgrade_file_id=zigpy.ota.image.OTAImageHeader.MAGIC_VALUE,
-                    file_version=query_cmd.current_file_version + 1,
-                    image_type=query_cmd.image_type,
-                    manufacturer_id=query_cmd.manufacturer_code,
-                    header_version=256,
-                    header_length=56,
-                    field_control=0,
-                    stack_version=2,
-                    header_string="This is a test header!",
-                    image_size=56 + 2 + 4 + 10,
-                ),
+                header=ota_hdr,
                 subelements=[
                     zigpy.ota.image.SubElement(tag_id=0x0000, data=b"Firmware 1")
                 ],
@@ -329,44 +298,25 @@ async def test_ota_concurrent_fetching() -> None:
     assert images1 == images2
 
 
-async def test_ota_matching_hardware_version_changes_after_download() -> None:
+async def test_ota_matching_hardware_version_changes_after_download(
+    query_cmd, ota_hdr
+) -> None:
     device = make_device(model="device model", manufacturer_id=0x1234)
 
-    query_cmd = Ota.ServerCommandDefs.query_next_image.schema(
-        field_control=FieldControl.HARDWARE_VERSIONS_PRESENT,
-        manufacturer_code=0x1234,
-        image_type=0xABCD,
-        current_file_version=1,
-        hardware_version=1,
-    )
-
-    ota_hdr_01 = zigpy.ota.image.OTAImageHeader(
-        upgrade_file_id=zigpy.ota.image.OTAImageHeader.MAGIC_VALUE,
-        file_version=query_cmd.current_file_version + 1,
-        image_type=query_cmd.image_type,
-        manufacturer_id=query_cmd.manufacturer_code,
-        header_version=256,
+    # Create headers with hardware version constraints
+    ota_hdr_01 = ota_hdr.replace(
         header_length=60,
         field_control=FieldControl.HARDWARE_VERSIONS_PRESENT,
         minimum_hardware_version=0,
         maximum_hardware_version=1,
-        stack_version=2,
-        header_string="This is a test header!",
         image_size=56 + 2 + 4 + 4 + 10,
     )
 
-    ota_hdr_27 = zigpy.ota.image.OTAImageHeader(
-        upgrade_file_id=zigpy.ota.image.OTAImageHeader.MAGIC_VALUE,
-        file_version=query_cmd.current_file_version + 1,
-        image_type=query_cmd.image_type,
-        manufacturer_id=query_cmd.manufacturer_code,
-        header_version=256,
+    ota_hdr_27 = ota_hdr.replace(
         header_length=60,
         field_control=FieldControl.HARDWARE_VERSIONS_PRESENT,
         minimum_hardware_version=2,
         maximum_hardware_version=7,
-        stack_version=2,
-        header_string="This is a test header!",
         image_size=56 + 2 + 4 + 4 + 10,
     )
 
@@ -404,3 +354,117 @@ async def test_ota_matching_hardware_version_changes_after_download() -> None:
             firmware=zigpy.ota.image.OTAImage.deserialize(index[0].test_data)[0],
         ),
     )
+
+
+class TrustedSelfContainedProvider(SelfContainedProvider):
+    """A trusted provider that defers image downloads."""
+
+    TRUSTED = True
+
+
+async def test_ota_trusted_provider_deferred_download(query_cmd, ota_image) -> None:
+    """Trusted providers should not download images proactively."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+    test_data = ota_image.serialize()
+
+    index = [
+        SelfContainedOtaImageMetadata(
+            file_version=query_cmd.current_file_version + 1,
+            manufacturer_id=query_cmd.manufacturer_code,
+            checksum="sha3-256:" + hashlib.sha3_256(test_data).hexdigest(),
+            file_size=len(test_data),
+            test_data=test_data,
+        ),
+    ]
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    ota.register_provider(TrustedSelfContainedProvider(index))
+
+    images = await ota.get_ota_images(device, query_cmd)
+
+    # Image should be returned but firmware should NOT be downloaded
+    assert len(images.upgrades) == 1
+    assert images.upgrades[0].firmware is None
+    assert images.upgrades[0].metadata.trusted is True
+
+
+async def test_ota_untrusted_provider_proactive_download(query_cmd, ota_image) -> None:
+    """Untrusted providers should download images proactively."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    index = [
+        SelfContainedOtaImageMetadata(
+            file_version=query_cmd.current_file_version + 1,
+            manufacturer_id=query_cmd.manufacturer_code,
+            test_data=ota_image.serialize(),
+        ),
+    ]
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    ota.register_provider(SelfContainedProvider(index))  # Untrusted (default)
+
+    images = await ota.get_ota_images(device, query_cmd)
+
+    # Image should be returned WITH firmware downloaded
+    assert len(images.upgrades) == 1
+    assert images.upgrades[0].firmware is not None
+    assert images.upgrades[0].metadata.trusted is False
+
+
+async def test_ota_trusted_provider_specificity_boost(query_cmd, ota_image) -> None:
+    """Trusted provider images should have higher specificity."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+    test_data = ota_image.serialize()
+
+    # Same image from trusted and untrusted providers
+    trusted_meta = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 1,
+        manufacturer_id=query_cmd.manufacturer_code,
+        checksum="sha3-256:" + hashlib.sha3_256(test_data).hexdigest(),
+        file_size=len(test_data),
+        test_data=test_data,
+    )
+
+    untrusted_meta = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 1,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=test_data,
+    )
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    # Register untrusted first, then trusted to ensure ordering is due to specificity
+    ota.register_provider(SelfContainedProvider([untrusted_meta]))
+    ota.register_provider(TrustedSelfContainedProvider([trusted_meta]))
+
+    images = await ota.get_ota_images(device, query_cmd)
+
+    # Both images should be present, but trusted one should be first (higher specificity)
+    assert len(images.upgrades) == 2
+    assert images.upgrades[0].metadata.trusted is True
+    assert images.upgrades[1].metadata.trusted is False
+
+
+@pytest.mark.parametrize("checksum", [None, "sha256:abc123"])
+async def test_ota_trusted_provider_missing_sha3_256_checksum(
+    query_cmd, checksum, caplog
+) -> None:
+    """Trusted images without SHA3-256 checksum should be removed with warning."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    index = [
+        SelfContainedOtaImageMetadata(
+            file_version=query_cmd.current_file_version + 1,
+            manufacturer_id=query_cmd.manufacturer_code,
+            checksum=checksum,
+            test_data=b"",  # Won't be fetched anyway
+        ),
+    ]
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    ota.register_provider(TrustedSelfContainedProvider(index))
+
+    images = await ota.get_ota_images(device, query_cmd)
+
+    # Image should be removed due to missing SHA3-256 checksum
+    assert len(images.upgrades) == 0
+    assert "does not have SHA3-256 checksum" in caplog.text

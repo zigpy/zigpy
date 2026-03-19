@@ -672,7 +672,7 @@ async def test_ota_fetch_size_and_checksum_validation(
 
 async def test_zigpy_ota_provider():
     version_json = (FILES_DIR / "zigpy_ota_version_stable.json").read_text()
-    version_obj = json.loads(version_json)  # {"schemas": {"zigpy_v1": {...}}} format
+    version_obj = json.loads(version_json)  # {"schemas": {"zigpy_v2": {...}}} format
     index_json = (FILES_DIR / "zigpy_ota_index.json").read_text()
     index_obj = json.loads(index_json)  # {"firmwares": [...]} format
 
@@ -687,7 +687,7 @@ async def test_zigpy_ota_provider():
     version_url = (
         "https://raw.githubusercontent.com/zigpy/zigpy-ota/release/version/stable.json"
     )
-    index_url = version_obj["schemas"]["zigpy_v1"]["url"]
+    index_url = version_obj["schemas"]["zigpy_v2"]["url"]
 
     with aioresponses() as mock_http:
         mock_http.get(version_url, body=version_json, content_type="application/json")
@@ -758,7 +758,7 @@ async def test_zigpy_ota_provider_channel(
         url
         or f"https://raw.githubusercontent.com/zigpy/zigpy-ota/release/version/{channel}.json"
     )
-    index_url = version_obj["schemas"]["zigpy_v1"]["url"]
+    index_url = version_obj["schemas"]["zigpy_v2"]["url"]
 
     with aioresponses() as mock_http:
         mock_http.get(version_url, body=version_json, content_type="application/json")

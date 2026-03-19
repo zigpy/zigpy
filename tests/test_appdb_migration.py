@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 import logging
 import pathlib
+import sqlite3
 from sqlite3.dump import _iterdump as iterdump
 
 from aiosqlite.context import contextmanager
@@ -8,9 +9,8 @@ import pytest
 
 from tests.async_mock import AsyncMock, MagicMock, patch
 from tests.conftest import app, make_node_desc  # noqa: F401
-from tests.test_appdb import auto_kill_aiosqlite, make_app_with_db  # noqa: F401
+from tests.test_appdb import make_app_with_db
 import zigpy.appdb
-from zigpy.appdb import sqlite3
 import zigpy.appdb_schemas
 import zigpy.endpoint
 from zigpy.profiles import zha as zha_profile
@@ -21,6 +21,8 @@ import zigpy.types as t
 from zigpy.zcl.clusters.general import Basic
 from zigpy.zcl.foundation import BaseAttributeDefs, Status, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
+
+pytestmark = pytest.mark.usefixtures("auto_kill_aiosqlite")
 
 
 @pytest.fixture
@@ -574,6 +576,10 @@ async def test_unknown_manufacturer_code_migration(test_db, caplog):
         assert after_total == before_total
 
 
+@pytest.mark.filterwarnings(
+    r"ignore:Attribute .* has `is_manufacturer_specific`"
+    r":DeprecationWarning"
+)
 async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
     """Test that attributes on manufacturer-specific clusters get the device's manufacturer_id."""
 
@@ -654,6 +660,10 @@ async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
     await app.shutdown()
 
 
+@pytest.mark.filterwarnings(
+    r"ignore:Attribute .* has `is_manufacturer_specific`"
+    r":DeprecationWarning"
+)
 async def test_data_migration_ambiguous_attributes(tmp_path):
     """Test data migration disambiguation when find_attributes returns multiple."""
 
