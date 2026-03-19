@@ -1959,6 +1959,9 @@ async def test_reinterview_success(monkeypatch, dev):
     assert shadow.model == "NewModel"
     assert shadow.manufacturer == "NewManufacturer"
 
+    # Guard flag should be cleared on old device after reinterview
+    assert not dev.reinterviewing
+
 
 async def test_reinterview_failure_preserves_device(monkeypatch, dev):
     """Test that failed re-interview preserves the old device."""

@@ -1889,6 +1889,7 @@ async def test_device_reinterviewed(app):
     shadow.model = "NewModel"
     shadow.manufacturer = "NewManufacturer"
     shadow.status = zigpy.device.Status.ENDPOINTS_INIT
+    shadow._reinterview_in_progress = True  # set by reinterview() before discovery
     ep = shadow.add_endpoint(1)
     ep.profile_id = 260
     ep.device_type = 0x0100
@@ -1907,6 +1908,9 @@ async def test_device_reinterviewed(app):
     assert new_dev._relays == t.Relays([t.NWK(0x1111), t.NWK(0x2222)])
     assert new_dev.lqi == 200
     assert new_dev.rssi == -40
+
+    # New device should not be stuck in reinterviewing state
+    assert not new_dev.reinterviewing
 
     # device_reinterviewed should be fired, but NOT device_initialized
     app.listener_event.assert_any_call("device_reinterviewed", new_dev)

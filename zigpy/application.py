@@ -663,6 +663,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         new_device = self.devices[shadow.ieee]
 
+        # Clear the reinterview flag so the new device isn't permanently stuck
+        # (relevant when no quirk is applied and new_device is the shadow itself)
+        new_device._reinterview_in_progress = False
+
         # Restore group memberships on the new device's matching endpoints
         for ep_id, group_ids in old_group_memberships.items():
             if ep_id in new_device.endpoints:
