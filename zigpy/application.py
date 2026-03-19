@@ -602,11 +602,18 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         device.original_signature = device.get_signature()
 
         self.listener_event("raw_device_initialized", device)
-        device = zigpy.quirks.get_device(device)
-        self.devices[device.ieee] = device
+        quirked = zigpy.quirks.get_device(device)
+
+        # If quirk wrapping created a new object, clean up the raw device's
+        # registered callbacks (e.g. PollControl check-in listener) so they
+        # don't leak in _req_listeners.
+        if quirked is not device:
+            device.on_remove()
+
+        self.devices[quirked.ieee] = quirked
         if self._dblistener is not None:
-            device.add_context_listener(self._dblistener)
-        self.listener_event("device_initialized", device)
+            quirked.add_context_listener(self._dblistener)
+        self.listener_event("device_initialized", quirked)
 
     async def remove(
         self, ieee: t.EUI64, remove_children: bool = True, rejoin: bool = False
