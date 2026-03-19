@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 import logging
 import pathlib
+import sqlite3
 from sqlite3.dump import _iterdump as iterdump
 
 from aiosqlite.context import contextmanager
@@ -8,9 +9,8 @@ import pytest
 
 from tests.async_mock import AsyncMock, MagicMock, patch
 from tests.conftest import app, make_node_desc  # noqa: F401
-from tests.test_appdb import auto_kill_aiosqlite, make_app_with_db  # noqa: F401
+from tests.test_appdb import make_app_with_db
 import zigpy.appdb
-from zigpy.appdb import sqlite3
 import zigpy.appdb_schemas
 import zigpy.endpoint
 from zigpy.profiles import zha as zha_profile
@@ -21,6 +21,8 @@ import zigpy.types as t
 from zigpy.zcl.clusters.general import Basic
 from zigpy.zcl.foundation import BaseAttributeDefs, Status, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
+
+pytestmark = pytest.mark.usefixtures("auto_kill_aiosqlite")
 
 
 @pytest.fixture
