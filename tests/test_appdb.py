@@ -40,7 +40,12 @@ from zigpy.quirks.registry import DeviceRegistry
 from zigpy.quirks.v2 import QuirkBuilder
 import zigpy.types as t
 import zigpy.zcl
-from zigpy.zcl import ClusterType, OtaQueryCacheUpdatedEvent, UnsupportedAttribute
+from zigpy.zcl import (
+    ClusterType,
+    OtaQueryCacheClearedEvent,
+    OtaQueryCacheUpdatedEvent,
+    UnsupportedAttribute,
+)
 from zigpy.zcl.clusters.general import Basic, Identify, OnOff, Ota
 from zigpy.zcl.foundation import Status as ZCLStatus, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
@@ -1694,6 +1699,52 @@ async def test_ota_query_cache_event_save(tmp_path):
     assert ota2.last_query_cmd.image_type == 0x2222
     assert ota2.last_query_cmd.current_file_version == 0x00000099
     assert ota2.last_query_cmd.hardware_version == 7
+
+    await app2.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_ota_query_cache_cleared_after_update(tmp_path):
+    """Test that OTA query cache is deleted from DB when cleared after an update."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ota_cluster = ep.add_output_cluster(Ota.cluster_id)
+    app.device_initialized(dev)
+
+    # Save a query cmd
+    ota_cluster.last_query_cmd = Ota.QueryNextImageCommand(
+        field_control=Ota.QueryNextImageCommand.FieldControl(0),
+        manufacturer_code=0x1234,
+        image_type=0x5678,
+        current_file_version=0x00000001,
+    )
+    app.device_initialized(dev)
+
+    # Clear the cache (as update_firmware does after a successful OTA)
+    ota_cluster.last_query_cmd = None
+    ota_cluster.emit(
+        OtaQueryCacheClearedEvent.event_type,
+        OtaQueryCacheClearedEvent(
+            device_ieee=str(ieee),
+            endpoint_id=1,
+        ),
+    )
+    await app.shutdown()
+
+    # Reload: the cleared cache should not be restored
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(ieee)
+    ota2 = dev2.endpoints[1].out_clusters[Ota.cluster_id]
+    assert ota2.last_query_cmd is None
+    assert dev2.get_last_ota_query_cmd() is None
 
     await app2.shutdown()
 

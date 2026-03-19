@@ -216,6 +216,16 @@ class OtaQueryCacheUpdatedEvent:
     hardware_version: int | None
 
 
+@dataclass(kw_only=True, frozen=True)
+class OtaQueryCacheClearedEvent:
+    """Event generated when OTA query cache is cleared after a successful update."""
+
+    event_type: Final[str] = "ota_query_cache_cleared"
+
+    device_ieee: str
+    endpoint_id: int
+
+
 def convert_list_schema(
     schema: Sequence[type], command_id: int, direction: foundation.Direction
 ) -> type[t.Struct]:

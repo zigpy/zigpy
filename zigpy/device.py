@@ -37,7 +37,7 @@ from zigpy.ota.manager import update_firmware
 from zigpy.profiles import zha, zll
 import zigpy.types as t
 import zigpy.util
-from zigpy.zcl import Cluster, ClusterType, foundation
+from zigpy.zcl import Cluster, ClusterType, OtaQueryCacheClearedEvent, foundation
 from zigpy.zcl.clusters.general import Ota, PollControl, QueryNextImageCommand
 import zigpy.zdo.types as zdo_t
 
@@ -929,6 +929,13 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         )
         ota.update_attribute(Ota.AttributeDefs.current_file_version.id, None)
         ota.last_query_cmd = None
+        ota.emit(
+            OtaQueryCacheClearedEvent.event_type,
+            OtaQueryCacheClearedEvent(
+                device_ieee=str(self.ieee),
+                endpoint_id=ota.endpoint.endpoint_id,
+            ),
+        )
 
         await asyncio.sleep(AFTER_OTA_ATTR_READ_DELAY)
         await OTA_RETRY_DECORATOR(ota.read_attributes)(

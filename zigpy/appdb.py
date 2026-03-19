@@ -34,6 +34,7 @@ from zigpy.zcl import (
     AttributeUpdatedEvent,
     AttributeWrittenEvent,
     ClusterType,
+    OtaQueryCacheClearedEvent,
     OtaQueryCacheUpdatedEvent,
 )
 from zigpy.zcl.clusters.general import Basic, Ota
@@ -232,6 +233,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         cluster.on_event(
             OtaQueryCacheUpdatedEvent.event_type,
             self.on_ota_query_cache_updated,
+        )
+        cluster.on_event(
+            OtaQueryCacheClearedEvent.event_type,
+            self.on_ota_query_cache_cleared,
         )
 
     def enqueue(self, cb_name: str, *args) -> None:
@@ -695,6 +700,18 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 event.hardware_version,
                 datetime.now(UTC).timestamp(),
             ),
+        )
+        await self._db.commit()
+
+    def on_ota_query_cache_cleared(self, event: OtaQueryCacheClearedEvent) -> None:
+        self.enqueue("_delete_ota_query_cache_entry", event)
+
+    async def _delete_ota_query_cache_entry(
+        self, event: OtaQueryCacheClearedEvent
+    ) -> None:
+        await self.execute(
+            f"DELETE FROM ota_query_cache{DB_V} WHERE ieee = ? AND endpoint_id = ?",
+            (event.device_ieee, event.endpoint_id),
         )
         await self._db.commit()
 
