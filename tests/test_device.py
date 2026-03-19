@@ -494,7 +494,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
     monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
     dev.zdo.Active_EP_req = mockrequest
-    dev.reinterview = AsyncMock()
+    dev.reinterview = AsyncMock()  # prevent post-OTA reinterview side effects
 
     with mock_attribute_reads(cluster, {"current_file_version": 0x00000001}):
         await dev.initialize()
@@ -878,7 +878,7 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
     monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
     dev.zdo.Active_EP_req = mockrequest
-    dev.reinterview = AsyncMock()
+    dev.reinterview = AsyncMock()  # prevent post-OTA reinterview side effects
 
     with mock_attribute_reads(cluster, {"current_file_version": 0x00000001}):
         await dev.initialize()
