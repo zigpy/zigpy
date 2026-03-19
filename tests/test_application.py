@@ -1961,8 +1961,8 @@ async def test_device_reinterviewed_preserves_groups(app):
     assert not old_ep.member_of
 
 
-async def test_device_reinterviewed_finalization_failure_restores_old(app):
-    """Test that _device_reinterviewed lets exceptions propagate."""
+async def test_device_reinterviewed_finalization_failure_propagates(app):
+    """Test that _device_reinterviewed lets exceptions propagate to reinterview()."""
     ieee = make_ieee()
     nwk = t.NWK(0x1234)
 
