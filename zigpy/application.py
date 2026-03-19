@@ -604,11 +604,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.listener_event("raw_device_initialized", device)
         quirked = zigpy.quirks.get_device(device)
 
-        # If quirk wrapping created a new object, clean up the raw device's
-        # registered callbacks (e.g. PollControl check-in listener) so they
-        # don't leak in _req_listeners.
+        # If quirk wrapping created a new object, remove the raw device's
+        # orphaned callback listeners (e.g. PollControl check-in) from
+        # _req_listeners.  We can't call device.on_remove() here because
+        # that would also cancel the currently running _initialize_task.
         if quirked is not device:
-            device.on_remove()
+            self._req_listeners.pop(device, None)
 
         self.devices[quirked.ieee] = quirked
         if self._dblistener is not None:
