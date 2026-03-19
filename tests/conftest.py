@@ -54,7 +54,7 @@ def auto_kill_aiosqlite():
             with contextlib.suppress(sqlite3.ProgrammingError):
                 conn.close()
 
-        thread._running = False
+        thread._stop_running()
 
 
 NCP_IEEE = t.EUI64.convert("aa:11:22:bb:33:44:be:ef")
