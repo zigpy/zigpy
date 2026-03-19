@@ -339,6 +339,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             except Exception:
                 # Ensure old device is restored in app.devices on any failure
                 self._application.devices[self._ieee] = self
+                # Clean up shadow's callbacks/tasks (e.g. PollControl listener)
+                shadow.on_remove()
                 raise
         except Exception:  # noqa: BLE001
             self.warning(
