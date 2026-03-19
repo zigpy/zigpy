@@ -1862,3 +1862,48 @@ async def test_callback_wrapping_async(
             ),
         ),
     ]
+
+
+async def test_device_initialized_cleans_up_raw_device_on_quirk(app):
+    """Test that device_initialized cleans up the raw device when quirks replace it."""
+    ieee = t.EUI64(map(t.uint8_t, range(8)))
+    nwk = t.NWK(0x1234)
+
+    raw_dev = app.add_device(ieee=ieee, nwk=nwk)
+
+    # The raw device should have a PollControl callback registered
+    assert len(app._req_listeners[raw_dev]) == 1
+
+    # Make get_device return a different object (simulating quirk wrapping)
+    quirked_dev = MagicMock()
+    quirked_dev.ieee = ieee
+
+    with patch("zigpy.quirks.get_device", return_value=quirked_dev):
+        app.device_initialized(raw_dev)
+
+    # The raw device's callbacks should have been cleaned up
+    assert len(app._req_listeners[raw_dev]) == 0
+
+    # The quirked device should be in app.devices
+    assert app.devices[ieee] is quirked_dev
+
+
+async def test_device_initialized_no_cleanup_without_quirk(app):
+    """Test that device_initialized does not call on_remove when no quirk is applied."""
+    ieee = t.EUI64(map(t.uint8_t, range(8)))
+    nwk = t.NWK(0x1234)
+
+    raw_dev = app.add_device(ieee=ieee, nwk=nwk)
+
+    # The raw device should have a PollControl callback registered
+    assert len(app._req_listeners[raw_dev]) == 1
+
+    # Make get_device return the same object (no quirk match)
+    with patch("zigpy.quirks.get_device", return_value=raw_dev):
+        app.device_initialized(raw_dev)
+
+    # Callbacks should still be registered (device is still active)
+    assert len(app._req_listeners[raw_dev]) == 1
+
+    # The same device should be in app.devices
+    assert app.devices[ieee] is raw_dev
