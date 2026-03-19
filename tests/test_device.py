@@ -18,7 +18,7 @@ from zigpy.profiles import zha
 import zigpy.state
 import zigpy.types as t
 import zigpy.util
-from zigpy.zcl import ClusterType, foundation
+from zigpy.zcl import ClusterType, OtaQueryCacheClearedEvent, foundation
 from zigpy.zcl.clusters.general import Basic, OnOff, Ota, PollControl
 from zigpy.zdo import types as zdo_t
 
@@ -713,6 +713,10 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
 
     dev.application.send_packet = AsyncMock(side_effect=send_packet)
     progress_callback = MagicMock()
+
+    cleared_events = []
+    cluster.on_event(OtaQueryCacheClearedEvent.event_type, cleared_events.append)
+
     result = await dev.update_firmware(fw_image, progress_callback)
     assert (
         dev.endpoints[1]
@@ -726,6 +730,8 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     assert progress_callback.call_args_list[0] == call(40, 70, 57.142857142857146)
     assert progress_callback.call_args_list[1] == call(70, 70, 100.0)
     assert result == foundation.Status.SUCCESS
+    assert len(cleared_events) == 1
+    assert isinstance(cleared_events[0], OtaQueryCacheClearedEvent)
 
     progress_callback.reset_mock()
     dev.application.send_packet.reset_mock()
