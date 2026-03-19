@@ -338,8 +338,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 await self._application._device_reinterviewed(self, shadow)
             except Exception:
                 # Ensure old device is restored in app.devices on any failure
-                # (_device_reinterviewed may have already done this for
-                # finalization failures, but the assignment is idempotent)
                 self._application.devices[self._ieee] = self
                 raise
         except Exception:  # noqa: BLE001
