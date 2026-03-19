@@ -1903,6 +1903,71 @@ async def test_attribute_report_not_matched_with_request(dev):
     assert result == default_rsp_cmd
 
 
+async def test_reinterview_end_to_end(
+    monkeypatch,
+    app: zigpy.application.ControllerApplication,
+):
+    """End-to-end reinterview: real app, full flow from reinterview() through swap."""
+    ieee = t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11")
+    node_desc = zdo_t.NodeDescriptor(1, 1, 1, 4, 5, 6, 7, 8)
+
+    async def mock_get_node_descriptor(self):
+        self.node_desc = node_desc
+        return node_desc
+
+    async def mockrequest(*args, **kwargs):
+        return [0, None, [0, 1]]
+
+    async def mockepinit(self, *args, **kwargs):
+        self.status = endpoint.Status.ZDO_INIT
+        self.add_input_cluster(Basic.cluster_id)
+
+    async def mock_ep_get_model_info(self):
+        return "Model", "Manufacturer"
+
+    monkeypatch.setattr(device.Device, "get_node_descriptor", mock_get_node_descriptor)
+    monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
+    monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
+
+    # Initial join and initialization
+    dev = app.add_device(ieee=ieee, nwk=t.NWK(0x1234))
+    dev.zdo.Active_EP_req = mockrequest
+    await dev.initialize()
+    assert dev.is_initialized
+    old_dev = app.devices[ieee]
+
+    # Patch Device.__init__ so the shadow also gets Active_EP_req mocked
+    original_init = device.Device.__init__
+
+    def patched_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        self.zdo.Active_EP_req = mockrequest
+
+    monkeypatch.setattr(device.Device, "__init__", patched_init)
+
+    # Change what model info returns for the reinterview
+    async def mock_ep_get_model_info_v2(self):
+        return "ModelV2", "ManufacturerV2"
+
+    monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info_v2)
+
+    # Run the full reinterview flow
+    await old_dev.reinterview()
+
+    # The device in app.devices should be a new object
+    new_dev = app.devices[ieee]
+    assert new_dev is not old_dev
+    assert new_dev.model == "ModelV2"
+    assert new_dev.manufacturer == "ManufacturerV2"
+    assert new_dev.is_initialized
+    assert 1 in new_dev.endpoints
+    assert not new_dev.reinterviewing
+    assert not old_dev.reinterviewing
+
+    # device_reinterviewed event should have been fired
+    app.listener_event.assert_any_call("device_reinterviewed", new_dev)
+
+
 async def test_reinterview_success(monkeypatch, dev):
     """Test successful re-interview creates a shadow device and swaps it in."""
     node_desc = zdo_t.NodeDescriptor(1, 1, 1, 4, 5, 6, 7, 8)
