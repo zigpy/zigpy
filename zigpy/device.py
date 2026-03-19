@@ -333,20 +333,16 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     await zigpy.util.retryable_request(tries=2, delay=0.5)(
                         shadow._discover
                     )()
-
-                # Discovery succeeded — swap the old device for the new one
-                await self._application._device_reinterviewed(self, shadow)
             except Exception:
-                # Ensure old device is restored in app.devices on any failure
+                # Discovery failed — restore old device, clean up shadow
                 self._application.devices[self._ieee] = self
-                # Ensure exactly one DB listener registration on the restored
-                # device (it may or may not have been removed before the failure)
-                if self._application._dblistener is not None:
-                    self.remove_listener(self._application._dblistener)
-                    self.add_context_listener(self._application._dblistener)
-                # Clean up shadow's callbacks/tasks (e.g. PollControl listener)
                 shadow.on_remove()
                 raise
+
+            # Discovery succeeded — swap the old device for the new one.
+            # If this somehow fails, the state may be partially swapped; attempting
+            # to undo would likely make things worse.
+            await self._application._device_reinterviewed(self, shadow)
         except Exception:  # noqa: BLE001
             self.warning(
                 "Re-interview failed, keeping existing device",
