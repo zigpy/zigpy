@@ -110,6 +110,47 @@ def aiosqlite_connect(
     )
 
 
+_SQLITE_TYPES = (type(None), int, float, str, bytes)
+
+
+def _serialize_for_db(value: Any) -> None | int | float | str | bytes:
+    """Convert a ZCL attribute value to a type SQLite can store natively."""
+    if isinstance(value, _SQLITE_TYPES):
+        return value
+
+    if hasattr(value, "serialize"):
+        return value.serialize()
+
+    raise ValueError(
+        f"Cannot persist attribute value of type {type(value).__name__!r} to the "
+        f"database: {value!r}"
+    )
+
+
+def _deserialize_from_db(value: Any, attr_type: type | None) -> Any:
+    """Attempt to deserialize a bytes value loaded from the database back into its
+    original ZCL type, if applicable.
+    """
+    if (
+        not isinstance(value, bytes)
+        or attr_type is None
+        or not hasattr(attr_type, "deserialize")
+        or issubclass(attr_type, bytes)
+    ):
+        return value
+
+    try:
+        result, _ = attr_type.deserialize(value)  # type: ignore[attr-defined]
+    except (ValueError, KeyError):
+        LOGGER.debug(
+            "Failed to deserialize cached value for type %s, using raw bytes",
+            attr_type,
+        )
+        return value
+
+    return result
+
+
 def decode_str_attribute(value: str | bytes) -> str:
     if isinstance(value, str):
         return value
@@ -489,7 +530,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 attrid,
                 manufacturer_code,
                 Status.SUCCESS,
-                cache_item.value,
+                _serialize_for_db(cache_item.value),
                 cache_item.last_updated.timestamp(),
             )
             for cluster in ep.clusters
@@ -568,7 +609,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "attr_id": event.attribute_id,
                 "manufacturer_code": event.manufacturer_code,
                 "status": Status.SUCCESS,
-                "value": event.value,
+                "value": _serialize_for_db(event.value),
                 "timestamp": datetime.now(UTC).timestamp(),
                 "min_update_delta": MIN_UPDATE_DELTA,
             },
@@ -850,7 +891,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             if row.status == Status.SUCCESS:
                 cluster._attr_cache.set_value(
                     attr_def,
-                    row.value,
+                    _deserialize_from_db(row.value, attr_def.type),
                     last_updated=datetime.fromtimestamp(row.last_updated, UTC),
                 )
             else:

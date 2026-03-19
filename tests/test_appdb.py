@@ -2,6 +2,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 import pathlib
 import time
+from typing import Final
 
 import aiosqlite
 import freezegun
@@ -42,7 +43,7 @@ import zigpy.types as t
 import zigpy.zcl
 from zigpy.zcl import ClusterType, UnsupportedAttribute
 from zigpy.zcl.clusters.general import Basic, Identify, OnOff, Ota
-from zigpy.zcl.foundation import Status as ZCLStatus, ZCLAttributeDef
+from zigpy.zcl.foundation import BaseAttributeDefs, Status as ZCLStatus, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
 
 pytestmark = pytest.mark.usefixtures("auto_kill_aiosqlite")
@@ -1587,3 +1588,212 @@ async def test_device_signature_ignores_quirks(tmp_path) -> None:
     assert dev2.original_signature == expected_signature
 
     await app2.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (None, None),
+        (42, 42),
+        (3.14, 3.14),
+        ("hello", "hello"),
+        (b"\x01\x02\x03", b"\x01\x02\x03"),
+        # ZCL integer types are int subclasses, pass through as-is
+        (t.uint16_t(0x1234), 0x1234),
+        (t.uint8_t(0xFF), 0xFF),
+    ],
+)
+def test_serialize_for_db_native_types(value, expected):
+    """Test that native SQLite types pass through _serialize_for_db unchanged."""
+    assert zigpy.appdb._serialize_for_db(value) == expected
+
+
+def test_serialize_for_db_serializable_types():
+    """Test that types with a serialize() method are converted to bytes."""
+    lv_list = t.LVList[t.LVBytes, t.uint16_t](
+        [b"\x13\x47\x06\xb1\xef\x4e", b"\x14\xa0\x39\x1d\x82\xd3"]
+    )
+    result = zigpy.appdb._serialize_for_db(lv_list)
+    assert isinstance(result, bytes)
+    assert result == lv_list.serialize()
+
+
+@pytest.mark.parametrize(
+    ("value", "attr_type", "expected"),
+    [
+        # Non-bytes values are returned as-is regardless of attr_type
+        (42, t.uint16_t, 42),
+        ("hello", t.CharacterString, "hello"),
+        (None, t.uint8_t, None),
+        # Bytes value with a bytes-subclass attr_type is returned as-is
+        (b"\x01\x02", t.LVBytes, b"\x01\x02"),
+        # Bytes value with no attr_type is returned as-is
+        (b"\x01\x02", None, b"\x01\x02"),
+    ],
+)
+def test_deserialize_from_db_passthrough(value, attr_type, expected):
+    """Test that _deserialize_from_db does not alter values that should stay as-is."""
+    assert zigpy.appdb._deserialize_from_db(value, attr_type) == expected
+
+
+def test_deserialize_from_db_complex_type():
+    """Test that _deserialize_from_db restores serialized complex types."""
+    original = t.LVList[t.LVBytes, t.uint16_t](
+        [b"\x13\x47\x06\xb1\xef\x4e", b"\x14\xa0\x39\x1d\x82\xd3"]
+    )
+    serialized = original.serialize()
+
+    result = zigpy.appdb._deserialize_from_db(
+        serialized, t.LVList[t.LVBytes, t.uint16_t]
+    )
+    assert list(result) == list(original)
+
+
+async def test_save_attribute_cache_serializes_complex_types(tmp_path) -> None:
+    """Test that _save_attribute_cache serializes complex ZCL types to bytes."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+
+    basic = ep.add_input_cluster(Basic.cluster_id)
+    basic.update_attribute(Basic.AttributeDefs.model, "some model")
+    basic.update_attribute(Basic.AttributeDefs.manufacturer, "some manufacturer")
+
+    # Let the device be fully saved so parent rows exist
+    app.device_initialized(dev)
+    await app._dblistener._callback_handlers.join()
+
+    # Now inject a complex type (LVList) directly into the cache
+    lv_list = t.LVList[t.LVBytes, t.uint16_t](
+        [b"\x13\x47\x06\xb1\xef\x4e", b"\x14\xa0\x39\x1d\x82\xd3"]
+    )
+    basic._attr_cache._cache[(Basic.AttributeDefs.product_label.id, None)] = (
+        zigpy.zcl.helpers.CacheItem(
+            value=lv_list,
+            last_updated=datetime.now(UTC),
+        )
+    )
+
+    await app._dblistener._save_attribute_cache(ep)
+    await app._dblistener._db.commit()
+
+    # Verify it was stored as serialized bytes
+    async with app._dblistener.execute(
+        f"SELECT value FROM attributes_cache{zigpy.appdb.DB_V}"
+        " WHERE ieee = :ieee AND attr_id = :attr_id",
+        {"ieee": str(dev.ieee), "attr_id": Basic.AttributeDefs.product_label.id},
+    ) as cursor:
+        row = await cursor.fetchone()
+
+    assert row is not None
+    assert isinstance(row[0], bytes)
+    assert row[0] == lv_list.serialize()
+
+    await app.shutdown()
+
+
+@patch("zigpy.quirks.DEVICE_REGISTRY", new=DeviceRegistry())
+async def test_attribute_read_complex_type_persists(tmp_path) -> None:
+    """Test that complex ZCL types (e.g. LVList) are serialized to bytes for storage."""
+
+    class UbisysCluster(CustomCluster):
+        cluster_id = 0xFC00
+        name = "Ubisys Cluster"
+        ep_attribute = "ubisys_cluster"
+
+        class AttributeDefs(BaseAttributeDefs):
+            output_configurations: Final = ZCLAttributeDef(
+                id=0x0010,
+                type=t.LVList[t.LVBytes, t.uint16_t],
+                manufacturer_code=None,
+            )
+
+    (
+        QuirkBuilder("ubisys", "J1", registry=zigpy.quirks.DEVICE_REGISTRY)
+        .adds_endpoint(232)
+        .replaces(UbisysCluster, endpoint_id=232)
+        .add_to_registry()
+    )
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev = app.add_device(nwk=0x3459, ieee=t.EUI64.convert("00:1f:ee:00:00:00:96:f5"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep1 = dev.add_endpoint(1)
+    ep1.status = zigpy.endpoint.Status.ZDO_INIT
+    ep1.profile_id = 260
+    ep1.device_type = profiles.zha.DeviceType.PUMP
+
+    basic = ep1.add_input_cluster(Basic.cluster_id)
+    basic.update_attribute(Basic.AttributeDefs.model, "J1")
+    basic.update_attribute(Basic.AttributeDefs.manufacturer, "ubisys")
+
+    ep232 = dev.add_endpoint(232)
+    ep232.status = zigpy.endpoint.Status.ZDO_INIT
+    ep232.profile_id = 260
+    ep232.device_type = profiles.zha.DeviceType.PUMP
+    ep232.add_input_cluster(UbisysCluster.cluster_id)
+
+    await dev.initialize()
+
+    dev = app.get_device(ieee=dev.ieee)
+    ubisys = dev.endpoints[232].in_clusters[0xFC00]
+    assert isinstance(ubisys, UbisysCluster)
+
+    test_value = t.LVList[t.LVBytes, t.uint16_t](
+        [b"\x13\x47\x06\xb1\xef\x4e", b"\x14\xa0\x39\x1d\x82\xd3"]
+    )
+
+    with mock_attribute_reads(
+        ubisys,
+        {UbisysCluster.AttributeDefs.output_configurations: test_value},
+    ):
+        await ubisys.read_attributes(
+            [UbisysCluster.AttributeDefs.output_configurations]
+        )
+
+    await app.shutdown()
+
+    # Verify the value was stored as bytes in the database
+    async with aiosqlite.connect(db) as conn:
+        cursor = await conn.execute(
+            f"SELECT value FROM attributes_cache{zigpy.appdb.DB_V}"
+            " WHERE cluster_id = :cluster_id AND attr_id = :attr_id",
+            {"cluster_id": 0xFC00, "attr_id": 0x0010},
+        )
+        row = await cursor.fetchone()
+        assert row is not None
+        assert isinstance(row[0], bytes)
+        assert row[0] == test_value.serialize()
+
+    # Load the database again and verify the value is deserialized back
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(t.EUI64.convert("00:1f:ee:00:00:00:96:f5"))
+    ubisys2 = dev2.endpoints[232].in_clusters[0xFC00]
+
+    loaded_value = ubisys2.get_cached_value(
+        UbisysCluster.AttributeDefs.output_configurations
+    )
+    assert list(loaded_value) == list(test_value)
+
+    await app2.shutdown()
+
+
+@pytest.mark.parametrize(
+    "value",
+    [object(), [1, 2, 3], {"key": "value"}],
+    ids=["object", "list", "dict"],
+)
+def test_serialize_for_db_unsupported_types(value) -> None:
+    """Test that _serialize_for_db raises ValueError for non-SQLite, non-serializable types."""
+    with pytest.raises(ValueError, match="Cannot persist attribute value"):
+        zigpy.appdb._serialize_for_db(value)
