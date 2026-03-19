@@ -1936,6 +1936,11 @@ async def test_reinterview_end_to_end(
     assert dev.is_initialized
     old_dev = app.devices[ieee]
 
+    # Set non-discovery state on the old device
+    old_dev._last_seen = datetime(2026, 1, 1, tzinfo=UTC)
+    old_dev.lqi = 200
+    old_dev.rssi = -40
+
     # Patch Device.__init__ so the shadow also gets Active_EP_req mocked
     original_init = device.Device.__init__
 
@@ -1951,6 +1956,9 @@ async def test_reinterview_end_to_end(
 
     monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info_v2)
 
+    # Reset listener_event mock so we only see events from the reinterview
+    app.listener_event.reset_mock()
+
     # Run the full reinterview flow
     await old_dev.reinterview()
 
@@ -1964,68 +1972,17 @@ async def test_reinterview_end_to_end(
     assert not new_dev.reinterviewing
     assert not old_dev.reinterviewing
 
-    # device_reinterviewed event should have been fired
+    # Non-discovery state should have been preserved
+    assert new_dev._last_seen == datetime(2026, 1, 1, tzinfo=UTC)
+    assert new_dev.lqi == 200
+    assert new_dev.rssi == -40
+
+    # device_reinterviewed event should have been fired, but NOT device_initialized
     app.listener_event.assert_any_call("device_reinterviewed", new_dev)
-
-
-async def test_reinterview_success(monkeypatch, dev):
-    """Test successful re-interview creates a shadow device and swaps it in."""
-    node_desc = zdo_t.NodeDescriptor(1, 1, 1, 4, 5, 6, 7, 8)
-
-    async def mockrequest(*args, **kwargs):
-        return [0, None, [0, 1, 2]]
-
-    async def mock_get_node_descriptor(self):
-        self.node_desc = node_desc
-        return node_desc
-
-    async def mockepinit(self, *args, **kwargs):
-        self.status = endpoint.Status.ZDO_INIT
-        self.add_input_cluster(Basic.cluster_id)
-
-    async def mock_ep_get_model_info(self):
-        return "NewModel", "NewManufacturer"
-
-    monkeypatch.setattr(device.Device, "get_node_descriptor", mock_get_node_descriptor)
-    monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
-    monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
-
-    # First initialize the device normally
-    dev.zdo.Active_EP_req = mockrequest
-    await dev.initialize()
-    assert dev.is_initialized
-
-    # Set up the application mock for _device_reinterviewed
-    dev._application._device_reinterviewed = AsyncMock()
-
-    # Patch Device.__init__ to set up Active_EP_req mock on any new Device instance
-    original_init = device.Device.__init__
-
-    def patched_init(self, *args, **kwargs):
-        original_init(self, *args, **kwargs)
-        self.zdo.Active_EP_req = mockrequest
-
-    monkeypatch.setattr(device.Device, "__init__", patched_init)
-
-    # Run reinterview
-    await dev.reinterview()
-
-    # Verify _device_reinterviewed was called with the old device and a shadow
-    dev._application._device_reinterviewed.assert_called_once()
-    call_args = dev._application._device_reinterviewed.call_args
-    old_dev, shadow = call_args[0]
-    assert old_dev is dev
-    assert isinstance(shadow, device.Device)
-    assert shadow.ieee == dev.ieee
-    assert shadow.nwk == dev.nwk
-    assert shadow.is_initialized
-    assert 1 in shadow.endpoints
-    assert 2 in shadow.endpoints
-    assert shadow.model == "NewModel"
-    assert shadow.manufacturer == "NewManufacturer"
-
-    # Guard flag should be cleared on old device after reinterview
-    assert not dev.reinterviewing
+    device_initialized_calls = [
+        c for c in app.listener_event.call_args_list if c[0][0] == "device_initialized"
+    ]
+    assert len(device_initialized_calls) == 0
 
 
 async def test_reinterview_failure_preserves_device(monkeypatch, dev):

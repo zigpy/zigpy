@@ -1866,60 +1866,6 @@ async def test_callback_wrapping_async(
     ]
 
 
-async def test_device_reinterviewed(app):
-    """Test _device_reinterviewed swaps the old device for the shadow."""
-    from datetime import UTC, datetime
-
-    ieee = make_ieee()
-    nwk = t.NWK(0x1234)
-
-    old_dev = app.add_device(ieee=ieee, nwk=nwk)
-    old_dev.node_desc = make_node_desc()
-    old_dev.model = "OldModel"
-    old_dev.manufacturer = "OldManufacturer"
-    old_dev._last_seen = datetime(2026, 1, 1, tzinfo=UTC)
-    old_dev._relays = t.Relays([t.NWK(0x1111), t.NWK(0x2222)])
-    old_dev.lqi = 200
-    old_dev.rssi = -40
-    assert app.devices[ieee] is old_dev
-
-    # Create a shadow device (as reinterview would)
-    shadow = zigpy.device.Device(app, ieee, nwk)
-    shadow.node_desc = make_node_desc()
-    shadow.model = "NewModel"
-    shadow.manufacturer = "NewManufacturer"
-    shadow.status = zigpy.device.Status.ENDPOINTS_INIT
-    shadow._reinterview_in_progress = True  # set by reinterview() before discovery
-    ep = shadow.add_endpoint(1)
-    ep.profile_id = 260
-    ep.device_type = 0x0100
-    ep.status = zigpy.endpoint.Status.ZDO_INIT
-
-    await app._device_reinterviewed(old_dev, shadow)
-
-    # The device in app.devices should now be the shadow (or quirked version)
-    new_dev = app.devices[ieee]
-    assert new_dev is not old_dev
-    assert new_dev.model == "NewModel"
-    assert new_dev.manufacturer == "NewManufacturer"
-
-    # Non-discovery state should have been preserved
-    assert new_dev._last_seen == datetime(2026, 1, 1, tzinfo=UTC)
-    assert new_dev._relays == t.Relays([t.NWK(0x1111), t.NWK(0x2222)])
-    assert new_dev.lqi == 200
-    assert new_dev.rssi == -40
-
-    # New device should not be stuck in reinterviewing state
-    assert not new_dev.reinterviewing
-
-    # device_reinterviewed should be fired, but NOT device_initialized
-    app.listener_event.assert_any_call("device_reinterviewed", new_dev)
-    device_initialized_calls = [
-        c for c in app.listener_event.call_args_list if c[0][0] == "device_initialized"
-    ]
-    assert len(device_initialized_calls) == 0
-
-
 async def test_device_reinterviewed_with_db(app):
     """Test _device_reinterviewed removes old device from DB before saving new one."""
 
