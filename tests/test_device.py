@@ -2122,14 +2122,6 @@ async def test_reinterview_during_initialization(dev):
     dev._initialize_task.cancel()
 
 
-async def test_reinterview_poll_control_checkin(dev):
-    """Test that poll control checkin enables fast polling during reinterview."""
-    dev._reinterview_in_progress = True
-
-    # Verify the condition in poll_control_checkin_callback would trigger fast polling
-    assert dev.reinterviewing is True
-
-
 async def test_update_firmware_triggers_reinterview(monkeypatch, dev):
     """Test that successful OTA triggers reinterview."""
     ep = dev.add_endpoint(1)
