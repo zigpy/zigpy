@@ -661,9 +661,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         # Apply quirks, persist to DB, and register the device — but do NOT
         # fire the device_initialized listener event.  Callers (and ZHA)
         # should listen for device_reinterviewed instead.
-        self._finalize_device(shadow)
-
-        new_device = self.devices[shadow.ieee]
+        new_device = self._finalize_device(shadow)
 
         # Clear the reinterview flag so the new device isn't permanently stuck
         # (relevant when no quirk is applied and new_device is the shadow itself)
