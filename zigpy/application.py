@@ -636,16 +636,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         shadow.lqi = old_device.lqi
         shadow.rssi = old_device.rssi
 
-        # Collect group memberships from old endpoints before teardown
+        # Collect group memberships and remove old endpoints from groups
         old_group_memberships: dict[int, set[int]] = {}
         for ep in old_device.non_zdo_endpoints:
             if ep.member_of:
                 old_group_memberships[ep.endpoint_id] = set(ep.member_of)
-
-        # Remove old device from in-memory groups (prevents stale endpoint refs)
-        for ep in old_device.non_zdo_endpoints:
-            for group in list(ep.member_of.values()):
-                group.remove_member(ep, suppress_event=True)
+                for group in list(ep.member_of.values()):
+                    group.remove_member(ep, suppress_event=True)
 
         # Remove old device data from DB (cascade deletes endpoints, clusters,
         # attribute cache, group members, and relays).  We call _remove_device
