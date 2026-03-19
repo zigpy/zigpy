@@ -2159,11 +2159,6 @@ class Ota(Cluster):
             )
 
     async def _handle_query_next_image(self, hdr, cmd):
-        # Always send no image available response so that the device stops asking
-        await self.query_next_image_response(
-            foundation.Status.NO_IMAGE_AVAILABLE, tsn=hdr.tsn
-        )
-
         # Cache the query command fields for proactive OTA lookups
         self.last_query_cmd = cmd
         self.emit(
@@ -2178,6 +2173,11 @@ class Ota(Cluster):
                 current_file_version=cmd.current_file_version,
                 hardware_version=getattr(cmd, "hardware_version", None),
             ),
+        )
+
+        # Always send no image available response so that the device stops asking
+        await self.query_next_image_response(
+            foundation.Status.NO_IMAGE_AVAILABLE, tsn=hdr.tsn
         )
 
         device = self.endpoint.device
