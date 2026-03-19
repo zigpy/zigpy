@@ -1000,16 +1000,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         )
 
         # Re-interview the device after successful OTA to pick up
-        # any changes in clusters/endpoints/model and re-apply quirks
-        try:
-            await self.reinterview()
-        except Exception:  # noqa: BLE001
-            LOGGER.warning(
-                "Post-OTA re-interview failed for %r,"
-                " device may need manual re-interview",
-                self,
-                exc_info=True,
-            )
+        # any changes in clusters/endpoints/model and re-apply quirks.
+        # reinterview() handles its own errors internally.
+        await self.reinterview()
 
         return result
 
