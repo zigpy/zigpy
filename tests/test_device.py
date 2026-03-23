@@ -120,7 +120,6 @@ async def test_initialize_sends_image_notify(
 
     basic = ep.add_input_cluster(Basic.cluster_id)
     ota = ep.add_output_cluster(Ota.cluster_id)
-    ota.image_notify = AsyncMock()
 
     with (
         mock_attribute_reads(basic, {"model": "Model", "manufacturer": "Manufacturer"}),
@@ -128,10 +127,12 @@ async def test_initialize_sends_image_notify(
     ):
         await dev.initialize()
 
-    ota.image_notify.assert_awaited_once_with(
-        payload_type=Ota.ImageNotifyCommand.PayloadType.QueryJitter,
-        query_jitter=100,
-    )
+    # image_notify is the last packet sent during initialization
+    packet = app.send_packet.call_args_list[-1][0][0]
+    hdr, cmd = ota.deserialize(packet.data.serialize())
+    assert isinstance(cmd, Ota.ImageNotifyCommand)
+    assert cmd.payload_type == Ota.ImageNotifyCommand.PayloadType.QueryJitter
+    assert cmd.query_jitter == 100
 
 
 async def test_initialize_image_notify_failure_does_not_block(
