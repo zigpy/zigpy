@@ -516,7 +516,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     query_jitter=100,
                 )
             except Exception:  # noqa: BLE001
-                self.debug("OTA image_notify failed during initialization")
+                self.debug(
+                    "OTA image_notify failed during initialization", exc_info=True
+                )
 
         self.status = Status.ENDPOINTS_INIT
 
