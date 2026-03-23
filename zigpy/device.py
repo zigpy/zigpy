@@ -942,6 +942,15 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             [Ota.AttributeDefs.current_file_version.name]
         )
 
+        # Prompt device to send QueryNextImage with updated version for query cache
+        try:
+            await ota.image_notify(
+                payload_type=Ota.ImageNotifyCommand.PayloadType.QueryJitter,
+                query_jitter=100,
+            )
+        except Exception:  # noqa: BLE001
+            self.debug("Post-OTA image_notify failed", exc_info=True)
+
         return result
 
     def get_last_ota_query_cmd(self) -> QueryNextImageCommand | None:
