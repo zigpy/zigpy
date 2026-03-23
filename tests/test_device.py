@@ -738,6 +738,8 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     assert result == foundation.Status.SUCCESS
     assert len(cleared_events) == 1
     assert isinstance(cleared_events[0], OtaQueryCacheClearedEvent)
+    # Post-OTA image_notify repopulated the query cache
+    assert cluster.last_query_cmd is not None
 
     progress_callback.reset_mock()
     dev.application.send_packet.reset_mock()
