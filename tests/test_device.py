@@ -753,6 +753,27 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     assert progress_callback.call_args_list[1] == call(70, 70, 100.0)
     assert result == foundation.Status.SUCCESS
 
+    # Post-OTA image_notify failure: OTA still succeeds
+    dev.application.send_packet.reset_mock()
+    progress_callback.reset_mock()
+    caplog.clear()
+    original_image_notify = cluster.image_notify
+    notify_calls = 0
+
+    async def image_notify_fail_post_ota(*args, **kwargs):
+        nonlocal notify_calls
+        notify_calls += 1
+        if notify_calls > 1:
+            raise zigpy.exceptions.DeliveryError("Device rebooting")
+        return await original_image_notify(*args, **kwargs)
+
+    cluster.image_notify = image_notify_fail_post_ota
+    result = await dev.update_firmware(fw_image, progress_callback=progress_callback)
+    assert result == foundation.Status.SUCCESS
+    assert "Post-OTA image_notify failed" in caplog.text
+    cluster.image_notify = original_image_notify
+    caplog.clear()
+
     # _image_query_req exception test
     dev.application.send_packet.reset_mock()
     progress_callback.reset_mock()
