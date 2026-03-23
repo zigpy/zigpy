@@ -37,8 +37,8 @@ from zigpy.ota.manager import update_firmware
 from zigpy.profiles import zha, zll
 import zigpy.types as t
 import zigpy.util
-from zigpy.zcl import Cluster, ClusterType, foundation
-from zigpy.zcl.clusters.general import Ota, PollControl
+from zigpy.zcl import Cluster, ClusterType, OtaQueryCacheClearedEvent, foundation
+from zigpy.zcl.clusters.general import Ota, PollControl, QueryNextImageCommand
 import zigpy.zdo.types as zdo_t
 
 if typing.TYPE_CHECKING:
@@ -928,6 +928,14 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             cluster_id=Ota.cluster_id, cluster_type=ClusterType.Client
         )
         ota.update_attribute(Ota.AttributeDefs.current_file_version.id, None)
+        ota.last_query_cmd = None
+        ota.emit(
+            OtaQueryCacheClearedEvent.event_type,
+            OtaQueryCacheClearedEvent(
+                device_ieee=str(self.ieee),
+                endpoint_id=ota.endpoint.endpoint_id,
+            ),
+        )
 
         await asyncio.sleep(AFTER_OTA_ATTR_READ_DELAY)
         await OTA_RETRY_DECORATOR(ota.read_attributes)(
@@ -935,6 +943,17 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         )
 
         return result
+
+    def get_last_ota_query_cmd(self) -> QueryNextImageCommand | None:
+        """Return the last cached QueryNextImageCommand, preferring client clusters."""
+        for ep in self.non_zdo_endpoints:
+            # Prefer client (out) clusters since runtime routing places
+            # query_next_image there when both cluster types exist.
+            for clusters in (ep.out_clusters, ep.in_clusters):
+                cluster = clusters.get(Ota.cluster_id)
+                if isinstance(cluster, Ota) and cluster.last_query_cmd is not None:
+                    return cluster.last_query_cmd
+        return None
 
     def radio_details(self, lqi=None, rssi=None) -> None:
         if lqi is not None:

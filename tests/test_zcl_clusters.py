@@ -11,7 +11,7 @@ import pytest
 from zigpy import device, types, zcl
 import zigpy.endpoint
 from zigpy.ota import OtaImagesResult
-from zigpy.zcl import foundation
+from zigpy.zcl import OtaQueryCacheUpdatedEvent, foundation
 from zigpy.zcl.clusters.general import Basic, Ota, Time
 import zigpy.zcl.clusters.security as sec
 from zigpy.zdo import types as zdo_t
@@ -349,6 +349,9 @@ async def test_ota_handle_query_next_image(ota_cluster):
     )
     cmd = MagicMock()
 
+    cache_events = []
+    ota_cluster.on_event(OtaQueryCacheUpdatedEvent.event_type, cache_events.append)
+
     # No image is available
     dev.application.ota.get_ota_images = AsyncMock(
         return_value=OtaImagesResult(upgrades=(), downgrades=())
@@ -362,6 +365,9 @@ async def test_ota_handle_query_next_image(ota_cluster):
     assert listener.device_ota_image_query_result.mock_calls == [
         call(OtaImagesResult(upgrades=(), downgrades=()), cmd)
     ]
+    assert ota_cluster.last_query_cmd is cmd
+    assert len(cache_events) == 1
+    assert isinstance(cache_events[0], OtaQueryCacheUpdatedEvent)
 
     ota_cluster.query_next_image_response.reset_mock()
     listener.device_ota_image_query_result.reset_mock()
