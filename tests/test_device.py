@@ -531,7 +531,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
         )
     )
 
-    dev.application.ota.get_ota_images = MagicMock(
+    dev.application.ota.get_ota_images = AsyncMock(
         return_value=OtaImagesResult(upgrades=(), downgrades=())
     )
     dev.update_firmware = MagicMock(wraps=dev.update_firmware)
@@ -584,6 +584,9 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
             elif isinstance(
                 cmd, Ota.ClientCommandDefs.query_next_image_response.schema
             ):
+                # Post-OTA image_notify triggers a query with NO_IMAGE_AVAILABLE
+                if cmd.status == foundation.Status.NO_IMAGE_AVAILABLE:
+                    return
                 assert cmd.status == foundation.Status.SUCCESS
                 assert (
                     cmd.manufacturer_code
@@ -725,13 +728,18 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
         == 0x12345678
     )
 
-    assert dev.application.send_packet.await_count == 6
+    # Wait for background tasks (post-OTA query_next_image handling)
+    await asyncio.sleep(0)
+    # 6 OTA + 1 post-OTA image_notify + 1 post-OTA query_next_image_response
+    assert dev.application.send_packet.await_count == 8
     assert progress_callback.call_count == 2
     assert progress_callback.call_args_list[0] == call(40, 70, 57.142857142857146)
     assert progress_callback.call_args_list[1] == call(70, 70, 100.0)
     assert result == foundation.Status.SUCCESS
     assert len(cleared_events) == 1
     assert isinstance(cleared_events[0], OtaQueryCacheClearedEvent)
+    # Post-OTA image_notify repopulated the query cache
+    assert cluster.last_query_cmd is not None
 
     progress_callback.reset_mock()
     dev.application.send_packet.reset_mock()
@@ -739,11 +747,34 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
         fw_image, progress_callback=progress_callback, force=True
     )
 
-    assert dev.application.send_packet.await_count == 6
+    await asyncio.sleep(0)
+    # 6 OTA + 1 post-OTA image_notify + 1 post-OTA query_next_image_response
+    assert dev.application.send_packet.await_count == 8
     assert progress_callback.call_count == 2
     assert progress_callback.call_args_list[0] == call(40, 70, 57.142857142857146)
     assert progress_callback.call_args_list[1] == call(70, 70, 100.0)
     assert result == foundation.Status.SUCCESS
+
+    # Post-OTA image_notify failure: OTA still succeeds
+    dev.application.send_packet.reset_mock()
+    progress_callback.reset_mock()
+    caplog.clear()
+    original_image_notify = cluster.image_notify
+    notify_calls = 0
+
+    async def image_notify_fail_post_ota(*args, **kwargs):
+        nonlocal notify_calls
+        notify_calls += 1
+        if notify_calls > 1:
+            raise zigpy.exceptions.DeliveryError("Device rebooting")
+        return await original_image_notify(*args, **kwargs)
+
+    cluster.image_notify = image_notify_fail_post_ota
+    result = await dev.update_firmware(fw_image, progress_callback=progress_callback)
+    assert result == foundation.Status.SUCCESS
+    assert "Post-OTA image_notify failed" in caplog.text
+    cluster.image_notify = original_image_notify
+    caplog.clear()
 
     # _image_query_req exception test
     dev.application.send_packet.reset_mock()
@@ -824,6 +855,9 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
             elif isinstance(
                 cmd, Ota.ClientCommandDefs.query_next_image_response.schema
             ):
+                # Post-OTA image_notify triggers a query with NO_IMAGE_AVAILABLE
+                if cmd.status == foundation.Status.NO_IMAGE_AVAILABLE:
+                    return
                 assert cmd.status == foundation.Status.SUCCESS
                 assert cmd.manufacturer_code == fw_image.firmware.header.manufacturer_id
                 assert cmd.image_type == fw_image.firmware.header.image_type
@@ -920,7 +954,7 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
         )
     )
 
-    dev.application.ota.get_ota_images = MagicMock(
+    dev.application.ota.get_ota_images = AsyncMock(
         return_value=OtaImagesResult(upgrades=(), downgrades=())
     )
     dev.update_firmware = MagicMock(wraps=dev.update_firmware)
@@ -972,6 +1006,9 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
             elif isinstance(
                 cmd, Ota.ClientCommandDefs.query_next_image_response.schema
             ):
+                # Post-OTA image_notify triggers a query with NO_IMAGE_AVAILABLE
+                if cmd.status == foundation.Status.NO_IMAGE_AVAILABLE:
+                    return
                 assert cmd.status == foundation.Status.SUCCESS
                 assert (
                     cmd.manufacturer_code
@@ -1109,7 +1146,10 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
         == 0x12345678
     )
 
-    assert dev.application.send_packet.await_count == 6
+    # Wait for background tasks (post-OTA query_next_image handling)
+    await asyncio.sleep(0)
+    # 6 OTA + 1 post-OTA image_notify + 1 post-OTA query_next_image_response
+    assert dev.application.send_packet.await_count == 8
     assert progress_callback.call_count == 2
     assert progress_callback.call_args_list[0] == call(64, 70, 91.42857142857143)
     assert progress_callback.call_args_list[1] == call(70, 70, 100.0)
@@ -1121,7 +1161,9 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
         fw_image, progress_callback=progress_callback, force=True
     )
 
-    assert dev.application.send_packet.await_count == 6
+    await asyncio.sleep(0)
+    # 6 OTA + 1 post-OTA image_notify + 1 post-OTA query_next_image_response
+    assert dev.application.send_packet.await_count == 8
     assert progress_callback.call_count == 2
     assert progress_callback.call_args_list[0] == call(64, 70, 91.42857142857143)
     assert progress_callback.call_args_list[1] == call(70, 70, 100.0)
@@ -1206,6 +1248,9 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
             elif isinstance(
                 cmd, Ota.ClientCommandDefs.query_next_image_response.schema
             ):
+                # Post-OTA image_notify triggers a query with NO_IMAGE_AVAILABLE
+                if cmd.status == foundation.Status.NO_IMAGE_AVAILABLE:
+                    return
                 assert cmd.status == foundation.Status.SUCCESS
                 assert cmd.manufacturer_code == fw_image.firmware.header.manufacturer_id
                 assert cmd.image_type == fw_image.firmware.header.image_type
