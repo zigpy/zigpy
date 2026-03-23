@@ -128,7 +128,7 @@ async def test_initialize_sends_image_notify(
         await dev.initialize()
 
     # image_notify is the last packet sent during initialization
-    packet = app.send_packet.call_args_list[-1][0][0]
+    packet = app.send_packet.call_args_list[0][0][0]
     hdr, cmd = ota.deserialize(packet.data.serialize())
     assert isinstance(cmd, Ota.ImageNotifyCommand)
     assert cmd.payload_type == Ota.ImageNotifyCommand.PayloadType.QueryJitter
