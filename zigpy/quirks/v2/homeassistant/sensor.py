@@ -1,9 +1,9 @@
 """Homeassistant sensor platform quirks v2 supporting items."""
 
-from enum import Enum
+from enum import StrEnum
 
 
-class SensorDeviceClass(Enum):
+class SensorDeviceClass(StrEnum):
     """Device class for sensors."""
 
     # Non-numerical device classes
@@ -379,7 +379,7 @@ class SensorDeviceClass(Enum):
     """
 
 
-class SensorStateClass(Enum):
+class SensorStateClass(StrEnum):
     """State class for sensors."""
 
     MEASUREMENT = "measurement"
