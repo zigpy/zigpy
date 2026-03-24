@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Final, Self
 
 import zigpy.types as t
-from zigpy.zcl import Cluster, foundation
+from zigpy.zcl import Cluster, OtaQueryCacheUpdatedEvent, foundation
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
     BaseCommandDefs,
@@ -2029,6 +2029,10 @@ class Ota(Cluster):
     cluster_id: Final[t.uint16_t] = 0x0019
     ep_attribute: Final = "ota"
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.last_query_cmd: QueryNextImageCommand | None = None
+
     class AttributeDefs(BaseAttributeDefs):
         upgrade_server_id: Final = ZCLAttributeDef(
             id=0x0000, type=t.EUI64, access="r", mandatory=True
@@ -2155,19 +2159,28 @@ class Ota(Cluster):
             )
 
     async def _handle_query_next_image(self, hdr, cmd):
+        # Cache the query command fields for proactive OTA lookups
+        self.last_query_cmd = cmd
+        self.emit(
+            OtaQueryCacheUpdatedEvent.event_type,
+            OtaQueryCacheUpdatedEvent(
+                device_ieee=str(self.endpoint.device.ieee),
+                endpoint_id=self.endpoint.endpoint_id,
+                cluster_type=self.cluster_type,
+                cluster_id=self.cluster_id,
+                manufacturer_code=cmd.manufacturer_code,
+                image_type=cmd.image_type,
+                current_file_version=cmd.current_file_version,
+                hardware_version=getattr(cmd, "hardware_version", None),
+            ),
+        )
+
         # Always send no image available response so that the device stops asking
         await self.query_next_image_response(
             foundation.Status.NO_IMAGE_AVAILABLE, tsn=hdr.tsn
         )
 
-        device = self.endpoint.device
-        images_result = await device.application.ota.get_ota_images(device, cmd)
-
-        device.listener_event(
-            "device_ota_image_query_result",
-            images_result,
-            cmd,
-        )
+        await self.endpoint.device.application.ota.check_cluster_for_ota(self)
 
     async def _handle_image_block_req(self, hdr, cmd):
         # Abort any running firmware update (i.e. the integration is reloaded midway)

@@ -1,20 +1,24 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
 import hashlib
 import typing
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import aiohttp
 import attrs
 import pytest
 
+from tests.conftest import add_initialized_device, make_app
 from tests.ota.test_ota_providers import SelfContainedOtaImageMetadata, make_device
 from zigpy import config
 import zigpy.device
 import zigpy.ota
 from zigpy.ota.image import FieldControl
 from zigpy.ota.providers import BaseOtaImageMetadata, BaseOtaProvider
+import zigpy.types
+from zigpy.zcl import ClusterType, OtaImageAvailableEvent
 from zigpy.zcl.clusters.general import Ota
 
 
@@ -468,3 +472,271 @@ async def test_ota_trusted_provider_missing_sha3_256_checksum(
     # Image should be removed due to missing SHA3-256 checksum
     assert len(images.upgrades) == 0
     assert "does not have SHA3-256 checksum" in caplog.text
+
+
+def _make_device_with_ota_cluster(
+    query_cmd,
+    *,
+    endpoint_id: int = 1,
+    cluster_type: ClusterType = ClusterType.Client,
+) -> tuple[zigpy.device.Device, Ota]:
+    """Create a device with an OTA cluster and a cached query command."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    ep = device.add_endpoint(endpoint_id)
+
+    if cluster_type == ClusterType.Client:
+        cluster = ep.add_output_cluster(Ota.cluster_id)
+    else:
+        cluster = ep.add_input_cluster(Ota.cluster_id)
+
+    cluster.last_query_cmd = query_cmd
+
+    return device, cluster
+
+
+async def test_check_cluster_for_ota_emits_event(query_cmd) -> None:
+    """check_cluster_for_ota calls get_ota_images and emits OtaImageAvailableEvent."""
+    device, cluster = _make_device_with_ota_cluster(query_cmd)
+
+    images_result = zigpy.ota.OtaImagesResult(upgrades=(), downgrades=())
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    ota.get_ota_images = AsyncMock(return_value=images_result)
+
+    events = []
+    cluster.on_event(OtaImageAvailableEvent.event_type, events.append)
+
+    await ota.check_cluster_for_ota(cluster)
+
+    assert len(events) == 1
+    assert isinstance(events[0], OtaImageAvailableEvent)
+    assert events[0].device_ieee == str(device.ieee)
+    assert events[0].endpoint_id == 1
+    assert events[0].images_result is images_result
+    assert events[0].query_cmd is query_cmd
+    ota.get_ota_images.assert_called_once_with(device, query_cmd)
+
+
+async def test_check_cluster_for_ota_no_query_cmd(query_cmd) -> None:
+    """check_cluster_for_ota is a no-op when last_query_cmd is None."""
+    _device, cluster = _make_device_with_ota_cluster(query_cmd)
+    cluster.last_query_cmd = None
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    ota.get_ota_images = AsyncMock()
+
+    events = []
+    cluster.on_event(OtaImageAvailableEvent.event_type, events.append)
+
+    await ota.check_cluster_for_ota(cluster)
+
+    assert len(events) == 0
+    ota.get_ota_images.assert_not_called()
+
+
+async def test_check_device_for_ota_finds_clusters(query_cmd) -> None:
+    """check_device_for_ota iterates endpoints and checks each OTA cluster."""
+    device, cluster1 = _make_device_with_ota_cluster(query_cmd, endpoint_id=1)
+    # Add a second endpoint with an OTA cluster
+    ep2 = device.add_endpoint(2)
+    cluster2 = ep2.add_output_cluster(Ota.cluster_id)
+    cluster2.last_query_cmd = query_cmd
+
+    images_result = zigpy.ota.OtaImagesResult(upgrades=(), downgrades=())
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    ota.get_ota_images = AsyncMock(return_value=images_result)
+
+    events1 = []
+    events2 = []
+    cluster1.on_event(OtaImageAvailableEvent.event_type, events1.append)
+    cluster2.on_event(OtaImageAvailableEvent.event_type, events2.append)
+
+    await ota.check_device_for_ota(device)
+
+    # Both clusters should have received events
+    assert len(events1) == 1
+    assert events1[0].endpoint_id == 1
+    assert len(events2) == 1
+    assert events2[0].endpoint_id == 2
+
+
+async def test_check_device_for_ota_prefers_out_clusters(query_cmd) -> None:
+    """check_device_for_ota prefers out_clusters over in_clusters on same endpoint."""
+    device, in_cluster = _make_device_with_ota_cluster(
+        query_cmd, endpoint_id=1, cluster_type=ClusterType.Server
+    )
+    ep = device.endpoints[1]
+
+    # Also add as out_cluster on the same endpoint
+    out_cluster = ep.add_output_cluster(Ota.cluster_id)
+    out_cluster.last_query_cmd = query_cmd
+
+    images_result = zigpy.ota.OtaImagesResult(upgrades=(), downgrades=())
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    ota.get_ota_images = AsyncMock(return_value=images_result)
+
+    in_events = []
+    out_events = []
+    in_cluster.on_event(OtaImageAvailableEvent.event_type, in_events.append)
+    out_cluster.on_event(OtaImageAvailableEvent.event_type, out_events.append)
+
+    await ota.check_device_for_ota(device)
+
+    # Only out_cluster should receive the event (preferred)
+    assert len(out_events) == 1
+    assert len(in_events) == 0
+
+
+async def test_check_device_for_ota_ignores_stale_in_cluster(query_cmd) -> None:
+    """check_device_for_ota ignores in_cluster when out_cluster exists on same endpoint."""
+    device, in_cluster = _make_device_with_ota_cluster(
+        query_cmd, endpoint_id=1, cluster_type=ClusterType.Server
+    )
+    ep = device.endpoints[1]
+
+    # Add out_cluster on same endpoint without a cached query
+    out_cluster = ep.add_output_cluster(Ota.cluster_id)
+    assert out_cluster.last_query_cmd is None
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    ota.get_ota_images = AsyncMock()
+
+    in_events = []
+    in_cluster.on_event(OtaImageAvailableEvent.event_type, in_events.append)
+
+    await ota.check_device_for_ota(device)
+
+    # in_cluster has a cached query but should be ignored because the
+    # out_cluster takes precedence (in_cluster's cache is stale)
+    assert len(in_events) == 0
+    ota.get_ota_images.assert_not_called()
+
+
+async def test_check_device_for_ota_skips_no_query_cmd(query_cmd) -> None:
+    """check_device_for_ota skips clusters without last_query_cmd."""
+    device, cluster = _make_device_with_ota_cluster(query_cmd)
+    cluster.last_query_cmd = None
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    ota.get_ota_images = AsyncMock()
+
+    await ota.check_device_for_ota(device)
+
+    ota.get_ota_images.assert_not_called()
+
+
+async def test_check_all_devices_for_ota(query_cmd) -> None:
+    """check_all_devices_for_ota checks all devices, skipping those without OTA."""
+    app = make_app({})
+
+    dev1 = add_initialized_device(
+        app, nwk=0x1234, ieee=zigpy.types.EUI64.convert("00:11:22:33:44:55:66:77")
+    )
+    cluster1 = dev1.endpoints[1].add_output_cluster(Ota.cluster_id)
+    cluster1.last_query_cmd = query_cmd
+
+    # device2 has no OTA cluster — should be skipped
+    add_initialized_device(
+        app, nwk=0x5678, ieee=zigpy.types.EUI64.convert("AA:BB:CC:DD:EE:FF:00:11")
+    )
+
+    images_result = zigpy.ota.OtaImagesResult(upgrades=(), downgrades=())
+    app.ota.get_ota_images = AsyncMock(return_value=images_result)
+
+    events = []
+    cluster1.on_event(OtaImageAvailableEvent.event_type, events.append)
+
+    await app.ota.check_all_devices_for_ota()
+
+    assert len(events) == 1
+    assert events[0].device_ieee == str(dev1.ieee)
+
+
+async def test_check_all_devices_for_ota_tolerates_failure(query_cmd) -> None:
+    """check_all_devices_for_ota continues if one device fails."""
+    app = make_app({})
+
+    dev1 = add_initialized_device(
+        app, nwk=0x1234, ieee=zigpy.types.EUI64.convert("00:11:22:33:44:55:66:77")
+    )
+    cluster1 = dev1.endpoints[1].add_output_cluster(Ota.cluster_id)
+    cluster1.last_query_cmd = query_cmd
+
+    dev2 = add_initialized_device(
+        app, nwk=0x5678, ieee=zigpy.types.EUI64.convert("AA:BB:CC:DD:EE:FF:00:11")
+    )
+    cluster2 = dev2.endpoints[1].add_output_cluster(Ota.cluster_id)
+    cluster2.last_query_cmd = query_cmd
+
+    images_result = zigpy.ota.OtaImagesResult(upgrades=(), downgrades=())
+    app.ota.get_ota_images = AsyncMock(
+        side_effect=[RuntimeError("provider down"), images_result]
+    )
+
+    events2 = []
+    cluster2.on_event(OtaImageAvailableEvent.event_type, events2.append)
+
+    await app.ota.check_all_devices_for_ota()
+
+    # device2 should still get checked even though device1 failed
+    assert len(events2) == 1
+
+
+async def test_invalidate_provider_caches(query_cmd) -> None:
+    """invalidate_provider_caches resets all provider index timestamps."""
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    ota.register_provider(SelfContainedProvider([]))
+    ota.register_provider(SelfContainedProvider([]))
+
+    # Simulate providers having been recently loaded
+    recent = datetime.datetime.now(datetime.UTC)
+    for provider in ota._providers:
+        provider._index_last_updated = recent
+
+    # Verify caches are populated (load_index returns None = "use cache")
+    for provider in ota._providers:
+        assert await provider.load_index() is None
+
+    ota.invalidate_provider_caches()
+
+    # After invalidation, timestamps should be reset to epoch
+    epoch = datetime.datetime.fromtimestamp(0, tz=datetime.UTC)
+    for provider in ota._providers:
+        assert provider._index_last_updated == epoch
+
+    # load_index should now return fresh data instead of None
+    for provider in ota._providers:
+        result = await provider.load_index()
+        assert result is not None  # Empty list, not None (which means "cached")
+
+
+async def test_invalidate_provider_caches_clears_image_cache(
+    query_cmd, ota_image
+) -> None:
+    """invalidate_provider_caches clears the image cache so withdrawn images disappear."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    index_with_image = [
+        SelfContainedOtaImageMetadata(
+            file_version=query_cmd.current_file_version + 1,
+            manufacturer_id=query_cmd.manufacturer_code,
+            image_type=query_cmd.image_type,
+            test_data=ota_image.serialize(),
+        ),
+    ]
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    provider = SelfContainedProvider(index_with_image)
+    ota.register_provider(provider)
+
+    # First check finds the upgrade
+    result1 = await ota.get_ota_images(device, query_cmd)
+    assert len(result1.upgrades) == 1
+
+    # Provider now returns an empty index (image was withdrawn)
+    provider._index = []
+    ota.invalidate_provider_caches()
+
+    # Second check should find no upgrades
+    result2 = await ota.get_ota_images(device, query_cmd)
+    assert len(result2.upgrades) == 0
