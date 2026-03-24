@@ -217,6 +217,20 @@ class OtaQueryCacheUpdatedEvent:
 
 
 @dataclass(kw_only=True, frozen=True)
+class OtaImageAvailableEvent:
+    """Event generated when OTA image availability has been checked for a device."""
+
+    event_type: Final[str] = "ota_image_available"
+
+    device_ieee: str
+    endpoint_id: int
+    cluster_type: ClusterType
+    cluster_id: int
+    images_result: object  # OtaImagesResult, untyped to avoid circular import
+    query_cmd: object  # QueryNextImageCommand
+
+
+@dataclass(kw_only=True, frozen=True)
 class OtaQueryCacheClearedEvent:
     """Event generated when OTA query cache is cleared after a successful update."""
 
