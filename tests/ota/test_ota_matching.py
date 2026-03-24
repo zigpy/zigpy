@@ -587,6 +587,31 @@ async def test_check_device_for_ota_prefers_out_clusters(query_cmd) -> None:
     assert len(in_events) == 0
 
 
+async def test_check_device_for_ota_ignores_stale_in_cluster(query_cmd) -> None:
+    """check_device_for_ota ignores in_cluster when out_cluster exists on same endpoint."""
+    device, in_cluster = _make_device_with_ota_cluster(
+        query_cmd, endpoint_id=1, cluster_type=ClusterType.Server
+    )
+    ep = device.endpoints[1]
+
+    # Add out_cluster on same endpoint without a cached query
+    out_cluster = ep.add_output_cluster(Ota.cluster_id)
+    assert out_cluster.last_query_cmd is None
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    ota.get_ota_images = AsyncMock()
+
+    in_events = []
+    in_cluster.on_event(OtaImageAvailableEvent.event_type, in_events.append)
+
+    await ota.check_device_for_ota(device)
+
+    # in_cluster has a cached query but should be ignored because the
+    # out_cluster takes precedence (in_cluster's cache is stale)
+    assert len(in_events) == 0
+    ota.get_ota_images.assert_not_called()
+
+
 async def test_check_device_for_ota_skips_no_query_cmd(query_cmd) -> None:
     """check_device_for_ota skips clusters without last_query_cmd."""
     device, cluster = _make_device_with_ota_cluster(query_cmd)

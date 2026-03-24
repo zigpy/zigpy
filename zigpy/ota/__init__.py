@@ -321,15 +321,15 @@ class OTA:
                 continue
 
             # Prefer out_clusters (client) since that's where runtime routing
-            # places it when both cluster types exist.
+            # places query_next_image when both cluster types exist. If an
+            # out_cluster exists, always use it (the in_cluster's cached query
+            # would be stale and never updated again).
             for clusters in (ep.out_clusters, ep.in_clusters):
                 cluster = clusters.get(Ota.cluster_id)
                 if not isinstance(cluster, Ota):
                     continue
 
                 await self.check_cluster_for_ota(cluster)
-
-                # Only check the first OTA cluster found per endpoint
                 break
 
     async def check_all_devices_for_ota(self) -> None:
