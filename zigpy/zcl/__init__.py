@@ -487,6 +487,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         # We proxy `_attr_cache` because custom quirks can overwrite it with a dict
         self._attr_cache_internal: AttributeCache = AttributeCache(self)
 
+        # Register event handlers for cache side effects, allowing quirks to
+        # override emit() or the handler to prevent cache modifications.
+        self.on_event(
+            AttributeUnsupportedEvent.event_type, self._on_attribute_unsupported
+        )
+
     @property
     def _attr_cache(self) -> AttributeCache:
         """Attribute cache accessor."""
@@ -1174,7 +1180,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                             )
                     else:
                         if record.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
-                            self._attr_cache.mark_unsupported(attr_def)
                             self.emit(
                                 AttributeUnsupportedEvent.event_type,
                                 AttributeUnsupportedEvent(
@@ -1191,6 +1196,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                         failure[attribute_map[attr_def]] = record.status
 
         return success, failure
+
+    def _on_attribute_unsupported(self, event: AttributeUnsupportedEvent) -> None:
+        """Handle an attribute being reported as unsupported by the device."""
+        attr_def = self.find_attribute(event.attribute_name)
+        self._attr_cache.mark_unsupported(attr_def)
 
     def update_attribute(
         self, attrid: int | t.uint16_t | foundation.ZCLAttributeDef, value: Any
@@ -1390,7 +1400,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                         attr_def, attribute_values[record.attrid]
                     )
                 elif record.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
-                    self._attr_cache.mark_unsupported(attr_def)
                     self.emit(
                         AttributeUnsupportedEvent.event_type,
                         AttributeUnsupportedEvent(
@@ -1557,7 +1566,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                         ),
                     )
                 elif status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
-                    self._attr_cache.mark_unsupported(attr_def)
                     self.emit(
                         AttributeUnsupportedEvent.event_type,
                         AttributeUnsupportedEvent(
@@ -1780,7 +1788,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     ) -> None:
         """Adds unsupported attribute."""
         attr_def = self.find_attribute(attr, manufacturer_code=manufacturer_code)
-        self._attr_cache.mark_unsupported(attr_def)
 
         self.emit(
             AttributeUnsupportedEvent.event_type,
