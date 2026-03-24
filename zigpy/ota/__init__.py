@@ -560,8 +560,10 @@ class OTA:
             # image with downloaded firmware.
             img = result
 
-            # Cache the image if it isn't already cached
-            if self._image_cache[img.metadata].firmware is None:
+            # Cache the image if it isn't already cached (or was cleared by
+            # invalidate_provider_caches() during the download await)
+            cached = self._image_cache.get(img.metadata)
+            if cached is None or cached.firmware is None:
                 _LOGGER.debug("Caching image %s", img)
                 self._image_cache[img.metadata] = img
 
