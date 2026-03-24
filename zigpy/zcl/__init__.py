@@ -27,6 +27,8 @@ from .helpers import AttributeCache, ReportingConfig, UnsupportedAttribute
 
 if TYPE_CHECKING:
     from zigpy.endpoint import Endpoint
+    from zigpy.ota import OtaImagesResult
+    from zigpy.zcl.clusters.general import QueryNextImageCommand
 
 
 LOGGER = logging.getLogger(__name__)
@@ -226,8 +228,8 @@ class OtaImageAvailableEvent:
     endpoint_id: int
     cluster_type: ClusterType
     cluster_id: int
-    images_result: object  # OtaImagesResult, untyped to avoid circular import
-    query_cmd: object  # QueryNextImageCommand
+    images_result: OtaImagesResult
+    query_cmd: QueryNextImageCommand
 
 
 @dataclass(kw_only=True, frozen=True)
