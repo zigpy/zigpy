@@ -242,11 +242,15 @@ async def test_ota_broadcast_loop() -> None:
         }
     )
 
-    with patch.object(
-        app.ota,
-        "broadcast_notify",
-        side_effect=[None, None, RuntimeError(), None, None, None],
-    ) as mock_broadcast_notify:
+    with (
+        patch.object(
+            app.ota,
+            "broadcast_notify",
+            side_effect=[None, None, RuntimeError(), None, None, None],
+        ) as mock_broadcast_notify,
+        patch.object(app.ota, "check_all_devices_for_ota", return_value=None),
+        patch("zigpy.ota.BROADCAST_SETTLE_DELAY", 0),
+    ):
         await app.startup()
         assert app.ota._broadcast_loop_task is not None
         await asyncio.sleep(1)

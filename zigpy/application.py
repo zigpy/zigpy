@@ -309,6 +309,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 interval=self._config[conf.CONF_OTA][conf.CONF_OTA_BROADCAST_INTERVAL],
             )
 
+        if self.config[conf.CONF_OTA][conf.CONF_OTA_ENABLED]:
+            self.create_task(self.ota.check_all_devices_for_ota())
+
     async def startup(self, *, auto_form: bool = False) -> None:
         """Starts a network, optionally forming one with random settings if necessary."""
 

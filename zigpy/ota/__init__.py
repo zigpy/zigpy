@@ -35,7 +35,7 @@ import zigpy.ota.providers
 import zigpy.profiles.zha
 import zigpy.types as t
 import zigpy.util
-from zigpy.zcl import foundation
+from zigpy.zcl import OtaImageAvailableEvent, foundation
 from zigpy.zcl.clusters.general import Ota, QueryNextImageCommand
 
 if typing.TYPE_CHECKING:
@@ -46,6 +46,7 @@ _LOGGER = logging.getLogger(__name__)
 
 OTA_FETCH_TIMEOUT = 20
 MAX_DEVICES_CHECKING_IN_PER_BROADCAST = 15
+BROADCAST_SETTLE_DELAY = 60
 
 
 @dataclasses.dataclass(frozen=True)
@@ -247,6 +248,14 @@ class OTA:
             except Exception:  # noqa: BLE001
                 _LOGGER.debug("OTA broadcast failed", exc_info=True)
 
+            # Wait for devices to respond with query_next_image before checking
+            await asyncio.sleep(BROADCAST_SETTLE_DELAY)
+
+            try:
+                await self.check_all_devices_for_ota()
+            except Exception:  # noqa: BLE001
+                _LOGGER.debug("OTA image check failed", exc_info=True)
+
             await asyncio.sleep(interval)
 
     def start_periodic_broadcasts(self, initial_delay: float, interval: float) -> None:
@@ -263,6 +272,51 @@ class OTA:
         if self._broadcast_loop_task is not None:
             self._broadcast_loop_task.cancel()
             self._broadcast_loop_task = None
+
+    async def check_all_devices_for_ota(self) -> None:
+        """Check OTA image availability for all devices with cached query commands.
+
+        Called on startup after the OTA query cache is loaded, and can also be called
+        when provider indexes are refreshed.
+        """
+        for device in self._application.devices.values():
+            for ep_id, ep in device.endpoints.items():
+                if ep_id == 0:
+                    continue
+
+                for clusters in (ep.out_clusters, ep.in_clusters):
+                    cluster = clusters.get(Ota.cluster_id)
+                    if not isinstance(cluster, Ota):
+                        continue
+
+                    cmd = cluster.last_query_cmd
+                    if cmd is None:
+                        continue
+
+                    try:
+                        images_result = await self.get_ota_images(device, cmd)
+                    except Exception:  # noqa: BLE001
+                        _LOGGER.debug(
+                            "Failed to check OTA images for %s",
+                            device.ieee,
+                            exc_info=True,
+                        )
+                        continue
+
+                    cluster.emit(
+                        OtaImageAvailableEvent.event_type,
+                        OtaImageAvailableEvent(
+                            device_ieee=str(device.ieee),
+                            endpoint_id=ep.endpoint_id,
+                            cluster_type=cluster.cluster_type,
+                            cluster_id=cluster.cluster_id,
+                            images_result=images_result,
+                            query_cmd=cmd,
+                        ),
+                    )
+
+                    # Only emit for the first OTA cluster found per endpoint
+                    break
 
     def _register_providers(self, config: dict[str, typing.Any]) -> None:
         # Config gets a little complicated when you mix deprecated config and the new
