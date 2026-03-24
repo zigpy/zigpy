@@ -551,7 +551,7 @@ class EffectIdentifier(t.enum8):
     Blink = 0x00
     Breathe = 0x01
     Okay = 0x02
-    Channel_change = 0x03
+    Channel_change = 0x0B
     Finish_effect = 0xFE
     Stop_effect = 0xFF
 
