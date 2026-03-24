@@ -10,7 +10,7 @@ import pytest
 
 from zigpy import device, types, zcl
 import zigpy.endpoint
-from zigpy.ota import OtaImagesResult
+from zigpy.ota import OTA, OtaImagesResult
 from zigpy.zcl import OtaImageAvailableEvent, OtaQueryCacheUpdatedEvent, foundation
 from zigpy.zcl.clusters.general import Basic, Ota, Time
 import zigpy.zcl.clusters.security as sec
@@ -308,6 +308,7 @@ def ota_cluster(dev):
     ep = dev.add_endpoint(1)
 
     cluster = zcl.Cluster._registry[0x0019](ep)
+    ep.in_clusters[cluster.cluster_id] = cluster
 
     with (
         patch.object(cluster, "reply", AsyncMock()),
@@ -352,8 +353,12 @@ async def test_ota_handle_query_next_image(ota_cluster):
     image_events = []
     ota_cluster.on_event(OtaImageAvailableEvent.event_type, image_events.append)
 
+    # Use the real check_device_for_ota so it emits OtaImageAvailableEvent
+    ota = dev.application.ota
+    ota.check_device_for_ota = lambda d: OTA.check_device_for_ota(ota, d)
+
     # No image is available
-    dev.application.ota.get_ota_images = AsyncMock(
+    ota.get_ota_images = AsyncMock(
         return_value=OtaImagesResult(upgrades=(), downgrades=())
     )
     ota_cluster.handle_cluster_request(hdr, cmd)
@@ -375,7 +380,7 @@ async def test_ota_handle_query_next_image(ota_cluster):
 
     # Now one is available
     img = MagicMock()
-    dev.application.ota.get_ota_images = AsyncMock(
+    ota.get_ota_images = AsyncMock(
         return_value=OtaImagesResult(upgrades=(img,), downgrades=())
     )
     ota_cluster.handle_cluster_request(hdr, cmd)

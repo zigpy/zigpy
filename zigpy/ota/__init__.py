@@ -273,50 +273,62 @@ class OTA:
             self._broadcast_loop_task.cancel()
             self._broadcast_loop_task = None
 
+    async def check_device_for_ota(
+        self,
+        device: zigpy.device.Device,
+    ) -> None:
+        """Check OTA image availability for a single device.
+
+        Iterates the device's endpoints looking for an OTA cluster with a cached
+        query command, calls get_ota_images, and emits OtaImageAvailableEvent.
+        """
+        for ep_id, ep in device.endpoints.items():
+            if ep_id == 0:
+                continue
+
+            # Prefer out_clusters (client) since that's where runtime routing
+            # places it when both cluster types exist.
+            for clusters in (ep.out_clusters, ep.in_clusters):
+                cluster = clusters.get(Ota.cluster_id)
+                if not isinstance(cluster, Ota):
+                    continue
+
+                cmd = cluster.last_query_cmd
+                if cmd is None:
+                    continue
+
+                images_result = await self.get_ota_images(device, cmd)
+
+                cluster.emit(
+                    OtaImageAvailableEvent.event_type,
+                    OtaImageAvailableEvent(
+                        device_ieee=str(device.ieee),
+                        endpoint_id=ep.endpoint_id,
+                        cluster_type=cluster.cluster_type,
+                        cluster_id=cluster.cluster_id,
+                        images_result=images_result,
+                        query_cmd=cmd,
+                    ),
+                )
+
+                # Only emit for the first OTA cluster found per endpoint
+                break
+
     async def check_all_devices_for_ota(self) -> None:
         """Check OTA image availability for all devices with cached query commands.
 
-        Called on startup after the OTA query cache is loaded, and can also be called
-        when provider indexes are refreshed.
+        Called on startup after the OTA query cache is loaded, and periodically
+        from the broadcast loop.
         """
         for device in self._application.devices.values():
-            for ep_id, ep in device.endpoints.items():
-                if ep_id == 0:
-                    continue
-
-                for clusters in (ep.out_clusters, ep.in_clusters):
-                    cluster = clusters.get(Ota.cluster_id)
-                    if not isinstance(cluster, Ota):
-                        continue
-
-                    cmd = cluster.last_query_cmd
-                    if cmd is None:
-                        continue
-
-                    try:
-                        images_result = await self.get_ota_images(device, cmd)
-                    except Exception:  # noqa: BLE001
-                        _LOGGER.debug(
-                            "Failed to check OTA images for %s",
-                            device.ieee,
-                            exc_info=True,
-                        )
-                        continue
-
-                    cluster.emit(
-                        OtaImageAvailableEvent.event_type,
-                        OtaImageAvailableEvent(
-                            device_ieee=str(device.ieee),
-                            endpoint_id=ep.endpoint_id,
-                            cluster_type=cluster.cluster_type,
-                            cluster_id=cluster.cluster_id,
-                            images_result=images_result,
-                            query_cmd=cmd,
-                        ),
-                    )
-
-                    # Only emit for the first OTA cluster found per endpoint
-                    break
+            try:
+                await self.check_device_for_ota(device)
+            except Exception:  # noqa: BLE001
+                _LOGGER.debug(
+                    "Failed to check OTA images for %s",
+                    device.ieee,
+                    exc_info=True,
+                )
 
     def _register_providers(self, config: dict[str, typing.Any]) -> None:
         # Config gets a little complicated when you mix deprecated config and the new

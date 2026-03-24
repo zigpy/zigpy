@@ -6,12 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Final, Self
 
 import zigpy.types as t
-from zigpy.zcl import (
-    Cluster,
-    OtaImageAvailableEvent,
-    OtaQueryCacheUpdatedEvent,
-    foundation,
-)
+from zigpy.zcl import Cluster, OtaQueryCacheUpdatedEvent, foundation
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
     BaseCommandDefs,
@@ -2186,19 +2181,7 @@ class Ota(Cluster):
         )
 
         device = self.endpoint.device
-        images_result = await device.application.ota.get_ota_images(device, cmd)
-
-        self.emit(
-            OtaImageAvailableEvent.event_type,
-            OtaImageAvailableEvent(
-                device_ieee=str(device.ieee),
-                endpoint_id=self.endpoint.endpoint_id,
-                cluster_type=self.cluster_type,
-                cluster_id=self.cluster_id,
-                images_result=images_result,
-                query_cmd=cmd,
-            ),
-        )
+        await device.application.ota.check_device_for_ota(device)
 
     async def _handle_image_block_req(self, hdr, cmd):
         # Abort any running firmware update (i.e. the integration is reloaded midway)
