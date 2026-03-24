@@ -3,6 +3,14 @@
 from enum import StrEnum
 
 
+class NumberMode(StrEnum):
+    """Modes for number entities."""
+
+    AUTO = "auto"
+    BOX = "box"
+    SLIDER = "slider"
+
+
 class NumberDeviceClass(StrEnum):
     """Device class for numbers."""
 
