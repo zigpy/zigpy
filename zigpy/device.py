@@ -509,6 +509,17 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         else:
             await ota.read_attributes([Ota.AttributeDefs.current_file_version.name])
 
+            # Notify the device that OTA images may be available so it queries us
+            try:
+                await ota.image_notify(
+                    payload_type=Ota.ImageNotifyCommand.PayloadType.QueryJitter,
+                    query_jitter=100,
+                )
+            except Exception:  # noqa: BLE001
+                self.debug(
+                    "OTA image_notify failed during initialization", exc_info=True
+                )
+
         self.status = Status.ENDPOINTS_INIT
 
         self.info("Discovered basic device information for %s", self)

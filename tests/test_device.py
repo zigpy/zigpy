@@ -108,6 +108,57 @@ async def test_initialize_read_ota(
     assert success[Ota.AttributeDefs.current_file_version.id] == 0x12345678
 
 
+async def test_initialize_sends_image_notify(
+    app: zigpy.application.ControllerApplication,
+) -> None:
+    """Test that image_notify is sent to OTA devices during initialization."""
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+
+    basic = ep.add_input_cluster(Basic.cluster_id)
+    ota = ep.add_output_cluster(Ota.cluster_id)
+
+    with (
+        mock_attribute_reads(basic, {"model": "Model", "manufacturer": "Manufacturer"}),
+        mock_attribute_reads(ota, {"current_file_version": 0x12345678}),
+    ):
+        await dev.initialize()
+
+    # image_notify is the last packet sent during initialization
+    packet = app.send_packet.call_args_list[0][0][0]
+    hdr, cmd = ota.deserialize(packet.data.serialize())
+    assert isinstance(cmd, Ota.ImageNotifyCommand)
+    assert cmd.payload_type == Ota.ImageNotifyCommand.PayloadType.QueryJitter
+    assert cmd.query_jitter == 100
+
+
+async def test_initialize_image_notify_failure_does_not_block(
+    app: zigpy.application.ControllerApplication,
+) -> None:
+    """Test that a failed image_notify does not prevent initialization."""
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+
+    basic = ep.add_input_cluster(Basic.cluster_id)
+    ota = ep.add_output_cluster(Ota.cluster_id)
+    ota.image_notify = AsyncMock(side_effect=TimeoutError)
+
+    with (
+        mock_attribute_reads(basic, {"model": "Model", "manufacturer": "Manufacturer"}),
+        mock_attribute_reads(ota, {"current_file_version": 0x12345678}),
+    ):
+        await dev.initialize()
+
+    assert dev.is_initialized
+    ota.image_notify.assert_awaited_once()
+
+
 async def test_initialize_read_ota_unsupported(
     app: zigpy.application.ControllerApplication,
 ) -> None:
