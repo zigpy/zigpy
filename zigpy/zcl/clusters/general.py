@@ -2180,14 +2180,7 @@ class Ota(Cluster):
             foundation.Status.NO_IMAGE_AVAILABLE, tsn=hdr.tsn
         )
 
-        device = self.endpoint.device
-        images_result = await device.application.ota.get_ota_images(device, cmd)
-
-        device.listener_event(
-            "device_ota_image_query_result",
-            images_result,
-            cmd,
-        )
+        await self.endpoint.device.application.ota.check_cluster_for_ota(self)
 
     async def _handle_image_block_req(self, hdr, cmd):
         # Abort any running firmware update (i.e. the integration is reloaded midway)

@@ -27,6 +27,8 @@ from .helpers import AttributeCache, ReportingConfig, UnsupportedAttribute
 
 if TYPE_CHECKING:
     from zigpy.endpoint import Endpoint
+    from zigpy.ota import OtaImagesResult
+    from zigpy.zcl.clusters.general import QueryNextImageCommand
 
 
 LOGGER = logging.getLogger(__name__)
@@ -214,6 +216,20 @@ class OtaQueryCacheUpdatedEvent:
     image_type: int
     current_file_version: int
     hardware_version: int | None
+
+
+@dataclass(kw_only=True, frozen=True)
+class OtaImageAvailableEvent:
+    """Event generated when OTA image availability has been checked for a device."""
+
+    event_type: Final[str] = "ota_image_available"
+
+    device_ieee: str
+    endpoint_id: int
+    cluster_type: ClusterType
+    cluster_id: int
+    images_result: OtaImagesResult
+    query_cmd: QueryNextImageCommand
 
 
 @dataclass(kw_only=True, frozen=True)
