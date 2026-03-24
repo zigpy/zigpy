@@ -478,7 +478,7 @@ def _make_device_with_ota_cluster(
     query_cmd,
     *,
     endpoint_id: int = 1,
-    cluster_type: ClusterType = ClusterType.Server,
+    cluster_type: ClusterType = ClusterType.Client,
 ) -> tuple[zigpy.device.Device, Ota]:
     """Create a device with an OTA cluster and a cached query command."""
     device = make_device(model="device model", manufacturer_id=0x1234)
@@ -487,10 +487,10 @@ def _make_device_with_ota_cluster(
     cluster = Ota(ep)
     cluster.last_query_cmd = query_cmd
 
-    if cluster_type == ClusterType.Server:
-        ep.in_clusters[Ota.cluster_id] = cluster
-    else:
+    if cluster_type == ClusterType.Client:
         ep.out_clusters[Ota.cluster_id] = cluster
+    else:
+        ep.in_clusters[Ota.cluster_id] = cluster
 
     return device, cluster
 
@@ -536,9 +536,7 @@ async def test_check_cluster_for_ota_no_query_cmd(query_cmd) -> None:
 
 async def test_check_device_for_ota_finds_clusters(query_cmd) -> None:
     """check_device_for_ota iterates endpoints and checks each OTA cluster."""
-    device, cluster1 = _make_device_with_ota_cluster(
-        query_cmd, endpoint_id=1, cluster_type=ClusterType.Server
-    )
+    device, cluster1 = _make_device_with_ota_cluster(query_cmd, endpoint_id=1)
     # Add a second endpoint with an OTA cluster
     ep2 = device.add_endpoint(2)
     cluster2 = Ota(ep2)
