@@ -23,34 +23,74 @@ class EntityPlatform(StrEnum):
     SWITCH = "switch"
 
 
+# #### UNITS OF MEASUREMENT ####
+# Apparent power units
 class UnitOfApparentPower(StrEnum):
     """Apparent power units."""
 
+    MILLIVOLT_AMPERE = "mVA"
     VOLT_AMPERE = "VA"
+    KILO_VOLT_AMPERE = "kVA"
 
 
 # Power units
 class UnitOfPower(StrEnum):
     """Power units."""
 
+    MILLIWATT = "mW"
     WATT = "W"
     KILO_WATT = "kW"
+    MEGA_WATT = "MW"
+    GIGA_WATT = "GW"
+    TERA_WATT = "TW"
     BTU_PER_HOUR = "BTU/h"
 
 
 # Reactive power units
-POWER_VOLT_AMPERE_REACTIVE: Final = "var"
+class UnitOfReactivePower(StrEnum):
+    """Reactive power units."""
+
+    MILLIVOLT_AMPERE_REACTIVE = "mvar"
+    VOLT_AMPERE_REACTIVE = "var"
+    KILO_VOLT_AMPERE_REACTIVE = "kvar"
 
 
 # Energy units
 class UnitOfEnergy(StrEnum):
     """Energy units."""
 
-    GIGA_JOULE = "GJ"
-    KILO_WATT_HOUR = "kWh"
+    JOULE = "J"
+    KILO_JOULE = "kJ"
     MEGA_JOULE = "MJ"
-    MEGA_WATT_HOUR = "MWh"
+    GIGA_JOULE = "GJ"
+    MILLIWATT_HOUR = "mWh"
     WATT_HOUR = "Wh"
+    KILO_WATT_HOUR = "kWh"
+    MEGA_WATT_HOUR = "MWh"
+    GIGA_WATT_HOUR = "GWh"
+    TERA_WATT_HOUR = "TWh"
+    CALORIE = "cal"
+    KILO_CALORIE = "kcal"
+    MEGA_CALORIE = "Mcal"
+    GIGA_CALORIE = "Gcal"
+
+
+# Reactive energy units
+class UnitOfReactiveEnergy(StrEnum):
+    """Reactive energy units."""
+
+    VOLT_AMPERE_REACTIVE_HOUR = "varh"
+    KILO_VOLT_AMPERE_REACTIVE_HOUR = "kvarh"
+
+
+# Energy Distance units
+class UnitOfEnergyDistance(StrEnum):
+    """Energy Distance units."""
+
+    KILO_WATT_HOUR_PER_100_KM = "kWh/100km"
+    WATT_HOUR_PER_KM = "Wh/km"
+    MILES_PER_KILO_WATT_HOUR = "mi/kWh"
+    KM_PER_KILO_WATT_HOUR = "km/kWh"
 
 
 # Electric_current units
@@ -65,8 +105,11 @@ class UnitOfElectricCurrent(StrEnum):
 class UnitOfElectricPotential(StrEnum):
     """Electric potential units."""
 
+    MICROVOLT = "μV"
     MILLIVOLT = "mV"
     VOLT = "V"
+    KILOVOLT = "kV"
+    MEGAVOLT = "MV"
 
 
 # Degree units
@@ -114,6 +157,7 @@ class UnitOfLength(StrEnum):
     FEET = "ft"
     YARDS = "yd"
     MILES = "mi"
+    NAUTICAL_MILES = "nmi"
 
 
 # Frequency units
@@ -130,6 +174,7 @@ class UnitOfFrequency(StrEnum):
 class UnitOfPressure(StrEnum):
     """Pressure units."""
 
+    MILLIPASCAL = "mPa"
     PA = "Pa"
     HPA = "hPa"
     KPA = "kPa"
@@ -138,6 +183,7 @@ class UnitOfPressure(StrEnum):
     MBAR = "mbar"
     MMHG = "mmHg"
     INHG = "inHg"
+    INH2O = "inH₂O"
     PSI = "psi"
 
 
@@ -155,6 +201,7 @@ class UnitOfVolume(StrEnum):
 
     CUBIC_FEET = "ft³"
     CENTUM_CUBIC_FEET = "CCF"
+    MILLE_CUBIC_FEET = "MCF"
     CUBIC_METERS = "m³"
     LITERS = "L"
     MILLILITERS = "mL"
@@ -173,13 +220,31 @@ class UnitOfVolumeFlowRate(StrEnum):
     """Volume flow rate units."""
 
     CUBIC_METERS_PER_HOUR = "m³/h"
+    CUBIC_METERS_PER_MINUTE = "m³/min"
+    CUBIC_METERS_PER_SECOND = "m³/s"
     CUBIC_FEET_PER_MINUTE = "ft³/min"
+    LITERS_PER_HOUR = "L/h"
     LITERS_PER_MINUTE = "L/min"
+    LITERS_PER_SECOND = "L/s"
+    GALLONS_PER_HOUR = "gal/h"
     GALLONS_PER_MINUTE = "gal/min"
+    GALLONS_PER_DAY = "gal/d"
+    MILLILITERS_PER_SECOND = "mL/s"
 
 
-# Area units
-AREA_SQUARE_METERS: Final = "m²"
+class UnitOfArea(StrEnum):
+    """Area units."""
+
+    SQUARE_METERS = "m²"
+    SQUARE_CENTIMETERS = "cm²"
+    SQUARE_KILOMETERS = "km²"
+    SQUARE_MILLIMETERS = "mm²"
+    SQUARE_INCHES = "in²"
+    SQUARE_FEET = "ft²"
+    SQUARE_YARDS = "yd²"
+    SQUARE_MILES = "mi²"
+    ACRES = "ac"
+    HECTARES = "ha"
 
 
 # Mass units
@@ -189,18 +254,17 @@ class UnitOfMass(StrEnum):
     GRAMS = "g"
     KILOGRAMS = "kg"
     MILLIGRAMS = "mg"
-    MICROGRAMS = "µg"
+    MICROGRAMS = "μg"
     OUNCES = "oz"
     POUNDS = "lb"
     STONES = "st"
 
 
-# Conductivity units
 class UnitOfConductivity(StrEnum):
     """Conductivity units."""
 
     SIEMENS_PER_CM = "S/cm"
-    MICROSIEMENS_PER_CM = "µS/cm"
+    MICROSIEMENS_PER_CM = "μS/cm"
     MILLISIEMENS_PER_CM = "mS/cm"
 
 
@@ -263,23 +327,35 @@ class UnitOfPrecipitationDepth(StrEnum):
 
 
 # Concentration units
-CONCENTRATION_MICROGRAMS_PER_CUBIC_METER: Final = "µg/m³"
+CONCENTRATION_GRAMS_PER_CUBIC_METER: Final = "g/m³"
 CONCENTRATION_MILLIGRAMS_PER_CUBIC_METER: Final = "mg/m³"
+CONCENTRATION_MICROGRAMS_PER_CUBIC_METER: Final = "μg/m³"
 CONCENTRATION_MICROGRAMS_PER_CUBIC_FOOT: Final = "μg/ft³"
 CONCENTRATION_PARTS_PER_CUBIC_METER: Final = "p/m³"
 CONCENTRATION_PARTS_PER_MILLION: Final = "ppm"
 CONCENTRATION_PARTS_PER_BILLION: Final = "ppb"
 
 
+class UnitOfBloodGlucoseConcentration(StrEnum):
+    """Blood glucose concentration units."""
+
+    MILLIGRAMS_PER_DECILITER = "mg/dL"
+    MILLIMOLE_PER_LITER = "mmol/L"
+
+
 # Speed units
 class UnitOfSpeed(StrEnum):
     """Speed units."""
 
+    BEAUFORT = "Beaufort"
     FEET_PER_SECOND = "ft/s"
+    INCHES_PER_SECOND = "in/s"
+    METERS_PER_MINUTE = "m/min"
     METERS_PER_SECOND = "m/s"
     KILOMETERS_PER_HOUR = "km/h"
     KNOTS = "kn"
     MILES_PER_HOUR = "mph"
+    MILLIMETERS_PER_SECOND = "mm/s"
 
 
 # Signal_strength units
