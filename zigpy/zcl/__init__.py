@@ -1157,9 +1157,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
     def _on_attribute_unsupported(self, event: AttributeUnsupportedEvent) -> None:
         """Handle an attribute being reported as unsupported by the device."""
-        attr_def = self.find_attribute(
-            event.attribute_id, manufacturer_code=event.manufacturer_code
-        )
+        attr_def = self.find_attribute(event.attribute_name)
         self._attr_cache.mark_unsupported(attr_def)
 
     def update_attribute(
