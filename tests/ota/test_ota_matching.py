@@ -10,10 +10,10 @@ import aiohttp
 import attrs
 import pytest
 
+from tests.conftest import add_initialized_device, make_app
 from tests.ota.test_ota_providers import SelfContainedOtaImageMetadata, make_device
 from zigpy import config
 import zigpy.device
-import zigpy.endpoint
 import zigpy.ota
 from zigpy.ota.image import FieldControl
 from zigpy.ota.providers import BaseOtaImageMetadata, BaseOtaProvider
@@ -604,61 +604,56 @@ async def test_check_device_for_ota_skips_no_query_cmd(query_cmd) -> None:
 
 async def test_check_all_devices_for_ota(query_cmd) -> None:
     """check_all_devices_for_ota checks all devices, skipping those without OTA."""
-    app = AsyncMock()
+    app = make_app({})
 
-    device1, cluster1 = _make_device_with_ota_cluster(query_cmd)
-    device2 = zigpy.device.Device(
-        application=app,
-        ieee=zigpy.types.EUI64.convert("AA:BB:CC:DD:EE:FF:00:11"),
-        nwk=0x5678,
+    dev1 = add_initialized_device(
+        app, nwk=0x1234, ieee=zigpy.types.EUI64.convert("00:11:22:33:44:55:66:77")
     )
-    # device2 has no OTA cluster — should be skipped
-    device2.add_endpoint(1)
+    cluster1 = dev1.endpoints[1].add_output_cluster(Ota.cluster_id)
+    cluster1.last_query_cmd = query_cmd
 
-    app.devices = {device1.ieee: device1, device2.ieee: device2}
+    # device2 has no OTA cluster — should be skipped
+    add_initialized_device(
+        app, nwk=0x5678, ieee=zigpy.types.EUI64.convert("AA:BB:CC:DD:EE:FF:00:11")
+    )
 
     images_result = zigpy.ota.OtaImagesResult(upgrades=(), downgrades=())
-    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=app)
-    ota.get_ota_images = AsyncMock(return_value=images_result)
+    app.ota.get_ota_images = AsyncMock(return_value=images_result)
 
     events = []
     cluster1.on_event(OtaImageAvailableEvent.event_type, events.append)
 
-    await ota.check_all_devices_for_ota()
+    await app.ota.check_all_devices_for_ota()
 
     assert len(events) == 1
-    assert events[0].device_ieee == str(device1.ieee)
+    assert events[0].device_ieee == str(dev1.ieee)
 
 
 async def test_check_all_devices_for_ota_tolerates_failure(query_cmd) -> None:
     """check_all_devices_for_ota continues if one device fails."""
-    app = AsyncMock()
+    app = make_app({})
 
-    device1, _cluster1 = _make_device_with_ota_cluster(query_cmd)
-
-    # Create device2 with a different IEEE address
-    device2 = zigpy.device.Device(
-        application=app,
-        ieee=zigpy.types.EUI64.convert("AA:BB:CC:DD:EE:FF:00:11"),
-        nwk=0x5678,
+    dev1 = add_initialized_device(
+        app, nwk=0x1234, ieee=zigpy.types.EUI64.convert("00:11:22:33:44:55:66:77")
     )
-    ep2 = device2.add_endpoint(1)
-    cluster2 = Ota(ep2)
-    cluster2.last_query_cmd = query_cmd
-    ep2.in_clusters[Ota.cluster_id] = cluster2
+    cluster1 = dev1.endpoints[1].add_output_cluster(Ota.cluster_id)
+    cluster1.last_query_cmd = query_cmd
 
-    app.devices = {device1.ieee: device1, device2.ieee: device2}
+    dev2 = add_initialized_device(
+        app, nwk=0x5678, ieee=zigpy.types.EUI64.convert("AA:BB:CC:DD:EE:FF:00:11")
+    )
+    cluster2 = dev2.endpoints[1].add_output_cluster(Ota.cluster_id)
+    cluster2.last_query_cmd = query_cmd
 
     images_result = zigpy.ota.OtaImagesResult(upgrades=(), downgrades=())
-    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=app)
-    ota.get_ota_images = AsyncMock(
+    app.ota.get_ota_images = AsyncMock(
         side_effect=[RuntimeError("provider down"), images_result]
     )
 
     events2 = []
     cluster2.on_event(OtaImageAvailableEvent.event_type, events2.append)
 
-    await ota.check_all_devices_for_ota()
+    await app.ota.check_all_devices_for_ota()
 
     # device2 should still get checked even though device1 failed
     assert len(events2) == 1
