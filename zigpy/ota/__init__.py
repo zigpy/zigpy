@@ -7,6 +7,7 @@ from asyncio import timeout as asyncio_timeout
 from collections import defaultdict
 import contextlib
 import dataclasses
+import datetime
 import hashlib
 import logging
 import typing
@@ -272,6 +273,13 @@ class OTA:
         if self._broadcast_loop_task is not None:
             self._broadcast_loop_task.cancel()
             self._broadcast_loop_task = None
+
+    def invalidate_provider_caches(self) -> None:
+        """Invalidate all provider index caches, forcing a refresh on next check."""
+        for provider in self._providers:
+            provider._index_last_updated = datetime.datetime.fromtimestamp(
+                0, tz=datetime.UTC
+            )
 
     async def check_cluster_for_ota(self, cluster: Ota) -> None:
         """Check OTA image availability for a single OTA cluster.
