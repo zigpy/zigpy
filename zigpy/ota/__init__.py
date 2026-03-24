@@ -342,8 +342,8 @@ class OTA:
     async def check_all_devices_for_ota(self) -> None:
         """Check OTA image availability for all devices with cached query commands.
 
-        Called on startup after the OTA query cache is loaded, and periodically
-        from the broadcast loop.
+        Called periodically from the broadcast loop and by consumers (e.g. ZHA)
+        for user-initiated "check for updates" after invalidate_provider_caches().
         """
         for device in self._application.devices.values():
             try:
