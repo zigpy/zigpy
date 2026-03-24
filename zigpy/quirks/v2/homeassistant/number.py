@@ -1,9 +1,9 @@
 """Homeassistant number platform quirks v2 supporting items."""
 
-from enum import Enum
+from enum import StrEnum
 
 
-class NumberDeviceClass(Enum):
+class NumberDeviceClass(StrEnum):
     """Device class for numbers."""
 
     # NumberDeviceClass should be aligned with SensorDeviceClass
