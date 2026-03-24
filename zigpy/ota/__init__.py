@@ -273,14 +273,40 @@ class OTA:
             self._broadcast_loop_task.cancel()
             self._broadcast_loop_task = None
 
+    async def check_cluster_for_ota(self, cluster: Ota) -> None:
+        """Check OTA image availability for a single OTA cluster.
+
+        If the cluster has a cached query command, calls get_ota_images and emits
+        OtaImageAvailableEvent on the cluster. Intended to be called by consumers
+        (e.g. ZHA) during entity setup after registering their event listener.
+        """
+        cmd = cluster.last_query_cmd
+        if cmd is None:
+            return
+
+        device = cluster.endpoint.device
+        images_result = await self.get_ota_images(device, cmd)
+
+        cluster.emit(
+            OtaImageAvailableEvent.event_type,
+            OtaImageAvailableEvent(
+                device_ieee=str(device.ieee),
+                endpoint_id=cluster.endpoint.endpoint_id,
+                cluster_type=cluster.cluster_type,
+                cluster_id=cluster.cluster_id,
+                images_result=images_result,
+                query_cmd=cmd,
+            ),
+        )
+
     async def check_device_for_ota(
         self,
         device: zigpy.device.Device,
     ) -> None:
         """Check OTA image availability for a single device.
 
-        Iterates the device's endpoints looking for an OTA cluster with a cached
-        query command, calls get_ota_images, and emits OtaImageAvailableEvent.
+        Iterates the device's endpoints looking for OTA clusters with cached
+        query commands and calls check_cluster_for_ota for each.
         """
         for ep_id, ep in device.endpoints.items():
             if ep_id == 0:
@@ -293,25 +319,9 @@ class OTA:
                 if not isinstance(cluster, Ota):
                     continue
 
-                cmd = cluster.last_query_cmd
-                if cmd is None:
-                    continue
+                await self.check_cluster_for_ota(cluster)
 
-                images_result = await self.get_ota_images(device, cmd)
-
-                cluster.emit(
-                    OtaImageAvailableEvent.event_type,
-                    OtaImageAvailableEvent(
-                        device_ieee=str(device.ieee),
-                        endpoint_id=ep.endpoint_id,
-                        cluster_type=cluster.cluster_type,
-                        cluster_id=cluster.cluster_id,
-                        images_result=images_result,
-                        query_cmd=cmd,
-                    ),
-                )
-
-                # Only emit for the first OTA cluster found per endpoint
+                # Only check the first OTA cluster found per endpoint
                 break
 
     async def check_all_devices_for_ota(self) -> None:

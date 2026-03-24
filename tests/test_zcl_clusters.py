@@ -353,9 +353,9 @@ async def test_ota_handle_query_next_image(ota_cluster):
     image_events = []
     ota_cluster.on_event(OtaImageAvailableEvent.event_type, image_events.append)
 
-    # Use the real check_device_for_ota so it emits OtaImageAvailableEvent
+    # Use the real check_cluster_for_ota so it emits OtaImageAvailableEvent
     ota = dev.application.ota
-    ota.check_device_for_ota = lambda d: OTA.check_device_for_ota(ota, d)
+    ota.check_cluster_for_ota = lambda c: OTA.check_cluster_for_ota(ota, c)
 
     # No image is available
     ota.get_ota_images = AsyncMock(
