@@ -708,3 +708,35 @@ async def test_invalidate_provider_caches(query_cmd) -> None:
     for provider in ota._providers:
         result = await provider.load_index()
         assert result is not None  # Empty list, not None (which means "cached")
+
+
+async def test_invalidate_provider_caches_clears_image_cache(
+    query_cmd, ota_image
+) -> None:
+    """invalidate_provider_caches clears the image cache so withdrawn images disappear."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    index_with_image = [
+        SelfContainedOtaImageMetadata(
+            file_version=query_cmd.current_file_version + 1,
+            manufacturer_id=query_cmd.manufacturer_code,
+            image_type=query_cmd.image_type,
+            test_data=ota_image.serialize(),
+        ),
+    ]
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    provider = SelfContainedProvider(index_with_image)
+    ota.register_provider(provider)
+
+    # First check finds the upgrade
+    result1 = await ota.get_ota_images(device, query_cmd)
+    assert len(result1.upgrades) == 1
+
+    # Provider now returns an empty index (image was withdrawn)
+    provider._index = []
+    ota.invalidate_provider_caches()
+
+    # Second check should find no upgrades
+    result2 = await ota.get_ota_images(device, query_cmd)
+    assert len(result2.upgrades) == 0

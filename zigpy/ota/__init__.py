@@ -281,6 +281,11 @@ class OTA:
                 0, tz=datetime.UTC
             )
 
+        # Clear the image cache so withdrawn images are not returned.
+        # This means untrusted provider images will be re-downloaded on the
+        # next check, but this is acceptable for a user-initiated action.
+        self._image_cache.clear()
+
     async def check_cluster_for_ota(self, cluster: Ota) -> None:
         """Check OTA image availability for a single OTA cluster.
 
