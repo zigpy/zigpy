@@ -1,9 +1,9 @@
 """Homeassistant sensor platform quirks v2 supporting items."""
 
-from enum import Enum
+from enum import StrEnum
 
 
-class BinarySensorDeviceClass(Enum):
+class BinarySensorDeviceClass(StrEnum):
     """Device class for binary sensors."""
 
     # On means low, Off means normal
