@@ -260,6 +260,35 @@ async def test_ota_broadcast_loop() -> None:
     assert len(mock_broadcast_notify.mock_calls) == 5
 
 
+async def test_ota_broadcast_loop_check_failure() -> None:
+    app = make_app(
+        {
+            config.CONF_OTA: {
+                config.CONF_OTA_ENABLED: True,
+                config.CONF_OTA_BROADCAST_ENABLED: True,
+                config.CONF_OTA_BROADCAST_INITIAL_DELAY: 0.1,
+                config.CONF_OTA_BROADCAST_INTERVAL: 0.2,
+            }
+        }
+    )
+
+    with (
+        patch.object(app.ota, "broadcast_notify", return_value=None),
+        patch.object(
+            app.ota,
+            "check_all_devices_for_ota",
+            side_effect=[RuntimeError("provider down"), None, None],
+        ) as mock_check,
+        patch("zigpy.ota.BROADCAST_SETTLE_DELAY", 0),
+    ):
+        await app.startup()
+        await asyncio.sleep(0.5)
+        await app.shutdown()
+
+    # Loop continues despite the first check failing
+    assert len(mock_check.mock_calls) >= 2
+
+
 async def test_ota_broadcast() -> None:
     app = make_app({config.CONF_OTA: {config.CONF_OTA_ENABLED: True}})
 
