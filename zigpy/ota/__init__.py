@@ -7,6 +7,8 @@ from asyncio import timeout as asyncio_timeout
 from collections import defaultdict
 import contextlib
 import dataclasses
+import datetime
+import hashlib
 import logging
 import typing
 
@@ -34,7 +36,7 @@ import zigpy.ota.providers
 import zigpy.profiles.zha
 import zigpy.types as t
 import zigpy.util
-from zigpy.zcl import foundation
+from zigpy.zcl import OtaImageAvailableEvent, foundation
 from zigpy.zcl.clusters.general import Ota, QueryNextImageCommand
 
 if typing.TYPE_CHECKING:
@@ -45,6 +47,7 @@ _LOGGER = logging.getLogger(__name__)
 
 OTA_FETCH_TIMEOUT = 20
 MAX_DEVICES_CHECKING_IN_PER_BROADCAST = 15
+BROADCAST_SETTLE_DELAY = 60
 
 
 @dataclasses.dataclass(frozen=True)
@@ -139,6 +142,10 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
         # Boost the specificity
         if self.metadata.specificity is not None:
             total += self.metadata.specificity
+
+        # Prefer images from trusted providers (e.g. zigpy-ota has richer metadata)
+        if self.metadata.trusted:
+            total += 10000
 
         return total
 
@@ -242,6 +249,14 @@ class OTA:
             except Exception:  # noqa: BLE001
                 _LOGGER.debug("OTA broadcast failed", exc_info=True)
 
+            # Wait for devices to respond with query_next_image before checking
+            await asyncio.sleep(BROADCAST_SETTLE_DELAY)
+
+            try:
+                await self.check_all_devices_for_ota()
+            except Exception:  # noqa: BLE001
+                _LOGGER.debug("OTA image check failed", exc_info=True)
+
             await asyncio.sleep(interval)
 
     def start_periodic_broadcasts(self, initial_delay: float, interval: float) -> None:
@@ -258,6 +273,87 @@ class OTA:
         if self._broadcast_loop_task is not None:
             self._broadcast_loop_task.cancel()
             self._broadcast_loop_task = None
+
+    def invalidate_provider_caches(self) -> None:
+        """Invalidate all provider index caches, forcing a refresh on next check.
+
+        Also clears the image cache so withdrawn images are not returned.
+        Downloaded firmware will be re-fetched from untrusted providers on
+        the next check, but this is acceptable for a user-initiated action.
+        """
+        for provider in self._providers:
+            provider._index_last_updated = datetime.datetime.fromtimestamp(
+                0, tz=datetime.UTC
+            )
+
+        self._image_cache.clear()
+
+    async def check_cluster_for_ota(self, cluster: Ota) -> None:
+        """Check OTA image availability for a single OTA cluster.
+
+        If the cluster has a cached query command, calls get_ota_images and emits
+        OtaImageAvailableEvent on the cluster. Intended to be called by consumers
+        (e.g. ZHA) during entity setup after registering their event listener.
+        """
+        cmd = cluster.last_query_cmd
+        if cmd is None:
+            return
+
+        device = cluster.endpoint.device
+        images_result = await self.get_ota_images(device, cmd)
+
+        cluster.emit(
+            OtaImageAvailableEvent.event_type,
+            OtaImageAvailableEvent(
+                device_ieee=str(device.ieee),
+                endpoint_id=cluster.endpoint.endpoint_id,
+                cluster_type=cluster.cluster_type,
+                cluster_id=cluster.cluster_id,
+                images_result=images_result,
+                query_cmd=cmd,
+            ),
+        )
+
+    async def check_device_for_ota(
+        self,
+        device: zigpy.device.Device,
+    ) -> None:
+        """Check OTA image availability for a single device.
+
+        Iterates the device's endpoints looking for OTA clusters with cached
+        query commands and calls check_cluster_for_ota for each.
+        """
+        for ep_id, ep in device.endpoints.items():
+            if ep_id == 0:
+                continue
+
+            # Prefer out_clusters (client) since that's where runtime routing
+            # places query_next_image when both cluster types exist. If an
+            # out_cluster exists, always use it (the in_cluster's cached query
+            # would be stale and never updated again).
+            for clusters in (ep.out_clusters, ep.in_clusters):
+                cluster = clusters.get(Ota.cluster_id)
+                if not isinstance(cluster, Ota):
+                    continue
+
+                await self.check_cluster_for_ota(cluster)
+                break
+
+    async def check_all_devices_for_ota(self) -> None:
+        """Check OTA image availability for all devices with cached query commands.
+
+        Called periodically from the broadcast loop and by consumers (e.g. ZHA)
+        for user-initiated "check for updates" after invalidate_provider_caches().
+        """
+        for device in self._application.devices.values():
+            try:
+                await self.check_device_for_ota(device)
+            except Exception:  # noqa: BLE001
+                _LOGGER.debug(
+                    "Failed to check OTA images for %s",
+                    device.ieee,
+                    exc_info=True,
+                )
 
     def _register_providers(self, config: dict[str, typing.Any]) -> None:
         # Config gets a little complicated when you mix deprecated config and the new
@@ -410,6 +506,9 @@ class OTA:
             # caller will cache these images
             for meta in index:
                 if meta not in self._image_cache:
+                    # Mark metadata as trusted if it comes from a trusted provider
+                    if provider.TRUSTED and not meta.trusted:
+                        meta = meta.replace(trusted=True)
                     self._image_cache[meta] = OtaImageWithMetadata(
                         metadata=meta, firmware=None
                     )
@@ -435,9 +534,13 @@ class OTA:
             img.metadata: img for img in candidates if img.metadata not in upgrades
         }
 
-        # Only download upgrade images, downgrades are used just to indicate the latest
-        # version
-        undownloaded_images = [img for img in upgrades.values() if img.firmware is None]
+        # Only download upgrade images from untrusted providers; trusted providers have
+        # complete metadata so we can defer the download until install time
+        undownloaded_images = [
+            img
+            for img in upgrades.values()
+            if img.firmware is None and not img.metadata.trusted
+        ]
 
         # Fetch all the candidates that are missing from the cache
         results = await asyncio.gather(
@@ -457,8 +560,10 @@ class OTA:
             # image with downloaded firmware.
             img = result
 
-            # Cache the image if it isn't already cached
-            if self._image_cache[img.metadata].firmware is None:
+            # Cache the image if it isn't already cached (or was cleared by
+            # invalidate_provider_caches() during the download await)
+            cached = self._image_cache.get(img.metadata)
+            if cached is None or cached.firmware is None:
                 _LOGGER.debug("Caching image %s", img)
                 self._image_cache[img.metadata] = img
 
@@ -468,20 +573,75 @@ class OTA:
             else:
                 upgrades[img.metadata] = img
 
-        # As a final pass, identify images with identical versions and specificity but
-        # differing contents.
-        # Structure: {(version, specificity): {serialized_firmware: [images]}}
-        upgrade_collisions: defaultdict[
-            tuple[int, int], defaultdict[bytes, list[OtaImageWithMetadata]]
+        await self._remove_colliding_images(upgrades)
+
+        return OtaImagesResult(
+            upgrades=tuple(
+                sorted(
+                    upgrades.values(),
+                    key=lambda img: (img.version, img.specificity),
+                    reverse=True,
+                )
+            ),
+            downgrades=tuple(
+                sorted(
+                    downgrades.values(),
+                    key=lambda img: (img.version, img.specificity),
+                    reverse=True,
+                )
+            ),
+        )
+
+    async def _remove_colliding_images(
+        self,
+        upgrades: dict[zigpy.ota.providers.BaseOtaImageMetadata, OtaImageWithMetadata],
+    ) -> None:
+        """Remove images with identical versions and specificity but differing contents.
+
+        Also removes trusted images that lack a SHA3-256 checksum, since their content
+        cannot be verified for collision detection.
+        """
+        # Structure: {(version, specificity): {content_hash: [images]}}
+        collisions: defaultdict[
+            tuple[int, int], defaultdict[str, list[OtaImageWithMetadata]]
         ] = defaultdict(lambda: defaultdict(list))
 
-        for img in upgrades.values():
-            assert img.firmware is not None
-            upgrade_collisions[img.version, img.specificity][
-                img.firmware.serialize()
-            ].append(img)
+        images_to_remove: list[zigpy.ota.providers.BaseOtaImageMetadata] = []
 
-        for (version, specificity), buckets in upgrade_collisions.items():
+        for img in upgrades.values():
+            # Untrusted images are always downloaded above and ones that failed
+            # to download were already removed; this should never happen.
+            assert img.firmware is not None or img.metadata.trusted
+
+            # Ignore trusted image without SHA3-256 checksum
+            if img.firmware is None and (
+                img.metadata.checksum is None
+                or not img.metadata.checksum.startswith("sha3-256:")
+            ):
+                _LOGGER.warning(
+                    "Trusted image %s does not have SHA3-256 checksum, ignoring", img
+                )
+                images_to_remove.append(img.metadata)
+                continue
+
+            # Calculate content hash from firmware if available, otherwise use metadata
+            if img.firmware is not None:
+                hasher = hashlib.sha3_256()
+                await asyncio.get_running_loop().run_in_executor(
+                    None, hasher.update, img.firmware.serialize()
+                )
+                content_hash = "sha3-256:" + hasher.hexdigest()
+            else:
+                assert img.metadata.checksum is not None  # Checked above
+                content_hash = img.metadata.checksum
+
+            collisions[img.version, img.specificity][content_hash].append(img)
+
+        for meta in images_to_remove:
+            upgrades.pop(meta)
+
+        for (version, specificity), buckets in collisions.items():
+            # If there are multiple unique hashes, we have a collision
             if len(buckets) < 2:
                 continue
 
@@ -502,23 +662,6 @@ class OTA:
 
             for img in bad_images:
                 upgrades.pop(img.metadata)
-
-        return OtaImagesResult(
-            upgrades=tuple(
-                sorted(
-                    upgrades.values(),
-                    key=lambda img: (img.version, img.specificity),
-                    reverse=True,
-                )
-            ),
-            downgrades=tuple(
-                sorted(
-                    downgrades.values(),
-                    key=lambda img: (img.version, img.specificity),
-                    reverse=True,
-                )
-            ),
-        )
 
     async def broadcast_notify(
         self,

@@ -78,7 +78,7 @@ class DeviceRegistry:
                 self.registry_v1[manufacturer][model].appendleft(custom_device)
 
     def add_to_registry_v2(
-        self, manufacturer: str, model: str, entry: QuirksV2RegistryEntry
+        self, manufacturer: str | None, model: str | None, entry: QuirksV2RegistryEntry
     ) -> None:
         """Add an entry to the registry."""
         self._registry_v2[(manufacturer, model)].appendleft(entry)

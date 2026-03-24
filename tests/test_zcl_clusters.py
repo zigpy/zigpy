@@ -10,8 +10,8 @@ import pytest
 
 from zigpy import device, types, zcl
 import zigpy.endpoint
-from zigpy.ota import OtaImagesResult
-from zigpy.zcl import foundation
+from zigpy.ota import OTA, OtaImagesResult
+from zigpy.zcl import OtaImageAvailableEvent, OtaQueryCacheUpdatedEvent, foundation
 from zigpy.zcl.clusters.general import Basic, Ota, Time
 import zigpy.zcl.clusters.security as sec
 from zigpy.zdo import types as zdo_t
@@ -137,23 +137,11 @@ async def test_basic_cluster():
     )
 
 
-async def test_time_cluster():
-    ep = MagicMock()
-    ep.reply = AsyncMock()
-
-    cluster = Time(ep)
-
-    Read_Attributes_rsp = foundation.GENERAL_COMMANDS[
-        foundation.GeneralCommand.Read_Attributes_rsp
-    ].schema
-
-    # Datetime objects need to be subclassed to be patched so we may as well implement
-    # the patches directly
+def _make_patched_datetime(fake_now):
+    """Create a PatchedDatetime class that returns `fake_now` as the current time."""
 
     class PatchedDatetime(datetime):
-        _fake_now = datetime(
-            2000, 1, 2, 0, 0, 0, tzinfo=ZoneInfo("America/Los_Angeles")
-        )
+        _fake_now = fake_now
 
         def astimezone(self):
             return self.replace(tzinfo=self._fake_now.tzinfo)
@@ -184,6 +172,54 @@ async def test_time_cluster():
                     - cls._fake_now.utcoffset()
                 )
 
+    return PatchedDatetime
+
+
+@pytest.mark.parametrize(
+    ("fake_now", "expected_utc", "expected_tz", "expected_standard", "expected_local"),
+    [
+        pytest.param(
+            # January: PST (UTC-8), no DST
+            datetime(2000, 1, 2, 0, 0, 0, tzinfo=ZoneInfo("America/Los_Angeles")),
+            # UTC time: midnight Jan 2 PST = 08:00 Jan 2 UTC = 1 day + 8 hours
+            24 * 60 * 60 + 8 * 60 * 60,
+            # Standard timezone offset: UTC-8
+            -(8 * 60 * 60),
+            # Standard time: Time + TimeZone = midnight Jan 2 local (no DST)
+            24 * 60 * 60,
+            # Local time: midnight Jan 2 = 1 day from epoch
+            24 * 60 * 60,
+            id="winter_no_dst",
+        ),
+        pytest.param(
+            # July: PDT (UTC-7), DST active
+            datetime(2000, 7, 2, 0, 0, 0, tzinfo=ZoneInfo("America/Los_Angeles")),
+            # UTC time: midnight Jul 2 PDT = 07:00 Jul 2 UTC
+            183 * 24 * 60 * 60 + 7 * 60 * 60,
+            # Standard timezone offset: still UTC-8 (DST not included)
+            -(8 * 60 * 60),
+            # Standard time: Time + TimeZone = 11 PM Jul 1 standard (no DST adjustment)
+            183 * 24 * 60 * 60 - 1 * 60 * 60,
+            # Local time: midnight Jul 2 local
+            183 * 24 * 60 * 60,
+            id="summer_with_dst",
+        ),
+    ],
+)
+async def test_time_cluster(
+    fake_now, expected_utc, expected_tz, expected_standard, expected_local
+):
+    ep = MagicMock()
+    ep.reply = AsyncMock()
+
+    cluster = Time(ep)
+
+    Read_Attributes_rsp = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Read_Attributes_rsp
+    ].schema
+
+    PatchedDatetime = _make_patched_datetime(fake_now)
+
     with patch("zigpy.zcl.clusters.general.datetime", PatchedDatetime):
         # Supported attributes
         rsp1 = await read_attributes(
@@ -192,6 +228,7 @@ async def test_time_cluster():
                 Time.AttributeDefs.time.id,
                 Time.AttributeDefs.time_status.id,
                 Time.AttributeDefs.time_zone.id,
+                Time.AttributeDefs.standard_time.id,
                 Time.AttributeDefs.local_time.id,
             ],
         )
@@ -201,8 +238,7 @@ async def test_time_cluster():
         status=foundation.Status.SUCCESS,
         value=foundation.TypeValue(
             type=foundation.DataTypeId.UTC,
-            # One day from the epoch, plus time zone offset
-            value=24 * 60 * 60 + 8 * 60 * 60,
+            value=expected_utc,
         ),
     )
 
@@ -211,11 +247,7 @@ async def test_time_cluster():
         status=foundation.Status.SUCCESS,
         value=foundation.TypeValue(
             type=foundation.DataTypeId.map8,
-            value=(
-                Time.TimeStatus.Master
-                | Time.TimeStatus.Synchronized
-                | Time.TimeStatus.Master_for_Zone_and_DST
-            ),
+            value=(Time.TimeStatus.Master | Time.TimeStatus.Master_for_Zone_and_DST),
         ),
     )
 
@@ -224,18 +256,25 @@ async def test_time_cluster():
         status=foundation.Status.SUCCESS,
         value=foundation.TypeValue(
             type=foundation.DataTypeId.int32,
-            # Time zone offset
-            value=-(8 * 60 * 60),
+            value=expected_tz,
         ),
     )
 
     assert rsp1.status_records[3] == foundation.ReadAttributeRecord(
+        attrid=Time.AttributeDefs.standard_time.id,
+        status=foundation.Status.SUCCESS,
+        value=foundation.TypeValue(
+            type=foundation.DataTypeId.uint32,
+            value=expected_standard,
+        ),
+    )
+
+    assert rsp1.status_records[4] == foundation.ReadAttributeRecord(
         attrid=Time.AttributeDefs.local_time.id,
         status=foundation.Status.SUCCESS,
         value=foundation.TypeValue(
             type=foundation.DataTypeId.uint32,
-            # One day from the epoch, as on the clock
-            value=24 * 60 * 60,
+            value=expected_local,
         ),
     )
 
@@ -269,6 +308,7 @@ def ota_cluster(dev):
     ep = dev.add_endpoint(1)
 
     cluster = zcl.Cluster._registry[0x0019](ep)
+    ep.in_clusters[cluster.cluster_id] = cluster
 
     with (
         patch.object(cluster, "reply", AsyncMock()),
@@ -301,17 +341,24 @@ async def test_ota_handle_query_next_image(ota_cluster):
     ota_cluster.query_next_image_response = AsyncMock()
     dev.ota_in_progress = False
 
-    listener = MagicMock()
-    dev.add_listener(listener)
-
     # TODO: get rid of `sentinel` and mock the actual command
     hdr = zigpy.zcl.foundation.ZCLHeader.cluster(
         tsn=0x12, command_id=Ota.ServerCommandDefs.query_next_image.id
     )
     cmd = MagicMock()
 
+    cache_events = []
+    ota_cluster.on_event(OtaQueryCacheUpdatedEvent.event_type, cache_events.append)
+
+    image_events = []
+    ota_cluster.on_event(OtaImageAvailableEvent.event_type, image_events.append)
+
+    # Use the real check_cluster_for_ota so it emits OtaImageAvailableEvent
+    ota = dev.application.ota
+    ota.check_cluster_for_ota = lambda c: OTA.check_cluster_for_ota(ota, c)
+
     # No image is available
-    dev.application.ota.get_ota_images = AsyncMock(
+    ota.get_ota_images = AsyncMock(
         return_value=OtaImagesResult(upgrades=(), downgrades=())
     )
     ota_cluster.handle_cluster_request(hdr, cmd)
@@ -320,16 +367,20 @@ async def test_ota_handle_query_next_image(ota_cluster):
     assert ota_cluster.query_next_image_response.mock_calls == [
         call(zcl.foundation.Status.NO_IMAGE_AVAILABLE, tsn=hdr.tsn)
     ]
-    assert listener.device_ota_image_query_result.mock_calls == [
-        call(OtaImagesResult(upgrades=(), downgrades=()), cmd)
-    ]
+    assert len(image_events) == 1
+    assert isinstance(image_events[0], OtaImageAvailableEvent)
+    assert image_events[0].images_result == OtaImagesResult(upgrades=(), downgrades=())
+    assert image_events[0].query_cmd is cmd
+    assert ota_cluster.last_query_cmd is cmd
+    assert len(cache_events) == 1
+    assert isinstance(cache_events[0], OtaQueryCacheUpdatedEvent)
 
     ota_cluster.query_next_image_response.reset_mock()
-    listener.device_ota_image_query_result.reset_mock()
+    image_events.clear()
 
     # Now one is available
     img = MagicMock()
-    dev.application.ota.get_ota_images = AsyncMock(
+    ota.get_ota_images = AsyncMock(
         return_value=OtaImagesResult(upgrades=(img,), downgrades=())
     )
     ota_cluster.handle_cluster_request(hdr, cmd)
@@ -338,9 +389,11 @@ async def test_ota_handle_query_next_image(ota_cluster):
     assert ota_cluster.query_next_image_response.mock_calls == [
         call(zcl.foundation.Status.NO_IMAGE_AVAILABLE, tsn=hdr.tsn)
     ]
-    assert listener.device_ota_image_query_result.mock_calls == [
-        call(OtaImagesResult(upgrades=(img,), downgrades=()), cmd)
-    ]
+    assert len(image_events) == 1
+    assert image_events[0].images_result == OtaImagesResult(
+        upgrades=(img,), downgrades=()
+    )
+    assert image_events[0].query_cmd is cmd
 
 
 async def test_ota_handle_image_block_req(ota_cluster):

@@ -34,8 +34,10 @@ from zigpy.zcl import (
     AttributeUpdatedEvent,
     AttributeWrittenEvent,
     ClusterType,
+    OtaQueryCacheClearedEvent,
+    OtaQueryCacheUpdatedEvent,
 )
-from zigpy.zcl.clusters.general import Basic
+from zigpy.zcl.clusters.general import Basic, Ota
 from zigpy.zcl.foundation import Status
 from zigpy.zdo import types as zdo_t
 
@@ -54,7 +56,7 @@ if sqlite3.sqlite_version_info < MIN_SQLITE_VERSION:
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 14
+DB_VERSION = 15
 DB_V = f"_v{DB_VERSION}"
 
 UNIX_EPOCH = datetime.fromtimestamp(0, tz=UTC)
@@ -228,6 +230,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             AttributeUnsupportedEvent.event_type, self.on_attribute_unsupported
         )
         cluster.on_event(AttributeClearedEvent.event_type, self.on_attribute_cleared)
+        cluster.on_event(
+            OtaQueryCacheUpdatedEvent.event_type,
+            self.on_ota_query_cache_updated,
+        )
+        cluster.on_event(
+            OtaQueryCacheClearedEvent.event_type,
+            self.on_ota_query_cache_cleared,
+        )
 
     def enqueue(self, cb_name: str, *args) -> None:
         """Enqueue an async callback handler action."""
@@ -417,6 +427,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             await self._save_clusters(ep)
             await self._save_attribute_cache(ep)
             await self._save_unsupported_attributes(ep)
+        await self._save_ota_query_cache(device)
         await self._db.commit()
 
     async def _save_endpoints(self, device: Device) -> None:
@@ -526,6 +537,36 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     DO NOTHING"""
         await self._db.executemany(q, clusters)
 
+    async def _save_ota_query_cache(self, device: Device) -> None:
+        rows = []
+        for ep in device.non_zdo_endpoints:
+            for cluster in ep.clusters:
+                if isinstance(cluster, Ota) and cluster.last_query_cmd is not None:
+                    cmd = cluster.last_query_cmd
+                    rows.append(
+                        (
+                            device.ieee,
+                            ep.endpoint_id,
+                            cmd.manufacturer_code,
+                            cmd.image_type,
+                            cmd.current_file_version,
+                            getattr(cmd, "hardware_version", None),
+                            datetime.now(UTC).timestamp(),
+                        )
+                    )
+        if rows:
+            q = f"""INSERT INTO ota_query_cache{DB_V}
+                        (ieee, endpoint_id, manufacturer_code, image_type,
+                         current_file_version, hardware_version, last_updated)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (ieee, endpoint_id) DO UPDATE SET
+                        manufacturer_code=excluded.manufacturer_code,
+                        image_type=excluded.image_type,
+                        current_file_version=excluded.current_file_version,
+                        hardware_version=excluded.hardware_version,
+                        last_updated=excluded.last_updated"""
+            await self._db.executemany(q, rows)
+
     def on_attribute_read(self, event: AttributeReadEvent) -> None:
         self.enqueue("_save_attribute", event)
 
@@ -631,6 +672,49 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         )
         await self._db.commit()
 
+    def on_ota_query_cache_updated(self, event: OtaQueryCacheUpdatedEvent) -> None:
+        self.enqueue("_save_ota_query_cache_entry", event)
+
+    async def _save_ota_query_cache_entry(
+        self, event: OtaQueryCacheUpdatedEvent
+    ) -> None:
+        q = f"""INSERT INTO ota_query_cache{DB_V}
+                    (ieee, endpoint_id, manufacturer_code, image_type,
+                     current_file_version, hardware_version, last_updated)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (ieee, endpoint_id) DO UPDATE SET
+                    manufacturer_code=excluded.manufacturer_code,
+                    image_type=excluded.image_type,
+                    current_file_version=excluded.current_file_version,
+                    hardware_version=excluded.hardware_version,
+                    last_updated=excluded.last_updated"""
+
+        await self.execute(
+            q,
+            (
+                event.device_ieee,
+                event.endpoint_id,
+                event.manufacturer_code,
+                event.image_type,
+                event.current_file_version,
+                event.hardware_version,
+                datetime.now(UTC).timestamp(),
+            ),
+        )
+        await self._db.commit()
+
+    def on_ota_query_cache_cleared(self, event: OtaQueryCacheClearedEvent) -> None:
+        self.enqueue("_delete_ota_query_cache_entry", event)
+
+    async def _delete_ota_query_cache_entry(
+        self, event: OtaQueryCacheClearedEvent
+    ) -> None:
+        await self.execute(
+            f"DELETE FROM ota_query_cache{DB_V} WHERE ieee = ? AND endpoint_id = ?",
+            (event.device_ieee, event.endpoint_id),
+        )
+        await self._db.commit()
+
     def network_backup_created(self, backup: zigpy.backups.NetworkBackup) -> None:
         self.enqueue("_network_backup_created", json.dumps(backup.as_dict()))
 
@@ -707,6 +791,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_neighbors()
         await self._load_routes()
         await self._load_network_backups()
+        await self._load_ota_query_cache()
 
         await self._db.commit()
 
@@ -1014,6 +1099,47 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         for backup in backups:
             self._application.backups.add_backup(backup, suppress_event=True)
 
+    async def _load_ota_query_cache(self) -> None:
+        async with self.execute(f"SELECT * FROM ota_query_cache{DB_V}") as cursor:
+            async for (
+                ieee,
+                endpoint_id,
+                manufacturer_code,
+                image_type,
+                current_file_version,
+                hardware_version,
+                _last_updated,
+            ) in cursor:
+                try:
+                    dev = self._application.get_device(ieee)
+                    ep = dev.endpoints[endpoint_id]
+                except KeyError:
+                    # Quirks or firmware updates can remove endpoints/clusters
+                    continue
+
+                field_control = (
+                    Ota.QueryNextImageCommand.FieldControl(0)
+                    if hardware_version is None
+                    else Ota.QueryNextImageCommand.FieldControl.HardwareVersion
+                )
+                cmd = Ota.QueryNextImageCommand(
+                    field_control=field_control,
+                    manufacturer_code=manufacturer_code,
+                    image_type=image_type,
+                    current_file_version=current_file_version,
+                )
+                if hardware_version is not None:
+                    cmd.hardware_version = hardware_version
+
+                # Restore to the first OTA cluster found; prefer client
+                # (out_clusters) since that's where runtime routing places it
+                # when both cluster types exist.
+                for clusters in (ep.out_clusters, ep.in_clusters):
+                    cluster = clusters.get(Ota.cluster_id)
+                    if isinstance(cluster, Ota):
+                        cluster.last_query_cmd = cmd
+                        break
+
     async def _register_device_listeners(self) -> None:
         for dev in self._application.devices.values():
             dev.add_context_listener(self)
@@ -1105,6 +1231,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 (self._migrate_to_v12, 12),
                 (self._migrate_to_v13, 13),
                 (self._migrate_to_v14, 14),
+                (self._migrate_to_v15, 15),
             ]:
                 if db_version >= min(to_db_version, DB_VERSION):
                     continue
@@ -1145,14 +1272,19 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             if new_table is None:
                 continue
 
-            async with self.execute(f"SELECT * FROM {old_table}") as cursor:
-                async for row in cursor:
-                    placeholders = ",".join("?" * len(row))
+            # Use explicit column names to skip generated columns automatically
+            async with self.execute(f"PRAGMA table_info({old_table})") as cursor:
+                columns = [row[1] async for row in cursor]
 
+            col_list = ", ".join(columns)
+            placeholders = ", ".join("?" * len(columns))
+            select_sql = f"SELECT {col_list} FROM {old_table}"
+            insert_sql = f"INSERT INTO {new_table} ({col_list}) VALUES ({placeholders})"
+
+            async with self.execute(select_sql) as cursor:
+                async for row in cursor:
                     try:
-                        await self.execute(
-                            f"INSERT INTO {new_table} VALUES ({placeholders})", row
-                        )
+                        await self.execute(insert_sql, row)
                     except sqlite3.IntegrityError as e:
                         if errors == "raise":
                             raise
@@ -1546,3 +1678,22 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         last_updated,
                     ),
                 )
+
+    async def _migrate_to_v15(self) -> None:
+        """Schema v15 adds `ota_query_cache` table for persisting OTA query fields."""
+        await self._migrate_tables(
+            {
+                "devices_v14": "devices_v15",
+                "endpoints_v14": "endpoints_v15",
+                "neighbors_v14": "neighbors_v15",
+                "routes_v14": "routes_v15",
+                "node_descriptors_v14": "node_descriptors_v15",
+                "groups_v14": "groups_v15",
+                "group_members_v14": "group_members_v15",
+                "relays_v14": "relays_v15",
+                "network_backups_v14": "network_backups_v15",
+                "clusters_v14": "clusters_v15",
+                "attributes_cache_v14": "attributes_cache_v15",
+            }
+        )
+        # ota_query_cache_v15 is new and starts empty

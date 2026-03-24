@@ -17,6 +17,7 @@ from . import (
     protocol,
     security,
     smartenergy,
+    wwah,
 )
 
 CLUSTERS_BY_ID: dict[int, Cluster] = {}
@@ -35,6 +36,7 @@ for cls in (
     protocol,
     security,
     smartenergy,
+    wwah,
 ):
     for name in dir(cls):
         obj = getattr(cls, name)

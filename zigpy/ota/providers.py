@@ -94,6 +94,7 @@ class BaseOtaImageMetadata(t.BaseDataclassMixin):
     specificity: int | None = None
 
     source: str = "Unknown"
+    trusted: bool = False
 
     async def _fetch(self) -> bytes:
         raise NotImplementedError
@@ -196,6 +197,7 @@ class BaseOtaProvider:
     VOL_SCHEMA: vol.Schema
     JSON_SCHEMA: dict | None = None
     INDEX_EXPIRATION_TIME = datetime.timedelta(hours=24)
+    TRUSTED: bool = False
 
     def __init__(
         self,
@@ -682,6 +684,7 @@ class ZigpyOtaProvider(BaseZigpyProvider):
 
     NAME = "zigpy_ota"
     VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_ZIGPY_OTA
+    TRUSTED = True
 
     DEFAULT_CHANNEL = "stable"
     SUPPORTED_CHANNELS = {"stable", "beta", "dev"}

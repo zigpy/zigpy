@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from contextlib import contextmanager
 import copy
 import logging
+import sqlite3
 import threading
 import typing
 from unittest.mock import Mock, patch
@@ -33,6 +35,28 @@ if typing.TYPE_CHECKING:
     import zigpy.device
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@pytest.fixture
+def auto_kill_aiosqlite():
+    """Aiosqlite's background thread does not let pytest exit when a failure occurs."""
+    yield
+
+    for thread in threading.enumerate():
+        if not isinstance(thread, aiosqlite.core.Connection):
+            continue
+
+        try:
+            conn = thread._conn
+        except ValueError:
+            pass
+        else:
+            with contextlib.suppress(sqlite3.ProgrammingError):
+                conn.close()
+
+        thread._stop_running()
+        thread.join(timeout=1)
+
 
 NCP_IEEE = t.EUI64.convert("aa:11:22:bb:33:44:be:ef")
 

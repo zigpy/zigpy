@@ -1,8 +1,6 @@
 import asyncio
-import contextlib
 from datetime import UTC, datetime, timedelta
 import pathlib
-import threading
 import time
 
 import aiosqlite
@@ -42,30 +40,17 @@ from zigpy.quirks.registry import DeviceRegistry
 from zigpy.quirks.v2 import QuirkBuilder
 import zigpy.types as t
 import zigpy.zcl
-from zigpy.zcl import ClusterType, UnsupportedAttribute
+from zigpy.zcl import (
+    ClusterType,
+    OtaQueryCacheClearedEvent,
+    OtaQueryCacheUpdatedEvent,
+    UnsupportedAttribute,
+)
 from zigpy.zcl.clusters.general import Basic, Identify, OnOff, Ota
 from zigpy.zcl.foundation import Status as ZCLStatus, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
 
-
-@pytest.fixture(autouse=True)
-def auto_kill_aiosqlite():
-    """Aiosqlite's background thread does not let pytest exit when a failure occurs"""
-    yield
-
-    for thread in threading.enumerate():
-        if not isinstance(thread, aiosqlite.core.Connection):
-            continue
-
-        try:
-            conn = thread._conn
-        except ValueError:
-            pass
-        else:
-            with contextlib.suppress(zigpy.appdb.sqlite3.ProgrammingError):
-                conn.close()
-
-        thread._running = False
+pytestmark = pytest.mark.usefixtures("auto_kill_aiosqlite")
 
 
 async def make_app_with_db(database_file):
@@ -1607,3 +1592,231 @@ async def test_device_signature_ignores_quirks(tmp_path) -> None:
     assert dev2.original_signature == expected_signature
 
     await app2.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_ota_query_cache_persistence(tmp_path):
+    """Test that OTA query cache is persisted and restored from the database."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ep.add_input_cluster(0)  # Basic cluster, exercises non-OTA skip in load
+    ota_cluster = ep.add_output_cluster(Ota.cluster_id)
+    app.device_initialized(dev)
+
+    # With hardware_version
+    cmd = Ota.QueryNextImageCommand(
+        field_control=Ota.QueryNextImageCommand.FieldControl.HardwareVersion,
+        manufacturer_code=0x1234,
+        image_type=0x5678,
+        current_file_version=0x000A0001,
+    )
+    cmd.hardware_version = 3
+    ota_cluster.last_query_cmd = cmd
+
+    app.device_initialized(dev)
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(ieee)
+    ota2 = dev2.endpoints[1].out_clusters[Ota.cluster_id]
+
+    assert ota2.last_query_cmd is not None
+    assert ota2.last_query_cmd.manufacturer_code == 0x1234
+    assert ota2.last_query_cmd.image_type == 0x5678
+    assert ota2.last_query_cmd.current_file_version == 0x000A0001
+    assert ota2.last_query_cmd.hardware_version == 3
+    assert dev2.get_last_ota_query_cmd() is ota2.last_query_cmd
+
+    # Update to a command without hardware_version
+    ota2.last_query_cmd = Ota.QueryNextImageCommand(
+        field_control=Ota.QueryNextImageCommand.FieldControl(0),
+        manufacturer_code=0xAAAA,
+        image_type=0xBBBB,
+        current_file_version=0x00000042,
+    )
+    app2.device_initialized(dev2)
+    await app2.shutdown()
+
+    app3 = await make_app_with_db(db)
+    dev3 = app3.get_device(ieee)
+    ota3 = dev3.endpoints[1].out_clusters[Ota.cluster_id]
+
+    assert ota3.last_query_cmd is not None
+    assert ota3.last_query_cmd.manufacturer_code == 0xAAAA
+    assert ota3.last_query_cmd.current_file_version == 0x00000042
+    assert not hasattr(ota3.last_query_cmd, "hardware_version") or (
+        ota3.last_query_cmd.hardware_version is None
+    )
+
+    await app3.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_ota_query_cache_event_save(tmp_path):
+    """Test that the OtaQueryCacheUpdatedEvent triggers a DB save."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ota_cluster = ep.add_output_cluster(Ota.cluster_id)
+    app.device_initialized(dev)
+
+    # Simulate the event that _handle_query_next_image would emit
+    event = OtaQueryCacheUpdatedEvent(
+        device_ieee=str(ieee),
+        endpoint_id=1,
+        cluster_type=ota_cluster.cluster_type,
+        cluster_id=ota_cluster.cluster_id,
+        manufacturer_code=0x1111,
+        image_type=0x2222,
+        current_file_version=0x00000099,
+        hardware_version=7,
+    )
+
+    ota_cluster.emit(OtaQueryCacheUpdatedEvent.event_type, event)
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(ieee)
+    ota2 = dev2.endpoints[1].out_clusters[Ota.cluster_id]
+
+    assert ota2.last_query_cmd is not None
+    assert ota2.last_query_cmd.manufacturer_code == 0x1111
+    assert ota2.last_query_cmd.image_type == 0x2222
+    assert ota2.last_query_cmd.current_file_version == 0x00000099
+    assert ota2.last_query_cmd.hardware_version == 7
+
+    await app2.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_ota_query_cache_cleared_after_update(tmp_path):
+    """Test that OTA query cache is deleted from DB when cleared after an update."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ota_cluster = ep.add_output_cluster(Ota.cluster_id)
+    app.device_initialized(dev)
+
+    # Save a query cmd
+    ota_cluster.last_query_cmd = Ota.QueryNextImageCommand(
+        field_control=Ota.QueryNextImageCommand.FieldControl(0),
+        manufacturer_code=0x1234,
+        image_type=0x5678,
+        current_file_version=0x00000001,
+    )
+    app.device_initialized(dev)
+
+    # Clear the cache (as update_firmware does after a successful OTA)
+    ota_cluster.last_query_cmd = None
+    ota_cluster.emit(
+        OtaQueryCacheClearedEvent.event_type,
+        OtaQueryCacheClearedEvent(
+            device_ieee=str(ieee),
+            endpoint_id=1,
+        ),
+    )
+    await app.shutdown()
+
+    # Reload: the cleared cache should not be restored
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(ieee)
+    ota2 = dev2.endpoints[1].out_clusters[Ota.cluster_id]
+    assert ota2.last_query_cmd is None
+    assert dev2.get_last_ota_query_cmd() is None
+
+    await app2.shutdown()
+
+
+@patch("zigpy.quirks.DEVICE_REGISTRY", new=DeviceRegistry())
+async def test_ota_query_cache_skips_quirk_removed_endpoint(tmp_path):
+    """Test that OTA cache load skips entries for endpoints removed by quirks."""
+    # Register a quirk that removes endpoint 2
+    (
+        QuirkBuilder(
+            "ota manufacturer", "ota model", registry=zigpy.quirks.DEVICE_REGISTRY
+        )
+        .removes_endpoint(2)
+        .add_to_registry()
+    )
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+    dev.model = "ota model"
+    dev.manufacturer = "ota manufacturer"
+
+    ep1 = dev.add_endpoint(1)
+    ep1.status = zigpy.endpoint.Status.ZDO_INIT
+    ep1.profile_id = 260
+    ep1.device_type = profiles.zha.DeviceType.PUMP
+    basic = ep1.add_input_cluster(Basic.cluster_id)
+    basic.update_attribute(Basic.AttributeDefs.model, "ota model")
+    basic.update_attribute(Basic.AttributeDefs.manufacturer, "ota manufacturer")
+
+    ep2 = dev.add_endpoint(2)
+    ep2.status = zigpy.endpoint.Status.ZDO_INIT
+    ep2.profile_id = 260
+    ep2.device_type = profiles.zha.DeviceType.PUMP
+    ota_cluster = ep2.add_output_cluster(Ota.cluster_id)
+
+    ota_cluster.last_query_cmd = Ota.QueryNextImageCommand(
+        field_control=Ota.QueryNextImageCommand.FieldControl(0),
+        manufacturer_code=0x1234,
+        image_type=0x5678,
+        current_file_version=0x00000001,
+    )
+
+    app.device_initialized(dev)
+    await app.shutdown()
+
+    # Reload: quirk removes endpoint 2, OTA cache load should skip it
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    assert 2 not in dev2.endpoints
+    assert dev2.get_last_ota_query_cmd() is None
+
+    await app2.shutdown()
+
+
+async def test_get_last_ota_query_cmd_returns_none(tmp_path):
+    """Test that get_last_ota_query_cmd returns None when no query has been cached."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ep.add_output_cluster(Ota.cluster_id)
+    app.device_initialized(dev)
+
+    assert dev.get_last_ota_query_cmd() is None
+
+    await app.shutdown()
