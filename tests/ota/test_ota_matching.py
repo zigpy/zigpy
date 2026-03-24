@@ -484,13 +484,13 @@ def _make_device_with_ota_cluster(
     device = make_device(model="device model", manufacturer_id=0x1234)
 
     ep = device.add_endpoint(endpoint_id)
-    cluster = Ota(ep)
-    cluster.last_query_cmd = query_cmd
 
     if cluster_type == ClusterType.Client:
-        ep.out_clusters[Ota.cluster_id] = cluster
+        cluster = ep.add_output_cluster(Ota.cluster_id)
     else:
-        ep.in_clusters[Ota.cluster_id] = cluster
+        cluster = ep.add_input_cluster(Ota.cluster_id)
+
+    cluster.last_query_cmd = query_cmd
 
     return device, cluster
 
@@ -539,9 +539,8 @@ async def test_check_device_for_ota_finds_clusters(query_cmd) -> None:
     device, cluster1 = _make_device_with_ota_cluster(query_cmd, endpoint_id=1)
     # Add a second endpoint with an OTA cluster
     ep2 = device.add_endpoint(2)
-    cluster2 = Ota(ep2)
+    cluster2 = ep2.add_output_cluster(Ota.cluster_id)
     cluster2.last_query_cmd = query_cmd
-    ep2.out_clusters[Ota.cluster_id] = cluster2
 
     images_result = zigpy.ota.OtaImagesResult(upgrades=(), downgrades=())
     ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
@@ -569,9 +568,8 @@ async def test_check_device_for_ota_prefers_out_clusters(query_cmd) -> None:
     ep = device.endpoints[1]
 
     # Also add as out_cluster on the same endpoint
-    out_cluster = Ota(ep, is_server=False)
+    out_cluster = ep.add_output_cluster(Ota.cluster_id)
     out_cluster.last_query_cmd = query_cmd
-    ep.out_clusters[Ota.cluster_id] = out_cluster
 
     images_result = zigpy.ota.OtaImagesResult(upgrades=(), downgrades=())
     ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
