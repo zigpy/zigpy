@@ -176,38 +176,224 @@ def _make_patched_datetime(fake_now):
 
 
 @pytest.mark.parametrize(
-    ("fake_now", "expected_utc", "expected_tz", "expected_standard", "expected_local"),
+    (
+        "fake_now",
+        "expected_utc",
+        "expected_tz",
+        "expected_standard",
+        "expected_local",
+        "expected_dst_start",
+        "expected_dst_end",
+        "expected_dst_shift",
+    ),
     [
+        # ── America/Los_Angeles (UTC-8 standard / UTC-7 DST) ──
         pytest.param(
-            # January: PST (UTC-8), no DST
-            datetime(2000, 1, 2, 0, 0, 0, tzinfo=ZoneInfo("America/Los_Angeles")),
-            # UTC time: midnight Jan 2 PST = 08:00 Jan 2 UTC = 1 day + 8 hours
-            24 * 60 * 60 + 8 * 60 * 60,
-            # Standard timezone offset: UTC-8
-            -(8 * 60 * 60),
-            # Standard time: Time + TimeZone = midnight Jan 2 local (no DST)
-            24 * 60 * 60,
-            # Local time: midnight Jan 2 = 1 day from epoch
-            24 * 60 * 60,
-            id="winter_no_dst",
+            # January: PST (UTC-8), before DST
+            datetime(2025, 1, 15, 12, 0, 0, tzinfo=ZoneInfo("America/Los_Angeles")),
+            790286400,  # UTC: 2025-01-15 20:00
+            -28800,  # standard offset UTC-8
+            790257600,  # standard_time (no DST active)
+            790257600,  # local_time = standard_time (no DST)
+            794829600,  # DST start: 2025-03-09 10:00 UTC
+            815389200,  # DST end: 2025-11-02 09:00 UTC
+            3600,
+            id="la_jan_before_dst",
         ),
         pytest.param(
-            # July: PDT (UTC-7), DST active
-            datetime(2000, 7, 2, 0, 0, 0, tzinfo=ZoneInfo("America/Los_Angeles")),
-            # UTC time: midnight Jul 2 PDT = 07:00 Jul 2 UTC
-            183 * 24 * 60 * 60 + 7 * 60 * 60,
-            # Standard timezone offset: still UTC-8 (DST not included)
-            -(8 * 60 * 60),
-            # Standard time: Time + TimeZone = 11 PM Jul 1 standard (no DST adjustment)
-            183 * 24 * 60 * 60 - 1 * 60 * 60,
-            # Local time: midnight Jul 2 local
-            183 * 24 * 60 * 60,
-            id="summer_with_dst",
+            # April: PDT (UTC-7), during DST
+            datetime(2025, 4, 15, 12, 0, 0, tzinfo=ZoneInfo("America/Los_Angeles")),
+            798058800,  # UTC: 2025-04-15 19:00
+            -28800,  # standard offset UTC-8
+            798030000,  # standard_time
+            798033600,  # local_time = standard + 3600 (DST active)
+            794829600,  # DST start: 2025-03-09 10:00 UTC
+            815389200,  # DST end: 2025-11-02 09:00 UTC
+            3600,
+            id="la_apr_during_dst",
+        ),
+        pytest.param(
+            # July: PDT (UTC-7), during DST
+            datetime(2025, 7, 15, 12, 0, 0, tzinfo=ZoneInfo("America/Los_Angeles")),
+            805921200,  # UTC: 2025-07-15 19:00
+            -28800,  # standard offset UTC-8
+            805892400,  # standard_time
+            805896000,  # local_time = standard + 3600 (DST active)
+            794829600,  # DST start: 2025-03-09 10:00 UTC
+            815389200,  # DST end: 2025-11-02 09:00 UTC
+            3600,
+            id="la_jul_during_dst",
+        ),
+        pytest.param(
+            # November: PST (UTC-8), after DST — next period is 2026
+            datetime(2025, 11, 15, 12, 0, 0, tzinfo=ZoneInfo("America/Los_Angeles")),
+            816552000,  # UTC: 2025-11-15 20:00
+            -28800,  # standard offset UTC-8
+            816523200,  # standard_time (no DST active)
+            816523200,  # local_time = standard_time (no DST)
+            826279200,  # DST start: 2026-03-08 10:00 UTC
+            846838800,  # DST end: 2026-11-01 09:00 UTC
+            3600,
+            id="la_nov_after_dst",
+        ),
+        # ── Europe/Sofia (UTC+2 standard / UTC+3 DST) ──
+        pytest.param(
+            # January: EET (UTC+2), before DST
+            datetime(2025, 1, 15, 12, 0, 0, tzinfo=ZoneInfo("Europe/Sofia")),
+            790250400,  # UTC: 2025-01-15 10:00
+            7200,  # standard offset UTC+2
+            790257600,  # standard_time (no DST active)
+            790257600,  # local_time = standard_time (no DST)
+            796611600,  # DST start: 2025-03-30 01:00 UTC
+            814755600,  # DST end: 2025-10-26 01:00 UTC
+            3600,
+            id="sofia_jan_before_dst",
+        ),
+        pytest.param(
+            # April: EEST (UTC+3), during DST
+            datetime(2025, 4, 15, 12, 0, 0, tzinfo=ZoneInfo("Europe/Sofia")),
+            798022800,  # UTC: 2025-04-15 09:00
+            7200,  # standard offset UTC+2
+            798030000,  # standard_time
+            798033600,  # local_time = standard + 3600 (DST active)
+            796611600,  # DST start: 2025-03-30 01:00 UTC
+            814755600,  # DST end: 2025-10-26 01:00 UTC
+            3600,
+            id="sofia_apr_during_dst",
+        ),
+        pytest.param(
+            # July: EEST (UTC+3), during DST
+            datetime(2025, 7, 15, 12, 0, 0, tzinfo=ZoneInfo("Europe/Sofia")),
+            805885200,  # UTC: 2025-07-15 09:00
+            7200,  # standard offset UTC+2
+            805892400,  # standard_time
+            805896000,  # local_time = standard + 3600 (DST active)
+            796611600,  # DST start: 2025-03-30 01:00 UTC
+            814755600,  # DST end: 2025-10-26 01:00 UTC
+            3600,
+            id="sofia_jul_during_dst",
+        ),
+        pytest.param(
+            # November: EET (UTC+2), after DST — next period is 2026
+            datetime(2025, 11, 15, 12, 0, 0, tzinfo=ZoneInfo("Europe/Sofia")),
+            816516000,  # UTC: 2025-11-15 10:00
+            7200,  # standard offset UTC+2
+            816523200,  # standard_time (no DST active)
+            816523200,  # local_time = standard_time (no DST)
+            828061200,  # DST start: 2026-03-29 01:00 UTC
+            846205200,  # DST end: 2026-10-25 01:00 UTC
+            3600,
+            id="sofia_nov_after_dst",
+        ),
+        # ── Australia/Sydney (UTC+10 standard / UTC+11 DST, southern hemisphere) ──
+        pytest.param(
+            # January: AEDT (UTC+11), during DST from previous Oct
+            datetime(2025, 1, 15, 12, 0, 0, tzinfo=ZoneInfo("Australia/Sydney")),
+            790218000,  # UTC: 2025-01-15 01:00
+            36000,  # standard offset UTC+10
+            790254000,  # standard_time
+            790257600,  # local_time = standard + 3600 (DST active)
+            781459200,  # DST start: 2024-10-05 16:00 UTC
+            797184000,  # DST end: 2025-04-05 16:00 UTC
+            3600,
+            id="sydney_jan_during_dst",
+        ),
+        pytest.param(
+            # April: AEST (UTC+10), after DST ended
+            datetime(2025, 4, 15, 12, 0, 0, tzinfo=ZoneInfo("Australia/Sydney")),
+            797997600,  # UTC: 2025-04-15 02:00
+            36000,  # standard offset UTC+10
+            798033600,  # standard_time (no DST active)
+            798033600,  # local_time = standard_time (no DST)
+            812908800,  # DST start: 2025-10-04 16:00 UTC (next period)
+            828633600,  # DST end: 2026-04-04 16:00 UTC
+            3600,
+            id="sydney_apr_after_dst",
+        ),
+        pytest.param(
+            # July: AEST (UTC+10), winter, before next DST
+            datetime(2025, 7, 15, 12, 0, 0, tzinfo=ZoneInfo("Australia/Sydney")),
+            805860000,  # UTC: 2025-07-15 02:00
+            36000,  # standard offset UTC+10
+            805896000,  # standard_time (no DST active)
+            805896000,  # local_time = standard_time (no DST)
+            812908800,  # DST start: 2025-10-04 16:00 UTC (next period)
+            828633600,  # DST end: 2026-04-04 16:00 UTC
+            3600,
+            id="sydney_jul_before_dst",
+        ),
+        pytest.param(
+            # November: AEDT (UTC+11), during DST from Oct
+            datetime(2025, 11, 15, 12, 0, 0, tzinfo=ZoneInfo("Australia/Sydney")),
+            816483600,  # UTC: 2025-11-15 01:00
+            36000,  # standard offset UTC+10
+            816519600,  # standard_time
+            816523200,  # local_time = standard + 3600 (DST active)
+            812908800,  # DST start: 2025-10-04 16:00 UTC
+            828633600,  # DST end: 2026-04-04 16:00 UTC
+            3600,
+            id="sydney_nov_during_dst",
+        ),
+        # ── Pacific/Auckland (UTC+12 standard / UTC+13 DST, southern hemisphere) ──
+        pytest.param(
+            # January: NZDT (UTC+13), during DST from previous Sep
+            datetime(2025, 1, 15, 12, 0, 0, tzinfo=ZoneInfo("Pacific/Auckland")),
+            790210800,  # UTC: 2025-01-14 23:00
+            43200,  # standard offset UTC+12
+            790254000,  # standard_time
+            790257600,  # local_time = standard + 3600 (DST active)
+            780847200,  # DST start: 2024-09-28 14:00 UTC
+            797176800,  # DST end: 2025-04-05 14:00 UTC
+            3600,
+            id="auckland_jan_during_dst",
+        ),
+        pytest.param(
+            # April: NZST (UTC+12), after DST ended
+            datetime(2025, 4, 15, 12, 0, 0, tzinfo=ZoneInfo("Pacific/Auckland")),
+            797990400,  # UTC: 2025-04-15 00:00
+            43200,  # standard offset UTC+12
+            798033600,  # standard_time (no DST active)
+            798033600,  # local_time = standard_time (no DST)
+            812296800,  # DST start: 2025-09-27 14:00 UTC (next period)
+            828626400,  # DST end: 2026-04-04 14:00 UTC
+            3600,
+            id="auckland_apr_after_dst",
+        ),
+        pytest.param(
+            # July: NZST (UTC+12), winter, before next DST
+            datetime(2025, 7, 15, 12, 0, 0, tzinfo=ZoneInfo("Pacific/Auckland")),
+            805852800,  # UTC: 2025-07-15 00:00
+            43200,  # standard offset UTC+12
+            805896000,  # standard_time (no DST active)
+            805896000,  # local_time = standard_time (no DST)
+            812296800,  # DST start: 2025-09-27 14:00 UTC (next period)
+            828626400,  # DST end: 2026-04-04 14:00 UTC
+            3600,
+            id="auckland_jul_before_dst",
+        ),
+        pytest.param(
+            # November: NZDT (UTC+13), during DST from Sep
+            datetime(2025, 11, 15, 12, 0, 0, tzinfo=ZoneInfo("Pacific/Auckland")),
+            816476400,  # UTC: 2025-11-14 23:00
+            43200,  # standard offset UTC+12
+            816519600,  # standard_time
+            816523200,  # local_time = standard + 3600 (DST active)
+            812296800,  # DST start: 2025-09-27 14:00 UTC
+            828626400,  # DST end: 2026-04-04 14:00 UTC
+            3600,
+            id="auckland_nov_during_dst",
         ),
     ],
 )
 async def test_time_cluster(
-    fake_now, expected_utc, expected_tz, expected_standard, expected_local
+    fake_now,
+    expected_utc,
+    expected_tz,
+    expected_standard,
+    expected_local,
+    expected_dst_start,
+    expected_dst_end,
+    expected_dst_shift,
 ):
     ep = MagicMock()
     ep.reply = AsyncMock()
@@ -278,6 +464,48 @@ async def test_time_cluster(
         ),
     )
 
+    # DST attributes — mock _get_dst_info to use the test timezone and year
+    def _fake_get_dst_info(self):
+        now_utc = fake_now.astimezone(UTC)
+        return Time._find_dst_transitions(fake_now.year, fake_now.tzinfo, now_utc)
+
+    with patch.object(Time, "_get_dst_info", _fake_get_dst_info):
+        rsp_dst = await read_attributes(
+            cluster,
+            [
+                Time.AttributeDefs.dst_start.id,
+                Time.AttributeDefs.dst_end.id,
+                Time.AttributeDefs.dst_shift.id,
+            ],
+        )
+
+    assert rsp_dst.status_records[0] == foundation.ReadAttributeRecord(
+        attrid=Time.AttributeDefs.dst_start.id,
+        status=foundation.Status.SUCCESS,
+        value=foundation.TypeValue(
+            type=foundation.DataTypeId.uint32,
+            value=expected_dst_start,
+        ),
+    )
+
+    assert rsp_dst.status_records[1] == foundation.ReadAttributeRecord(
+        attrid=Time.AttributeDefs.dst_end.id,
+        status=foundation.Status.SUCCESS,
+        value=foundation.TypeValue(
+            type=foundation.DataTypeId.uint32,
+            value=expected_dst_end,
+        ),
+    )
+
+    assert rsp_dst.status_records[2] == foundation.ReadAttributeRecord(
+        attrid=Time.AttributeDefs.dst_shift.id,
+        status=foundation.Status.SUCCESS,
+        value=foundation.TypeValue(
+            type=foundation.DataTypeId.int32,
+            value=expected_dst_shift,
+        ),
+    )
+
     # Unsupported
     rsp2 = await read_attributes(cluster, [0xABCD])
     assert rsp2 == Read_Attributes_rsp(
@@ -287,6 +515,59 @@ async def test_time_cluster(
                 status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
             )
         ]
+    )
+
+
+async def test_time_cluster_no_dst():
+    """Test DST attributes for a timezone that does not observe DST."""
+    ep = MagicMock()
+    ep.reply = AsyncMock()
+
+    cluster = Time(ep)
+
+    # UTC+9 (Asia/Tokyo) has no DST
+    fake_now = datetime(2025, 7, 15, 12, 0, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
+
+    def _fake_get_dst_info_no_dst(self):
+        now_utc = fake_now.astimezone(UTC)
+        return Time._find_dst_transitions(fake_now.year, fake_now.tzinfo, now_utc)
+
+    with patch.object(Time, "_get_dst_info", _fake_get_dst_info_no_dst):
+        rsp = await read_attributes(
+            cluster,
+            [
+                Time.AttributeDefs.dst_start.id,
+                Time.AttributeDefs.dst_end.id,
+                Time.AttributeDefs.dst_shift.id,
+            ],
+        )
+
+    # No DST: dst_start and dst_end should be 0xFFFFFFFF, dst_shift should be 0
+    assert rsp.status_records[0] == foundation.ReadAttributeRecord(
+        attrid=Time.AttributeDefs.dst_start.id,
+        status=foundation.Status.SUCCESS,
+        value=foundation.TypeValue(
+            type=foundation.DataTypeId.uint32,
+            value=0xFFFFFFFF,
+        ),
+    )
+
+    assert rsp.status_records[1] == foundation.ReadAttributeRecord(
+        attrid=Time.AttributeDefs.dst_end.id,
+        status=foundation.Status.SUCCESS,
+        value=foundation.TypeValue(
+            type=foundation.DataTypeId.uint32,
+            value=0xFFFFFFFF,
+        ),
+    )
+
+    assert rsp.status_records[2] == foundation.ReadAttributeRecord(
+        attrid=Time.AttributeDefs.dst_shift.id,
+        status=foundation.Status.SUCCESS,
+        value=foundation.TypeValue(
+            type=foundation.DataTypeId.int32,
+            value=0,
+        ),
     )
 
 
@@ -310,9 +591,8 @@ def ota_cluster(dev):
     cluster = zcl.Cluster._registry[0x0019](ep)
     ep.in_clusters[cluster.cluster_id] = cluster
 
-    with (
-        patch.object(cluster, "reply", AsyncMock()),
-        patch.object(cluster, "request", AsyncMock()),
+    with patch.object(cluster, "reply", AsyncMock()), patch.object(
+        cluster, "request", AsyncMock()
     ):
         yield cluster
 

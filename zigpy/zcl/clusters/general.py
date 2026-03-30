@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+import os
+from pathlib import Path
 from typing import Any, Final, Self
+from zoneinfo import ZoneInfo
 
 import zigpy.types as t
 from zigpy.zcl import Cluster, OtaQueryCacheUpdatedEvent, foundation
@@ -1159,6 +1162,184 @@ class Time(Cluster):
 
         utc_seconds = (now_local - ZIGBEE_EPOCH).total_seconds()
         return t.LocalTime(utc_seconds + utc_offset.total_seconds())
+
+    @staticmethod
+    def _find_dst_boundary(
+        start: datetime,
+        end: datetime,
+        tz: Any,
+    ) -> datetime:
+        """Binary search for the exact DST transition between start and end.
+
+        Returns the UTC datetime of the transition to the second.
+        """
+        lo = start
+        hi = end
+        prev_is_dst = (lo.astimezone(tz).dst() or timedelta(0)) != timedelta(0)
+
+        while (hi - lo) > timedelta(seconds=1):
+            mid = lo + (hi - lo) / 2
+            mid_is_dst = (mid.astimezone(tz).dst() or timedelta(0)) != timedelta(0)
+            if mid_is_dst == prev_is_dst:
+                lo = mid
+            else:
+                hi = mid
+
+        return hi
+
+    @staticmethod
+    def _scan_dst_transitions(
+        scan_start: datetime,
+        scan_end: datetime,
+        tz: Any,
+    ) -> list[tuple[datetime, bool]]:
+        """Scan a time range hourly to find all DST transitions.
+
+        Returns a list of (transition_utc, entering_dst) tuples.
+        """
+        dt = scan_start
+        prev_dst = (dt.astimezone(tz).dst() or timedelta(0)) != timedelta(0)
+        transitions: list[tuple[datetime, bool]] = []
+
+        while dt < scan_end:
+            dt += timedelta(hours=1)
+            cur_dst_offset = dt.astimezone(tz).dst() or timedelta(0)
+            cur_is_dst = cur_dst_offset != timedelta(0)
+
+            if cur_is_dst != prev_dst:
+                boundary = Time._find_dst_boundary(dt - timedelta(hours=1), dt, tz)
+                transitions.append((boundary, cur_is_dst))
+                prev_dst = cur_is_dst
+
+        return transitions
+
+    @staticmethod
+    def _find_dst_transitions(
+        year: int,
+        tz: Any,
+        now: datetime | None = None,
+    ) -> tuple[datetime | None, datetime | None, timedelta]:
+        """Find the relevant DST period for the given year and timezone.
+
+        If currently in DST, returns the active DST period.
+        If not in DST, returns the next upcoming DST period.
+        Ensures dst_end > dst_start always.
+
+        Returns a tuple of (dst_start_utc, dst_end_utc, dst_offset) where
+        dst_start_utc/dst_end_utc are timezone-aware UTC datetimes of the
+        transitions, or None if the timezone does not observe DST.
+        dst_offset is the DST offset applied during the DST period.
+        """
+        # Scan previous year through next year for all transitions
+        prev_year_start = datetime(year - 1, 1, 1, tzinfo=UTC)
+        next_year_end = datetime(year + 2, 1, 1, tzinfo=UTC)
+
+        transitions = Time._scan_dst_transitions(prev_year_start, next_year_end, tz)
+
+        if len(transitions) < 2:
+            return None, None, timedelta(0)
+
+        # Determine the DST offset from any entering-DST transition
+        dst_offset = timedelta(0)
+        for transition_utc, entering_dst in transitions:
+            if entering_dst:
+                local = transition_utc.astimezone(tz)
+                dst_offset = local.dst() or timedelta(0)
+                break
+
+        # Build list of complete DST periods (start, end) pairs
+        periods: list[tuple[datetime, datetime]] = []
+        current_start = None
+        for transition_utc, entering_dst in transitions:
+            if entering_dst:
+                current_start = transition_utc
+            elif current_start is not None:
+                periods.append((current_start, transition_utc))
+                current_start = None
+
+        if not periods:
+            return None, None, timedelta(0)
+
+        if now is None:
+            now = datetime.now(UTC)
+
+        # If currently in DST, return the active period
+        for start, end in periods:
+            if start <= now < end:
+                return start, end, dst_offset
+
+        # Not in DST — return the next upcoming period
+        for start, end in periods:
+            if start > now:
+                return start, end, dst_offset
+
+        # All periods are in the past — return the last one
+        return periods[-1][0], periods[-1][1], dst_offset
+
+    @staticmethod
+    def _get_local_tz() -> Any:
+        """Get the system's IANA timezone as a ZoneInfo object.
+
+        Tries the TZ environment variable, then resolves /etc/localtime,
+        then reads /etc/timezone. Falls back to the fixed-offset timezone
+        from datetime (which won't support DST transitions).
+        """
+        # Try TZ environment variable
+        tz_env = os.environ.get("TZ")
+        if tz_env:
+            try:
+                return ZoneInfo(tz_env)
+            except KeyError:
+                pass
+
+        # Try resolving /etc/localtime symlink
+        try:
+            parts = Path("/etc/localtime").resolve().parts
+            for i, part in enumerate(parts):
+                if part == "zoneinfo":
+                    return ZoneInfo("/".join(parts[i + 1 :]))
+        except (OSError, KeyError):
+            pass
+
+        # Try reading /etc/timezone
+        try:
+            tz_name = Path("/etc/timezone").read_text().strip()
+            if tz_name:
+                return ZoneInfo(tz_name)
+        except (OSError, KeyError):
+            pass
+
+        # Fallback: fixed-offset timezone (no DST support)
+        return datetime.now().astimezone().tzinfo
+
+    def _get_dst_info(
+        self,
+    ) -> tuple[datetime | None, datetime | None, timedelta]:
+        """Get DST transitions for the current year using the system timezone."""
+        tz = self._get_local_tz()
+        now = datetime.now(tz)
+        return self._find_dst_transitions(now.year, tz, datetime.now(UTC))
+
+    def handle_read_attribute_dst_start(self) -> t.uint32_t:
+        dst_start, _, _ = self._get_dst_info()
+
+        if dst_start is None:
+            return t.uint32_t(0xFFFFFFFF)
+
+        return t.uint32_t((dst_start - ZIGBEE_EPOCH).total_seconds())
+
+    def handle_read_attribute_dst_end(self) -> t.uint32_t:
+        _, dst_end, _ = self._get_dst_info()
+
+        if dst_end is None:
+            return t.uint32_t(0xFFFFFFFF)
+
+        return t.uint32_t((dst_end - ZIGBEE_EPOCH).total_seconds())
+
+    def handle_read_attribute_dst_shift(self) -> t.int32s:
+        _, _, dst_offset = self._get_dst_info()
+
+        return t.int32s(dst_offset.total_seconds())
 
     # For backwards compatibility
     TimeStatus: Final = TimeStatus
