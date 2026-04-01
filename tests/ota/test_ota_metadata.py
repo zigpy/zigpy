@@ -220,7 +220,9 @@ def test_repr_with_firmware(image_with_metadata: OtaImageWithMetadata) -> None:
     """Test that repr summarizes firmware size instead of dumping raw bytes."""
     r = repr(image_with_metadata)
     assert r.startswith("OtaImageWithMetadata(metadata=")
-    assert "firmware=<OTAImage: 74 bytes>" in r
+    assert image_with_metadata.firmware is not None
+    expected_size = image_with_metadata.firmware.header.image_size
+    assert f"firmware=<OTAImage: {expected_size} bytes>" in r
     # Ensure the raw firmware bytes are not present
     assert "fw_image" not in r
 
