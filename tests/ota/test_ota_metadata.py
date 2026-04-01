@@ -214,3 +214,20 @@ def test_metadata_trusted_specificity(
 
     assert img.metadata.trusted is expected_trusted
     assert img.specificity == image_with_metadata.specificity + specificity_boost
+
+
+def test_repr_with_firmware(image_with_metadata: OtaImageWithMetadata) -> None:
+    """Test that repr summarizes firmware size instead of dumping raw bytes."""
+    r = repr(image_with_metadata)
+    assert r.startswith("OtaImageWithMetadata(metadata=")
+    assert "firmware=<OTAImage: 74 bytes>" in r
+    # Ensure the raw firmware bytes are not present
+    assert "fw_image" not in r
+
+
+def test_repr_without_firmware(image_with_metadata: OtaImageWithMetadata) -> None:
+    """Test that repr handles missing firmware gracefully."""
+    img = image_with_metadata.replace(firmware=None)
+    r = repr(img)
+    assert r.startswith("OtaImageWithMetadata(metadata=")
+    assert "firmware=None)" in r
