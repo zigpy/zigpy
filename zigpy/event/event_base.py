@@ -9,7 +9,6 @@ from contextvars import ContextVar
 import dataclasses
 from inspect import iscoroutinefunction
 import logging
-import sys
 from typing import Any
 
 _LOGGER = logging.getLogger(__package__)
@@ -28,9 +27,7 @@ def suppress_events() -> Generator[None, None, None]:
         _suppress_events.reset(token)
 
 
-@dataclasses.dataclass(
-    frozen=True, **({"slots": True} if sys.version_info >= (3, 10) else {})
-)
+@dataclasses.dataclass(frozen=True, slots=True)
 class EventListener:
     """Listener for an event."""
 
