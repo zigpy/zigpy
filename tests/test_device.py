@@ -475,6 +475,65 @@ async def test_handle_custom_profile(dev) -> None:
     assert mock_handler.mock_calls == [call(packet)]
 
 
+async def test_custom_profile_response_matched_on_known_endpoint_profile(dev) -> None:
+    """Test that ZCL responses can match on a known custom-profile endpoint."""
+    ep = dev.add_endpoint(239)
+    ep.profile_id = 0xC001
+    ep.add_input_cluster(OnOff.cluster_id)
+
+    tsn = 0x12
+    rsp_key = device.ResponseKey(
+        endpoint_id=239,
+        cluster_id=OnOff.cluster_id,
+        direction=foundation.Direction.Server_to_Client,
+        tsn=tsn,
+    )
+    future = asyncio.get_running_loop().create_future()
+    dev._requests[rsp_key] = future
+
+    default_rsp_hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.GLOBAL_COMMAND,
+            is_manufacturer_specific=False,
+            direction=foundation.Direction.Server_to_Client,
+            disable_default_response=True,
+            reserved=0,
+        ),
+        tsn=tsn,
+        command_id=foundation.GeneralCommand.Default_Response,
+    )
+
+    default_rsp_cmd = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Default_Response
+    ].schema(
+        command_id=OnOff.ServerCommandDefs.on.id,
+        status=foundation.Status.SUCCESS,
+    )
+
+    with patch.object(dev, "custom_profile_packet_received") as custom_handler:
+        dev.packet_received(
+            t.ZigbeePacket(
+                src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+                src_ep=239,
+                dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+                dst_ep=1,
+                profile_id=0xC001,
+                cluster_id=OnOff.cluster_id,
+                data=t.SerializableBytes(
+                    default_rsp_hdr.serialize() + default_rsp_cmd.serialize()
+                ),
+                lqi=255,
+                rssi=-30,
+            )
+        )
+
+    await asyncio.sleep(0)
+
+    assert custom_handler.call_count == 0
+    assert future.done()
+    assert await future == default_rsp_cmd
+
+
 async def test_handle_unknown_cluster(dev, caplog) -> None:
     """Test that unknown cluster messages are ignored."""
     dev.add_endpoint(1)

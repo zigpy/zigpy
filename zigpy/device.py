@@ -700,6 +700,20 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             packet.profile_id,
         )
 
+    def _is_known_zcl_packet_profile(self, packet: t.ZigbeePacket) -> bool:
+        """Return whether a custom-profile packet can be handled as ZCL."""
+        if packet.src_ep not in self.endpoints:
+            return False
+
+        endpoint = self.endpoints[packet.src_ep]
+        if not isinstance(endpoint, zigpy.endpoint.Endpoint):
+            return False
+
+        return endpoint.profile_id == packet.profile_id and (
+            packet.cluster_id in endpoint.in_clusters
+            or packet.cluster_id in endpoint.out_clusters
+        )
+
     def _should_filter_packet(self, packet: t.ZigbeePacket) -> bool:
         """Check if packet should be filtered as duplicate."""
         return self._packet_debouncer.filter(
@@ -723,7 +737,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 tsn=hdr.tsn,
             )
             return hdr, rsp_key
-        elif packet.profile_id in (zha.PROFILE_ID, zll.PROFILE_ID):
+        elif packet.profile_id in (zha.PROFILE_ID, zll.PROFILE_ID) or (
+            self._is_known_zcl_packet_profile(packet)
+        ):
             hdr, _ = foundation.ZCLHeader.deserialize(data)
             rsp_key = ResponseKey(
                 endpoint_id=packet.src_ep,
