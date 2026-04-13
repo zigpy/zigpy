@@ -26,6 +26,7 @@ from zigpy.zcl.clusters.greenpower import (
 import zigpy.zgp.types as zgptypes
 from zigpy.zgp.crypto import decrypt_payload, encrypt_security_key
 from zigpy.zgp.device import GPDevice, source_id_to_ieee
+from zigpy.zgp.proxy import GPProxyTable
 from zigpy.zgp.frame import (
     GPChannelRequestPayload,
     GPCommissioningPayload,
@@ -67,6 +68,7 @@ class GreenPowerManager:
         self._devices: dict[int, GPDevice] = {}  # sourceID -> GPDevice
         self._commissioning_window_end: float = 0
         self._commissioning_task: asyncio.Task[None] | None = None
+        self.proxy_table: GPProxyTable = GPProxyTable()
 
     @property
     def devices(self) -> dict[int, GPDevice]:
@@ -217,6 +219,14 @@ class GreenPowerManager:
             gpd_command_id,
             frame_counter,
         )
+
+        # Track the proxy that forwarded this notification
+        if proxy_nwk is not None:
+            self.proxy_table.add_or_update(
+                source_id=source_id,
+                proxy_nwk=proxy_nwk,
+                frame_counter=frame_counter,
+            )
 
         # Check if this is a commissioning-related command
         if gpd_command_id == GPDCommandID.CommissioningRequest:
@@ -372,6 +382,9 @@ class GreenPowerManager:
         device = self.remove_device(source_id)
 
         if device is not None:
+            # Clean up proxy table entries for this device
+            self.proxy_table.remove_by_source_id(source_id)
+
             # Send GP Pairing (remove) to proxies
             await self.send_pairing(device, add_sink=False)
 
