@@ -2,9 +2,117 @@ from __future__ import annotations
 
 from zigpy.types import basic
 
+# Green Power endpoint as defined in the ZGP specification
+GP_ENDPOINT: int = 242
+
+# Green Power cluster ID
+GP_CLUSTER_ID: int = 0x0021
+
+# Green Power group ID used for groupcast forwarding
+GP_GROUP_ID: int = 0x0B84
+
+# Default ZigBee Green Power shared key (ZigBeeAlliance09 TC link key)
+# Used as the default key for encrypting/decrypting GP security keys
+DEFAULT_GP_LINK_KEY: bytes = bytes(
+    [
+        0x5A,
+        0x69,
+        0x67,
+        0x42,
+        0x65,
+        0x65,
+        0x41,
+        0x6C,
+        0x6C,
+        0x69,
+        0x61,
+        0x6E,
+        0x63,
+        0x65,
+        0x30,
+        0x39,
+    ]
+)
+
 
 class DeviceID(basic.uint32_t, repr="hex"):
     pass
+
+
+# GPD Command IDs (Table 49 in ZGP specification)
+class GPDCommandID(basic.enum8):
+    """GPD command identifiers sent by Green Power Devices."""
+
+    # Identify
+    Identify = 0x00
+
+    # Scenes
+    RecallScene0 = 0x10
+    RecallScene1 = 0x11
+    RecallScene2 = 0x12
+    RecallScene3 = 0x13
+    RecallScene4 = 0x14
+    RecallScene5 = 0x15
+    RecallScene6 = 0x16
+    RecallScene7 = 0x17
+    StoreScene0 = 0x18
+    StoreScene1 = 0x19
+    StoreScene2 = 0x1A
+    StoreScene3 = 0x1B
+    StoreScene4 = 0x1C
+    StoreScene5 = 0x1D
+    StoreScene6 = 0x1E
+    StoreScene7 = 0x1F
+
+    # On/Off
+    Off = 0x20
+    On = 0x21
+    Toggle = 0x22
+
+    # Level Control
+    LevelControlStop = 0x34
+    MoveUp = 0x30
+    MoveDown = 0x31
+    StepUp = 0x32
+    StepDown = 0x33
+
+    # Color Control
+    MoveHueStop = 0x40
+    MoveHueUp = 0x41
+    MoveHueDown = 0x42
+    StepHueUp = 0x43
+    StepHueDown = 0x44
+    MoveSaturationStop = 0x45
+    MoveSaturationUp = 0x46
+    MoveSaturationDown = 0x47
+    StepSaturationUp = 0x48
+    StepSaturationDown = 0x49
+    MoveColor = 0x4A
+    StepColor = 0x4B
+
+    # Door Lock
+    LockDoor = 0x50
+    UnlockDoor = 0x51
+
+    # Attribute Reporting
+    AttributeReporting = 0xA0
+    ManufacturerSpecificReporting = 0xA1
+
+    # Multi-Cluster Reporting
+    MultiClusterReporting = 0xA2
+    ManufacturerSpecificMultiClusterReporting = 0xA3
+
+    # Commissioning
+    CommissioningRequest = 0xE0
+    DecommissioningRequest = 0xE1
+    SuccessReport = 0xE2
+    ChannelRequest = 0xE3
+
+    # Application Description
+    ApplicationDescription = 0xE4
+
+    # Any GPD command
+    AnyCommand = 0xFF
 
 
 class FrameType(basic.enum2):
