@@ -672,6 +672,19 @@ class GreenPowerManager:
         Tells GP Proxy devices to add or remove a GPD from their
         proxy tables and start/stop forwarding its frames.
 
+        Limitation: communication_mode is always UnicastLightweight.
+        zigbee-herdsman dynamically chooses between Groupcast and Unicast
+        depending on whether the commissioning notification was broadcast
+        or unicast. UnicastLightweight works for most home networks but
+        may fail in extended networks where groupcast forwarding is needed.
+
+        Limitation: the security key is sent as-is in the Pairing command.
+        zigbee-herdsman re-encrypts the key via encryptSecurityKey() before
+        placing it in the GP Pairing. This may cause interoperability issues
+        with proxies that expect the key to be encrypted in the Pairing.
+        In practice, EZSP/Z-Stack firmware manages the GP Sink Table
+        internally, so this field is less critical at the application level.
+
         Args:
             device: The GP device to pair/unpair.
             add_sink: True to add pairing, False to remove.
@@ -680,6 +693,9 @@ class GreenPowerManager:
         coordinator_ieee = self._application.state.node_info.ieee
         coordinator_nwk = self._application.state.node_info.nwk
 
+        # TODO: dynamically select communication mode based on commissioning
+        # context (broadcast vs unicast) instead of always UnicastLightweight.
+        # See zigbee-herdsman sendPairingCommand() for reference.
         options = PairingOptions(
             application_id=zgptypes.ApplicationID.SrcID,
             add_sink=int(add_sink),
@@ -710,6 +726,10 @@ class GreenPowerManager:
                 schema_kwargs["frame_counter"] = t.uint32_t(device.frame_counter)
 
             if device.security_key is not None:
+                # TODO: zigbee-herdsman re-encrypts the key via
+                # encryptSecurityKey(sourceID, key) before including it in
+                # the Pairing. Investigate whether proxies expect the key
+                # encrypted or in cleartext in this field.
                 schema_kwargs["key"] = t.KeyData(
                     [t.uint8_t(b) for b in device.security_key]
                 )
