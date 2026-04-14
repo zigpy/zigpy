@@ -166,6 +166,7 @@ class GPDevice:
             "mac_seq_num_capability": self.mac_seq_num_capability,
             "rx_on_capability": self.rx_on_capability,
             "fixed_location": self.fixed_location,
+            "last_seen": self.last_seen.isoformat() if self.last_seen else None,
         }
 
     @classmethod
@@ -179,6 +180,7 @@ class GPDevice:
             GPDevice instance.
         """
         security_key_hex = data.get("security_key")
+        last_seen_str = data.get("last_seen")
         return cls(
             source_id=data["source_id"],
             device_id=data["device_id"],
@@ -196,6 +198,11 @@ class GPDevice:
             mac_seq_num_capability=data.get("mac_seq_num_capability", False),
             rx_on_capability=data.get("rx_on_capability", False),
             fixed_location=data.get("fixed_location", False),
+            last_seen=(
+                datetime.fromisoformat(last_seen_str)
+                if last_seen_str
+                else None
+            ),
         )
 
     def __repr__(self) -> str:

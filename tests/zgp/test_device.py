@@ -216,6 +216,35 @@ class TestGPDeviceSerialization:
         assert dev.gpd_commands == []
         assert dev.server_clusters == []
         assert dev.client_clusters == []
+        assert dev.last_seen is None
+
+    def test_last_seen_roundtrip(self) -> None:
+        """last_seen should survive serialization/deserialization."""
+        from datetime import UTC, datetime
+
+        dev = GPDevice(source_id=0x12345678, device_id=0x02)
+        dev.update_frame_counter(1)  # sets last_seen
+        assert dev.last_seen is not None
+
+        data = dev.as_dict()
+        assert data["last_seen"] is not None
+        assert isinstance(data["last_seen"], str)
+
+        restored = GPDevice.from_dict(data)
+        assert restored.last_seen is not None
+        # Compare with microsecond tolerance (ISO 8601 roundtrip)
+        assert abs((restored.last_seen - dev.last_seen).total_seconds()) < 0.001
+
+    def test_last_seen_none_roundtrip(self) -> None:
+        """None last_seen should survive serialization."""
+        dev = GPDevice(source_id=0x12345678, device_id=0x02)
+        assert dev.last_seen is None
+
+        data = dev.as_dict()
+        assert data["last_seen"] is None
+
+        restored = GPDevice.from_dict(data)
+        assert restored.last_seen is None
 
 
 class TestGPDeviceRepr:
