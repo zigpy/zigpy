@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import time
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
@@ -29,7 +28,9 @@ def mock_app() -> MagicMock:
     app.state.node_info.nwk = t.NWK(0x0000)
     app.send_packet = AsyncMock()
     app.listener_event = Mock()
-    app.create_task = Mock(side_effect=lambda coro, name=None: asyncio.ensure_future(coro))
+    app.create_task = Mock(
+        side_effect=lambda coro, name=None: asyncio.ensure_future(coro)
+    )
     return app
 
 
@@ -527,17 +528,17 @@ class TestBuildZclFrame:
 
     def test_client_frame(self) -> None:
         frame = GreenPowerManager._build_zcl_frame(
-            command_id=0x02, is_client=True, payload=b"\xAA\xBB"
+            command_id=0x02, is_client=True, payload=b"\xaa\xbb"
         )
         # frame_control: 0x01 (cluster-specific) | 0x10 (disable default resp) = 0x11
         assert frame[0] == 0x11
         assert frame[1] == 0x00  # seq_num
         assert frame[2] == 0x02  # command_id
-        assert frame[3:] == b"\xAA\xBB"
+        assert frame[3:] == b"\xaa\xbb"
 
     def test_server_frame(self) -> None:
         frame = GreenPowerManager._build_zcl_frame(
-            command_id=0x00, is_client=False, payload=b"\xCC"
+            command_id=0x00, is_client=False, payload=b"\xcc"
         )
         # frame_control: 0x01 | 0x08 (direction) | 0x10 = 0x19
         assert frame[0] == 0x19

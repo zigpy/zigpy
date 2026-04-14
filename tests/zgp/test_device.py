@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 import zigpy.types as t
 
@@ -33,7 +32,7 @@ class TestSourceIdToIeee:
     def test_max_source_id(self) -> None:
         ieee = source_id_to_ieee(0xFFFFFFFF)
         ieee_bytes = bytes(ieee)
-        assert ieee_bytes[:4] == b"\xFF\xFF\xFF\xFF"
+        assert ieee_bytes[:4] == b"\xff\xff\xff\xff"
         assert ieee_bytes[4:] == GP_IEEE_SUFFIX
 
     def test_returns_eui64(self) -> None:
@@ -184,7 +183,7 @@ class TestGPDeviceSerialization:
         dev = GPDevice(
             source_id=0x12345678,
             device_id=0x02,
-            security_key=b"\xAA" * 16,
+            security_key=b"\xaa" * 16,
             frame_counter=100,
         )
         data = dev.as_dict()
@@ -220,7 +219,6 @@ class TestGPDeviceSerialization:
 
     def test_last_seen_roundtrip(self) -> None:
         """last_seen should survive serialization/deserialization."""
-        from datetime import UTC, datetime
 
         dev = GPDevice(source_id=0x12345678, device_id=0x02)
         dev.update_frame_counter(1)  # sets last_seen

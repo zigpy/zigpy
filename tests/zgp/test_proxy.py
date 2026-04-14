@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from zigpy.zgp.proxy import GPProxyTable, GPProxyTableEntry
 from zigpy.zgp.types import CommunicationMode, SecurityLevel
@@ -59,9 +58,7 @@ class TestGPProxyTable:
 
     def test_update_doesnt_decrease_counter(self) -> None:
         table = GPProxyTable()
-        table.add_or_update(
-            source_id=0xAABBCCDD, proxy_nwk=0x1234, frame_counter=20
-        )
+        table.add_or_update(source_id=0xAABBCCDD, proxy_nwk=0x1234, frame_counter=20)
         entry = table.add_or_update(
             source_id=0xAABBCCDD, proxy_nwk=0x1234, frame_counter=10
         )

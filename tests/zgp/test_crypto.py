@@ -44,9 +44,9 @@ class TestBuildNonce:
     def test_nonce_max_values(self) -> None:
         """Nonce with maximum 32-bit values."""
         nonce = build_nonce(source_id=0xFFFFFFFF, frame_counter=0xFFFFFFFF)
-        assert nonce[0:4] == b"\xFF\xFF\xFF\xFF"
-        assert nonce[4:8] == b"\xFF\xFF\xFF\xFF"
-        assert nonce[8:12] == b"\xFF\xFF\xFF\xFF"
+        assert nonce[0:4] == b"\xff\xff\xff\xff"
+        assert nonce[4:8] == b"\xff\xff\xff\xff"
+        assert nonce[8:12] == b"\xff\xff\xff\xff"
         assert nonce[12] == 0x05
 
 
@@ -87,7 +87,7 @@ class TestEncryptDecryptSecurityKey:
 
     def test_different_source_ids_produce_different_ciphertext(self) -> None:
         """Different sourceIDs should produce different encrypted keys."""
-        key = b"\xAA" * 16
+        key = b"\xaa" * 16
 
         enc1, mic1 = encrypt_security_key(0x11111111, key)
         enc2, mic2 = encrypt_security_key(0x22222222, key)
@@ -154,9 +154,7 @@ class TestEncryptDecryptSecurityKey:
     def test_invalid_link_key_length(self) -> None:
         """Link key must be exactly 16 bytes."""
         with pytest.raises(ValueError, match="16 bytes"):
-            encrypt_security_key(
-                0x12345678, b"\x00" * 16, link_key=b"\x00" * 15
-            )
+            encrypt_security_key(0x12345678, b"\x00" * 16, link_key=b"\x00" * 15)
 
     def test_invalid_mic_length(self) -> None:
         """MIC must be exactly 4 bytes for decrypt."""
@@ -228,15 +226,22 @@ class TestEncryptDecryptPayload:
         payload = b"\x20\x21\x22"
 
         output, mic = encrypt_payload(
-            source_id, frame_counter, key, payload,
+            source_id,
+            frame_counter,
+            key,
+            payload,
             SecurityLevel.FullFrameCounterAndMIC,
         )
 
         # Tamper with the payload
-        tampered = b"\xFF\x21\x22"
+        tampered = b"\xff\x21\x22"
         with pytest.raises(InvalidTag):
             decrypt_payload(
-                source_id, frame_counter, key, tampered, mic,
+                source_id,
+                frame_counter,
+                key,
+                tampered,
+                mic,
                 SecurityLevel.FullFrameCounterAndMIC,
             )
 
@@ -317,9 +322,7 @@ class TestEncryptDecryptPayload:
         )
 
         with pytest.raises(InvalidTag):
-            decrypt_payload(
-                source_id, 2, key, encrypted, mic, SecurityLevel.Encrypted
-            )
+            decrypt_payload(source_id, 2, key, encrypted, mic, SecurityLevel.Encrypted)
 
     def test_invalid_key_length(self) -> None:
         """Security key must be 16 bytes."""

@@ -16,7 +16,6 @@ from datetime import UTC, datetime
 import zigpy.types as t
 
 from zigpy.zgp.types import (
-    DeviceID,
     SecurityKeyType,
     SecurityLevel,
 )
@@ -41,6 +40,7 @@ def source_id_to_ieee(source_id: int) -> t.EUI64:
 
     Returns:
         Synthetic 8-byte EUI64 address.
+
     """
     ieee_bytes = struct.pack("<I", source_id) + GP_IEEE_SUFFIX
     return t.EUI64([t.uint8_t(b) for b in ieee_bytes])
@@ -61,6 +61,7 @@ def ieee_to_source_id(ieee: t.EUI64) -> int | None:
 
     Returns:
         32-bit sourceID if this is a GP synthetic address, None otherwise.
+
     """
     ieee_bytes = bytes(ieee)
     if ieee_bytes[4:] != GP_IEEE_SUFFIX:
@@ -134,6 +135,7 @@ class GPDevice:
             True if the counter was accepted and updated.
             False if the counter is not greater than the stored value
             (potential replay attack).
+
         """
         if counter <= self.frame_counter:
             LOGGER.warning(
@@ -178,6 +180,7 @@ class GPDevice:
 
         Returns:
             GPDevice instance.
+
         """
         security_key_hex = data.get("security_key")
         last_seen_str = data.get("last_seen")
@@ -199,9 +202,7 @@ class GPDevice:
             rx_on_capability=data.get("rx_on_capability", False),
             fixed_location=data.get("fixed_location", False),
             last_seen=(
-                datetime.fromisoformat(last_seen_str)
-                if last_seen_str
-                else None
+                datetime.fromisoformat(last_seen_str) if last_seen_str else None
             ),
         )
 

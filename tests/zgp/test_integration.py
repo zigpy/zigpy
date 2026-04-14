@@ -2,18 +2,15 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 import zigpy.types as t
-from zigpy.zgp.device import GPDevice
 from zigpy.zgp.manager import GreenPowerManager
 from zigpy.zgp.types import (
     GP_CLUSTER_ID,
     GP_ENDPOINT,
-    GPDCommandID,
-    SecurityLevel,
 )
 
 # Import test fixtures from conftest
@@ -76,7 +73,7 @@ class TestApplicationGPIntegration:
 
         dev_ieee = t.EUI64.convert("00:11:22:33:44:55:66:99")
         dev_nwk = t.NWK(0x5678)
-        dev = add_initialized_device(app, nwk=dev_nwk, ieee=dev_ieee)
+        add_initialized_device(app, nwk=dev_nwk, ieee=dev_ieee)
 
         packet = t.ZigbeePacket(
             src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev_nwk),
