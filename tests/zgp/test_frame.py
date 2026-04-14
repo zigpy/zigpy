@@ -167,11 +167,7 @@ class TestGPCommissioningPayload:
         # extended: Encrypted + key_present + key_encrypted = 0x03 | 0x20 | 0x40 = 0x63
         security_key = bytes(range(16))
         key_mic = 0xDEADBEEF
-        data = (
-            bytes([0x07, 0x80, 0x63])
-            + security_key
-            + struct.pack("<I", key_mic)
-        )
+        data = bytes([0x07, 0x80, 0x63]) + security_key + struct.pack("<I", key_mic)
         payload = GPCommissioningPayload.from_bytes(data)
 
         assert payload.device_id == 0x07
@@ -194,13 +190,9 @@ class TestGPCommissioningPayload:
     def test_with_key_and_counter(self) -> None:
         """Commissioning with both key and outgoing counter."""
         # extended: key_present + outgoing_counter_present = 0x20 | 0x80 = 0xA0
-        security_key = b"\xAA" * 16
+        security_key = b"\xaa" * 16
         counter = 0x00000042
-        data = (
-            bytes([0x02, 0x80, 0xA0])
-            + security_key
-            + struct.pack("<I", counter)
-        )
+        data = bytes([0x02, 0x80, 0xA0]) + security_key + struct.pack("<I", counter)
         payload = GPCommissioningPayload.from_bytes(data)
 
         assert payload.security_key == security_key
@@ -242,7 +234,9 @@ class TestGPCommissioningPayload:
 
         data = bytearray([0x02, 0x04, 0x08])
         # length byte: lower nibble = num_server, upper = num_client
-        data.append((len(server_clusters) & 0x0F) | ((len(client_clusters) & 0x0F) << 4))
+        data.append(
+            (len(server_clusters) & 0x0F) | ((len(client_clusters) & 0x0F) << 4)
+        )
         for c in server_clusters:
             data.extend(struct.pack("<H", c))
         for c in client_clusters:
@@ -255,7 +249,7 @@ class TestGPCommissioningPayload:
 
     def test_full_commissioning_payload(self) -> None:
         """Full commissioning with all optional fields."""
-        security_key = b"\xBB" * 16
+        security_key = b"\xbb" * 16
         key_mic = 0xCAFEBABE
         counter = 0x00000100
         manufacturer_id = 0x1021
@@ -304,7 +298,7 @@ class TestGPCommissioningPayload:
 
     def test_roundtrip_serialization(self) -> None:
         """Parsing and re-serializing should produce identical bytes."""
-        security_key = b"\xCC" * 16
+        security_key = b"\xcc" * 16
         data = bytes([0x02, 0x80, 0x23]) + security_key
         payload = GPCommissioningPayload.from_bytes(data)
         serialized = payload.to_bytes()
@@ -317,7 +311,7 @@ class TestGPCommissioningPayload:
         data.append(0x07)  # device_id
         data.append(0x84)  # options: extended (bit 7) + app_info (bit 2)
         data.append(0xA0)  # extended: key_present + outgoing_counter
-        data.extend(b"\xDD" * 16)  # security key
+        data.extend(b"\xdd" * 16)  # security key
         data.extend(struct.pack("<I", 0x00000099))  # outgoing counter
         data.append(0x04)  # app_info: gpd_commands
         data.append(len(commands))
@@ -349,7 +343,7 @@ class TestGPChannelRequestPayload:
 
     def test_channel_26(self) -> None:
         """Channel 26 = offset 15."""
-        payload = GPChannelRequestPayload.from_bytes(b"\xFF")
+        payload = GPChannelRequestPayload.from_bytes(b"\xff")
         assert payload.next_channel == 26
         assert payload.second_next_channel == 26
 

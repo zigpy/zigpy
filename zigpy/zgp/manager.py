@@ -25,7 +25,7 @@ from zigpy.zcl.clusters.greenpower import (
 )
 import zigpy.zgp.types as zgptypes
 from zigpy.zgp.crypto import decrypt_payload
-from zigpy.zgp.device import GPDevice, source_id_to_ieee
+from zigpy.zgp.device import GPDevice
 from zigpy.zgp.proxy import GPProxyTable
 from zigpy.zgp.frame import (
     GPChannelRequestPayload,
@@ -34,7 +34,6 @@ from zigpy.zgp.frame import (
 from zigpy.zgp.types import (
     GP_CLUSTER_ID,
     GP_ENDPOINT,
-    DEFAULT_GP_LINK_KEY,
     CommunicationMode,
     GPDCommandID,
     SecurityKeyType,
@@ -153,6 +152,7 @@ class GreenPowerManager:
 
         Returns:
             True if the packet was handled as a GP frame, False otherwise.
+
         """
         if packet.dst_ep != GP_ENDPOINT or packet.cluster_id != GP_CLUSTER_ID:
             return False
@@ -296,7 +296,9 @@ class GreenPowerManager:
             return
 
         # Regular data command - dispatch to listeners
-        await self._dispatch_gp_command(source_id, frame_counter, gpd_command_id, gpd_payload)
+        await self._dispatch_gp_command(
+            source_id, frame_counter, gpd_command_id, gpd_payload
+        )
 
     async def _handle_commissioning_notification(
         self, payload: bytes, proxy_nwk: int | None
@@ -461,9 +463,7 @@ class GreenPowerManager:
                 source_id,
             )
 
-    async def _process_channel_request(
-        self, source_id: int, payload: bytes
-    ) -> None:
+    async def _process_channel_request(self, source_id: int, payload: bytes) -> None:
         """Process a GP Channel Request command (0xE3).
 
         The GPD is asking which channel to use. We respond with the
@@ -572,6 +572,7 @@ class GreenPowerManager:
         Args:
             time_s: Duration of the commissioning window in seconds.
                    Pass 0 to close the window immediately.
+
         """
         if time_s == 0:
             await self._close_commissioning_window()
@@ -623,10 +624,12 @@ class GreenPowerManager:
         Args:
             enter: True to enter commissioning, False to exit.
             window: Commissioning window duration in seconds (optional).
+
         """
         options = ProxyCommissioningModeOptions(
             enter=int(enter),
-            exit_mode=zgptypes.ProxyCommissioningModeExitMode.OnExpire if enter
+            exit_mode=zgptypes.ProxyCommissioningModeExitMode.OnExpire
+            if enter
             else zgptypes.ProxyCommissioningModeExitMode.NotDefined,
             channel_present=0,
             unicast=0,
@@ -672,6 +675,7 @@ class GreenPowerManager:
         Args:
             device: The GP device to pair/unpair.
             add_sink: True to add pairing, False to remove.
+
         """
         coordinator_ieee = self._application.state.node_info.ieee
         coordinator_nwk = self._application.state.node_info.nwk
@@ -685,12 +689,8 @@ class GreenPowerManager:
             gpd_mac_seq_num_cap=int(device.mac_seq_num_capability),
             security_level=device.security_level,
             security_key_type=device.security_key_type,
-            security_frame_counter_present=int(
-                add_sink and device.frame_counter > 0
-            ),
-            security_key_present=int(
-                add_sink and device.security_key is not None
-            ),
+            security_frame_counter_present=int(add_sink and device.frame_counter > 0),
+            security_key_present=int(add_sink and device.security_key is not None),
             assigned_alias_present=0,
             forwarding_radius_present=0,
             _reserved=0,
@@ -749,9 +749,7 @@ class GreenPowerManager:
     # --- Helpers ---
 
     @staticmethod
-    def _build_zcl_frame(
-        command_id: int, is_client: bool, payload: bytes
-    ) -> bytes:
+    def _build_zcl_frame(command_id: int, is_client: bool, payload: bytes) -> bytes:
         """Build a minimal ZCL frame for GP cluster commands.
 
         Args:
@@ -761,6 +759,7 @@ class GreenPowerManager:
 
         Returns:
             Complete ZCL frame bytes.
+
         """
         # ZCL Frame Control byte (ZCL spec 2.4.1.1):
         # Bits 0-1: Frame type (0b01 = cluster-specific)
@@ -785,6 +784,7 @@ class GreenPowerManager:
 
         Args:
             devices_data: List of dictionaries from GPDevice.as_dict().
+
         """
         for data in devices_data:
             try:
@@ -803,5 +803,6 @@ class GreenPowerManager:
 
         Returns:
             List of dictionaries suitable for JSON/database storage.
+
         """
         return [device.as_dict() for device in self._devices.values()]

@@ -60,6 +60,7 @@ def build_nonce(source_id: int, frame_counter: int) -> bytes:
 
     Returns:
         13-byte nonce for AES-CCM.
+
     """
     return struct.pack(
         "<IIIB",
@@ -93,6 +94,7 @@ def encrypt_security_key(
         Tuple of (encrypted_key, mic) where:
         - encrypted_key is the 16-byte encrypted security key
         - mic is the 4-byte Message Integrity Code
+
     """
     if len(security_key) != 16:
         raise ValueError(f"Security key must be 16 bytes, got {len(security_key)}")
@@ -132,11 +134,10 @@ def decrypt_security_key(
 
     Raises:
         cryptography.exceptions.InvalidTag: If MIC verification fails.
+
     """
     if len(encrypted_key) != 16:
-        raise ValueError(
-            f"Encrypted key must be 16 bytes, got {len(encrypted_key)}"
-        )
+        raise ValueError(f"Encrypted key must be 16 bytes, got {len(encrypted_key)}")
     if len(mic) != 4:
         raise ValueError(f"MIC must be 4 bytes, got {len(mic)}")
     if len(link_key) != 16:
@@ -186,6 +187,7 @@ def encrypt_payload(
         Tuple of (output_payload, mic) where output_payload is the
         encrypted payload (Encrypted level) or the original plaintext
         (auth-only levels).
+
     """
     if len(security_key) != 16:
         raise ValueError(f"Security key must be 16 bytes, got {len(security_key)}")
@@ -240,6 +242,7 @@ def decrypt_payload(
     Raises:
         cryptography.exceptions.InvalidTag: If MIC verification fails.
         ValueError: If security level is NoSecurity.
+
     """
     if len(security_key) != 16:
         raise ValueError(f"Security key must be 16 bytes, got {len(security_key)}")

@@ -7,8 +7,6 @@ events fire correctly and state is maintained throughout.
 
 from __future__ import annotations
 
-import struct
-from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -18,8 +16,7 @@ from zigpy.zcl.clusters.greenpower import (
     NotificationSchema,
 )
 import zigpy.zgp.types as zgptypes
-from zigpy.zgp.device import GPDevice, source_id_to_ieee
-from zigpy.zgp.manager import GreenPowerManager
+from zigpy.zgp.device import GPDevice
 from zigpy.zgp.types import (
     GP_CLUSTER_ID,
     GP_ENDPOINT,
@@ -220,6 +217,7 @@ class TestPacketReceivedE2E:
 
         # Let the async task run
         import asyncio
+
         await asyncio.sleep(0.05)
 
         # gp_command_received should have been fired
@@ -253,6 +251,7 @@ class TestPacketReceivedE2E:
         app.packet_received(packet)
 
         import asyncio
+
         await asyncio.sleep(0.05)
 
         app.listener_event.assert_any_call(
@@ -315,9 +314,7 @@ class TestReplayProtectionE2E:
 
         # Send 5 sequential commands
         for i in range(1, 6):
-            await gp._dispatch_gp_command(
-                source_id, i, GPDCommandID.Toggle, b""
-            )
+            await gp._dispatch_gp_command(source_id, i, GPDCommandID.Toggle, b"")
 
         assert len(commands_received) == 5
         assert dev.frame_counter == 5
@@ -346,6 +343,7 @@ class TestProxyTableE2E:
         app.packet_received(packet)
 
         import asyncio
+
         await asyncio.sleep(0.05)
 
         # Proxy should be tracked

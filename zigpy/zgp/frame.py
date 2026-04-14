@@ -13,10 +13,6 @@ import struct
 from typing import ClassVar
 
 from zigpy.zgp.types import (
-    ApplicationID,
-    DeviceID,
-    FrameType,
-    GPDCommandID,
     SecurityKeyType,
     SecurityLevel,
 )
@@ -177,6 +173,7 @@ class GPCommissioningPayload:
 
         Returns:
             Parsed GPCommissioningPayload.
+
         """
         if len(data) < 2:
             raise ValueError(
@@ -308,7 +305,10 @@ class GPCommissioningPayload:
         if self.app_info is not None:
             result.append(self.app_info.raw & 0xFF)
 
-            if self.app_info.manufacturer_id_present and self.manufacturer_id is not None:
+            if (
+                self.app_info.manufacturer_id_present
+                and self.manufacturer_id is not None
+            ):
                 result.extend(struct.pack("<H", self.manufacturer_id))
 
             if self.app_info.model_id_present and self.model_id is not None:

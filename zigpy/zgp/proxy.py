@@ -34,12 +34,8 @@ class GPProxyTableEntry:
     communication_mode: CommunicationMode = CommunicationMode.UnicastLightweight
     security_level: SecurityLevel = SecurityLevel.NoSecurity
     frame_counter: int = 0
-    first_seen: datetime = dataclasses.field(
-        default_factory=lambda: datetime.now(UTC)
-    )
-    last_seen: datetime = dataclasses.field(
-        default_factory=lambda: datetime.now(UTC)
-    )
+    first_seen: datetime = dataclasses.field(default_factory=lambda: datetime.now(UTC))
+    last_seen: datetime = dataclasses.field(default_factory=lambda: datetime.now(UTC))
 
     def touch(self) -> None:
         """Update last_seen timestamp."""
@@ -87,6 +83,7 @@ class GPProxyTable:
 
         Returns:
             The created or updated entry.
+
         """
         key = (source_id, proxy_nwk)
         entry = self._entries.get(key)
@@ -123,10 +120,9 @@ class GPProxyTable:
 
         Returns:
             Number of entries removed.
+
         """
-        keys_to_remove = [
-            key for key in self._entries if key[0] == source_id
-        ]
+        keys_to_remove = [key for key in self._entries if key[0] == source_id]
         for key in keys_to_remove:
             del self._entries[key]
 
@@ -148,10 +144,9 @@ class GPProxyTable:
 
         Returns:
             Number of entries removed.
+
         """
-        keys_to_remove = [
-            key for key in self._entries if key[1] == proxy_nwk
-        ]
+        keys_to_remove = [key for key in self._entries if key[1] == proxy_nwk]
         for key in keys_to_remove:
             del self._entries[key]
         return len(keys_to_remove)
@@ -164,10 +159,9 @@ class GPProxyTable:
 
         Returns:
             List of proxy NWK addresses.
+
         """
-        return [
-            key[1] for key in self._entries if key[0] == source_id
-        ]
+        return [key[1] for key in self._entries if key[0] == source_id]
 
     def get_devices_for_proxy(self, proxy_nwk: int) -> list[int]:
         """Get source IDs of all GPDs forwarded by a proxy.
@@ -177,10 +171,9 @@ class GPProxyTable:
 
         Returns:
             List of GPD source IDs.
+
         """
-        return [
-            key[0] for key in self._entries if key[1] == proxy_nwk
-        ]
+        return [key[0] for key in self._entries if key[1] == proxy_nwk]
 
     def get_entry(self, source_id: int, proxy_nwk: int) -> GPProxyTableEntry | None:
         """Get a specific entry."""
