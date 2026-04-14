@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, Mock
+
+from tests.async_mock import AsyncMock, MagicMock, Mock
 
 import pytest
 

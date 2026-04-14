@@ -255,6 +255,8 @@ class TestGPDeviceRepr:
             security_level=SecurityLevel.Encrypted,
         )
         r = repr(dev)
-        assert "0x12345678" in r.upper() or "12345678" in r.upper()
+        assert r.startswith("<GPDevice")
+        assert r.endswith(">")
+        assert "12345678" in r.upper()
         assert "GreenPower_2" in r
         assert "Encrypted" in r

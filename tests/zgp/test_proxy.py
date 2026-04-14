@@ -140,10 +140,15 @@ class TestGPProxyTable:
 
     def test_repr(self) -> None:
         table = GPProxyTable()
-        assert "0 entries" in repr(table)
+        r = repr(table)
+        assert r.startswith("<GPProxyTable")
+        assert "0 entries" in r
 
         table.add_or_update(source_id=0x11111111, proxy_nwk=0x1111)
-        assert "1 entries" in repr(table)
+        assert "1 entry>" in repr(table)
+
+        table.add_or_update(source_id=0x22222222, proxy_nwk=0x2222)
+        assert "2 entries>" in repr(table)
 
     def test_get_proxies_for_nonexistent_device(self) -> None:
         table = GPProxyTable()
