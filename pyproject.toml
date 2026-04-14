@@ -21,7 +21,7 @@ dependencies = [
     "cryptography",
     "voluptuous",
     "jsonschema",
-    'pyserial-asyncio-fast',
+    "serialx",
     "typing_extensions",
     "frozendict",
 ]
