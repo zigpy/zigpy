@@ -189,40 +189,65 @@ class TestEncryptDecryptPayload:
         assert decrypted == payload
 
     def test_full_frame_counter_and_mic_roundtrip(self) -> None:
-        """Authentication-only round-trip (FullFrameCounterAndMIC)."""
+        """Authentication-only round-trip (FullFrameCounterAndMIC).
+
+        Per ZGP spec, this level authenticates without encrypting:
+        the payload remains in cleartext and only a MIC is appended.
+        """
         source_id = 0x11223344
         frame_counter = 0x00000001
         key = bytes(range(16))
         payload = b"\x20"  # Toggle command
 
-        encrypted, mic = encrypt_payload(
+        output, mic = encrypt_payload(
             source_id,
             frame_counter,
             key,
             payload,
             SecurityLevel.FullFrameCounterAndMIC,
         )
-        # For auth-only, encrypted == original payload (no encryption, only MIC)
         assert len(mic) == 4
+        # Auth-only: output payload must be identical to input (NOT encrypted)
+        assert output == payload
 
-        decrypted = decrypt_payload(
+        verified = decrypt_payload(
             source_id,
             frame_counter,
             key,
-            encrypted,
+            output,
             mic,
             SecurityLevel.FullFrameCounterAndMIC,
         )
-        assert decrypted == payload
+        assert verified == payload
+
+    def test_full_frame_counter_and_mic_tampered(self) -> None:
+        """Tampered payload should fail MIC verification in auth-only mode."""
+        source_id = 0x11223344
+        frame_counter = 0x00000001
+        key = bytes(range(16))
+        payload = b"\x20\x21\x22"
+
+        output, mic = encrypt_payload(
+            source_id, frame_counter, key, payload,
+            SecurityLevel.FullFrameCounterAndMIC,
+        )
+
+        # Tamper with the payload
+        tampered = b"\xFF\x21\x22"
+        with pytest.raises(InvalidTag):
+            decrypt_payload(
+                source_id, frame_counter, key, tampered, mic,
+                SecurityLevel.FullFrameCounterAndMIC,
+            )
 
     def test_short_frame_counter_and_mic(self) -> None:
-        """ShortFrameCounterAndMIC uses 4-byte MIC (same as Full)."""
+        """ShortFrameCounterAndMIC: auth-only with 4-byte MIC."""
         source_id = 0x55667788
         frame_counter = 0x00000010
         key = bytes(range(16))
         payload = b"\x22"  # Toggle
 
-        encrypted, mic = encrypt_payload(
+        output, mic = encrypt_payload(
             source_id,
             frame_counter,
             key,
@@ -230,16 +255,18 @@ class TestEncryptDecryptPayload:
             SecurityLevel.ShortFrameCounterAndMIC,
         )
         assert len(mic) == 4
+        # Auth-only: payload must NOT be encrypted
+        assert output == payload
 
-        decrypted = decrypt_payload(
+        verified = decrypt_payload(
             source_id,
             frame_counter,
             key,
-            encrypted,
+            output,
             mic,
             SecurityLevel.ShortFrameCounterAndMIC,
         )
-        assert decrypted == payload
+        assert verified == payload
 
     def test_no_security_encrypt_raises(self) -> None:
         """Cannot encrypt with NoSecurity level."""
