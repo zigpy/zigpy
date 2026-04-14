@@ -208,8 +208,10 @@ class GPDevice:
 
     def __repr__(self) -> str:
         return (
-            f"GPDevice(source_id=0x{self.source_id:08X}, "
-            f"device_id=0x{self.device_id:02X}, "
-            f"model={self.model_identifier}, "
-            f"security={self.security_level.name})"
+            f"<{type(self).__name__}"
+            f" source_id=0x{self.source_id:08X}"
+            f" device_id=0x{self.device_id:02X}"
+            f" model={self.model_identifier!r}"
+            f" security={self.security_level.name}"
+            f">"
         )

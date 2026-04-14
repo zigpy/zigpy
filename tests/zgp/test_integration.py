@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, Mock
+from tests.async_mock import AsyncMock, Mock
 
 import pytest
 

@@ -187,4 +187,5 @@ class GPProxyTable:
         return len(self._entries)
 
     def __repr__(self) -> str:
-        return f"GPProxyTable({len(self._entries)} entries)"
+        count = len(self._entries)
+        return f"<{type(self).__name__} {count} {'entry' if count == 1 else 'entries'}>"
