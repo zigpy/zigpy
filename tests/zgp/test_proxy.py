@@ -117,6 +117,11 @@ class TestGPProxyTable:
         assert len(table) == 1
         assert table.get_devices_for_proxy(0x1234) == []
 
+    def test_remove_by_proxy_nonexistent(self) -> None:
+        table = GPProxyTable()
+        removed = table.remove_by_proxy(0x9999)
+        assert removed == 0
+
     def test_get_entry(self) -> None:
         table = GPProxyTable()
         table.add_or_update(source_id=0xAABBCCDD, proxy_nwk=0x1234)
