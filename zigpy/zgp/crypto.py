@@ -7,6 +7,17 @@ The GP security uses CCM* (CCM-star) mode with:
 - 128-bit AES key
 - 13-byte nonce constructed from sourceID and frame counter
 - Variable MIC length depending on SecurityLevel
+
+Limitation: per the ZGP spec (A.1.5.4.3), the CCM* associated data (AAD)
+should include the GPDF header (NWK Frame Control, Extended NWK FC, SrcID,
+Security Frame Counter). However, when GP frames arrive via GP Notification
+ZCL commands, the original GPDF header is no longer available — only the
+extracted fields (sourceID, frameCounter, commandID, payload) are present.
+Furthermore, radio adapters (EZSP, Z-Stack) typically handle GP decryption
+in firmware before delivering the payload to the host. This matches the
+approach used by zigbee-herdsman. If raw GPDF header data becomes available
+in the future, the encrypt/decrypt functions should be updated to accept
+an optional ``header`` parameter for AAD.
 """
 
 from __future__ import annotations
