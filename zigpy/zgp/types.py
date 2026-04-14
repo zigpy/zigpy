@@ -145,13 +145,19 @@ class SecurityKeyType(basic.enum3):
 
 
 # ZGP spec Figure 22
+# This is semantically a 3-bit bitmask (each bit is an independent exit
+# condition) but modeled as enum3 due to zigpy's type system constraints.
+# The enum3 type integrates with t.Struct bit-level serialization, which
+# a standard IntFlag would not. All valid bit combinations are listed.
 class ProxyCommissioningModeExitMode(basic.enum3):
     NotDefined = 0b000
     OnExpire = 0b001
     OnFirstPairing = 0b010
-    OnExplicitExit = 0b100
     OnExpireOrFirstPairing = 0b011
+    OnExplicitExit = 0b100
     OnExpireOrExplicitExit = 0b101
+    OnFirstPairingOrExplicitExit = 0b110
+    OnExpireOrFirstPairingOrExplicitExit = 0b111
 
 
 # Table 29
