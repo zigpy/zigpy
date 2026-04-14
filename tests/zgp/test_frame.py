@@ -33,24 +33,32 @@ class TestGPCommissioningOptions:
         assert opts.mac_seq_num_capability
 
     def test_rx_on_capability(self) -> None:
-        opts = GPCommissioningOptions(0x04)
+        opts = GPCommissioningOptions(0x02)  # bit 1
         assert opts.rx_on_capability
 
     def test_app_info_present(self) -> None:
-        opts = GPCommissioningOptions(0x08)
+        opts = GPCommissioningOptions(0x04)  # bit 2
         assert opts.app_info_present
 
     def test_pan_id_request(self) -> None:
-        opts = GPCommissioningOptions(0x20)
+        opts = GPCommissioningOptions(0x10)  # bit 4
         assert opts.pan_id_request
 
     def test_security_key_request(self) -> None:
-        opts = GPCommissioningOptions(0x40)
+        opts = GPCommissioningOptions(0x20)  # bit 5
         assert opts.security_key_request
 
+    def test_fixed_location(self) -> None:
+        opts = GPCommissioningOptions(0x40)  # bit 6
+        assert opts.fixed_location
+
+    def test_extended_options_present(self) -> None:
+        opts = GPCommissioningOptions(0x80)  # bit 7
+        assert bool(opts.raw & (1 << 7))
+
     def test_multiple_flags(self) -> None:
-        # MAC seq + RX on + App info
-        opts = GPCommissioningOptions(0x01 | 0x04 | 0x08)
+        # MAC seq (bit 0) + RX on (bit 1) + App info (bit 2)
+        opts = GPCommissioningOptions(0x01 | 0x02 | 0x04)
         assert opts.mac_seq_num_capability
         assert opts.rx_on_capability
         assert opts.app_info_present
@@ -200,12 +208,12 @@ class TestGPCommissioningPayload:
 
     def test_with_app_info_manufacturer_and_model(self) -> None:
         """Commissioning with application info: manufacturer and model ID."""
-        # options: app_info_present = 0x08
+        # options: app_info_present = bit 2 = 0x04
         # app_info: manufacturer_id + model_id = 0x01 | 0x02 = 0x03
         manufacturer_id = 0x1234
         model_id = 0x5678
         data = (
-            bytes([0x02, 0x08, 0x03])
+            bytes([0x02, 0x04, 0x03])
             + struct.pack("<H", manufacturer_id)
             + struct.pack("<H", model_id)
         )
@@ -217,22 +225,22 @@ class TestGPCommissioningPayload:
 
     def test_with_gpd_commands(self) -> None:
         """Commissioning with GPD command list."""
-        # options: app_info_present = 0x08
+        # options: app_info_present = bit 2 = 0x04
         # app_info: gpd_commands_present = 0x04
         commands = [0x20, 0x21, 0x22]  # Off, On, Toggle
-        data = bytes([0x02, 0x08, 0x04, len(commands)]) + bytes(commands)
+        data = bytes([0x02, 0x04, 0x04, len(commands)]) + bytes(commands)
         payload = GPCommissioningPayload.from_bytes(data)
 
         assert payload.gpd_commands == commands
 
     def test_with_cluster_list(self) -> None:
         """Commissioning with server and client cluster lists."""
-        # options: app_info_present = 0x08
+        # options: app_info_present = bit 2 = 0x04
         # app_info: cluster_list_present = 0x08
         server_clusters = [0x0006, 0x0008]  # On/Off, Level Control
         client_clusters = [0x0300]  # Color Control
 
-        data = bytearray([0x02, 0x08, 0x08])
+        data = bytearray([0x02, 0x04, 0x08])
         # length byte: lower nibble = num_server, upper = num_client
         data.append((len(server_clusters) & 0x0F) | ((len(client_clusters) & 0x0F) << 4))
         for c in server_clusters:
@@ -259,8 +267,8 @@ class TestGPCommissioningPayload:
         data = bytearray()
         # device_id=2
         data.append(0x02)
-        # options: extended + app_info = 0x80 | 0x08 = 0x88
-        data.append(0x88)
+        # options: extended (bit 7) + app_info (bit 2) = 0x80 | 0x04 = 0x84
+        data.append(0x84)
         # extended: Encrypted + key_present + key_encrypted + outgoing_counter
         # = 0x03 | 0x20 | 0x40 | 0x80 = 0xE3
         data.append(0xE3)
@@ -307,7 +315,7 @@ class TestGPCommissioningPayload:
         commands = [0x20, 0x21]
         data = bytearray()
         data.append(0x07)  # device_id
-        data.append(0x88)  # options: extended + app_info
+        data.append(0x84)  # options: extended (bit 7) + app_info (bit 2)
         data.append(0xA0)  # extended: key_present + outgoing_counter
         data.extend(b"\xDD" * 16)  # security key
         data.extend(struct.pack("<I", 0x00000099))  # outgoing counter
