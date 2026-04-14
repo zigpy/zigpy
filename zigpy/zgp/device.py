@@ -52,6 +52,10 @@ def ieee_to_source_id(ieee: t.EUI64) -> int | None:
     Returns None if the IEEE address doesn't look like a GP synthetic address
     (i.e., upper 4 bytes are not all zeros).
 
+    Note: sourceID 0x00000000 is "unspecified" per the ZGP spec and should
+    not be used by real GPDs. This function does not reject it — callers
+    should validate the returned sourceID if needed.
+
     Args:
         ieee: EUI64 address to check.
 
