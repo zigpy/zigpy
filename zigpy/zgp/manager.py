@@ -70,6 +70,17 @@ class GreenPowerManager:
         self._commissioning_task: asyncio.Task[None] | None = None
         self.proxy_table: GPProxyTable = GPProxyTable()
 
+    async def shutdown(self) -> None:
+        """Clean up GP manager state.
+
+        Cancels any running commissioning timer. Should be called
+        during ControllerApplication shutdown.
+        """
+        if self._commissioning_task is not None:
+            self._commissioning_task.cancel()
+            self._commissioning_task = None
+        self._commissioning_window_end = 0
+
     @property
     def devices(self) -> dict[int, GPDevice]:
         """Return the dictionary of commissioned GP devices."""

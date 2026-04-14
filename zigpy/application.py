@@ -565,6 +565,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.ota.stop_periodic_broadcasts()
         self.backups.stop_periodic_backups()
         self.topology.stop_periodic_scans()
+        await self.green_power.shutdown()
 
         for device in self.devices.values():
             try:
