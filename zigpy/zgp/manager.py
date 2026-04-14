@@ -24,7 +24,7 @@ from zigpy.zcl.clusters.greenpower import (
     ProxyCommissioningModeSchema,
 )
 import zigpy.zgp.types as zgptypes
-from zigpy.zgp.crypto import decrypt_payload, encrypt_security_key
+from zigpy.zgp.crypto import decrypt_payload
 from zigpy.zgp.device import GPDevice, source_id_to_ieee
 from zigpy.zgp.proxy import GPProxyTable
 from zigpy.zgp.frame import (
