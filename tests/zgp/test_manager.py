@@ -246,6 +246,40 @@ class TestGPCommandDispatch:
         assert dev.frame_counter == 42
 
 
+class TestDeduplication:
+    """Tests for GP duplicate filtering (spec A.3.6.1.2)."""
+
+    def test_first_notification_passes(self, manager: GreenPowerManager) -> None:
+        """First occurrence of (sourceID, frameCounter) should pass."""
+        assert not manager._is_duplicate(0x12345678, 1)
+
+    def test_second_notification_blocked(self, manager: GreenPowerManager) -> None:
+        """Same (sourceID, frameCounter) within timeout should be blocked."""
+        assert not manager._is_duplicate(0x12345678, 1)
+        assert manager._is_duplicate(0x12345678, 1)
+
+    def test_different_source_id_passes(self, manager: GreenPowerManager) -> None:
+        """Different sourceID with same counter should pass."""
+        assert not manager._is_duplicate(0x11111111, 1)
+        assert not manager._is_duplicate(0x22222222, 1)
+
+    def test_different_counter_passes(self, manager: GreenPowerManager) -> None:
+        """Same sourceID with different counter should pass."""
+        assert not manager._is_duplicate(0x12345678, 1)
+        assert not manager._is_duplicate(0x12345678, 2)
+
+    def test_expired_entry_passes(self, manager: GreenPowerManager) -> None:
+        """Entries older than DEDUP_TIMEOUT_S should be purged."""
+        manager._is_duplicate(0x12345678, 1)
+
+        # Manually expire the entry
+        for key in manager._dedup_cache:
+            manager._dedup_cache[key] -= manager.DEDUP_TIMEOUT_S + 1
+
+        # Should pass again after expiry
+        assert not manager._is_duplicate(0x12345678, 1)
+
+
 class TestCommissioning:
     """Tests for GP commissioning."""
 

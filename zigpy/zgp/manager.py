@@ -63,12 +63,17 @@ class GreenPowerManager:
       was received from a commissioned device
     """
 
+    # Duplicate filtering timeout per ZGP spec A.3.6.1.2
+    DEDUP_TIMEOUT_S: float = 2.0
+
     def __init__(self, application: ControllerApplication) -> None:
         self._application = application
         self._devices: dict[int, GPDevice] = {}  # sourceID -> GPDevice
         self._commissioning_window_end: float = 0
         self._commissioning_task: asyncio.Task[None] | None = None
         self.proxy_table: GPProxyTable = GPProxyTable()
+        # Duplicate filtering table: (source_id, frame_counter) -> monotonic timestamp
+        self._dedup_cache: dict[tuple[int, int], float] = {}
 
     async def shutdown(self) -> None:
         """Clean up GP manager state.
@@ -94,6 +99,35 @@ class GreenPowerManager:
     def get_device(self, source_id: int) -> GPDevice | None:
         """Get a commissioned GP device by sourceID."""
         return self._devices.get(source_id)
+
+    def _is_duplicate(self, source_id: int, frame_counter: int) -> bool:
+        """Check if a GP notification is a duplicate from another proxy.
+
+        Per ZGP spec A.3.6.1.2, the sink maintains a duplicate filtering
+        table indexed by (sourceID, frameCounter) with a 2-second timeout.
+        Multiple proxies forwarding the same GPD frame is normal behavior
+        and should be silently deduplicated, not treated as a replay attack.
+        """
+        key = (source_id, frame_counter)
+        now = time.monotonic()
+
+        # Purge expired entries
+        self._dedup_cache = {
+            k: ts
+            for k, ts in self._dedup_cache.items()
+            if now - ts < self.DEDUP_TIMEOUT_S
+        }
+
+        if key in self._dedup_cache:
+            LOGGER.debug(
+                "GP dedup: dropping duplicate from 0x%08X (fc=%d)",
+                source_id,
+                frame_counter,
+            )
+            return True
+
+        self._dedup_cache[key] = now
+        return False
 
     def add_device(self, device: GPDevice) -> None:
         """Add or update a GP device in the registry."""
@@ -238,6 +272,11 @@ class GreenPowerManager:
                 proxy_nwk=proxy_nwk,
                 frame_counter=frame_counter,
             )
+
+        # Duplicate filtering: when multiple proxies forward the same GPD
+        # frame, only process the first one (spec A.3.6.1.2)
+        if self._is_duplicate(source_id, frame_counter):
+            return
 
         # Check if this is a commissioning-related command
         if gpd_command_id == GPDCommandID.CommissioningRequest:
