@@ -137,6 +137,20 @@ def decrypt_security_key(
     return aesccm.decrypt(nonce, encrypted_key + mic, associated_data=None)
 
 
+def _is_auth_only(security_level: SecurityLevel) -> bool:
+    """Return True if the security level uses authentication only (no encryption).
+
+    Per ZGP spec Table 12:
+    - SecurityLevel 0b10 (FullFrameCounterAndMIC): 4-byte FC + 4-byte MIC, no encryption
+    - SecurityLevel 0b01 (Reserved/Short): similar auth-only semantics
+    - SecurityLevel 0b11 (Encrypted): full encryption + authentication
+    """
+    return security_level in (
+        SecurityLevel.FullFrameCounterAndMIC,
+        SecurityLevel.ShortFrameCounterAndMIC,
+    )
+
+
 def encrypt_payload(
     source_id: int,
     frame_counter: int,
@@ -144,17 +158,23 @@ def encrypt_payload(
     payload: bytes,
     security_level: SecurityLevel = SecurityLevel.Encrypted,
 ) -> tuple[bytes, bytes]:
-    """Encrypt a GP frame payload.
+    """Encrypt or authenticate a GP frame payload.
+
+    For SecurityLevel.Encrypted: payload is encrypted and authenticated.
+    For FullFrameCounterAndMIC/ShortFrameCounterAndMIC: payload is
+    authenticated only (MIC computed over plaintext, payload not encrypted).
 
     Args:
         source_id: 32-bit GPD source identifier.
         frame_counter: 32-bit frame counter.
         security_key: 16-byte security key.
-        payload: Plaintext payload to encrypt.
-        security_level: Security level determining MIC length.
+        payload: Plaintext payload.
+        security_level: Security level determining behavior.
 
     Returns:
-        Tuple of (encrypted_payload, mic).
+        Tuple of (output_payload, mic) where output_payload is the
+        encrypted payload (Encrypted level) or the original plaintext
+        (auth-only levels).
     """
     if len(security_key) != 16:
         raise ValueError(f"Security key must be 16 bytes, got {len(security_key)}")
@@ -166,14 +186,19 @@ def encrypt_payload(
     nonce = build_nonce(source_id, frame_counter)
     aesccm = AESCCM(security_key, tag_length=mic_length)
 
-    # AES-CCM: encrypt produces ciphertext + MIC appended
-    ciphertext_and_mic = aesccm.encrypt(nonce, payload, associated_data=None)
-
-    # Split into encrypted payload and MIC
-    encrypted = ciphertext_and_mic[:-mic_length]
-    mic = ciphertext_and_mic[-mic_length:]
-
-    return encrypted, mic
+    if _is_auth_only(security_level):
+        # Authentication only: payload is passed as associated data (AAD),
+        # plaintext message is empty. The MIC authenticates the payload
+        # without encrypting it. Per ZGP spec, FullFrameCounterAndMIC
+        # provides integrity protection but the payload remains in cleartext.
+        mic = aesccm.encrypt(nonce, b"", associated_data=payload)
+        return payload, mic
+    else:
+        # Full encryption: payload is encrypted and authenticated
+        ciphertext_and_mic = aesccm.encrypt(nonce, payload, associated_data=None)
+        encrypted = ciphertext_and_mic[:-mic_length]
+        mic = ciphertext_and_mic[-mic_length:]
+        return encrypted, mic
 
 
 def decrypt_payload(
@@ -184,18 +209,22 @@ def decrypt_payload(
     mic: bytes,
     security_level: SecurityLevel = SecurityLevel.Encrypted,
 ) -> bytes:
-    """Decrypt a GP frame payload.
+    """Decrypt or verify a GP frame payload.
+
+    For SecurityLevel.Encrypted: payload is decrypted and MIC verified.
+    For FullFrameCounterAndMIC/ShortFrameCounterAndMIC: MIC is verified
+    against the plaintext payload (no decryption needed).
 
     Args:
         source_id: 32-bit GPD source identifier.
         frame_counter: 32-bit frame counter.
         security_key: 16-byte security key.
-        payload: Encrypted payload (or plaintext for auth-only levels).
+        payload: Encrypted payload (Encrypted level) or plaintext (auth-only).
         mic: Message Integrity Code.
-        security_level: Security level determining MIC length and behavior.
+        security_level: Security level determining behavior.
 
     Returns:
-        Decrypted payload bytes.
+        Decrypted/verified payload bytes.
 
     Raises:
         cryptography.exceptions.InvalidTag: If MIC verification fails.
@@ -213,5 +242,11 @@ def decrypt_payload(
     nonce = build_nonce(source_id, frame_counter)
     aesccm = AESCCM(security_key, tag_length=mic_length)
 
-    # AES-CCM: decrypt expects ciphertext + MIC concatenated
-    return aesccm.decrypt(nonce, payload + mic, associated_data=None)
+    if _is_auth_only(security_level):
+        # Authentication only: verify MIC with payload as AAD.
+        # The "ciphertext" is empty, only the MIC tag is present.
+        aesccm.decrypt(nonce, mic, associated_data=payload)
+        return payload
+    else:
+        # Full decryption: ciphertext + MIC concatenated
+        return aesccm.decrypt(nonce, payload + mic, associated_data=None)
