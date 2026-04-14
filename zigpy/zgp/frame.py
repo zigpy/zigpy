@@ -26,23 +26,23 @@ from zigpy.zgp.types import (
 class GPCommissioningOptions:
     """Options byte from GP Commissioning command (0xE0) payload.
 
-    Bit layout (Table 53):
-    - Bit 0-1: MAC Sequence Number Capability
-    - Bit 2: RX On Capability
-    - Bit 3: Application Information present
-    - Bit 4: reserved
-    - Bit 5: PAN ID request
-    - Bit 6: GP Security Key request
-    - Bit 7: Fixed Location
-    - Bit 8: Extended Options field present (actually bit 7 in some specs)
+    Bit layout (Table 53, ZGP spec / Wireshark zbee-nwk-gp dissector):
+    - Bit 0: MAC Sequence Number Capability
+    - Bit 1: RX On Capability
+    - Bit 2: Application Information present
+    - Bit 3: reserved
+    - Bit 4: PAN ID request
+    - Bit 5: GP Security Key request
+    - Bit 6: Fixed Location
+    - Bit 7: Extended Options field present
     """
 
+    RX_ON_CAPABILITY_BIT: ClassVar[int] = 1
+    APP_INFO_PRESENT_BIT: ClassVar[int] = 2
+    PAN_ID_REQUEST_BIT: ClassVar[int] = 4
+    SECURITY_KEY_REQUEST_BIT: ClassVar[int] = 5
+    FIXED_LOCATION_BIT: ClassVar[int] = 6
     EXTENDED_OPTIONS_PRESENT_BIT: ClassVar[int] = 7
-    RX_ON_CAPABILITY_BIT: ClassVar[int] = 2
-    APP_INFO_PRESENT_BIT: ClassVar[int] = 3
-    PAN_ID_REQUEST_BIT: ClassVar[int] = 5
-    SECURITY_KEY_REQUEST_BIT: ClassVar[int] = 6
-    FIXED_LOCATION_BIT: ClassVar[int] = 7
 
     raw: int
 
