@@ -51,7 +51,7 @@ def build_nonce(source_id: int, frame_counter: int) -> bytes:
         13-byte nonce for AES-CCM.
     """
     return struct.pack(
-        "<IIIb",
+        "<IIIB",
         source_id,
         source_id,
         frame_counter,
