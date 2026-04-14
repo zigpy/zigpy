@@ -416,6 +416,16 @@ class GreenPowerManager:
         # Register the device
         self.add_device(device)
 
+        if device.rx_on_capability:
+            # TODO: implement GP Commissioning Reply (cmd 0xF0) via GP Response
+            # for RX-capable GPDs that need key provisioning from the sink
+            LOGGER.warning(
+                "GP device 0x%08X is RX-capable but GP Commissioning Reply "
+                "is not yet implemented. Device may not complete commissioning "
+                "if it requires key provisioning via Commissioning Reply",
+                source_id,
+            )
+
         # Send GP Pairing to proxies
         await self.send_pairing(device, add_sink=True)
 
