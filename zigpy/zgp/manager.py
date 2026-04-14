@@ -702,15 +702,15 @@ class GreenPowerManager:
         Returns:
             Complete ZCL frame bytes.
         """
-        # Frame control:
-        # Bit 0: Frame type = 1 (cluster-specific)
-        # Bit 1: Manufacturer specific = 0
-        # Bit 2: Direction: 0 = client-to-server, 1 = server-to-client
-        # Bit 3: Disable default response = 1
+        # ZCL Frame Control byte (ZCL spec 2.4.1.1):
+        # Bits 0-1: Frame type (0b01 = cluster-specific)
+        # Bit 2:    Manufacturer specific (0 = no)
+        # Bit 3:    Direction (0 = client-to-server, 1 = server-to-client)
+        # Bit 4:    Disable default response (1 = yes)
         frame_control = 0x01  # cluster-specific
         if not is_client:
-            frame_control |= 0x08  # server-to-client direction
-        frame_control |= 0x10  # disable default response
+            frame_control |= 0x08  # bit 3: server-to-client direction
+        frame_control |= 0x10  # bit 4: disable default response
 
         seq_num = 0x00  # GP doesn't use seq numbers meaningfully
 
