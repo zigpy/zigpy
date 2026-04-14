@@ -18,12 +18,12 @@ from cryptography.hazmat.primitives.ciphers.aead import AESCCM
 from zigpy.zgp.types import DEFAULT_GP_LINK_KEY, SecurityLevel
 
 # Security level to MIC length mapping (Table 12 in ZGP spec)
-# Note: ShortFrameCounterAndMIC uses a 2-byte counter (LSBytes only) for
+# Note: Reserved uses a 2-byte counter (LSBytes only) for
 # frame counter but still uses a 4-byte MIC for authentication per the spec.
 # The AESCCM library requires tag_length >= 4.
 SECURITY_LEVEL_MIC_LENGTH: dict[SecurityLevel, int] = {
     SecurityLevel.NoSecurity: 0,
-    SecurityLevel.ShortFrameCounterAndMIC: 4,
+    SecurityLevel.Reserved: 4,
     SecurityLevel.FullFrameCounterAndMIC: 4,
     SecurityLevel.Encrypted: 4,
 }
@@ -147,7 +147,7 @@ def _is_auth_only(security_level: SecurityLevel) -> bool:
     """
     return security_level in (
         SecurityLevel.FullFrameCounterAndMIC,
-        SecurityLevel.ShortFrameCounterAndMIC,
+        SecurityLevel.Reserved,
     )
 
 
@@ -161,7 +161,7 @@ def encrypt_payload(
     """Encrypt or authenticate a GP frame payload.
 
     For SecurityLevel.Encrypted: payload is encrypted and authenticated.
-    For FullFrameCounterAndMIC/ShortFrameCounterAndMIC: payload is
+    For FullFrameCounterAndMIC/Reserved: payload is
     authenticated only (MIC computed over plaintext, payload not encrypted).
 
     Args:
@@ -212,7 +212,7 @@ def decrypt_payload(
     """Decrypt or verify a GP frame payload.
 
     For SecurityLevel.Encrypted: payload is decrypted and MIC verified.
-    For FullFrameCounterAndMIC/ShortFrameCounterAndMIC: MIC is verified
+    For FullFrameCounterAndMIC/Reserved: MIC is verified
     against the plaintext payload (no decryption needed).
 
     Args:

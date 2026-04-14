@@ -55,7 +55,7 @@ class TestSecurityLevel:
         assert SecurityLevel.NoSecurity == 0b00
 
     def test_short_counter_mic(self) -> None:
-        assert SecurityLevel.ShortFrameCounterAndMIC == 0b01
+        assert SecurityLevel.Reserved == 0b01
 
     def test_full_counter_mic(self) -> None:
         assert SecurityLevel.FullFrameCounterAndMIC == 0b10

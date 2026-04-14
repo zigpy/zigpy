@@ -129,7 +129,7 @@ class ApplicationID(basic.enum3):
 # Table 13
 class SecurityLevel(basic.enum2):
     NoSecurity = 0b00
-    ShortFrameCounterAndMIC = 0b01
+    Reserved = 0b01
     FullFrameCounterAndMIC = 0b10
     Encrypted = 0b11
 

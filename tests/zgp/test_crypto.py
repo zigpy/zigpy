@@ -241,7 +241,7 @@ class TestEncryptDecryptPayload:
             )
 
     def test_short_frame_counter_and_mic(self) -> None:
-        """ShortFrameCounterAndMIC: auth-only with 4-byte MIC."""
+        """Reserved: auth-only with 4-byte MIC."""
         source_id = 0x55667788
         frame_counter = 0x00000010
         key = bytes(range(16))
@@ -252,7 +252,7 @@ class TestEncryptDecryptPayload:
             frame_counter,
             key,
             payload,
-            SecurityLevel.ShortFrameCounterAndMIC,
+            SecurityLevel.Reserved,
         )
         assert len(mic) == 4
         # Auth-only: payload must NOT be encrypted
@@ -264,7 +264,7 @@ class TestEncryptDecryptPayload:
             key,
             output,
             mic,
-            SecurityLevel.ShortFrameCounterAndMIC,
+            SecurityLevel.Reserved,
         )
         assert verified == payload
 
