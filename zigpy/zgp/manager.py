@@ -17,6 +17,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 import zigpy.types as t
+from zigpy.zcl import foundation
 from zigpy.zcl.clusters.greenpower import (
     GreenPowerProxy,
     PairingOptions,
@@ -175,26 +176,18 @@ class GreenPowerManager:
             return False
 
         try:
-            # Parse the ZCL frame to extract command and payload
+            # Parse the ZCL header using zigpy's ZCLHeader struct
             data = packet.data.serialize()
-            if len(data) < 3:
-                LOGGER.debug("GP packet too short: %d bytes", len(data))
-                return False
+            hdr, zcl_payload = foundation.ZCLHeader.deserialize(data)
 
-            # ZCL frame: frame_control(1) + seq_num(1) + command_id(1) + payload
-            frame_control = data[0]
-            # seq_num = data[1]
-            zcl_command_id = data[2]
-            zcl_payload = data[3:]
-
-            # Determine if this is cluster-specific (bit 0 of frame_control)
-            is_cluster_specific = bool(frame_control & 0x01)
-            if not is_cluster_specific:
+            if hdr.frame_control.frame_type != foundation.FrameType.CLUSTER_COMMAND:
                 LOGGER.debug("GP frame is not cluster-specific, ignoring")
                 return False
 
-            # Direction bit (bit 3): 0 = client-to-server, 1 = server-to-client
-            is_server_to_client = bool(frame_control & 0x08)
+            is_server_to_client = (
+                hdr.frame_control.direction
+                == foundation.Direction.Server_to_Client
+            )
 
             # Get proxy NWK address from packet source
             proxy_nwk = None
@@ -203,9 +196,9 @@ class GreenPowerManager:
 
             self._application.create_task(
                 self._process_zcl_command(
-                    zcl_command_id, zcl_payload, is_server_to_client, proxy_nwk
+                    hdr.command_id, zcl_payload, is_server_to_client, proxy_nwk
                 ),
-                f"gp_process_command-0x{zcl_command_id:02x}",
+                f"gp_process_command-0x{hdr.command_id:02x}",
             )
             return True
 
@@ -931,13 +924,12 @@ class GreenPowerManager:
 
     @staticmethod
     def _build_zcl_frame(command_id: int, is_client: bool, payload: bytes) -> bytes:
-        """Build a minimal ZCL frame for GP cluster commands.
+        """Build a ZCL frame for GP cluster commands.
 
-        This constructs the frame manually rather than using zigpy's ZCL
-        Foundation.Frame because GP frames are sent on the GP profile
-        (0xA1E0) and endpoint (242), which are outside the standard ZCL
-        device/endpoint/cluster lifecycle. The GP cluster schemas handle
-        payload serialization; this method only adds the 3-byte ZCL header.
+        Uses zigpy's ZCLHeader for proper frame construction. GP frames
+        are sent on the GP profile (0xA1E0) and endpoint (242), outside
+        the standard ZCL device/endpoint/cluster lifecycle, but the ZCL
+        header format is the same.
 
         Args:
             command_id: ZCL command ID.
@@ -948,19 +940,25 @@ class GreenPowerManager:
             Complete ZCL frame bytes.
 
         """
-        # ZCL Frame Control byte (ZCL spec 2.4.1.1):
-        # Bits 0-1: Frame type (0b01 = cluster-specific)
-        # Bit 2:    Manufacturer specific (0 = no)
-        # Bit 3:    Direction (0 = client-to-server, 1 = server-to-client)
-        # Bit 4:    Disable default response (1 = yes)
-        frame_control = 0x01  # cluster-specific
-        if not is_client:
-            frame_control |= 0x08  # bit 3: server-to-client direction
-        frame_control |= 0x10  # bit 4: disable default response
+        direction = (
+            foundation.Direction.Client_to_Server
+            if is_client
+            else foundation.Direction.Server_to_Client
+        )
 
-        seq_num = 0x00  # GP doesn't use seq numbers meaningfully
+        hdr = foundation.ZCLHeader(
+            frame_control=foundation.FrameControl(
+                frame_type=foundation.FrameType.CLUSTER_COMMAND,
+                is_manufacturer_specific=False,
+                direction=direction,
+                disable_default_response=True,
+                reserved=0b000,
+            ),
+            tsn=0,
+            command_id=command_id,
+        )
 
-        return bytes([frame_control, seq_num, command_id]) + payload
+        return hdr.serialize() + payload
 
     # --- Persistence ---
 
