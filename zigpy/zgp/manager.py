@@ -64,6 +64,10 @@ class GreenPowerManager:
     Attached to ControllerApplication. Processes GP frames arriving
     on endpoint 242, cluster 0x0021.
 
+    Limitation: only ApplicationID.SrcID (0b000) is supported. GPDs using
+    ApplicationID.IEEE (0b010) are not handled. This matches zigbee-herdsman
+    which also only supports SrcID. No known consumer GPD uses IEEE mode.
+
     Fires the following listener events on the application:
     - ``gp_device_joined(gp_device)``: A new GP device was commissioned
     - ``gp_device_left(gp_device)``: A GP device was decommissioned
