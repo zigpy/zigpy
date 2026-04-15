@@ -42,6 +42,7 @@ from zigpy.zgp.frame import (
 from zigpy.zgp.types import (
     GP_CLUSTER_ID,
     GP_ENDPOINT,
+    GP_GROUP_ID,
     CommunicationMode,
     GPDCommandID,
     SecurityKeyType,
@@ -444,7 +445,7 @@ class GreenPowerManager:
             await self._send_commissioning_reply(source_id, proxy_nwk)
 
         # Send GP Pairing to proxies
-        await self.send_pairing(device, add_sink=True)
+        await self.send_pairing(device, add_sink=True, proxy_nwk=proxy_nwk)
 
         # Notify listeners
         self._application.listener_event("gp_device_joined", device)
@@ -700,41 +701,44 @@ class GreenPowerManager:
                 exc_info=True,
             )
 
-    async def send_pairing(self, device: GPDevice, add_sink: bool = True) -> None:
+    async def send_pairing(
+        self,
+        device: GPDevice,
+        add_sink: bool = True,
+        proxy_nwk: int | None = None,
+    ) -> None:
         """Broadcast GP Pairing command to all proxies.
 
         Tells GP Proxy devices to add or remove a GPD from their
         proxy tables and start/stop forwarding its frames.
 
-        Limitation: communication_mode is always UnicastLightweight.
-        zigbee-herdsman dynamically chooses between Groupcast and Unicast
-        depending on whether the commissioning notification was broadcast
-        or unicast. UnicastLightweight works for most home networks but
-        may fail in extended networks where groupcast forwarding is needed.
-
-        Limitation: the security key is sent as-is in the Pairing command.
-        zigbee-herdsman re-encrypts the key via encryptSecurityKey() before
-        placing it in the GP Pairing. This may cause interoperability issues
-        with proxies that expect the key to be encrypted in the Pairing.
-        In practice, EZSP/Z-Stack firmware manages the GP Sink Table
-        internally, so this field is less critical at the application level.
+        The communication mode is selected based on context: if a specific
+        proxy forwarded the commissioning notification (proxy_nwk provided),
+        UnicastLightweight is used. Otherwise, GroupcastForwardToDGroup is
+        used to reach all proxies via the GP group. This matches
+        zigbee-herdsman's sendPairingCommand() behavior.
 
         Args:
             device: The GP device to pair/unpair.
             add_sink: True to add pairing, False to remove.
+            proxy_nwk: NWK address of the proxy that forwarded the
+                commissioning notification. If None, groupcast is used.
 
         """
         coordinator_ieee = self._application.state.node_info.ieee
         coordinator_nwk = self._application.state.node_info.nwk
 
-        # TODO: dynamically select communication mode based on commissioning
-        # context (broadcast vs unicast) instead of always UnicastLightweight.
-        # See zigbee-herdsman sendPairingCommand() for reference.
+        # Select communication mode based on commissioning context
+        if proxy_nwk is not None:
+            comm_mode = CommunicationMode.UnicastLightweight
+        else:
+            comm_mode = CommunicationMode.GroupcastForwardToDGroup
+
         options = PairingOptions(
             application_id=zgptypes.ApplicationID.SrcID,
             add_sink=int(add_sink),
             remove_gpd=int(not add_sink),
-            communication_mode=CommunicationMode.UnicastLightweight,
+            communication_mode=comm_mode,
             gpd_fixed=int(device.fixed_location),
             gpd_mac_seq_num_cap=int(device.mac_seq_num_capability),
             security_level=device.security_level,
@@ -752,8 +756,14 @@ class GreenPowerManager:
         }
 
         if add_sink:
-            schema_kwargs["sink_ieee"] = coordinator_ieee
-            schema_kwargs["sink_nwk_addr"] = coordinator_nwk
+            if comm_mode in (
+                CommunicationMode.Unicast,
+                CommunicationMode.UnicastLightweight,
+            ):
+                schema_kwargs["sink_ieee"] = coordinator_ieee
+                schema_kwargs["sink_nwk_addr"] = coordinator_nwk
+            else:
+                schema_kwargs["sink_group"] = t.Group(GP_GROUP_ID)
             schema_kwargs["device_id"] = t.uint8_t(device.device_id)
 
             schema_kwargs["frame_counter"] = t.uint32_t(device.frame_counter)
