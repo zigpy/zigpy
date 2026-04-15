@@ -27,6 +27,7 @@ def mock_app() -> MagicMock:
     app = MagicMock()
     app.state.node_info.ieee = t.EUI64.convert("00:11:22:33:44:55:66:77")
     app.state.node_info.nwk = t.NWK(0x0000)
+    app.state.network_info.channel = 15
     app.send_packet = AsyncMock()
     app.listener_event = Mock()
     app.create_task = Mock(
@@ -550,3 +551,192 @@ class TestBuildZclFrame:
             command_id=0x06, is_client=True, payload=b""
         )
         assert len(frame) == 3
+
+
+class TestChannelConfigResponse:
+    """Tests for GP Channel Configuration response."""
+
+    @pytest.mark.asyncio
+    async def test_channel_request_sends_response(
+        self, manager: GreenPowerManager, mock_app: MagicMock
+    ) -> None:
+        """Channel Request should trigger a GP Response with Channel Config."""
+        # Channel Request payload: next_channel=15 (offset 4), second=20 (offset 9)
+        channel_req_payload = bytes([4 | (9 << 4)])
+
+        await manager._process_channel_request(
+            source_id=0x12345678,
+            payload=channel_req_payload,
+            proxy_nwk=0x1234,
+        )
+
+        # Should have sent a GP Response
+        assert mock_app.send_packet.call_count == 1
+        sent = mock_app.send_packet.call_args[0][0]
+        assert sent.dst_ep == GP_ENDPOINT
+        assert sent.cluster_id == GP_CLUSTER_ID
+
+    @pytest.mark.asyncio
+    async def test_channel_config_contains_correct_channel(
+        self, manager: GreenPowerManager, mock_app: MagicMock
+    ) -> None:
+        """Channel Config response should contain the coordinator's channel."""
+        mock_app.state.network_info.channel = 20
+
+        await manager._process_channel_request(
+            source_id=0x12345678,
+            payload=bytes([0x00]),
+            proxy_nwk=0x1234,
+        )
+
+        assert mock_app.send_packet.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_channel_request_without_proxy(
+        self, manager: GreenPowerManager, mock_app: MagicMock
+    ) -> None:
+        """Channel Request without proxy_nwk should use coordinator NWK."""
+        await manager._process_channel_request(
+            source_id=0x12345678,
+            payload=bytes([0x00]),
+            proxy_nwk=None,
+        )
+
+        assert mock_app.send_packet.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_invalid_channel_request_ignored(
+        self, manager: GreenPowerManager, mock_app: MagicMock
+    ) -> None:
+        """Invalid channel request payload should be ignored."""
+        await manager._process_channel_request(
+            source_id=0x12345678,
+            payload=b"",
+            proxy_nwk=0x1234,
+        )
+
+        mock_app.send_packet.assert_not_called()
+
+
+class TestCommissioningReply:
+    """Tests for GP Commissioning Reply to RX-capable GPDs."""
+
+    @pytest.mark.asyncio
+    async def test_rx_capable_gets_commissioning_reply(
+        self, manager: GreenPowerManager, mock_app: MagicMock
+    ) -> None:
+        """RX-capable GPD commissioning should send a Commissioning Reply."""
+        await manager.permit_join(time_s=60)
+        mock_app.send_packet.reset_mock()
+
+        # Commissioning with rx_on_capability=True (bit 1 of options)
+        # options: extended (bit 7) + rx_on (bit 1) = 0x82
+        comm_payload = bytes([0x02, 0x82, 0x00])
+
+        await manager._process_commissioning(
+            source_id=0xAABBCCDD,
+            frame_counter=1,
+            payload=comm_payload,
+            proxy_nwk=0x1234,
+        )
+
+        # Should have sent: Commissioning Reply + GP Pairing = 2 packets
+        assert mock_app.send_packet.call_count == 2
+
+        dev = manager.get_device(0xAABBCCDD)
+        assert dev is not None
+        assert dev.rx_on_capability is True
+
+    @pytest.mark.asyncio
+    async def test_non_rx_skips_commissioning_reply(
+        self, manager: GreenPowerManager, mock_app: MagicMock
+    ) -> None:
+        """Non-RX GPD should NOT get a Commissioning Reply."""
+        await manager.permit_join(time_s=60)
+        mock_app.send_packet.reset_mock()
+
+        # options: extended (bit 7) only, no rx_on = 0x80
+        comm_payload = bytes([0x02, 0x80, 0x00])
+
+        await manager._process_commissioning(
+            source_id=0x11223344,
+            frame_counter=1,
+            payload=comm_payload,
+            proxy_nwk=0x1234,
+        )
+
+        # Should have sent: GP Pairing only = 1 packet
+        assert mock_app.send_packet.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_commissioning_reply_uses_proxy_as_temp_master(
+        self, manager: GreenPowerManager, mock_app: MagicMock
+    ) -> None:
+        """Commissioning Reply should route through the forwarding proxy."""
+        await manager.permit_join(time_s=60)
+        mock_app.send_packet.reset_mock()
+
+        comm_payload = bytes([0x02, 0x82, 0x00])  # rx_on=True
+
+        await manager._process_commissioning(
+            source_id=0xAABBCCDD,
+            frame_counter=1,
+            payload=comm_payload,
+            proxy_nwk=0x5678,
+        )
+
+        # First packet should be the Commissioning Reply
+        assert mock_app.send_packet.call_count >= 1
+
+
+class TestSendGPResponse:
+    """Tests for the generic GP Response sender."""
+
+    @pytest.mark.asyncio
+    async def test_gp_response_packet_structure(
+        self, manager: GreenPowerManager, mock_app: MagicMock
+    ) -> None:
+        """GP Response should be sent with correct endpoint/cluster/profile."""
+        await manager._send_gp_response(
+            source_id=0x12345678,
+            gpd_command_id=0xF3,
+            gpd_command_payload=bytes([0x14]),
+            proxy_nwk=0x1234,
+        )
+
+        assert mock_app.send_packet.call_count == 1
+        sent = mock_app.send_packet.call_args[0][0]
+        assert sent.dst_ep == GP_ENDPOINT
+        assert sent.src_ep == GP_ENDPOINT
+        assert sent.cluster_id == GP_CLUSTER_ID
+        assert sent.profile_id == 0xA1E0
+
+    @pytest.mark.asyncio
+    async def test_gp_response_without_proxy(
+        self, manager: GreenPowerManager, mock_app: MagicMock
+    ) -> None:
+        """GP Response without proxy should use coordinator as temp master."""
+        await manager._send_gp_response(
+            source_id=0x12345678,
+            gpd_command_id=0xF0,
+            gpd_command_payload=bytes([0x00]),
+            proxy_nwk=None,
+        )
+
+        assert mock_app.send_packet.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_gp_response_send_failure(
+        self, manager: GreenPowerManager, mock_app: MagicMock
+    ) -> None:
+        """GP Response send failure should be handled gracefully."""
+        mock_app.send_packet = AsyncMock(side_effect=TimeoutError)
+
+        await manager._send_gp_response(
+            source_id=0x12345678,
+            gpd_command_id=0xF3,
+            gpd_command_payload=bytes([0x14]),
+            proxy_nwk=0x1234,
+        )
+
+        # Should not raise, just log warning
