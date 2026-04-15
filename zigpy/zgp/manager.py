@@ -31,6 +31,7 @@ from zigpy.zgp.crypto import (
     SECURITY_LEVEL_MIC_LENGTH,
     decrypt_payload,
     decrypt_security_key,
+    encrypt_security_key,
 )
 from zigpy.zgp.device import GPDevice
 from zigpy.zgp.proxy import GPProxyTable
@@ -758,12 +759,15 @@ class GreenPowerManager:
             schema_kwargs["frame_counter"] = t.uint32_t(device.frame_counter)
 
             if device.security_key is not None:
-                # TODO: zigbee-herdsman re-encrypts the key via
-                # encryptSecurityKey(sourceID, key) before including it in
-                # the Pairing. Investigate whether proxies expect the key
-                # encrypted or in cleartext in this field.
+                # Encrypt the key for transport in the GP Pairing, matching
+                # zigbee-herdsman's sendPairingCommand() behavior. Proxies
+                # receive the encrypted key and can decrypt it with the GP
+                # link key to populate their proxy tables.
+                encrypted_key, _ = encrypt_security_key(
+                    device.source_id, device.security_key
+                )
                 schema_kwargs["key"] = t.KeyData(
-                    [t.uint8_t(b) for b in device.security_key]
+                    [t.uint8_t(b) for b in encrypted_key]
                 )
 
         try:
