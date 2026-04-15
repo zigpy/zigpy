@@ -415,7 +415,11 @@ class GreenPowerManager:
             security_key=security_key,
             security_level=security_level,
             security_key_type=security_key_type,
-            frame_counter=comm.outgoing_counter or frame_counter,
+            frame_counter=(
+                comm.outgoing_counter
+                if comm.outgoing_counter is not None
+                else frame_counter
+            ),
             manufacturer_id=comm.manufacturer_id,
             model_id=comm.model_id,
             gpd_commands=comm.gpd_commands,
@@ -730,7 +734,7 @@ class GreenPowerManager:
             gpd_mac_seq_num_cap=int(device.mac_seq_num_capability),
             security_level=device.security_level,
             security_key_type=device.security_key_type,
-            security_frame_counter_present=int(add_sink and device.frame_counter > 0),
+            security_frame_counter_present=int(add_sink),
             security_key_present=int(add_sink and device.security_key is not None),
             assigned_alias_present=0,
             forwarding_radius_present=0,
@@ -747,8 +751,7 @@ class GreenPowerManager:
             schema_kwargs["sink_nwk_addr"] = coordinator_nwk
             schema_kwargs["device_id"] = t.uint8_t(device.device_id)
 
-            if device.frame_counter > 0:
-                schema_kwargs["frame_counter"] = t.uint32_t(device.frame_counter)
+            schema_kwargs["frame_counter"] = t.uint32_t(device.frame_counter)
 
             if device.security_key is not None:
                 # TODO: zigbee-herdsman re-encrypts the key via

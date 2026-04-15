@@ -422,6 +422,33 @@ class TestCommissioning:
         assert dev is not None
         assert dev.frame_counter == 42
 
+    @pytest.mark.asyncio
+    async def test_commissioning_with_outgoing_counter_zero(
+        self, manager: GreenPowerManager, mock_app: MagicMock
+    ) -> None:
+        """Outgoing counter of 0 must be used, not confused with None.
+
+        Per the ZGP spec, outgoing_counter=0 is a valid initial frame
+        counter. It must not be treated as absent (Python falsy).
+        """
+        await manager.permit_join(time_s=60)
+
+        import struct
+
+        # extended: outgoing_counter_present (bit 7) = 0x80
+        comm_payload = bytes([0x02, 0x80, 0x80]) + struct.pack("<I", 0)
+
+        await manager._process_commissioning(
+            source_id=0x99887766,
+            frame_counter=999,  # GP Notification frame counter
+            payload=comm_payload,
+        )
+
+        dev = manager.get_device(0x99887766)
+        assert dev is not None
+        # Must use outgoing_counter=0 from payload, NOT frame_counter=999
+        assert dev.frame_counter == 0
+
 
 class TestDecommissioning:
     """Tests for GP decommissioning."""
