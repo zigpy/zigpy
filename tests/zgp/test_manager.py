@@ -371,13 +371,20 @@ class TestCommissioning:
     async def test_commissioning_with_security_key(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
-        """Commissioning with unencrypted security key."""
+        """Commissioning with unencrypted security key.
+
+        Extended options byte 0x23 = 0b00100011:
+        - Bits 0-1 = 0b11 = SecurityLevel.Encrypted (Table 54)
+        - Bits 2-4 = 0b000 = SecurityKeyType.NoKey (Table 54)
+        - Bit 5 = 1 = key_present
+        - Bits 6-7 = 0
+        """
         await manager.permit_join(time_s=60)
         mock_app.send_packet.reset_mock()
 
         security_key = bytes(range(16))
-        # options: extended present = 0x80
-        # extended: Encrypted level + key_present = 0x03 | 0x20 = 0x23
+        # options: bit 7 = extended present (Table 53) = 0x80
+        # extended: Encrypted + key_present = 0x03 | 0x20 = 0x23 (Table 54)
         comm_payload = bytes([0x02, 0x80, 0x23]) + security_key
 
         await manager._process_commissioning(
@@ -390,6 +397,8 @@ class TestCommissioning:
         assert dev is not None
         assert dev.security_key == security_key
         assert dev.security_level == SecurityLevel.Encrypted
+        # Extended byte 0x23: bits 2-4 = 0b000 = NoKey (Table 54)
+        assert dev.security_key_type == SecurityKeyType.NoKey
 
     @pytest.mark.asyncio
     async def test_commissioning_with_outgoing_counter(
@@ -580,7 +589,13 @@ class TestChannelConfigResponse:
     async def test_channel_config_contains_correct_channel(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
-        """Channel Config response should contain the coordinator's channel."""
+        """Channel Config payload must contain the coordinator's channel.
+
+        Per ZGP spec, GP Channel Configuration (0xF3) payload is 1 byte:
+        bits 0-3 = operational channel offset (channel - 11),
+        bit 4 = basic (1).
+        For channel 20: offset = 9, basic = 1 => byte = 0x19.
+        """
         mock_app.state.network_info.channel = 20
 
         await manager._process_channel_request(
@@ -590,6 +605,12 @@ class TestChannelConfigResponse:
         )
 
         assert mock_app.send_packet.call_count == 1
+        sent = mock_app.send_packet.call_args[0][0]
+        zcl_data = sent.data.serialize()
+        # The GP Response wraps the Channel Config payload.
+        # Channel 20 => offset 9, basic=1 => 0x09 | 0x10 = 0x19
+        # This byte must appear in the serialized ZCL frame.
+        assert bytes([0x19]) in zcl_data
 
     @pytest.mark.asyncio
     async def test_channel_request_without_proxy(
@@ -672,11 +693,18 @@ class TestCommissioningReply:
     async def test_commissioning_reply_uses_proxy_as_temp_master(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
-        """Commissioning Reply should route through the forwarding proxy."""
+        """Commissioning Reply should be a GP Response (cmd 0x06) with 0xF0.
+
+        Per ZGP spec, the GP Commissioning Reply (0xF0) is sent via
+        GP Response (client cmd 0x06) through the temp master proxy.
+        The ZCL frame must contain:
+        - command_id 0x06 (GP Response) in byte 2
+        - gpd_command_id 0xF0 (Commissioning Reply) in the payload
+        """
         await manager.permit_join(time_s=60)
         mock_app.send_packet.reset_mock()
 
-        comm_payload = bytes([0x02, 0x82, 0x00])  # rx_on=True
+        comm_payload = bytes([0x02, 0x82, 0x00])  # rx_on=True (bit 1, Table 53)
 
         await manager._process_commissioning(
             source_id=0xAABBCCDD,
@@ -685,8 +713,16 @@ class TestCommissioningReply:
             proxy_nwk=0x5678,
         )
 
-        # First packet should be the Commissioning Reply
-        assert mock_app.send_packet.call_count >= 1
+        # First packet = Commissioning Reply, second = GP Pairing
+        assert mock_app.send_packet.call_count == 2
+
+        # Verify first packet is GP Response (cmd 0x06) with gpd_cmd 0xF0
+        reply_packet = mock_app.send_packet.call_args_list[0][0][0]
+        reply_data = reply_packet.data.serialize()
+        # ZCL byte 2 = command_id = 0x06 (GP Response)
+        assert reply_data[2] == 0x06
+        # The payload must contain 0xF0 (GP Commissioning Reply command)
+        assert bytes([0xF0]) in reply_data
 
 
 class TestSendGPResponse:
