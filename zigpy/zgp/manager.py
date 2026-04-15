@@ -69,8 +69,9 @@ class GreenPowerManager:
       was received from a commissioned device
     """
 
-    # Duplicate filtering timeout per ZGP spec A.3.6.1.2
+    # Duplicate filtering per ZGP spec A.3.6.1.2
     DEDUP_TIMEOUT_S: float = 2.0
+    DEDUP_MAX_ENTRIES: int = 64
 
     def __init__(self, application: ControllerApplication) -> None:
         self._application = application
@@ -113,24 +114,27 @@ class GreenPowerManager:
         table indexed by (sourceID, frameCounter) with a 2-second timeout.
         Multiple proxies forwarding the same GPD frame is normal behavior
         and should be silently deduplicated, not treated as a replay attack.
+
+        The cache is bounded to DEDUP_MAX_ENTRIES to prevent unbounded
+        memory growth under heavy GP traffic.
         """
         key = (source_id, frame_counter)
         now = time.monotonic()
 
-        # Purge expired entries
-        self._dedup_cache = {
-            k: ts
-            for k, ts in self._dedup_cache.items()
-            if now - ts < self.DEDUP_TIMEOUT_S
-        }
-
         if key in self._dedup_cache:
-            LOGGER.debug(
-                "GP dedup: dropping duplicate from 0x%08X (fc=%d)",
-                source_id,
-                frame_counter,
-            )
-            return True
+            if now - self._dedup_cache[key] < self.DEDUP_TIMEOUT_S:
+                LOGGER.debug(
+                    "GP dedup: dropping duplicate from 0x%08X (fc=%d)",
+                    source_id,
+                    frame_counter,
+                )
+                return True
+            # Entry expired, will be overwritten below
+
+        # Purge oldest entries if cache is full
+        if len(self._dedup_cache) >= self.DEDUP_MAX_ENTRIES:
+            oldest_key = min(self._dedup_cache, key=self._dedup_cache.get)
+            del self._dedup_cache[oldest_key]
 
         self._dedup_cache[key] = now
         return False
@@ -199,7 +203,7 @@ class GreenPowerManager:
             )
             return True
 
-        except Exception:
+        except (ValueError, IndexError, KeyError, AttributeError):
             LOGGER.debug("Error processing GP packet", exc_info=True)
             return False
 
