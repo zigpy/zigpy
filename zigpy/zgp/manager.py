@@ -22,6 +22,8 @@ from zigpy.zcl.clusters.greenpower import (
     PairingSchema,
     ProxyCommissioningModeOptions,
     ProxyCommissioningModeSchema,
+    ResponseOptions,
+    ResponseSchema,
 )
 import zigpy.zgp.types as zgptypes
 from zigpy.zgp.crypto import decrypt_payload
@@ -280,7 +282,9 @@ class GreenPowerManager:
 
         # Check if this is a commissioning-related command
         if gpd_command_id == GPDCommandID.CommissioningRequest:
-            await self._process_commissioning(source_id, frame_counter, gpd_payload)
+            await self._process_commissioning(
+                source_id, frame_counter, gpd_payload, proxy_nwk
+            )
             return
 
         if gpd_command_id == GPDCommandID.DecommissioningRequest:
@@ -288,7 +292,7 @@ class GreenPowerManager:
             return
 
         if gpd_command_id == GPDCommandID.ChannelRequest:
-            await self._process_channel_request(source_id, gpd_payload)
+            await self._process_channel_request(source_id, gpd_payload, proxy_nwk)
             return
 
         if gpd_command_id == GPDCommandID.SuccessReport:
@@ -328,21 +332,28 @@ class GreenPowerManager:
         )
 
         if gpd_command_id == GPDCommandID.CommissioningRequest:
-            await self._process_commissioning(source_id, frame_counter, gpd_payload)
+            await self._process_commissioning(
+                source_id, frame_counter, gpd_payload, proxy_nwk
+            )
         elif gpd_command_id == GPDCommandID.DecommissioningRequest:
             await self._process_decommissioning(source_id)
         elif gpd_command_id == GPDCommandID.ChannelRequest:
-            await self._process_channel_request(source_id, gpd_payload)
+            await self._process_channel_request(source_id, gpd_payload, proxy_nwk)
 
     # --- Commissioning ---
 
     async def _process_commissioning(
-        self, source_id: int, frame_counter: int, payload: bytes
+        self,
+        source_id: int,
+        frame_counter: int,
+        payload: bytes,
+        proxy_nwk: int | None = None,
     ) -> None:
         """Process a GP Commissioning command (0xE0).
 
         Creates a new GPDevice, configures security, and sends
-        GP Pairing to all proxies.
+        GP Pairing to all proxies. For RX-capable GPDs, sends a
+        GP Commissioning Reply via the forwarding proxy.
         """
         if not self.is_commissioning:
             LOGGER.debug(
@@ -419,14 +430,7 @@ class GreenPowerManager:
         self.add_device(device)
 
         if device.rx_on_capability:
-            # TODO: implement GP Commissioning Reply (cmd 0xF0) via GP Response
-            # for RX-capable GPDs that need key provisioning from the sink
-            LOGGER.warning(
-                "GP device 0x%08X is RX-capable but GP Commissioning Reply "
-                "is not yet implemented. Device may not complete commissioning "
-                "if it requires key provisioning via Commissioning Reply",
-                source_id,
-            )
+            await self._send_commissioning_reply(source_id, proxy_nwk)
 
         # Send GP Pairing to proxies
         await self.send_pairing(device, add_sink=True)
@@ -463,28 +467,49 @@ class GreenPowerManager:
                 source_id,
             )
 
-    async def _process_channel_request(self, source_id: int, payload: bytes) -> None:
+    async def _process_channel_request(
+        self,
+        source_id: int,
+        payload: bytes,
+        proxy_nwk: int | None = None,
+    ) -> None:
         """Process a GP Channel Request command (0xE3).
 
-        The GPD is asking which channel to use. We respond with the
-        coordinator's current operating channel.
+        The GPD is asking which channel to use. We respond with a
+        GP Channel Configuration (0xF3) containing the coordinator's
+        current operating channel.
         """
         try:
             channel_req = GPChannelRequestPayload.from_bytes(payload)
         except (ValueError, IndexError):
-            LOGGER.warning("Failed to parse Channel Request from 0x%08X", source_id)
+            LOGGER.warning(
+                "Failed to parse Channel Request from 0x%08X", source_id
+            )
             return
 
+        channel = self._application.state.network_info.channel
+
         LOGGER.debug(
-            "GP Channel Request from 0x%08X: next=%d, second=%d",
+            "GP Channel Request from 0x%08X: next=%d, second=%d, "
+            "responding with channel %d",
             source_id,
             channel_req.next_channel,
             channel_req.second_next_channel,
+            channel,
         )
 
-        # TODO: Send GP Channel Configuration response via GP Response command
-        # This requires knowing the coordinator's current channel and
-        # sending it via the GP Response ZCL command
+        # GP Channel Configuration payload (1 byte):
+        # Bits 0-3: operational channel (offset from 11)
+        # Bit 4: basic (1 = basic operation, 0 = enhanced)
+        # Bits 5-7: reserved
+        channel_config_byte = ((channel - 11) & 0x0F) | 0x10  # basic=1
+
+        await self._send_gp_response(
+            source_id=source_id,
+            gpd_command_id=0xF3,  # GP Channel Configuration
+            gpd_command_payload=bytes([channel_config_byte]),
+            proxy_nwk=proxy_nwk,
+        )
 
     # --- Command dispatch ---
 
@@ -765,6 +790,111 @@ class GreenPowerManager:
                 device.source_id,
                 exc_info=True,
             )
+
+    # --- GP Response (sink-to-GPD via proxy) ---
+
+    async def _send_gp_response(
+        self,
+        source_id: int,
+        gpd_command_id: int,
+        gpd_command_payload: bytes,
+        proxy_nwk: int | None = None,
+    ) -> None:
+        """Send a GP Response command via a proxy (temp master).
+
+        The GP Response (client command 0x06) instructs a proxy to transmit
+        a GPDF to a GPD during its rxAfterTx window. Used for Channel
+        Configuration (0xF3) and Commissioning Reply (0xF0).
+
+        Args:
+            source_id: Target GPD source identifier.
+            gpd_command_id: GPD command to send (0xF0, 0xF3, etc.).
+            gpd_command_payload: Payload for the GPD command.
+            proxy_nwk: NWK address of the proxy to use as temp master.
+                If None, the coordinator address is used.
+
+        """
+        channel = self._application.state.network_info.channel
+        temp_master = proxy_nwk or self._application.state.node_info.nwk
+
+        response = ResponseSchema(
+            options=ResponseOptions(
+                application_id=zgptypes.ApplicationID.SrcID,
+                _reserved=0,
+            ),
+            temp_master_short_addr=t.uint16_t(temp_master),
+            temp_master_tx_channel=t.uint8_t(channel - 11),
+            gpd_id=zgptypes.DeviceID(source_id),
+            gpd_command_id=t.uint8_t(gpd_command_id),
+            gpd_command_payload=t.LVBytes(gpd_command_payload),
+        )
+
+        try:
+            frame_data = self._build_zcl_frame(
+                command_id=0x06,  # GP Response
+                is_client=True,
+                payload=response.serialize(),
+            )
+
+            packet = t.ZigbeePacket(
+                dst=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.Broadcast,
+                    address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
+                ),
+                dst_ep=t.uint8_t(GP_ENDPOINT),
+                src_ep=t.uint8_t(GP_ENDPOINT),
+                profile_id=t.uint16_t(0xA1E0),
+                cluster_id=t.uint16_t(GP_CLUSTER_ID),
+                data=t.SerializableBytes(frame_data),
+            )
+
+            await self._application.send_packet(packet)
+            LOGGER.debug(
+                "Sent GP Response (cmd=0x%02X) for GPD 0x%08X via proxy 0x%04X",
+                gpd_command_id,
+                source_id,
+                temp_master,
+            )
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(
+                "Failed to send GP Response for 0x%08X",
+                source_id,
+                exc_info=True,
+            )
+
+    async def _send_commissioning_reply(
+        self, source_id: int, proxy_nwk: int | None = None
+    ) -> None:
+        """Send a GP Commissioning Reply (0xF0) to an RX-capable GPD.
+
+        This is a minimal implementation matching zigbee-herdsman: the reply
+        does not include a security key (options=0x00). The GPD will complete
+        commissioning but must use a pre-shared (OOB) key or operate without
+        security. Full key provisioning via Commissioning Reply would require
+        encrypting the key and including it in the payload.
+
+        Args:
+            source_id: GPD source identifier.
+            proxy_nwk: NWK address of the proxy that forwarded the
+                commissioning notification (used as temp master).
+
+        """
+        LOGGER.info(
+            "Sending GP Commissioning Reply to RX-capable GPD 0x%08X",
+            source_id,
+        )
+
+        # Commissioning Reply payload (cmd 0xF0):
+        # 1 byte options: 0x00 = no PAN ID, no key, no key encryption,
+        #                 no security level
+        commissioning_reply_payload = bytes([0x00])
+
+        await self._send_gp_response(
+            source_id=source_id,
+            gpd_command_id=0xF0,  # GP Commissioning Reply
+            gpd_command_payload=commissioning_reply_payload,
+            proxy_nwk=proxy_nwk,
+        )
 
     # --- Helpers ---
 
