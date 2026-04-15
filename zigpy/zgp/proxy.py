@@ -90,8 +90,7 @@ class GPProxyTable:
 
         if entry is not None:
             entry.touch()
-            if frame_counter > entry.frame_counter:
-                entry.frame_counter = frame_counter
+            entry.frame_counter = max(entry.frame_counter, frame_counter)
             return entry
 
         entry = GPProxyTableEntry(

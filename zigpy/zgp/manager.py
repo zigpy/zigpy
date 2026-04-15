@@ -140,7 +140,7 @@ class GreenPowerManager:
 
         # Purge oldest entries if cache is full
         if len(self._dedup_cache) >= self.DEDUP_MAX_ENTRIES:
-            oldest_key = min(self._dedup_cache, key=self._dedup_cache.get)
+            oldest_key = min(self._dedup_cache, key=lambda k: self._dedup_cache[k])
             del self._dedup_cache[oldest_key]
 
         self._dedup_cache[key] = now
@@ -179,32 +179,30 @@ class GreenPowerManager:
             # Parse the ZCL header using zigpy's ZCLHeader struct
             data = packet.data.serialize()
             hdr, zcl_payload = foundation.ZCLHeader.deserialize(data)
-
-            if hdr.frame_control.frame_type != foundation.FrameType.CLUSTER_COMMAND:
-                LOGGER.debug("GP frame is not cluster-specific, ignoring")
-                return False
-
-            is_server_to_client = (
-                hdr.frame_control.direction
-                == foundation.Direction.Server_to_Client
-            )
-
-            # Get proxy NWK address from packet source
-            proxy_nwk = None
-            if packet.src and packet.src.addr_mode == t.AddrMode.NWK:
-                proxy_nwk = packet.src.address
-
-            self._application.create_task(
-                self._process_zcl_command(
-                    hdr.command_id, zcl_payload, is_server_to_client, proxy_nwk
-                ),
-                f"gp_process_command-0x{hdr.command_id:02x}",
-            )
-            return True
-
         except (ValueError, IndexError, KeyError, AttributeError):
             LOGGER.debug("Error processing GP packet", exc_info=True)
             return False
+
+        if hdr.frame_control.frame_type != foundation.FrameType.CLUSTER_COMMAND:
+            LOGGER.debug("GP frame is not cluster-specific, ignoring")
+            return False
+
+        is_server_to_client = (
+            hdr.frame_control.direction == foundation.Direction.Server_to_Client
+        )
+
+        # Get proxy NWK address from packet source
+        proxy_nwk: int | None = None
+        if packet.src and packet.src.addr_mode == t.AddrMode.NWK:
+            proxy_nwk = int(packet.src.address)
+
+        self._application.create_task(
+            self._process_zcl_command(
+                hdr.command_id, zcl_payload, is_server_to_client, proxy_nwk
+            ),
+            f"gp_process_command-0x{hdr.command_id:02x}",
+        )
+        return True
 
     async def _process_zcl_command(
         self,
@@ -410,7 +408,7 @@ class GreenPowerManager:
                             comm.security_key,
                             mic_bytes,
                         )
-                    except Exception:
+                    except Exception:  # noqa: BLE001
                         LOGGER.warning(
                             "Failed to decrypt security key from 0x%08X",
                             source_id,
@@ -497,9 +495,7 @@ class GreenPowerManager:
         try:
             channel_req = GPChannelRequestPayload.from_bytes(payload)
         except (ValueError, IndexError):
-            LOGGER.warning(
-                "Failed to parse Channel Request from 0x%08X", source_id
-            )
+            LOGGER.warning("Failed to parse Channel Request from 0x%08X", source_id)
             return
 
         channel = self._application.state.network_info.channel
@@ -575,7 +571,7 @@ class GreenPowerManager:
                         mic,
                         device.security_level,
                     )
-            except Exception:
+            except Exception:  # noqa: BLE001
                 LOGGER.warning(
                     "Failed to decrypt GP payload from 0x%08X",
                     source_id,
@@ -698,7 +694,7 @@ class GreenPowerManager:
             )
 
             await self._application.send_packet(packet)
-        except Exception:
+        except Exception:  # noqa: BLE001
             LOGGER.warning(
                 "Failed to send GP Proxy Commissioning Mode",
                 exc_info=True,
@@ -779,9 +775,7 @@ class GreenPowerManager:
                 encrypted_key, _ = encrypt_security_key(
                     device.source_id, device.security_key
                 )
-                schema_kwargs["key"] = t.KeyData(
-                    [t.uint8_t(b) for b in encrypted_key]
-                )
+                schema_kwargs["key"] = t.KeyData([t.uint8_t(b) for b in encrypted_key])
 
         try:
             frame_data = self._build_zcl_frame(
@@ -808,7 +802,7 @@ class GreenPowerManager:
                 device.source_id,
                 add_sink,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             LOGGER.warning(
                 "Failed to send GP Pairing for 0x%08X",
                 device.source_id,
