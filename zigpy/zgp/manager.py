@@ -373,6 +373,12 @@ class GreenPowerManager:
             )
             return
 
+        if source_id == 0x00000000:
+            LOGGER.warning(
+                "GP Commissioning with unspecified sourceID 0x00000000, ignoring"
+            )
+            return
+
         try:
             comm = GPCommissioningPayload.from_bytes(payload)
         except (ValueError, IndexError):
