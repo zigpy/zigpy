@@ -152,7 +152,17 @@ class GPDevice:
         return True
 
     def as_dict(self) -> dict:
-        """Serialize to a dictionary for database persistence."""
+        """Serialize to a dictionary for database persistence.
+
+        Required keys: ``source_id``, ``device_id``.
+        Optional keys (with defaults in ``from_dict``): ``security_key``
+        (hex str or None), ``security_level`` (int, default 0),
+        ``security_key_type`` (int, default 0), ``frame_counter`` (int,
+        default 0), ``manufacturer_id``, ``model_id``, ``gpd_commands``
+        (list), ``server_clusters`` (list), ``client_clusters`` (list),
+        ``mac_seq_num_capability`` (bool), ``rx_on_capability`` (bool),
+        ``fixed_location`` (bool), ``last_seen`` (ISO 8601 str or None).
+        """
         return {
             "source_id": self.source_id,
             "device_id": self.device_id,

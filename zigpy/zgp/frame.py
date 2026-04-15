@@ -153,7 +153,9 @@ class GPCommissioningPayload:
     # Key MIC (present if extended_options.key_encrypted)
     key_mic: int | None = None
 
-    # Outgoing frame counter (present if extended_options.outgoing_counter_present)
+    # Outgoing frame counter (present if extended_options.outgoing_counter_present).
+    # None means the field is absent from the payload; 0 is a valid initial
+    # value and must not be confused with absent (see manager.py commissioning).
     outgoing_counter: int | None = None
 
     # Application info fields
