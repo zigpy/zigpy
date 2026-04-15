@@ -368,6 +368,26 @@ class TestCommissioning:
         mock_app.listener_event.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_commissioning_rejects_unspecified_source_id(
+        self, manager: GreenPowerManager, mock_app: MagicMock
+    ) -> None:
+        """SourceID 0x00000000 is unspecified per ZGP spec and must be rejected."""
+        await manager.permit_join(time_s=60)
+        mock_app.send_packet.reset_mock()
+        mock_app.listener_event.reset_mock()
+
+        await manager._process_commissioning(
+            source_id=0x00000000,
+            frame_counter=1,
+            payload=bytes([0x02, 0x00]),
+        )
+
+        assert manager.get_device(0x00000000) is None
+        # No gp_device_joined event should have fired
+        for call in mock_app.listener_event.call_args_list:
+            assert call[0][0] != "gp_device_joined"
+
+    @pytest.mark.asyncio
     async def test_commissioning_with_security_key(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
