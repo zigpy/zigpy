@@ -929,6 +929,12 @@ class GreenPowerManager:
     def _build_zcl_frame(command_id: int, is_client: bool, payload: bytes) -> bytes:
         """Build a minimal ZCL frame for GP cluster commands.
 
+        This constructs the frame manually rather than using zigpy's ZCL
+        Foundation.Frame because GP frames are sent on the GP profile
+        (0xA1E0) and endpoint (242), which are outside the standard ZCL
+        device/endpoint/cluster lifecycle. The GP cluster schemas handle
+        payload serialization; this method only adds the 3-byte ZCL header.
+
         Args:
             command_id: ZCL command ID.
             is_client: True for client-to-server direction.
