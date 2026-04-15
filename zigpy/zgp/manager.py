@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import struct
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -26,7 +27,11 @@ from zigpy.zcl.clusters.greenpower import (
     ResponseSchema,
 )
 import zigpy.zgp.types as zgptypes
-from zigpy.zgp.crypto import decrypt_payload
+from zigpy.zgp.crypto import (
+    SECURITY_LEVEL_MIC_LENGTH,
+    decrypt_payload,
+    decrypt_security_key,
+)
 from zigpy.zgp.device import GPDevice
 from zigpy.zgp.proxy import GPProxyTable
 from zigpy.zgp.frame import (
@@ -390,14 +395,11 @@ class GreenPowerManager:
                 if comm.extended_options.key_encrypted and comm.key_mic is not None:
                     # Key is encrypted - decrypt it
                     try:
-                        from zigpy.zgp.crypto import decrypt_security_key
-
+                        mic_bytes = struct.pack("<I", comm.key_mic)
                         security_key = decrypt_security_key(
                             source_id,
                             comm.security_key,
-                            comm.key_mic.to_bytes(4, "little")
-                            if isinstance(comm.key_mic, int)
-                            else comm.key_mic,
+                            mic_bytes,
                         )
                     except Exception:
                         LOGGER.warning(
@@ -552,8 +554,6 @@ class GreenPowerManager:
         ):
             try:
                 # For encrypted payloads, the MIC is appended to the payload
-                from zigpy.zgp.crypto import SECURITY_LEVEL_MIC_LENGTH
-
                 mic_length = SECURITY_LEVEL_MIC_LENGTH[device.security_level]
                 if mic_length > 0 and len(payload) >= mic_length:
                     encrypted_data = payload[:-mic_length]
