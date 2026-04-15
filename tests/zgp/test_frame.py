@@ -331,6 +331,65 @@ class TestGPCommissioningPayload:
         with pytest.raises(ValueError, match="too short"):
             GPCommissioningPayload.from_bytes(b"")
 
+    def test_to_bytes_with_encrypted_key_and_mic(self) -> None:
+        """Serialization must include encrypted key + MIC per Table 54.
+
+        Extended 0x63: Encrypted(0b11) + key_present(bit5) + key_encrypted(bit6).
+        MIC follows key as uint32 LE.
+        """
+        key = b"\xaa" * 16
+        payload = GPCommissioningPayload(
+            device_id=0x02,
+            options=GPCommissioningOptions(0x80),  # extended present
+            extended_options=GPCommissioningExtendedOptions(0x63),
+            security_key=key,
+            key_mic=0xCAFEBABE,
+        )
+        result = payload.to_bytes()
+
+        # Must contain: device_id(1) + options(1) + extended(1) + key(16) + mic(4) = 23
+        assert len(result) == 23
+        assert result[3:19] == key  # key at offset 3
+        assert struct.unpack_from("<I", result, 19)[0] == 0xCAFEBABE
+
+    def test_to_bytes_with_manufacturer_and_model(self) -> None:
+        """Serialization must include manufacturer_id and model_id per Table 55."""
+        payload = GPCommissioningPayload(
+            device_id=0x07,
+            options=GPCommissioningOptions(0x04),  # app_info present (bit 2)
+            app_info=GPCommissioningAppInfo(0x03),  # mfr + model
+            manufacturer_id=0x1234,
+            model_id=0x5678,
+        )
+        result = payload.to_bytes()
+
+        # device_id(1) + options(1) + app_info(1) + mfr(2) + model(2) = 7
+        assert len(result) == 7
+        assert struct.unpack_from("<H", result, 3)[0] == 0x1234
+        assert struct.unpack_from("<H", result, 5)[0] == 0x5678
+
+    def test_to_bytes_with_gpd_commands_and_clusters(self) -> None:
+        """Serialization must include GPD commands list and cluster list.
+
+        Per Table 55, cluster list length byte uses low nibble for server
+        count and high nibble for client count.
+        """
+        payload = GPCommissioningPayload(
+            device_id=0x02,
+            options=GPCommissioningOptions(0x04),  # app_info present (bit 2)
+            app_info=GPCommissioningAppInfo(0x0C),  # commands + clusters
+            gpd_commands=[0x20, 0x21, 0x22],
+            server_clusters=[0x0006],
+            client_clusters=[0x0300],
+        )
+        result = payload.to_bytes()
+
+        # Parse back to verify
+        restored = GPCommissioningPayload.from_bytes(result)
+        assert restored.gpd_commands == [0x20, 0x21, 0x22]
+        assert restored.server_clusters == [0x0006]
+        assert restored.client_clusters == [0x0300]
+
 
 class TestGPChannelRequestPayload:
     """Tests for channel request payload parsing."""

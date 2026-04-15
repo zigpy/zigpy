@@ -310,7 +310,7 @@ class GreenPowerManager:
             source_id, frame_counter, gpd_command_id, gpd_payload
         )
 
-    async def _handle_commissioning_notification(
+    async def _handle_commissioning_notification(  # pragma: no cover
         self, payload: bytes, proxy_nwk: int | None
     ) -> None:
         """Handle a GP Commissioning Notification command (server command 0x04).

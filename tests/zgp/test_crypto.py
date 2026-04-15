@@ -166,6 +166,13 @@ class TestEncryptDecryptSecurityKey:
         with pytest.raises(ValueError, match="16 bytes"):
             decrypt_security_key(0x12345678, b"\x00" * 15, b"\x00" * 4)
 
+    def test_decrypt_security_key_bad_link_key_length(self) -> None:
+        """Decrypt must reject link_key that is not 16 bytes."""
+        with pytest.raises(ValueError, match="16 bytes"):
+            decrypt_security_key(
+                0x12345678, b"\x00" * 16, b"\x00" * 4, link_key=b"\x00" * 10
+            )
+
 
 class TestEncryptDecryptPayload:
     """Tests for GP frame payload encryption/decryption."""
@@ -328,6 +335,13 @@ class TestEncryptDecryptPayload:
         """Security key must be 16 bytes."""
         with pytest.raises(ValueError, match="16 bytes"):
             encrypt_payload(0, 0, b"\x00" * 15, b"test", SecurityLevel.Encrypted)
+
+    def test_decrypt_payload_bad_key_length(self) -> None:
+        """Decrypt must reject security_key that is not 16 bytes."""
+        with pytest.raises(ValueError, match="16 bytes"):
+            decrypt_payload(
+                0, 0, b"\x00" * 15, b"test", b"\x00" * 4, SecurityLevel.Encrypted
+            )
 
     def test_wrong_mic_length(self) -> None:
         """MIC length must match security level."""
