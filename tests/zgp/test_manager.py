@@ -477,6 +477,46 @@ class TestDecommissioning:
         mock_app.listener_event.assert_not_called()
 
 
+class TestSendPairingKeyEncryption:
+    """Tests for security key encryption in GP Pairing."""
+
+    @pytest.mark.asyncio
+    async def test_pairing_encrypts_security_key(
+        self, manager: GreenPowerManager, mock_app: MagicMock
+    ) -> None:
+        """GP Pairing must encrypt the security key before sending.
+
+        The key in the GP Pairing should NOT be the plaintext key.
+        It should be encrypted via encrypt_security_key(sourceID, key)
+        matching zigbee-herdsman's behavior.
+        """
+        from zigpy.zgp.crypto import encrypt_security_key
+
+        source_id = 0x12345678
+        plaintext_key = bytes(range(16))
+
+        dev = GPDevice(
+            source_id=source_id,
+            device_id=0x02,
+            security_key=plaintext_key,
+            security_level=SecurityLevel.Encrypted,
+            security_key_type=SecurityKeyType.NoKey,
+        )
+        manager.add_device(dev)
+
+        await manager.send_pairing(dev, add_sink=True)
+
+        assert mock_app.send_packet.call_count == 1
+        sent_data = mock_app.send_packet.call_args[0][0].data.serialize()
+
+        # The plaintext key must NOT appear in the sent packet
+        assert plaintext_key not in sent_data
+
+        # The encrypted key MUST appear instead
+        encrypted_key, _ = encrypt_security_key(source_id, plaintext_key)
+        assert bytes(encrypted_key) in sent_data
+
+
 class TestPersistence:
     """Tests for device persistence."""
 
