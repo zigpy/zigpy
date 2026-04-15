@@ -197,8 +197,10 @@ class GPCommissioningPayload:
         key_mic = None
         outgoing_counter = None
 
-        # Extended options (1 byte, conditional)
-        has_extended = bool(data[offset - 1] & 0x80)  # bit 7 of options
+        # Extended options (1 byte, conditional on bit 7 of options)
+        has_extended = bool(
+            options.raw & (1 << GPCommissioningOptions.EXTENDED_OPTIONS_PRESENT_BIT)
+        )
         if has_extended and offset < len(data):
             extended_options = GPCommissioningExtendedOptions(data[offset])
             offset += 1
@@ -241,8 +243,10 @@ class GPCommissioningPayload:
             if app_info.gpd_commands_present and offset < len(data):
                 num_commands = data[offset]
                 offset += 1
-                gpd_commands = list(data[offset : offset + num_commands])
-                offset += num_commands
+                available = len(data) - offset
+                count = min(num_commands, available)
+                gpd_commands = list(data[offset : offset + count])
+                offset += count
 
             if app_info.cluster_list_present and offset < len(data):
                 length_byte = data[offset]
