@@ -803,3 +803,169 @@ class TestSendGPResponse:
         )
 
         # Should not raise, just log warning
+
+
+class TestMissingPathCoverage:
+    """Tests for previously untested code paths."""
+
+    @pytest.mark.asyncio
+    async def test_dispatch_with_encrypted_payload(
+        self, manager: GreenPowerManager, mock_app: MagicMock
+    ) -> None:
+        """Command dispatch should decrypt payload when security is active.
+
+        Tests the decryption path in _dispatch_gp_command that was
+        previously uncovered (SecurityLevel != NoSecurity).
+        """
+        from zigpy.zgp.crypto import encrypt_payload
+
+        source_id = 0xAABBCCDD
+        security_key = bytes(range(16))
+        plaintext = bytes([0x20])  # Toggle command
+        frame_counter = 5
+
+        # Encrypt the payload to simulate what a GPD would send
+        encrypted, mic = encrypt_payload(
+            source_id,
+            frame_counter,
+            security_key,
+            plaintext,
+            SecurityLevel.Encrypted,
+        )
+
+        dev = GPDevice(
+            source_id=source_id,
+            device_id=0x02,
+            security_key=security_key,
+            security_level=SecurityLevel.Encrypted,
+            frame_counter=0,
+        )
+        manager.add_device(dev)
+
+        # Dispatch with encrypted payload + MIC concatenated
+        await manager._dispatch_gp_command(
+            source_id=source_id,
+            frame_counter=frame_counter,
+            command_id=GPDCommandID.Toggle,
+            payload=encrypted + mic,
+        )
+
+        # Should fire event with DECRYPTED payload
+        mock_app.listener_event.assert_called_with(
+            "gp_command_received",
+            dev,
+            GPDCommandID.Toggle,
+            plaintext,
+        )
+
+    @pytest.mark.asyncio
+    async def test_commissioning_with_encrypted_key(
+        self, manager: GreenPowerManager, mock_app: MagicMock
+    ) -> None:
+        """Commissioning with key_encrypted=True should decrypt the key.
+
+        Tests the path in _process_commissioning where the GPD provides
+        its security key encrypted with the GP link key.
+        """
+        import struct
+
+        from zigpy.zgp.crypto import encrypt_security_key
+
+        await manager.permit_join(time_s=60)
+        mock_app.send_packet.reset_mock()
+
+        source_id = 0x11223344
+        original_key = bytes(range(16))
+
+        # Encrypt the key as a GPD would during commissioning
+        encrypted_key, key_mic_bytes = encrypt_security_key(source_id, original_key)
+        key_mic_int = struct.unpack("<I", key_mic_bytes)[0]
+
+        # Extended: Encrypted(0b11) + key_present(bit5) + key_encrypted(bit6)
+        # = 0x03 | 0x20 | 0x40 = 0x63  (Table 54)
+        comm_payload = (
+            bytes([0x02, 0x80, 0x63]) + encrypted_key + struct.pack("<I", key_mic_int)
+        )
+
+        await manager._process_commissioning(
+            source_id=source_id,
+            frame_counter=1,
+            payload=comm_payload,
+        )
+
+        dev = manager.get_device(source_id)
+        assert dev is not None
+        # The key must be DECRYPTED to the original
+        assert dev.security_key == original_key
+        assert dev.security_level == SecurityLevel.Encrypted
+
+    # NOTE: _handle_commissioning_notification (server cmd 0x04) cannot be
+    # tested because CommissioningNotificationOptions in greenpower.py has
+    # a bit-field alignment issue (18 bits instead of 16), preventing the
+    # schema from serializing/deserializing. The fix belongs in the cluster
+    # definition (PR #1659), not in the GP manager module.
+
+    @pytest.mark.asyncio
+    async def test_shutdown_cancels_commissioning(
+        self, manager: GreenPowerManager, mock_app: MagicMock
+    ) -> None:
+        """Shutdown should cancel the commissioning timer and reset state."""
+        await manager.permit_join(time_s=300)
+        assert manager.is_commissioning
+
+        await manager.shutdown()
+
+        assert not manager.is_commissioning
+        assert manager._commissioning_task is None
+
+    @pytest.mark.asyncio
+    async def test_dedup_in_notification_flow(
+        self, manager: GreenPowerManager, mock_app: MagicMock
+    ) -> None:
+        """Duplicate filtering should work within _handle_gp_notification.
+
+        When two proxies forward the same GPD frame, only the first
+        should dispatch a command.
+        """
+        source_id = 0x12345678
+        dev = GPDevice(source_id=source_id, device_id=0x02, frame_counter=0)
+        manager.add_device(dev)
+
+        from zigpy.zcl.clusters.greenpower import (
+            NotificationOptions,
+            NotificationSchema,
+        )
+        import zigpy.zgp.types as zgptypes
+
+        options = NotificationOptions(
+            application_id=zgptypes.ApplicationID.SrcID,
+            also_unicast=0,
+            also_derived_group=0,
+            also_commissioned_group=0,
+            security_level=zgptypes.SecurityLevel.NoSecurity,
+            security_key_type=zgptypes.SecurityKeyType.NoKey,
+            appoint_temp_master=0,
+            tx_queue_full=0,
+            _reserved=0,
+        )
+        notification = NotificationSchema(
+            options=options,
+            gpd_id=zgptypes.DeviceID(source_id),
+            frame_counter=t.uint32_t(1),
+            command_id=t.uint8_t(GPDCommandID.Toggle),
+            payload=t.LVBytes(b""),
+        )
+        payload = notification.serialize()
+
+        # First proxy delivers
+        await manager._handle_gp_notification(payload, proxy_nwk=0x1111)
+        # Second proxy delivers same frame
+        await manager._handle_gp_notification(payload, proxy_nwk=0x2222)
+
+        # Only ONE gp_command_received should fire
+        command_events = [
+            c
+            for c in mock_app.listener_event.call_args_list
+            if c[0][0] == "gp_command_received"
+        ]
+        assert len(command_events) == 1
