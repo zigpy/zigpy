@@ -194,6 +194,7 @@ class GreenPowerManager:
         # Get proxy NWK address from packet source
         proxy_nwk: int | None = None
         if packet.src and packet.src.addr_mode == t.AddrMode.NWK:
+            assert isinstance(packet.src.address, t.NWK)
             proxy_nwk = int(packet.src.address)
 
         self._application.create_task(
