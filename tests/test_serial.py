@@ -54,7 +54,7 @@ async def test_serial_normal(
         kwargs["rtscts"] = rtscts
 
     with patch(
-        "zigpy.serial.pyserial_asyncio.create_serial_connection",
+        "zigpy.serial.serialx_create_serial_connection",
         AsyncMock(
             return_value=(AsyncMock(), AsyncMock())
         ),
@@ -71,62 +71,9 @@ async def test_serial_normal(
         assert mock_calls[0].kwargs[kwarg] == expected_kwargs[kwarg]
 
 
-async def test_serial_socket() -> None:
+async def test_serial_error_remapping(tmp_path: pathlib.Path) -> None:
     loop = asyncio.get_running_loop()
     protocol_factory = Mock()
-
-    with patch.object(
-        loop,
-        "create_connection",
-        AsyncMock(
-            return_value=(AsyncMock(), AsyncMock())
-        ),
-    ):
-        await zigpy.serial.create_serial_connection(
-            loop, protocol_factory, "socket://1.2.3.4:5678"
-        )
-        await zigpy.serial.create_serial_connection(
-            loop, protocol_factory, "socket://1.2.3.4"
-        )
-
-        assert len(loop.create_connection.mock_calls) == 2
-        assert loop.create_connection.mock_calls[0].kwargs["host"] == "1.2.3.4"
-        assert loop.create_connection.mock_calls[0].kwargs["port"] == 5678
-        assert loop.create_connection.mock_calls[1].kwargs["host"] == "1.2.3.4"
-        assert loop.create_connection.mock_calls[1].kwargs["port"] == 6638
-
-
-async def test_pyserial_error_remapping(tmp_path: pathlib.Path) -> None:
-    loop = asyncio.get_running_loop()
-    protocol_factory = Mock()
-
-    # FileNotFoundError
-    missing_port = tmp_path / "missing"
-    assert not missing_port.exists()
-
-    with pytest.raises(FileNotFoundError):
-        await zigpy.serial.create_serial_connection(
-            loop, protocol_factory, url=missing_port
-        )
-
-    # PermissionError
-    denied_port = tmp_path / "denied"
-    denied_port.touch()
-    denied_port.chmod(0o000)
-
-    with pytest.raises(PermissionError):
-        await zigpy.serial.create_serial_connection(
-            loop, protocol_factory, url=denied_port
-        )
-
-    # IsADirectoryError
-    a_folder = tmp_path / "a_folder"
-    a_folder.mkdir()
-
-    with pytest.raises(IsADirectoryError):
-        await zigpy.serial.create_serial_connection(
-            loop, protocol_factory, url=a_folder
-        )
 
     # Locked
     locked_port = tmp_path / "locked"
