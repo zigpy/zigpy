@@ -75,6 +75,25 @@ async def test_serial_error_remapping(tmp_path: pathlib.Path) -> None:
     loop = asyncio.get_running_loop()
     protocol_factory = Mock()
 
+    # FileNotFoundError
+    missing_port = tmp_path / "missing"
+    assert not missing_port.exists()
+
+    with pytest.raises(FileNotFoundError):
+        await zigpy.serial.create_serial_connection(
+            loop, protocol_factory, url=missing_port
+        )
+
+    # PermissionError
+    denied_port = tmp_path / "denied"
+    denied_port.touch()
+    denied_port.chmod(0o000)
+
+    with pytest.raises(PermissionError):
+        await zigpy.serial.create_serial_connection(
+            loop, protocol_factory, url=denied_port
+        )
+
     # Locked
     locked_port = tmp_path / "locked"
     with locked_port.open("w") as f:
