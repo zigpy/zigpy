@@ -21,7 +21,7 @@ dependencies = [
     "cryptography",
     "voluptuous",
     "jsonschema",
-    "serialx>=1.3.0",
+    "serialx>=1.4.0",
     "typing_extensions",
     "frozendict",
 ]
