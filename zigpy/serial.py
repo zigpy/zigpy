@@ -74,9 +74,7 @@ async def create_serial_connection(
     flow_control: Literal["hardware", "software"] | None | UndefinedType = UNDEFINED,
     **kwargs: Any,
 ) -> tuple[asyncio.Transport, asyncio.Protocol]:
-    """Wrapper around pyserial-asyncio that transparently substitutes a normal TCP
-    transport and protocol when a `socket` connection URI is provided.
-    """
+    """Wrapper for serialx that provides simplified flow control kwargs."""
 
     if flow_control is not UNDEFINED:
         xonxoff = flow_control == "software"
