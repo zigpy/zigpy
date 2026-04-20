@@ -12,6 +12,7 @@ import pytest
 import zigpy.application
 import zigpy.config as conf
 from zigpy.datastructures import RequestLimiter
+import zigpy.device
 from zigpy.exceptions import (
     DeliveryError,
     NetworkNotFormed,
@@ -1862,3 +1863,50 @@ async def test_callback_wrapping_async(
             ),
         ),
     ]
+
+
+async def test_device_initialized_cleans_up_raw_device_on_quirk(app):
+    """Test that device_initialized removes orphaned listeners when quirks replace it."""
+    ieee = t.EUI64(map(t.uint8_t, range(8)))
+    nwk = t.NWK(0x1234)
+
+    raw_dev = app.add_device(ieee=ieee, nwk=nwk)
+
+    # The raw device should have a PollControl callback registered
+    assert raw_dev in app._req_listeners
+    assert len(app._req_listeners[raw_dev]) == 1
+
+    # Make get_device return a new Device (simulating quirk wrapping)
+    quirked_dev = zigpy.device.Device(app, ieee, nwk)
+
+    with patch("zigpy.quirks.get_device", return_value=quirked_dev):
+        app.device_initialized(raw_dev)
+
+    # The raw device's key should be fully removed from _req_listeners
+    assert raw_dev not in app._req_listeners
+
+    # The quirked device should be in app.devices with its own listeners
+    assert app.devices[ieee] is quirked_dev
+    assert len(app._req_listeners[quirked_dev]) == 1
+
+
+async def test_device_initialized_no_cleanup_without_quirk(app):
+    """Test that listeners are preserved when no quirk is applied."""
+    ieee = t.EUI64(map(t.uint8_t, range(8)))
+    nwk = t.NWK(0x1234)
+
+    raw_dev = app.add_device(ieee=ieee, nwk=nwk)
+
+    # The raw device should have a PollControl callback registered
+    assert len(app._req_listeners[raw_dev]) == 1
+
+    # Make get_device return the same object (no quirk match)
+    with patch("zigpy.quirks.get_device", return_value=raw_dev):
+        app.device_initialized(raw_dev)
+
+    # Callbacks should still be registered (device is still active)
+    assert raw_dev in app._req_listeners
+    assert len(app._req_listeners[raw_dev]) == 1
+
+    # The same device should be in app.devices
+    assert app.devices[ieee] is raw_dev
