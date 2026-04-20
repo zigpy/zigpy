@@ -1,26 +1,20 @@
 from __future__ import annotations
 
 import asyncio
-from asyncio import timeout as asyncio_timeout
+from collections.abc import Callable
+import errno
 import logging
 import pathlib
-import typing
-from typing import Literal
-import urllib.parse
+from typing import Any, Literal, cast
 
-try:
-    # serialx is API-compatible with pyserial
-    import serialx as pyserial
-    import serialx as pyserial_asyncio
-except ImportError:
-    import serial as pyserial
-    import serial_asyncio_fast as pyserial_asyncio
+from serialx import (
+    SerialTransport,
+    create_serial_connection as serialx_create_serial_connection,
+)
 
 from zigpy.typing import UNDEFINED, UndefinedType
 
 LOGGER = logging.getLogger(__name__)
-DEFAULT_SOCKET_PORT = 6638
-SOCKET_CONNECT_TIMEOUT = 5
 
 
 class SerialProtocol(asyncio.Protocol):
@@ -28,7 +22,7 @@ class SerialProtocol(asyncio.Protocol):
 
     def __init__(self) -> None:
         self._buffer = bytearray()
-        self._transport: pyserial_asyncio.SerialTransport | None = None
+        self._transport: SerialTransport | None = None
 
         self._connected_event = asyncio.Event()
         self._disconnected_event = asyncio.Event()
@@ -38,10 +32,10 @@ class SerialProtocol(asyncio.Protocol):
         """Wait for the protocol's transport to be connected."""
         await self._connected_event.wait()
 
-    def connection_made(self, transport: pyserial_asyncio.SerialTransport) -> None:
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
         LOGGER.debug("Connection made: %s", transport)
 
-        self._transport = transport
+        self._transport = cast(SerialTransport, transport)
         self._disconnected_event.clear()
         self._connected_event.set()
 
@@ -70,20 +64,17 @@ class SerialProtocol(asyncio.Protocol):
 
 
 async def create_serial_connection(
-    loop: asyncio.BaseEventLoop,
-    protocol_factory: typing.Callable[[], asyncio.Protocol],
+    loop: asyncio.AbstractEventLoop,
+    protocol_factory: Callable[[], asyncio.Protocol],
     url: pathlib.Path | str,
     *,
     baudrate: int = 115200,  # We default to 115200 instead of 9600
-    exclusive: bool | None = True,
     xonxoff: bool | UndefinedType = UNDEFINED,
     rtscts: bool | UndefinedType = UNDEFINED,
     flow_control: Literal["hardware", "software"] | None | UndefinedType = UNDEFINED,
-    **kwargs: typing.Any,
+    **kwargs: Any,
 ) -> tuple[asyncio.Transport, asyncio.Protocol]:
-    """Wrapper around pyserial-asyncio that transparently substitutes a normal TCP
-    transport and protocol when a `socket` connection URI is provided.
-    """
+    """Wrapper for serialx that provides simplified flow control kwargs."""
 
     if flow_control is not UNDEFINED:
         xonxoff = flow_control == "software"
@@ -104,38 +95,24 @@ async def create_serial_connection(
     )
 
     url = str(url)
-    parsed_url = urllib.parse.urlparse(url)
 
-    if parsed_url.scheme in ("socket", "tcp"):
-        async with asyncio_timeout(SOCKET_CONNECT_TIMEOUT):
-            transport, protocol = await loop.create_connection(
-                protocol_factory=protocol_factory,
-                host=parsed_url.hostname,
-                port=parsed_url.port or DEFAULT_SOCKET_PORT,
-            )
-    else:
-        try:
-            try:
-                transport, protocol = await pyserial_asyncio.create_serial_connection(
-                    loop,
-                    protocol_factory,
-                    url=url,
-                    baudrate=baudrate,
-                    exclusive=exclusive,
-                    xonxoff=xonxoff,
-                    rtscts=rtscts,
-                    **kwargs,
-                )
-            except pyserial.SerialException as exc:
-                # Unwrap unnecessarily wrapped PySerial exceptions
-                if exc.__context__ is not None:
-                    raise exc.__context__ from None
-
-                raise
-        except BlockingIOError as exc:
+    try:
+        transport, protocol = await serialx_create_serial_connection(
+            loop,
+            protocol_factory,
+            url=url,
+            baudrate=baudrate,
+            xonxoff=xonxoff,
+            rtscts=rtscts,
+            **kwargs,
+        )
+    except OSError as exc:
+        if exc.errno == errno.EBUSY:
             # Re-raise a more useful exception
             raise PermissionError(
                 "The serial port is locked by another application"
             ) from exc
+
+        raise
 
     return transport, protocol
