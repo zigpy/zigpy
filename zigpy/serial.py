@@ -64,7 +64,7 @@ class SerialProtocol(asyncio.Protocol):
 
 
 async def create_serial_connection(
-    loop: asyncio.BaseEventLoop,
+    loop: asyncio.AbstractEventLoop,
     protocol_factory: Callable[[], asyncio.Protocol],
     url: pathlib.Path | str,
     *,
