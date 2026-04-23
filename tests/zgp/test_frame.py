@@ -418,3 +418,95 @@ class TestGPChannelRequestPayload:
         """Empty data should raise ValueError."""
         with pytest.raises(ValueError, match="at least 1 byte"):
             GPChannelRequestPayload.from_bytes(b"")
+
+
+class TestBuschJaeger6716U:
+    """Parser tests against a real commissioning payload.
+
+    The bytes come from a Busch-Jaeger 6716 U "Friends of Hue" switch that
+    a community tester captured on 2026-04-22 while running PR #1814. See
+    ``tests/zgp/fixtures/busch_jaeger_6716u.py`` for the full provenance.
+    """
+
+    def test_parse_full_commissioning_payload(self) -> None:
+        """All fields decode to the values we expect for this device."""
+        from tests.zgp.fixtures.busch_jaeger_6716u import (
+            BJ6716U_COMMISSIONING_PAYLOAD,
+            BJ6716U_EXPECTED,
+        )
+
+        payload = GPCommissioningPayload.from_bytes(BJ6716U_COMMISSIONING_PAYLOAD)
+
+        # Header fields
+        assert payload.device_id == BJ6716U_EXPECTED.device_id
+        assert payload.options is not None
+        assert payload.options.raw == BJ6716U_EXPECTED.options_raw
+        assert payload.options.mac_seq_num_capability is True
+        assert payload.options.app_info_present is True
+        assert payload.options.fixed_location is True
+        assert payload.options.rx_on_capability is False
+
+        # Extended options
+        assert payload.extended_options is not None
+        assert payload.extended_options.raw == BJ6716U_EXPECTED.ext_options_raw
+        assert (
+            payload.extended_options.security_level
+            == SecurityLevel.FullFrameCounterAndMIC
+        )
+        assert payload.extended_options.key_type == SecurityKeyType.IndividualKey
+        assert payload.extended_options.key_present is True
+        assert payload.extended_options.key_encrypted is True
+        assert payload.extended_options.outgoing_counter_present is True
+
+        # Security material
+        assert payload.security_key == BJ6716U_EXPECTED.security_key
+        assert payload.key_mic == BJ6716U_EXPECTED.key_mic
+        assert payload.outgoing_counter == BJ6716U_EXPECTED.outgoing_counter
+
+        # Application info
+        assert payload.app_info is not None
+        assert payload.app_info.raw == BJ6716U_EXPECTED.app_info_raw
+        assert payload.app_info.gpd_commands_present is True
+        assert payload.app_info.manufacturer_id_present is False
+        assert payload.app_info.model_id_present is False
+        assert payload.app_info.cluster_list_present is False
+        assert payload.gpd_commands == BJ6716U_EXPECTED.gpd_commands
+        assert len(payload.gpd_commands) == 17
+
+    def test_roundtrip_preserves_bytes(self) -> None:
+        """``to_bytes()`` must reproduce the original wire format exactly."""
+        from tests.zgp.fixtures.busch_jaeger_6716u import (
+            BJ6716U_COMMISSIONING_PAYLOAD,
+        )
+
+        payload = GPCommissioningPayload.from_bytes(BJ6716U_COMMISSIONING_PAYLOAD)
+        assert payload.to_bytes() == BJ6716U_COMMISSIONING_PAYLOAD
+
+    def test_truncated_at_key_boundary(self) -> None:
+        """Truncating before the MIC leaves optional fields unset."""
+        from tests.zgp.fixtures.busch_jaeger_6716u import (
+            BJ6716U_COMMISSIONING_PAYLOAD,
+        )
+
+        # 3 header bytes + 16 key bytes = 19; everything after is cut off.
+        truncated = BJ6716U_COMMISSIONING_PAYLOAD[:19]
+
+        payload = GPCommissioningPayload.from_bytes(truncated)
+
+        assert payload.device_id == 0x02
+        assert payload.security_key is not None
+        assert payload.key_mic is None
+        assert payload.outgoing_counter is None
+        assert payload.gpd_commands == []
+
+    def test_truncated_before_extended_options(self) -> None:
+        """Options byte claims ExtOpt but no bytes follow."""
+        # Only DeviceID + Options, with bit 7 set.
+        truncated = bytes([0x02, 0xC5])
+
+        payload = GPCommissioningPayload.from_bytes(truncated)
+
+        assert payload.device_id == 0x02
+        assert payload.options.raw == 0xC5
+        assert payload.extended_options is None
+        assert payload.security_key is None
