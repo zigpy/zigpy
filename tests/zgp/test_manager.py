@@ -8,18 +8,26 @@ from tests.async_mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
+import struct
+
 import zigpy.types as t
 
 from zigpy.zgp.device import GPDevice
 from zigpy.zgp.manager import GreenPowerManager
 from zigpy.zgp.types import (
+    NotificationOptions,
+    NotificationSchema,
     GP_CLUSTER_ID,
     GP_ENDPOINT,
     GPDCommandID,
     SecurityKeyType,
     SecurityLevel,
 )
-
+import zigpy.zgp.types as zgptypes
+from zigpy.zgp.crypto import (
+    encrypt_payload,
+    encrypt_security_key
+)
 
 @pytest.fixture
 def mock_app() -> MagicMock:
@@ -53,12 +61,7 @@ def _make_gp_notification_packet(
 
     Constructs a minimal ZCL cluster-specific server command (0x00)
     wrapping a GP Notification with the given GPD command.
-    """
-    from zigpy.zcl.clusters.greenpower import (
-        NotificationOptions,
-        NotificationSchema,
-    )
-    import zigpy.zgp.types as zgptypes
+    """ 
 
     options = NotificationOptions(
         application_id=zgptypes.ApplicationID.SrcID,
@@ -166,7 +169,6 @@ class TestHandlePacket:
         )
         assert manager.handle_packet(packet) is False
 
-    @pytest.mark.asyncio
     async def test_accepts_gp_notification(self, manager: GreenPowerManager) -> None:
         packet = _make_gp_notification_packet(
             source_id=0x12345678,
@@ -178,7 +180,6 @@ class TestHandlePacket:
 class TestGPCommandDispatch:
     """Tests for GP command dispatching."""
 
-    @pytest.mark.asyncio
     async def test_dispatch_known_device(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -200,7 +201,6 @@ class TestGPCommandDispatch:
             b"",
         )
 
-    @pytest.mark.asyncio
     async def test_dispatch_unknown_device_ignored(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -214,7 +214,6 @@ class TestGPCommandDispatch:
 
         mock_app.listener_event.assert_not_called()
 
-    @pytest.mark.asyncio
     async def test_dispatch_replay_rejected(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -231,7 +230,6 @@ class TestGPCommandDispatch:
 
         mock_app.listener_event.assert_not_called()
 
-    @pytest.mark.asyncio
     async def test_dispatch_increments_counter(
         self, manager: GreenPowerManager
     ) -> None:
@@ -286,7 +284,6 @@ class TestDeduplication:
 class TestCommissioning:
     """Tests for GP commissioning."""
 
-    @pytest.mark.asyncio
     async def test_commissioning_window(self, manager: GreenPowerManager) -> None:
         """Opening and closing commissioning window."""
         assert not manager.is_commissioning
@@ -297,7 +294,6 @@ class TestCommissioning:
         await manager.permit_join(time_s=0)
         assert not manager.is_commissioning
 
-    @pytest.mark.asyncio
     async def test_commissioning_sends_proxy_mode(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -309,7 +305,6 @@ class TestCommissioning:
         assert sent_packet.dst_ep == GP_ENDPOINT
         assert sent_packet.cluster_id == GP_CLUSTER_ID
 
-    @pytest.mark.asyncio
     async def test_close_commissioning_sends_exit(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -321,7 +316,6 @@ class TestCommissioning:
 
         assert mock_app.send_packet.call_count == 1
 
-    @pytest.mark.asyncio
     async def test_process_commissioning_creates_device(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -351,7 +345,6 @@ class TestCommissioning:
         # GP Pairing should be sent
         assert mock_app.send_packet.call_count >= 1
 
-    @pytest.mark.asyncio
     async def test_commissioning_ignored_when_window_closed(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -367,7 +360,6 @@ class TestCommissioning:
         assert manager.get_device(0xAABBCCDD) is None
         mock_app.listener_event.assert_not_called()
 
-    @pytest.mark.asyncio
     async def test_commissioning_rejects_unspecified_source_id(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -387,7 +379,6 @@ class TestCommissioning:
         for call in mock_app.listener_event.call_args_list:
             assert call[0][0] != "gp_device_joined"
 
-    @pytest.mark.asyncio
     async def test_commissioning_with_security_key(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -420,14 +411,11 @@ class TestCommissioning:
         # Extended byte 0x23: bits 2-4 = 0b000 = NoKey (Table 54)
         assert dev.security_key_type == SecurityKeyType.NoKey
 
-    @pytest.mark.asyncio
     async def test_commissioning_with_outgoing_counter(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
         """Commissioning with outgoing frame counter."""
         await manager.permit_join(time_s=60)
-
-        import struct
 
         # extended: outgoing_counter_present = 0x80
         comm_payload = bytes([0x02, 0x80, 0x80]) + struct.pack("<I", 42)
@@ -442,7 +430,6 @@ class TestCommissioning:
         assert dev is not None
         assert dev.frame_counter == 42
 
-    @pytest.mark.asyncio
     async def test_commissioning_with_outgoing_counter_zero(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -453,7 +440,7 @@ class TestCommissioning:
         """
         await manager.permit_join(time_s=60)
 
-        import struct
+        
 
         # extended: outgoing_counter_present (bit 7) = 0x80
         comm_payload = bytes([0x02, 0x80, 0x80]) + struct.pack("<I", 0)
@@ -473,7 +460,6 @@ class TestCommissioning:
 class TestDecommissioning:
     """Tests for GP decommissioning."""
 
-    @pytest.mark.asyncio
     async def test_decommission_known_device(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -488,7 +474,6 @@ class TestDecommissioning:
         # GP Pairing (remove) should be sent
         assert mock_app.send_packet.call_count >= 1
 
-    @pytest.mark.asyncio
     async def test_decommission_unknown_device(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -500,7 +485,6 @@ class TestDecommissioning:
 class TestSendPairingKeyEncryption:
     """Tests for security key encryption in GP Pairing."""
 
-    @pytest.mark.asyncio
     async def test_pairing_encrypts_security_key(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -510,8 +494,6 @@ class TestSendPairingKeyEncryption:
         It should be encrypted via encrypt_security_key(sourceID, key)
         matching zigbee-herdsman's behavior.
         """
-        from zigpy.zgp.crypto import encrypt_security_key
-
         source_id = 0x12345678
         plaintext_key = bytes(range(16))
 
@@ -652,7 +634,6 @@ class TestBuildZclFrame:
 class TestChannelConfigResponse:
     """Tests for GP Channel Configuration response."""
 
-    @pytest.mark.asyncio
     async def test_channel_request_sends_response(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -672,7 +653,6 @@ class TestChannelConfigResponse:
         assert sent.dst_ep == GP_ENDPOINT
         assert sent.cluster_id == GP_CLUSTER_ID
 
-    @pytest.mark.asyncio
     async def test_channel_config_contains_correct_channel(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -699,7 +679,6 @@ class TestChannelConfigResponse:
         # This byte must appear in the serialized ZCL frame.
         assert bytes([0x19]) in zcl_data
 
-    @pytest.mark.asyncio
     async def test_channel_request_without_proxy(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -712,7 +691,6 @@ class TestChannelConfigResponse:
 
         assert mock_app.send_packet.call_count == 1
 
-    @pytest.mark.asyncio
     async def test_invalid_channel_request_ignored(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -729,7 +707,6 @@ class TestChannelConfigResponse:
 class TestCommissioningReply:
     """Tests for GP Commissioning Reply to RX-capable GPDs."""
 
-    @pytest.mark.asyncio
     async def test_rx_capable_gets_commissioning_reply(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -755,7 +732,6 @@ class TestCommissioningReply:
         assert dev is not None
         assert dev.rx_on_capability is True
 
-    @pytest.mark.asyncio
     async def test_non_rx_skips_commissioning_reply(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -776,7 +752,6 @@ class TestCommissioningReply:
         # Should have sent: GP Pairing only = 1 packet
         assert mock_app.send_packet.call_count == 1
 
-    @pytest.mark.asyncio
     async def test_commissioning_reply_uses_proxy_as_temp_master(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -815,7 +790,6 @@ class TestCommissioningReply:
 class TestSendGPResponse:
     """Tests for the generic GP Response sender."""
 
-    @pytest.mark.asyncio
     async def test_gp_response_packet_structure(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -834,7 +808,6 @@ class TestSendGPResponse:
         assert sent.cluster_id == GP_CLUSTER_ID
         assert sent.profile_id == 0xA1E0
 
-    @pytest.mark.asyncio
     async def test_gp_response_without_proxy(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -848,7 +821,6 @@ class TestSendGPResponse:
 
         assert mock_app.send_packet.call_count == 1
 
-    @pytest.mark.asyncio
     async def test_gp_response_send_failure(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -868,7 +840,6 @@ class TestSendGPResponse:
 class TestMissingPathCoverage:
     """Tests for previously untested code paths."""
 
-    @pytest.mark.asyncio
     async def test_dispatch_with_encrypted_payload(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -877,8 +848,6 @@ class TestMissingPathCoverage:
         Tests the decryption path in _dispatch_gp_command that was
         previously uncovered (SecurityLevel != NoSecurity).
         """
-        from zigpy.zgp.crypto import encrypt_payload
-
         source_id = 0xAABBCCDD
         security_key = bytes(range(16))
         plaintext = bytes([0x20])  # Toggle command
@@ -918,7 +887,6 @@ class TestMissingPathCoverage:
             plaintext,
         )
 
-    @pytest.mark.asyncio
     async def test_commissioning_with_encrypted_key(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -927,10 +895,6 @@ class TestMissingPathCoverage:
         Tests the path in _process_commissioning where the GPD provides
         its security key encrypted with the GP link key.
         """
-        import struct
-
-        from zigpy.zgp.crypto import encrypt_security_key
-
         await manager.permit_join(time_s=60)
         mock_app.send_packet.reset_mock()
 
@@ -965,7 +929,6 @@ class TestMissingPathCoverage:
     # schema from serializing/deserializing. The fix belongs in the cluster
     # definition (PR #1659), not in the GP manager module.
 
-    @pytest.mark.asyncio
     async def test_shutdown_cancels_commissioning(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -978,7 +941,6 @@ class TestMissingPathCoverage:
         assert not manager.is_commissioning
         assert manager._commissioning_task is None
 
-    @pytest.mark.asyncio
     async def test_dedup_in_notification_flow(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -990,12 +952,6 @@ class TestMissingPathCoverage:
         source_id = 0x12345678
         dev = GPDevice(source_id=source_id, device_id=0x02, frame_counter=0)
         manager.add_device(dev)
-
-        from zigpy.zcl.clusters.greenpower import (
-            NotificationOptions,
-            NotificationSchema,
-        )
-        import zigpy.zgp.types as zgptypes
 
         options = NotificationOptions(
             application_id=zgptypes.ApplicationID.SrcID,
@@ -1034,7 +990,6 @@ class TestMissingPathCoverage:
 class TestSinkResilience:
     """GP Sink must silently ignore malformed frames (interop requirement)."""
 
-    @pytest.mark.asyncio
     async def test_notification_with_corrupt_payload(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -1045,7 +1000,6 @@ class TestSinkResilience:
         )
         mock_app.listener_event.assert_not_called()
 
-    @pytest.mark.asyncio
     async def test_commissioning_with_corrupt_payload(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -1061,13 +1015,10 @@ class TestSinkResilience:
 
         assert manager.get_device(0x12345678) is None
 
-    @pytest.mark.asyncio
     async def test_commissioning_with_bad_encrypted_key(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
         """Invalid encrypted key MIC must reject commissioning."""
-        import struct
-
         await manager.permit_join(time_s=60)
 
         # Extended 0x63: Encrypted + key_present + key_encrypted (Table 54)
@@ -1084,7 +1035,6 @@ class TestSinkResilience:
         # Device must NOT be created when key decryption fails
         assert manager.get_device(0xBBBBBBBB) is None
 
-    @pytest.mark.asyncio
     async def test_decrypt_payload_failure_drops_command(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -1116,7 +1066,6 @@ class TestSinkResilience:
 class TestCommandRouting:
     """GP Sink must route GPD commands per spec Table 48."""
 
-    @pytest.mark.asyncio
     async def test_unhandled_server_command_ignored(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -1129,7 +1078,6 @@ class TestCommandRouting:
         )
         mock_app.listener_event.assert_not_called()
 
-    @pytest.mark.asyncio
     async def test_unexpected_client_direction_ignored(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -1142,7 +1090,6 @@ class TestCommandRouting:
         )
         mock_app.listener_event.assert_not_called()
 
-    @pytest.mark.asyncio
     async def test_commissioning_notification_cmd_routed(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -1161,17 +1108,10 @@ class TestCommandRouting:
         # No crash, no event — the schema parse failure is expected
         mock_app.listener_event.assert_not_called()
 
-    @pytest.mark.asyncio
     async def test_notification_routes_commissioning(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
         """GP Notification carrying CommissioningRequest (0xE0) triggers commissioning."""
-        from zigpy.zcl.clusters.greenpower import (
-            NotificationOptions,
-            NotificationSchema,
-        )
-        import zigpy.zgp.types as zgptypes
-
         await manager.permit_join(time_s=60)
         mock_app.send_packet.reset_mock()
 
@@ -1199,17 +1139,10 @@ class TestCommandRouting:
 
         assert manager.get_device(0xAAAA1111) is not None
 
-    @pytest.mark.asyncio
     async def test_notification_routes_decommissioning(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
         """GP Notification with DecommissioningRequest (0xE1) removes device."""
-        from zigpy.zcl.clusters.greenpower import (
-            NotificationOptions,
-            NotificationSchema,
-        )
-        import zigpy.zgp.types as zgptypes
-
         dev = GPDevice(source_id=0xBBBB2222, device_id=0x02)
         manager.add_device(dev)
 
@@ -1235,17 +1168,10 @@ class TestCommandRouting:
 
         assert manager.get_device(0xBBBB2222) is None
 
-    @pytest.mark.asyncio
     async def test_notification_routes_channel_request(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
         """GP Notification with ChannelRequest (0xE3) triggers a GP Response."""
-        from zigpy.zcl.clusters.greenpower import (
-            NotificationOptions,
-            NotificationSchema,
-        )
-        import zigpy.zgp.types as zgptypes
-
         options = NotificationOptions(
             application_id=zgptypes.ApplicationID.SrcID,
             also_unicast=0,
@@ -1269,17 +1195,10 @@ class TestCommandRouting:
         # Should have sent a GP Response (Channel Configuration)
         assert mock_app.send_packet.call_count >= 1
 
-    @pytest.mark.asyncio
     async def test_notification_routes_success_report(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
         """GP SuccessReport (0xE2) is accepted silently with no side effects."""
-        from zigpy.zcl.clusters.greenpower import (
-            NotificationOptions,
-            NotificationSchema,
-        )
-        import zigpy.zgp.types as zgptypes
-
         options = NotificationOptions(
             application_id=zgptypes.ApplicationID.SrcID,
             also_unicast=0,
@@ -1329,7 +1248,6 @@ class TestDedupCacheEviction:
 class TestNetworkResilience:
     """GP Sink must not crash on network transmission failures."""
 
-    @pytest.mark.asyncio
     async def test_proxy_commissioning_mode_send_failure(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -1341,7 +1259,6 @@ class TestNetworkResilience:
         # Window must be open locally despite send failure
         assert manager.is_commissioning
 
-    @pytest.mark.asyncio
     async def test_pairing_send_failure(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:
@@ -1358,7 +1275,6 @@ class TestNetworkResilience:
 class TestCommissioningTimerManagement:
     """Commissioning window timer lifecycle."""
 
-    @pytest.mark.asyncio
     async def test_reopen_commissioning_cancels_previous(
         self, manager: GreenPowerManager, mock_app: MagicMock
     ) -> None:

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import pytest
 
+import asyncio
+
 import zigpy.types as t
 from zigpy.zcl.clusters.greenpower import (
     NotificationOptions,
@@ -73,16 +75,9 @@ def _make_packet(
     )
 
 
-@pytest.fixture
-def app():
-    """Real ControllerApplication with GP manager."""
-    return make_app({})
-
-
 class TestFullCommissioningFlow:
     """Test complete commissioning → command → decommissioning lifecycle."""
 
-    @pytest.mark.asyncio
     async def test_commission_receive_command_decommission(self, app) -> None:
         """Full lifecycle: commission a GPD, receive a command, then decommission."""
         gp = app.green_power
@@ -150,7 +145,6 @@ class TestFullCommissioningFlow:
         # GP Pairing (remove) should be sent
         assert app.send_packet.call_count >= 1
 
-    @pytest.mark.asyncio
     async def test_commission_with_security(self, app) -> None:
         """Commissioning with unencrypted security key."""
         gp = app.green_power
@@ -177,7 +171,6 @@ class TestFullCommissioningFlow:
         assert dev.security_level == SecurityLevel.Encrypted
         assert dev.model_identifier == "GreenPower_7"
 
-    @pytest.mark.asyncio
     async def test_commissioning_rejected_when_window_closed(self, app) -> None:
         """Commissioning should be rejected if window is not open."""
         gp = app.green_power
@@ -195,7 +188,6 @@ class TestFullCommissioningFlow:
 class TestPacketReceivedE2E:
     """Test GP packets flowing through ControllerApplication.packet_received()."""
 
-    @pytest.mark.asyncio
     async def test_gp_notification_through_app(self, app) -> None:
         """GP Notification routed through packet_received to GP manager."""
         gp = app.green_power
@@ -216,8 +208,6 @@ class TestPacketReceivedE2E:
         app.packet_received(packet)
 
         # Let the async task run
-        import asyncio
-
         await asyncio.sleep(0.05)
 
         # gp_command_received should have been fired
@@ -231,7 +221,6 @@ class TestPacketReceivedE2E:
         # Frame counter should be updated
         assert dev.frame_counter == 1
 
-    @pytest.mark.asyncio
     async def test_gp_packet_from_unknown_proxy(self, app) -> None:
         """GP packets from unknown NWK addresses should still be processed."""
         gp = app.green_power
@@ -250,8 +239,6 @@ class TestPacketReceivedE2E:
 
         app.packet_received(packet)
 
-        import asyncio
-
         await asyncio.sleep(0.05)
 
         app.listener_event.assert_any_call(
@@ -265,7 +252,6 @@ class TestPacketReceivedE2E:
 class TestReplayProtectionE2E:
     """Test replay protection across the full stack."""
 
-    @pytest.mark.asyncio
     async def test_replay_rejected(self, app) -> None:
         """Replayed frames should be silently dropped."""
         gp = app.green_power
@@ -295,7 +281,6 @@ class TestReplayProtectionE2E:
         # Counter should still be 11
         assert dev.frame_counter == 11
 
-    @pytest.mark.asyncio
     async def test_sequential_commands(self, app) -> None:
         """Sequential commands with increasing counters should all be accepted."""
         gp = app.green_power
@@ -323,7 +308,6 @@ class TestReplayProtectionE2E:
 class TestProxyTableE2E:
     """Test proxy table tracking through the full flow."""
 
-    @pytest.mark.asyncio
     async def test_proxy_tracked_on_notification(self, app) -> None:
         """Proxy should be tracked when GP Notification is received."""
         gp = app.green_power
@@ -342,15 +326,12 @@ class TestProxyTableE2E:
         packet = _make_packet(zcl_data, src_nwk=proxy_nwk)
         app.packet_received(packet)
 
-        import asyncio
-
         await asyncio.sleep(0.05)
 
         # Proxy should be tracked
         proxies = gp.proxy_table.get_proxies_for_device(source_id)
         assert proxy_nwk in proxies
 
-    @pytest.mark.asyncio
     async def test_proxy_table_cleaned_on_decommission(self, app) -> None:
         """Proxy table entries should be removed when device is decommissioned."""
         gp = app.green_power

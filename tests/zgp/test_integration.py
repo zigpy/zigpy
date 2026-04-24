@@ -13,8 +13,10 @@ from zigpy.zgp.types import (
     GP_ENDPOINT,
 )
 
-# Import test fixtures from conftest
-from tests.conftest import make_app
+from tests.conftest import (
+    make_app,
+    add_initialized_device
+)
 
 
 @pytest.fixture
@@ -35,7 +37,7 @@ class TestApplicationGPIntegration:
         """GP manager should reference its parent application."""
         assert app.green_power._application is app
 
-    @pytest.mark.asyncio
+
     async def test_packet_received_routes_gp_to_manager(self, app) -> None:
         """GP packets should be routed to the GP manager."""
         # Patch the GP manager's handle_packet
@@ -43,8 +45,6 @@ class TestApplicationGPIntegration:
 
         # Create a GP notification packet from a known proxy device
         # First add a "proxy" device to the app so get_device_with_address works
-        from tests.conftest import add_initialized_device
-
         proxy_ieee = t.EUI64.convert("00:11:22:33:44:55:66:88")
         proxy_nwk = t.NWK(0x1234)
         add_initialized_device(app, nwk=proxy_nwk, ieee=proxy_ieee)
@@ -64,12 +64,9 @@ class TestApplicationGPIntegration:
         # GP manager should have been called
         app.green_power.handle_packet.assert_called_once_with(packet)
 
-    @pytest.mark.asyncio
     async def test_non_gp_packet_not_routed_to_manager(self, app) -> None:
         """Non-GP packets should NOT be routed to the GP manager."""
         app.green_power.handle_packet = Mock(return_value=True)
-
-        from tests.conftest import add_initialized_device
 
         dev_ieee = t.EUI64.convert("00:11:22:33:44:55:66:99")
         dev_nwk = t.NWK(0x5678)
@@ -90,7 +87,6 @@ class TestApplicationGPIntegration:
         # GP manager should NOT have been called
         app.green_power.handle_packet.assert_not_called()
 
-    @pytest.mark.asyncio
     async def test_gp_packet_from_unknown_device(self, app) -> None:
         """GP packets from unknown devices should still be routed to GP manager."""
         app.green_power.handle_packet = Mock(return_value=True)
@@ -111,7 +107,6 @@ class TestApplicationGPIntegration:
         # GP packets should be intercepted BEFORE the unknown device check
         app.green_power.handle_packet.assert_called_once_with(packet)
 
-    @pytest.mark.asyncio
     async def test_permit_gp(self, app) -> None:
         """permit_gp should delegate to GP manager."""
         app.green_power.permit_join = AsyncMock()
@@ -120,7 +115,6 @@ class TestApplicationGPIntegration:
 
         app.green_power.permit_join.assert_called_once_with(120)
 
-    @pytest.mark.asyncio
     async def test_permit_gp_close(self, app) -> None:
         """permit_gp(0) should close the window."""
         app.green_power.permit_join = AsyncMock()
