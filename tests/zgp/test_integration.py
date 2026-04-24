@@ -14,15 +14,11 @@ from zigpy.zgp.types import (
 )
 
 from tests.conftest import (
-    make_app,
+    app,
     add_initialized_device
 )
 
 
-@pytest.fixture
-def app():
-    """Create a real ControllerApplication with GP manager."""
-    return make_app({})
 
 
 class TestApplicationGPIntegration:
