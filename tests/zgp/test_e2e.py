@@ -8,8 +8,6 @@ events fire correctly and state is maintained throughout.
 from __future__ import annotations
 
 
-import pytest
-
 import asyncio
 
 import zigpy.types as t
