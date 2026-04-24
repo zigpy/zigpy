@@ -7,6 +7,7 @@ events fire correctly and state is maintained throughout.
 
 from __future__ import annotations
 
+from unittest.mock import patch
 
 import asyncio
 
@@ -25,6 +26,17 @@ from zigpy.zgp.types import (
 )
 
 from tests.conftest import make_app
+from tests.zgp.fixtures.busch_jaeger_6716u import (
+    BJ6716U_COMMISSIONING_PAYLOAD,
+    BJ6716U_EXPECTED,
+    BJ6716U_OPERATIONAL_FRAMES,
+    BJ6716U_SOURCE_ID,
+)
+
+
+# Fake AES-CCM output so the test does not depend on the OOB key the
+# Busch-Jaeger switch uses (which zigpy does not know).
+_FAKE_DECRYPTED_KEY: bytes = bytes(range(16))
 
 
 def _build_gp_notification_zcl(
@@ -397,3 +409,88 @@ class TestPersistenceE2E:
         assert restored2 is not None
         assert restored2.device_id == 0x07
         assert restored2.frame_counter == 100
+
+
+class TestBJ6716UFullFlow:
+    """End-to-end flow with captured Busch-Jaeger 6716 U frames.
+
+    The tester's switch pairs with an out-of-band key that the sink does
+    not know, so we patch ``decrypt_security_key`` to return a known value
+    and focus on verifying that commissioning followed by an operational
+    button press flows correctly through the real ControllerApplication.
+    """
+
+    @pytest.mark.asyncio
+    async def test_commission_then_operational_full_flow(self, app) -> None:
+        """Commission the switch, then receive a button press."""
+        gp = app.green_power
+
+        await gp.permit_join(time_s=60)
+        app.send_packet.reset_mock()
+        app.listener_event.reset_mock()
+
+        with patch(
+            "zigpy.zgp.manager.decrypt_security_key",
+            return_value=_FAKE_DECRYPTED_KEY,
+        ):
+            await gp._process_commissioning(
+                source_id=BJ6716U_SOURCE_ID,
+                frame_counter=0xFFFFFFFF,
+                payload=BJ6716U_COMMISSIONING_PAYLOAD,
+            )
+
+        dev = gp.get_device(BJ6716U_SOURCE_ID)
+        assert dev is not None
+        assert dev.device_id == BJ6716U_EXPECTED.device_id
+        assert dev.security_key == _FAKE_DECRYPTED_KEY
+        assert dev.frame_counter == BJ6716U_EXPECTED.outgoing_counter
+        app.listener_event.assert_any_call("gp_device_joined", dev)
+
+        # Feed the first captured operational frame (counter 0x1DED, cmd 0x68).
+        app.listener_event.reset_mock()
+        frame = BJ6716U_OPERATIONAL_FRAMES[0]
+        await gp._dispatch_gp_command(
+            source_id=BJ6716U_SOURCE_ID,
+            frame_counter=frame.frame_counter,
+            command_id=frame.command_id,
+            payload=b"",
+        )
+
+        app.listener_event.assert_any_call(
+            "gp_command_received",
+            dev,
+            frame.command_id,
+            b"",
+        )
+        assert dev.frame_counter == frame.frame_counter
+
+    @pytest.mark.asyncio
+    async def test_command_0x68_routing(self, app) -> None:
+        """Every captured 0x68 frame reaches listeners in order."""
+        gp = app.green_power
+
+        dev = GPDevice(
+            source_id=BJ6716U_SOURCE_ID,
+            device_id=BJ6716U_EXPECTED.device_id,
+            frame_counter=BJ6716U_EXPECTED.outgoing_counter,
+        )
+        gp.add_device(dev)
+
+        received: list[int] = []
+
+        def track(event_name, *args):
+            if event_name == "gp_command_received":
+                received.append(args[1])  # command_id
+
+        app.listener_event.side_effect = track
+
+        for frame in BJ6716U_OPERATIONAL_FRAMES:
+            await gp._dispatch_gp_command(
+                source_id=BJ6716U_SOURCE_ID,
+                frame_counter=frame.frame_counter,
+                command_id=frame.command_id,
+                payload=b"",
+            )
+
+        assert received == [0x68] * len(BJ6716U_OPERATIONAL_FRAMES)
+        assert dev.frame_counter == BJ6716U_OPERATIONAL_FRAMES[-1].frame_counter

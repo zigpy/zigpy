@@ -1,6 +1,8 @@
 """Tests for Green Power Manager."""
 
 from __future__ import annotations
+
+
 from tests.async_mock import AsyncMock, MagicMock
 
 from tests.conftest import app
