@@ -170,7 +170,7 @@ def test_full_roundtrip():
 
     assert restored.source_id == 0xAABBCCDD
     assert restored.device_id == 0x07
-    assert restored.security_key == bytes(range(16))
+    assert bytes(restored.security_key) == bytes(range(16))
     assert restored.security_level == SecurityLevel.Encrypted
     assert restored.security_key_type == SecurityKeyType.IndividualKey
     assert restored.frame_counter == 42

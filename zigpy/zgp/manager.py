@@ -404,10 +404,12 @@ class GreenPowerManager:
                     # Key is encrypted - decrypt it
                     try:
                         mic_bytes = struct.pack("<I", comm.key_mic)
-                        security_key = decrypt_security_key(
-                            source_id,
-                            comm.security_key,
-                            mic_bytes,
+                        security_key = t.KeyData(
+                            decrypt_security_key(
+                                source_id,
+                                comm.security_key,
+                                mic_bytes,
+                            )
                         )
                     except Exception:  # noqa: BLE001
                         LOGGER.warning(
@@ -416,7 +418,7 @@ class GreenPowerManager:
                         )
                         return
                 else:
-                    security_key = comm.security_key
+                    security_key = t.KeyData(comm.security_key)
 
         # Create GP device
         device = GPDevice(
@@ -567,7 +569,7 @@ class GreenPowerManager:
                     decrypted_payload = decrypt_payload(
                         source_id,
                         frame_counter,
-                        device.security_key,
+                        bytes(device.security_key),
                         encrypted_data,
                         mic,
                         device.security_level,
@@ -774,9 +776,9 @@ class GreenPowerManager:
                 # receive the encrypted key and can decrypt it with the GP
                 # link key to populate their proxy tables.
                 encrypted_key, _ = encrypt_security_key(
-                    device.source_id, device.security_key
+                    device.source_id, bytes(device.security_key)
                 )
-                schema_kwargs["key"] = t.KeyData([t.uint8_t(b) for b in encrypted_key])
+                schema_kwargs["key"] = t.KeyData(encrypted_key)
 
         try:
             frame_data = self._build_zcl_frame(

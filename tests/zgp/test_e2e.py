@@ -176,7 +176,7 @@ async def test_commission_with_security(app):
     dev = gp.get_device(source_id)
     assert dev is not None
     assert dev.device_id == 0x07
-    assert dev.security_key == security_key
+    assert bytes(dev.security_key) == security_key
     assert dev.security_level == SecurityLevel.Encrypted
     assert dev.model_identifier == "GreenPower_7"
 
@@ -391,7 +391,7 @@ def test_persist_and_restore(app):
     restored1 = gp2.get_device(0x11111111)
     assert restored1 is not None
     assert restored1.device_id == 0x02
-    assert restored1.security_key == bytes(range(16))
+    assert bytes(restored1.security_key) == bytes(range(16))
     assert restored1.security_level == SecurityLevel.Encrypted
     assert restored1.frame_counter == 42
     assert restored1.gpd_commands == [0x20, 0x21, 0x22]
@@ -423,7 +423,7 @@ async def test_commission_then_operational_full_flow(app):
     dev = gp.get_device(BJ6716U_SOURCE_ID)
     assert dev is not None
     assert dev.device_id == BJ6716U_EXPECTED.device_id
-    assert dev.security_key == _FAKE_DECRYPTED_KEY
+    assert bytes(dev.security_key) == _FAKE_DECRYPTED_KEY
     assert dev.frame_counter == BJ6716U_EXPECTED.outgoing_counter
     app.listener_event.assert_any_call("gp_device_joined", dev)
 

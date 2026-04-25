@@ -73,7 +73,7 @@ async def test_creates_device_when_key_unwrap_succeeds(manager) -> None:
     assert device is not None
     assert device.source_id == BJ6716U_SOURCE_ID
     assert device.device_id == BJ6716U_EXPECTED.device_id
-    assert device.security_key == FAKE_DECRYPTED_KEY
+    assert bytes(device.security_key) == FAKE_DECRYPTED_KEY
     assert device.security_level == SecurityLevel.FullFrameCounterAndMIC
     # The manager prefers the advertised OutgoingCounter over the
     # notification frame counter when the payload provides one.

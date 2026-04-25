@@ -88,7 +88,7 @@ class GPDevice:
     device_id: int
 
     # Security configuration
-    security_key: bytes | None = None
+    security_key: t.KeyData | None = None
     security_level: SecurityLevel = SecurityLevel.NoSecurity
     security_key_type: SecurityKeyType = SecurityKeyType.NoKey
     frame_counter: int = 0
@@ -107,6 +107,13 @@ class GPDevice:
 
     # Timestamps
     last_seen: datetime | None = None
+
+    def __post_init__(self) -> None:
+        """Normalize the security key to :class:`zigpy.types.KeyData`."""
+        if self.security_key is not None and not isinstance(
+            self.security_key, t.KeyData
+        ):
+            self.security_key = t.KeyData(self.security_key)
 
     @property
     def ieee(self) -> t.EUI64:
@@ -166,7 +173,9 @@ class GPDevice:
         return {
             "source_id": self.source_id,
             "device_id": self.device_id,
-            "security_key": self.security_key.hex() if self.security_key else None,
+            "security_key": (
+                bytes(self.security_key).hex() if self.security_key else None
+            ),
             "security_level": int(self.security_level),
             "security_key_type": int(self.security_key_type),
             "frame_counter": self.frame_counter,
@@ -198,7 +207,9 @@ class GPDevice:
             source_id=data["source_id"],
             device_id=data["device_id"],
             security_key=(
-                bytes.fromhex(security_key_hex) if security_key_hex else None
+                t.KeyData(bytes.fromhex(security_key_hex))
+                if security_key_hex
+                else None
             ),
             security_level=SecurityLevel(data.get("security_level", 0)),
             security_key_type=SecurityKeyType(data.get("security_key_type", 0)),

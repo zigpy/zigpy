@@ -363,7 +363,7 @@ async def test_commissioning_with_security_key(app, manager):
 
     dev = manager.get_device(0x11223344)
     assert dev is not None
-    assert dev.security_key == security_key
+    assert bytes(dev.security_key) == security_key
     assert dev.security_level == SecurityLevel.Encrypted
     # Extended byte 0x23: bits 2-4 = 0b000 = NoKey (Table 54)
     assert dev.security_key_type == SecurityKeyType.NoKey
@@ -836,7 +836,7 @@ async def test_commissioning_with_encrypted_key(app, manager):
     dev = manager.get_device(source_id)
     assert dev is not None
     # The key must be DECRYPTED to the original
-    assert dev.security_key == original_key
+    assert bytes(dev.security_key) == original_key
     assert dev.security_level == SecurityLevel.Encrypted
 
 
