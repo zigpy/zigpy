@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from zigpy.profiles import zgp as zgp_profile
 from zigpy.datastructures import Debouncer
+from zigpy.event import EventBase
 import zigpy.types as t
 from zigpy.zcl import foundation
 from zigpy.zcl.clusters.greenpower import (
@@ -37,6 +38,7 @@ from zigpy.zgp.crypto import (
     encrypt_security_key,
 )
 from zigpy.zgp.device import GPDevice
+from zigpy.zgp.events import CommandReceived, DeviceJoined, DeviceLeft
 from zigpy.zgp.proxy import GPProxyTable
 from zigpy.zgp.frame import (
     GPChannelRequestPayload,
@@ -61,7 +63,7 @@ LOGGER = logging.getLogger(__name__)
 DEFAULT_COMMISSIONING_WINDOW_S: int = 180
 
 
-class GreenPowerManager:
+class GreenPowerManager(EventBase):
     """Central manager for Green Power protocol handling.
 
     Attached to ControllerApplication. Processes GP frames arriving
@@ -71,17 +73,20 @@ class GreenPowerManager:
     ApplicationID.IEEE (0b010) are not handled. This matches zigbee-herdsman
     which also only supports SrcID. No known consumer GPD uses IEEE mode.
 
-    Fires the following listener events on the application:
-    - ``gp_device_joined(gp_device)``: A new GP device was commissioned
-    - ``gp_device_left(gp_device)``: A GP device was decommissioned
-    - ``gp_command_received(gp_device, command_id, payload)``: A GP command
-      was received from a commissioned device
+    Emits the following events (subscribe via :meth:`on_event`):
+
+    - :class:`~zigpy.zgp.events.DeviceJoined` when a GPD completes
+      commissioning.
+    - :class:`~zigpy.zgp.events.DeviceLeft` when a GPD is decommissioned.
+    - :class:`~zigpy.zgp.events.CommandReceived` when a commissioned
+      GPD emits an operational command.
     """
 
     # Duplicate filtering window per ZGP spec A.3.6.1.2
     DEDUP_TIMEOUT_S: float = 2.0
 
     def __init__(self, application: ControllerApplication) -> None:
+        super().__init__()
         self._application = application
         self._devices: dict[int, GPDevice] = {}  # sourceID -> GPDevice
         self._commissioning_window_end: float = 0
@@ -95,9 +100,7 @@ class GreenPowerManager:
         # inside DEDUP_TIMEOUT_S is a retransmission from a different proxy.
         self._dedup_debouncer: Debouncer = Debouncer()
 
-    def _create_task(
-        self, coro: Any, name: str | None = None
-    ) -> asyncio.Task[Any]:
+    def _create_task(self, coro: Any, name: str | None = None) -> asyncio.Task[Any]:
         """Create a task owned by the manager.
 
         The task is stored until completion so :meth:`shutdown` can
@@ -460,7 +463,7 @@ class GreenPowerManager:
         await self.send_pairing(device, add_sink=True, proxy_nwk=proxy_nwk)
 
         # Notify listeners
-        self._application.listener_event("gp_device_joined", device)
+        self.emit(DeviceJoined.event_type, DeviceJoined(device=device))
 
         LOGGER.info(
             "GP device commissioned: %r",
@@ -479,7 +482,7 @@ class GreenPowerManager:
             await self.send_pairing(device, add_sink=False)
 
             # Notify listeners
-            self._application.listener_event("gp_device_left", device)
+            self.emit(DeviceLeft.event_type, DeviceLeft(device=device))
 
             LOGGER.info(
                 "GP device decommissioned: source_id=0x%08X",
@@ -598,11 +601,13 @@ class GreenPowerManager:
         )
 
         # Fire listener event
-        self._application.listener_event(
-            "gp_command_received",
-            device,
-            command_id,
-            decrypted_payload,
+        self.emit(
+            CommandReceived.event_type,
+            CommandReceived(
+                device=device,
+                command_id=GPDCommandID(command_id),
+                payload=decrypted_payload,
+            ),
         )
 
     # --- Commissioning window control ---

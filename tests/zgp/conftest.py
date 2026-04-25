@@ -29,3 +29,18 @@ def manager(app) -> GreenPowerManager:
     """
     app.state.network_info.channel = 15
     return app.green_power
+
+
+@pytest.fixture
+def gp_events(manager: GreenPowerManager) -> list[tuple[str, object]]:
+    """Capture every event emitted by the manager as ``(event_type, data)``.
+
+    Replaces the old pattern of spying on ``app.listener_event`` now that
+    ``GreenPowerManager`` uses :class:`~zigpy.event.EventBase` directly.
+    """
+    captured: list[tuple[str, object]] = []
+    manager.on_all_events(
+        lambda event_name, data: captured.append((event_name, data)),
+        with_context=True,
+    )
+    return captured

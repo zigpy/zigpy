@@ -17,6 +17,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from zigpy.zgp.device import GPDevice
+from zigpy.zgp.events import CommandReceived, DeviceJoined
 from zigpy.zgp.manager import GreenPowerManager
 from zigpy.zgp.types import SecurityLevel
 
@@ -47,7 +48,7 @@ async def _commission(manager: GreenPowerManager) -> None:
 # -- Commissioning -----------------------------------------------------------
 
 
-async def test_rejects_oob_encrypted_key_gracefully(manager, app) -> None:
+async def test_rejects_oob_encrypted_key_gracefully(manager, gp_events) -> None:
     """No device is created when the OOB key cannot be decrypted.
 
     The FoH switch encrypts its GPD key with an individual out-of-band
@@ -57,8 +58,7 @@ async def test_rejects_oob_encrypted_key_gracefully(manager, app) -> None:
     await _commission(manager)
 
     assert manager.get_device(BJ6716U_SOURCE_ID) is None
-    for call in app.listener_event.call_args_list:
-        assert call.args[0] != "gp_device_joined"
+    assert not any(isinstance(e, DeviceJoined) for _, e in gp_events)
 
 
 async def test_creates_device_when_key_unwrap_succeeds(manager) -> None:
@@ -94,7 +94,7 @@ async def test_stores_all_17_gpd_commands(manager) -> None:
     assert len(device.gpd_commands) == 17
 
 
-async def test_fires_joined_event(manager, app) -> None:
+async def test_fires_joined_event(manager, gp_events) -> None:
     """Successful commissioning notifies listeners."""
     with patch(
         "zigpy.zgp.manager.decrypt_security_key",
@@ -102,13 +102,9 @@ async def test_fires_joined_event(manager, app) -> None:
     ):
         await _commission(manager)
 
-    joined_calls = [
-        call
-        for call in app.listener_event.call_args_list
-        if call.args and call.args[0] == "gp_device_joined"
-    ]
-    assert len(joined_calls) == 1
-    assert joined_calls[0].args[1].source_id == BJ6716U_SOURCE_ID
+    joined = [e for _, e in gp_events if isinstance(e, DeviceJoined)]
+    assert len(joined) == 1
+    assert joined[0].device.source_id == BJ6716U_SOURCE_ID
 
 
 # -- Operational frame handling ---------------------------------------------
@@ -125,7 +121,7 @@ def _paired_device(manager: GreenPowerManager) -> GPDevice:
     return device
 
 
-async def test_accepts_first_operational_frame(manager, app) -> None:
+async def test_accepts_first_operational_frame(manager, gp_events) -> None:
     """Counter 0x1ded (next after commissioning 0x1dec) is accepted."""
     device = _paired_device(manager)
     frame = BJ6716U_OPERATIONAL_FRAMES[0]
@@ -137,17 +133,13 @@ async def test_accepts_first_operational_frame(manager, app) -> None:
         payload=b"",
     )
 
-    command_events = [
-        call
-        for call in app.listener_event.call_args_list
-        if call.args and call.args[0] == "gp_command_received"
-    ]
-    assert len(command_events) == 1
-    assert command_events[0].args[2] == frame.command_id
+    commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
+    assert len(commands) == 1
+    assert commands[0].command_id == frame.command_id
     assert device.frame_counter == frame.frame_counter
 
 
-async def test_rejects_replayed_counter(manager, app) -> None:
+async def test_rejects_replayed_counter(manager, gp_events) -> None:
     """Sending the same counter twice only fires the event once."""
     device = _paired_device(manager)
     frame = BJ6716U_OPERATIONAL_FRAMES[0]
@@ -160,16 +152,12 @@ async def test_rejects_replayed_counter(manager, app) -> None:
             payload=b"",
         )
 
-    command_events = [
-        call
-        for call in app.listener_event.call_args_list
-        if call.args and call.args[0] == "gp_command_received"
-    ]
-    assert len(command_events) == 1
+    commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
+    assert len(commands) == 1
     assert device.frame_counter == frame.frame_counter
 
 
-async def test_accepts_monotonic_sequence(manager, app) -> None:
+async def test_accepts_monotonic_sequence(manager, gp_events) -> None:
     """Four successive counters all produce a command event."""
     device = _paired_device(manager)
 
@@ -181,16 +169,12 @@ async def test_accepts_monotonic_sequence(manager, app) -> None:
             payload=b"",
         )
 
-    command_events = [
-        call
-        for call in app.listener_event.call_args_list
-        if call.args and call.args[0] == "gp_command_received"
-    ]
-    assert len(command_events) == len(BJ6716U_OPERATIONAL_FRAMES)
+    commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
+    assert len(commands) == len(BJ6716U_OPERATIONAL_FRAMES)
     assert device.frame_counter == BJ6716U_OPERATIONAL_FRAMES[-1].frame_counter
 
 
-async def test_rejects_older_counter(manager, app) -> None:
+async def test_rejects_older_counter(manager, gp_events) -> None:
     """An older counter after a recent one is dropped."""
     device = _paired_device(manager)
     recent = BJ6716U_OPERATIONAL_FRAMES[-1]
@@ -209,10 +193,6 @@ async def test_rejects_older_counter(manager, app) -> None:
         payload=b"",
     )
 
-    command_events = [
-        call
-        for call in app.listener_event.call_args_list
-        if call.args and call.args[0] == "gp_command_received"
-    ]
-    assert len(command_events) == 1
+    commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
+    assert len(commands) == 1
     assert device.frame_counter == recent.frame_counter

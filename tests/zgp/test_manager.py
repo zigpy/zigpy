@@ -10,6 +10,7 @@ from zigpy.zcl.clusters.greenpower import NotificationOptions, NotificationSchem
 import zigpy.types as t
 from zigpy.zgp.crypto import encrypt_payload, encrypt_security_key
 from zigpy.zgp.device import GPDevice
+from zigpy.zgp.events import CommandReceived, DeviceJoined, DeviceLeft
 from zigpy.zgp.manager import GreenPowerManager
 import zigpy.zgp.types as zgptypes
 from zigpy.zgp.types import (
@@ -152,8 +153,8 @@ async def test_accepts_gp_notification(manager):
     assert manager.handle_packet(packet) is True
 
 
-async def test_dispatch_known_device(app, manager):
-    """Commands from known devices should fire listener_event."""
+async def test_dispatch_known_device(manager, gp_events):
+    """Commands from known devices should fire a CommandReceived event."""
     dev = GPDevice(source_id=0x12345678, device_id=0x02, frame_counter=0)
     manager.add_device(dev)
 
@@ -164,15 +165,14 @@ async def test_dispatch_known_device(app, manager):
         payload=b"",
     )
 
-    app.listener_event.assert_called_with(
-        "gp_command_received",
-        dev,
-        GPDCommandID.Toggle,
-        b"",
-    )
+    commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
+    assert len(commands) == 1
+    assert commands[0].device is dev
+    assert commands[0].command_id is GPDCommandID.Toggle
+    assert commands[0].payload == b""
 
 
-async def test_dispatch_unknown_device_ignored(app, manager):
+async def test_dispatch_unknown_device_ignored(manager, gp_events):
     """Commands from unknown devices should be ignored."""
     await manager._dispatch_gp_command(
         source_id=0xDEADBEEF,
@@ -181,10 +181,10 @@ async def test_dispatch_unknown_device_ignored(app, manager):
         payload=b"",
     )
 
-    app.listener_event.assert_not_called()
+    assert gp_events == []
 
 
-async def test_dispatch_replay_rejected(app, manager):
+async def test_dispatch_replay_rejected(manager, gp_events):
     """Replayed frames (same or lower counter) should be rejected."""
     dev = GPDevice(source_id=0x12345678, device_id=0x02, frame_counter=10)
     manager.add_device(dev)
@@ -196,7 +196,7 @@ async def test_dispatch_replay_rejected(app, manager):
         payload=b"",
     )
 
-    app.listener_event.assert_not_called()
+    assert gp_events == []
 
 
 async def test_dispatch_increments_counter(manager):
@@ -280,7 +280,7 @@ async def test_close_commissioning_sends_exit(app, manager):
     assert app.send_packet.call_count == 1
 
 
-async def test_process_commissioning_creates_device(app, manager):
+async def test_process_commissioning_creates_device(app, manager, gp_events):
     """Commissioning command should create a GPDevice."""
     # Open commissioning window
     await manager.permit_join(time_s=60)
@@ -301,14 +301,14 @@ async def test_process_commissioning_creates_device(app, manager):
     assert dev.device_id == 0x02
     assert dev.source_id == 0xAABBCCDD
 
-    # Listener event should fire
-    app.listener_event.assert_any_call("gp_device_joined", dev)
+    joined = [e for _, e in gp_events if isinstance(e, DeviceJoined)]
+    assert joined == [DeviceJoined(device=dev)]
 
     # GP Pairing should be sent
     assert app.send_packet.call_count >= 1
 
 
-async def test_commissioning_ignored_when_window_closed(app, manager):
+async def test_commissioning_ignored_when_window_closed(manager, gp_events):
     """Commissioning should be ignored if window is not open."""
     comm_payload = bytes([0x02, 0x00])
 
@@ -319,14 +319,13 @@ async def test_commissioning_ignored_when_window_closed(app, manager):
     )
 
     assert manager.get_device(0xAABBCCDD) is None
-    app.listener_event.assert_not_called()
+    assert gp_events == []
 
 
-async def test_commissioning_rejects_unspecified_source_id(app, manager):
+async def test_commissioning_rejects_unspecified_source_id(app, manager, gp_events):
     """SourceID 0x00000000 is unspecified per ZGP spec and must be rejected."""
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
-    app.listener_event.reset_mock()
 
     await manager._process_commissioning(
         source_id=0x00000000,
@@ -335,9 +334,7 @@ async def test_commissioning_rejects_unspecified_source_id(app, manager):
     )
 
     assert manager.get_device(0x00000000) is None
-    # No gp_device_joined event should have fired
-    for call in app.listener_event.call_args_list:
-        assert call[0][0] != "gp_device_joined"
+    assert not any(isinstance(e, DeviceJoined) for _, e in gp_events)
 
 
 async def test_commissioning_with_security_key(app, manager):
@@ -412,7 +409,7 @@ async def test_commissioning_with_outgoing_counter_zero(manager):
     assert dev.frame_counter == 0
 
 
-async def test_decommission_known_device(app, manager):
+async def test_decommission_known_device(app, manager, gp_events):
     """Decommissioning a known device should remove it."""
     dev = GPDevice(source_id=0x12345678, device_id=0x02)
     manager.add_device(dev)
@@ -420,15 +417,16 @@ async def test_decommission_known_device(app, manager):
     await manager._process_decommissioning(0x12345678)
 
     assert manager.get_device(0x12345678) is None
-    app.listener_event.assert_any_call("gp_device_left", dev)
+    left = [e for _, e in gp_events if isinstance(e, DeviceLeft)]
+    assert left == [DeviceLeft(device=dev)]
     # GP Pairing (remove) should be sent
     assert app.send_packet.call_count >= 1
 
 
-async def test_decommission_unknown_device(app, manager):
+async def test_decommission_unknown_device(manager, gp_events):
     """Decommissioning unknown device should be a no-op."""
     await manager._process_decommissioning(0xDEADBEEF)
-    app.listener_event.assert_not_called()
+    assert gp_events == []
 
 
 async def test_pairing_encrypts_security_key(app, manager):
@@ -759,7 +757,7 @@ async def test_gp_response_send_failure(app, manager):
     # Should not raise, just log warning
 
 
-async def test_dispatch_with_encrypted_payload(app, manager):
+async def test_dispatch_with_encrypted_payload(manager, gp_events):
     """Command dispatch should decrypt payload when security is active.
 
     Tests the decryption path in _dispatch_gp_command that was
@@ -798,12 +796,10 @@ async def test_dispatch_with_encrypted_payload(app, manager):
     )
 
     # Should fire event with DECRYPTED payload
-    app.listener_event.assert_called_with(
-        "gp_command_received",
-        dev,
-        GPDCommandID.Toggle,
-        plaintext,
-    )
+    commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
+    assert commands == [
+        CommandReceived(device=dev, command_id=GPDCommandID.Toggle, payload=plaintext)
+    ]
 
 
 async def test_commissioning_with_encrypted_key(app, manager):
@@ -875,7 +871,7 @@ async def test_shutdown_cancels_owned_tasks(manager):
     assert not manager._tasks
 
 
-async def test_dedup_in_notification_flow(app, manager):
+async def test_dedup_in_notification_flow(manager, gp_events):
     """Duplicate filtering should work within _handle_gp_notification.
 
     When two proxies forward the same GPD frame, only the first
@@ -910,20 +906,18 @@ async def test_dedup_in_notification_flow(app, manager):
     # Second proxy delivers same frame
     await manager._handle_gp_notification(payload, proxy_nwk=0x2222)
 
-    # Only ONE gp_command_received should fire
-    command_events = [
-        c for c in app.listener_event.call_args_list if c[0][0] == "gp_command_received"
-    ]
-    assert len(command_events) == 1
+    commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
+    assert len(commands) == 1
+    assert commands[0].device is dev
 
 
-async def test_notification_with_corrupt_payload(app, manager):
+async def test_notification_with_corrupt_payload(manager, gp_events):
     """Corrupt GP Notification payload must be ignored, no event fired."""
     await manager._handle_gp_notification(
         payload=b"\xff\xff",  # too short / invalid for NotificationSchema
         proxy_nwk=0x1234,
     )
-    app.listener_event.assert_not_called()
+    assert gp_events == []
 
 
 async def test_commissioning_with_corrupt_payload(app, manager):
@@ -960,7 +954,7 @@ async def test_commissioning_with_bad_encrypted_key(manager):
     assert manager.get_device(0xBBBBBBBB) is None
 
 
-async def test_decrypt_payload_failure_drops_command(app, manager):
+async def test_decrypt_payload_failure_drops_command(manager, gp_events):
     """Corrupted encrypted payload must be dropped, no event fired."""
     dev = GPDevice(
         source_id=0xAABBCCDD,
@@ -981,12 +975,10 @@ async def test_decrypt_payload_failure_drops_command(app, manager):
         payload=corrupt_payload,
     )
 
-    # No gp_command_received should fire
-    for call in app.listener_event.call_args_list:
-        assert call[0][0] != "gp_command_received"
+    assert not any(isinstance(e, CommandReceived) for _, e in gp_events)
 
 
-async def test_unhandled_server_command_ignored(app, manager):
+async def test_unhandled_server_command_ignored(manager, gp_events):
     """Unknown server command (e.g. PairingSearch 0x01) is ignored."""
     await manager._process_zcl_command(
         command_id=0x01,  # GP Pairing Search, not implemented
@@ -994,10 +986,10 @@ async def test_unhandled_server_command_ignored(app, manager):
         is_server_to_client=False,
         proxy_nwk=0x1234,
     )
-    app.listener_event.assert_not_called()
+    assert gp_events == []
 
 
-async def test_unexpected_client_direction_ignored(app, manager):
+async def test_unexpected_client_direction_ignored(manager, gp_events):
     """Client-to-server direction (server→client) in reception is unexpected."""
     await manager._process_zcl_command(
         command_id=0x01,
@@ -1005,10 +997,10 @@ async def test_unexpected_client_direction_ignored(app, manager):
         is_server_to_client=True,  # unexpected for reception
         proxy_nwk=0x1234,
     )
-    app.listener_event.assert_not_called()
+    assert gp_events == []
 
 
-async def test_commissioning_notification_cmd_routed(app, manager):
+async def test_commissioning_notification_cmd_routed(manager, gp_events):
     """Server cmd 0x04 is routed to _handle_commissioning_notification.
 
     The handler itself has a schema bug (pragma: no cover) but the
@@ -1022,7 +1014,7 @@ async def test_commissioning_notification_cmd_routed(app, manager):
         proxy_nwk=0x1234,
     )
     # No crash, no event — the schema parse failure is expected
-    app.listener_event.assert_not_called()
+    assert gp_events == []
 
 
 async def test_notification_routes_commissioning(app, manager):
@@ -1112,7 +1104,7 @@ async def test_notification_routes_channel_request(app, manager):
     assert app.send_packet.call_count >= 1
 
 
-async def test_notification_routes_success_report(app, manager):
+async def test_notification_routes_success_report(manager, gp_events):
     """GP SuccessReport (0xE2) is accepted silently with no side effects."""
 
     options = NotificationOptions(
@@ -1136,7 +1128,7 @@ async def test_notification_routes_success_report(app, manager):
     await manager._handle_gp_notification(notif.serialize(), proxy_nwk=0x1234)
 
     # No device created, no command dispatched
-    app.listener_event.assert_not_called()
+    assert gp_events == []
 
 
 async def test_proxy_commissioning_mode_send_failure(app, manager):

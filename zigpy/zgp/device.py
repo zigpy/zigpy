@@ -198,9 +198,7 @@ class GPDevice:
             source_id=data["source_id"],
             device_id=data["device_id"],
             security_key=(
-                t.KeyData(bytes.fromhex(security_key_hex))
-                if security_key_hex
-                else None
+                t.KeyData(bytes.fromhex(security_key_hex)) if security_key_hex else None
             ),
             security_level=SecurityLevel(data.get("security_level", 0)),
             security_key_type=SecurityKeyType(data.get("security_key_type", 0)),

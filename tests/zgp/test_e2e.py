@@ -20,6 +20,7 @@ from zigpy.zcl.clusters.greenpower import (
 )
 import zigpy.zgp.types as zgptypes
 from zigpy.zgp.device import GPDevice
+from zigpy.zgp.events import CommandReceived, DeviceJoined, DeviceLeft
 from zigpy.zgp.types import (
     GP_CLUSTER_ID,
     GP_ENDPOINT,
@@ -87,7 +88,7 @@ def _make_packet(
     )
 
 
-async def test_commission_receive_command_decommission(app):
+async def test_commission_receive_command_decommission(app, gp_events):
     """Full lifecycle: commission a GPD, receive a command, then decommission."""
     gp = app.green_power
     source_id = 0xAABBCCDD
@@ -118,13 +119,13 @@ async def test_commission_receive_command_decommission(app):
     assert dev.device_id == 0x02
     assert dev.source_id == source_id
 
-    # gp_device_joined event should have fired
-    app.listener_event.assert_any_call("gp_device_joined", dev)
+    joined = [e for _, e in gp_events if isinstance(e, DeviceJoined)]
+    assert joined == [DeviceJoined(device=dev)]
 
     # GP Pairing should have been sent
     assert app.send_packet.call_count >= 1
     app.send_packet.reset_mock()
-    app.listener_event.reset_mock()
+    gp_events.clear()
 
     # --- Step 3: Receive a Toggle command ---
     await gp._dispatch_gp_command(
@@ -134,22 +135,21 @@ async def test_commission_receive_command_decommission(app):
         payload=b"",
     )
 
-    app.listener_event.assert_called_with(
-        "gp_command_received",
-        dev,
-        GPDCommandID.Toggle,
-        b"",
-    )
+    commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
+    assert commands == [
+        CommandReceived(device=dev, command_id=GPDCommandID.Toggle, payload=b"")
+    ]
 
     # Frame counter should be updated
     assert dev.frame_counter == 2
-    app.listener_event.reset_mock()
+    gp_events.clear()
 
     # --- Step 4: Decommission ---
     await gp._process_decommissioning(source_id)
 
     assert gp.get_device(source_id) is None
-    app.listener_event.assert_any_call("gp_device_left", dev)
+    left = [e for _, e in gp_events if isinstance(e, DeviceLeft)]
+    assert left == [DeviceLeft(device=dev)]
     # GP Pairing (remove) should be sent
     assert app.send_packet.call_count >= 1
 
@@ -194,7 +194,7 @@ async def test_commissioning_rejected_when_window_closed(app):
     assert gp.get_device(0xDEADBEEF) is None
 
 
-async def test_gp_notification_through_app(app):
+async def test_gp_notification_through_app(app, gp_events):
     """GP Notification routed through packet_received to GP manager."""
     gp = app.green_power
     source_id = 0x55667788
@@ -216,19 +216,16 @@ async def test_gp_notification_through_app(app):
     # Let the async task run
     await asyncio.sleep(0.05)
 
-    # gp_command_received should have been fired
-    app.listener_event.assert_any_call(
-        "gp_command_received",
-        dev,
-        GPDCommandID.Toggle,
-        b"",
-    )
+    commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
+    assert commands == [
+        CommandReceived(device=dev, command_id=GPDCommandID.Toggle, payload=b"")
+    ]
 
     # Frame counter should be updated
     assert dev.frame_counter == 1
 
 
-async def test_gp_packet_from_unknown_proxy(app):
+async def test_gp_packet_from_unknown_proxy(app, gp_events):
     """GP packets from unknown NWK addresses should still be processed."""
     gp = app.green_power
     source_id = 0x99887766
@@ -248,15 +245,13 @@ async def test_gp_packet_from_unknown_proxy(app):
 
     await asyncio.sleep(0.05)
 
-    app.listener_event.assert_any_call(
-        "gp_command_received",
-        dev,
-        GPDCommandID.On,
-        b"",
-    )
+    commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
+    assert commands == [
+        CommandReceived(device=dev, command_id=GPDCommandID.On, payload=b"")
+    ]
 
 
-async def test_replay_rejected(app):
+async def test_replay_rejected(app, gp_events):
     """Replayed frames should be silently dropped."""
     gp = app.green_power
     source_id = 0x12345678
@@ -267,26 +262,23 @@ async def test_replay_rejected(app):
     # Send with counter=11 (accepted)
     await gp._dispatch_gp_command(source_id, 11, GPDCommandID.Toggle, b"")
     assert dev.frame_counter == 11
-    app.listener_event.assert_called()
-    app.listener_event.reset_mock()
+    assert any(isinstance(e, CommandReceived) for _, e in gp_events)
+    gp_events.clear()
 
     # Send with counter=11 again (replay - rejected)
     await gp._dispatch_gp_command(source_id, 11, GPDCommandID.Toggle, b"")
-    # listener should NOT have been called for gp_command_received
-    for call in app.listener_event.call_args_list:
-        assert call[0][0] != "gp_command_received"
+    assert not any(isinstance(e, CommandReceived) for _, e in gp_events)
 
     # Send with counter=5 (old - rejected)
-    app.listener_event.reset_mock()
+    gp_events.clear()
     await gp._dispatch_gp_command(source_id, 5, GPDCommandID.Toggle, b"")
-    for call in app.listener_event.call_args_list:
-        assert call[0][0] != "gp_command_received"
+    assert not any(isinstance(e, CommandReceived) for _, e in gp_events)
 
     # Counter should still be 11
     assert dev.frame_counter == 11
 
 
-async def test_sequential_commands(app):
+async def test_sequential_commands(app, gp_events):
     """Sequential commands with increasing counters should all be accepted."""
     gp = app.green_power
     source_id = 0xAAAABBBB
@@ -294,19 +286,12 @@ async def test_sequential_commands(app):
     dev = GPDevice(source_id=source_id, device_id=0x02, frame_counter=0)
     gp.add_device(dev)
 
-    commands_received = []
-
-    def track_event(event_name, *args):
-        if event_name == "gp_command_received":
-            commands_received.append(args)
-
-    app.listener_event.side_effect = track_event
-
     # Send 5 sequential commands
     for i in range(1, 6):
         await gp._dispatch_gp_command(source_id, i, GPDCommandID.Toggle, b"")
 
-    assert len(commands_received) == 5
+    commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
+    assert len(commands) == 5
     assert dev.frame_counter == 5
 
 
@@ -401,13 +386,12 @@ def test_persist_and_restore(app):
     assert restored2.frame_counter == 100
 
 
-async def test_commission_then_operational_full_flow(app):
+async def test_commission_then_operational_full_flow(app, gp_events):
     """Commission the switch, then receive a button press."""
     gp = app.green_power
 
     await gp.permit_join(time_s=60)
     app.send_packet.reset_mock()
-    app.listener_event.reset_mock()
 
     with patch(
         "zigpy.zgp.manager.decrypt_security_key",
@@ -424,10 +408,11 @@ async def test_commission_then_operational_full_flow(app):
     assert dev.device_id == BJ6716U_EXPECTED.device_id
     assert bytes(dev.security_key) == _FAKE_DECRYPTED_KEY
     assert dev.frame_counter == BJ6716U_EXPECTED.outgoing_counter
-    app.listener_event.assert_any_call("gp_device_joined", dev)
+    joined = [e for _, e in gp_events if isinstance(e, DeviceJoined)]
+    assert joined == [DeviceJoined(device=dev)]
 
     # Feed the first captured operational frame (counter 0x1DED, cmd 0x68).
-    app.listener_event.reset_mock()
+    gp_events.clear()
     frame = BJ6716U_OPERATIONAL_FRAMES[0]
     await gp._dispatch_gp_command(
         source_id=BJ6716U_SOURCE_ID,
@@ -436,16 +421,15 @@ async def test_commission_then_operational_full_flow(app):
         payload=b"",
     )
 
-    app.listener_event.assert_any_call(
-        "gp_command_received",
-        dev,
-        frame.command_id,
-        b"",
-    )
+    commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
+    assert len(commands) == 1
+    assert commands[0].device is dev
+    assert commands[0].command_id == frame.command_id
+    assert commands[0].payload == b""
     assert dev.frame_counter == frame.frame_counter
 
 
-async def test_command_0x68_routing(app):
+async def test_command_0x68_routing(app, gp_events):
     """Every captured 0x68 frame reaches listeners in order."""
     gp = app.green_power
 
@@ -456,14 +440,6 @@ async def test_command_0x68_routing(app):
     )
     gp.add_device(dev)
 
-    received: list[int] = []
-
-    def track(event_name, *args):
-        if event_name == "gp_command_received":
-            received.append(args[1])  # command_id
-
-    app.listener_event.side_effect = track
-
     for frame in BJ6716U_OPERATIONAL_FRAMES:
         await gp._dispatch_gp_command(
             source_id=BJ6716U_SOURCE_ID,
@@ -472,5 +448,8 @@ async def test_command_0x68_routing(app):
             payload=b"",
         )
 
-    assert received == [0x68] * len(BJ6716U_OPERATIONAL_FRAMES)
+    commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
+    assert [int(c.command_id) for c in commands] == [0x68] * len(
+        BJ6716U_OPERATIONAL_FRAMES
+    )
     assert dev.frame_counter == BJ6716U_OPERATIONAL_FRAMES[-1].frame_counter
