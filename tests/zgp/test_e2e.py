@@ -116,7 +116,6 @@ async def test_commission_receive_command_decommission(app):
     assert dev is not None
     assert dev.device_id == 0x02
     assert dev.source_id == source_id
-    assert dev.model_identifier == "GreenPower_2"
 
     # gp_device_joined event should have fired
     app.listener_event.assert_any_call("gp_device_joined", dev)
@@ -178,7 +177,6 @@ async def test_commission_with_security(app):
     assert dev.device_id == 0x07
     assert bytes(dev.security_key) == security_key
     assert dev.security_level == SecurityLevel.Encrypted
-    assert dev.model_identifier == "GreenPower_7"
 
 
 async def test_commissioning_rejected_when_window_closed(app):

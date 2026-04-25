@@ -89,17 +89,6 @@ def test_ieee_property():
     assert dev.ieee == expected
 
 
-def test_model_identifier():
-    dev = GPDevice(source_id=0x12345678, device_id=0x02)
-    assert dev.model_identifier == "GreenPower_2"
-
-    dev2 = GPDevice(source_id=0x12345678, device_id=0x07)
-    assert dev2.model_identifier == "GreenPower_7"
-
-    dev3 = GPDevice(source_id=0x12345678, device_id=254)
-    assert dev3.model_identifier == "GreenPower_254"
-
-
 def test_update_frame_counter_accepts_higher():
     dev = GPDevice(source_id=0x12345678, device_id=0x02, frame_counter=10)
     assert dev.update_frame_counter(11) is True
@@ -264,5 +253,4 @@ def test_repr():
     assert r.startswith("<GPDevice")
     assert r.endswith(">")
     assert "12345678" in r.upper()
-    assert "GreenPower_2" in r
     assert "Encrypted" in r

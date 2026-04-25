@@ -120,14 +120,6 @@ class GPDevice:
         """Synthetic IEEE address derived from sourceID."""
         return source_id_to_ieee(self.source_id)
 
-    @property
-    def model_identifier(self) -> str:
-        """Return a model string for quirks matching.
-
-        Pattern matches zigbee2mqtt convention: 'GreenPower_{device_id_value}'.
-        """
-        return f"GreenPower_{self.device_id}"
-
     def update_frame_counter(self, counter: int) -> bool:
         """Update frame counter with replay protection.
 
@@ -145,9 +137,8 @@ class GPDevice:
 
         """
         if counter <= self.frame_counter:
-            LOGGER.warning(
-                "GP device 0x%08X: frame counter %d <= stored %d, "
-                "possible replay attack",
+            LOGGER.debug(
+                "GP device 0x%08X: dropping frame counter %d <= stored %d",
                 self.source_id,
                 counter,
                 self.frame_counter,
@@ -232,7 +223,6 @@ class GPDevice:
             f"<{type(self).__name__}"
             f" source_id=0x{self.source_id:08X}"
             f" device_id=0x{self.device_id:02X}"
-            f" model={self.model_identifier!r}"
             f" security={self.security_level.name}"
             f">"
         )
