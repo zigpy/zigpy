@@ -105,7 +105,7 @@ def encrypt_security_key(
     nonce = build_nonce(source_id, source_id)
 
     # AES-CCM with 4-byte tag (MIC)
-    aesccm = AESCCM(link_key, tag_length=4)
+    aesccm = AESCCM(bytes(link_key), tag_length=4)
     ciphertext_and_mic = aesccm.encrypt(nonce, security_key, associated_data=None)
 
     # Split into encrypted key (16 bytes) and MIC (4 bytes)
@@ -144,7 +144,7 @@ def decrypt_security_key(
         raise ValueError(f"Link key must be 16 bytes, got {len(link_key)}")
 
     nonce = build_nonce(source_id, source_id)
-    aesccm = AESCCM(link_key, tag_length=4)
+    aesccm = AESCCM(bytes(link_key), tag_length=4)
 
     return aesccm.decrypt(nonce, encrypted_key + mic, associated_data=None)
 

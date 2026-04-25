@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import zigpy.types as t
 from zigpy.types import basic
 
 __all__ = [
@@ -27,28 +28,10 @@ GP_CLUSTER_ID: int = 0x0021
 # Green Power group ID used for groupcast forwarding
 GP_GROUP_ID: int = 0x0B84
 
-# Default ZigBee Green Power shared key (ZigBeeAlliance09 TC link key)
-# Used as the default key for encrypting/decrypting GP security keys
-DEFAULT_GP_LINK_KEY: bytes = bytes(
-    [
-        0x5A,
-        0x69,
-        0x67,
-        0x42,
-        0x65,
-        0x65,
-        0x41,
-        0x6C,
-        0x6C,
-        0x69,
-        0x61,
-        0x6E,
-        0x63,
-        0x65,
-        0x30,
-        0x39,
-    ]
-)
+# Default ZigBee Green Power shared key ("ZigBeeAlliance09" TC link key).
+# Used to unwrap GP security keys that a GPD provides during commissioning
+# when no out-of-band key was pre-provisioned.
+DEFAULT_GP_LINK_KEY = t.KeyData(b"ZigBeeAlliance09")
 
 
 class DeviceID(basic.uint32_t, repr="hex"):

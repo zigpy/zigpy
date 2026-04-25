@@ -381,7 +381,7 @@ def test_empty_payload_encrypted():
 
 def test_default_link_key_is_zigbee_alliance():
     """Default GP link key should be 'ZigBeeAlliance09' in ASCII."""
-    assert DEFAULT_GP_LINK_KEY == b"ZigBeeAlliance09"
+    assert bytes(DEFAULT_GP_LINK_KEY) == b"ZigBeeAlliance09"
     assert len(DEFAULT_GP_LINK_KEY) == 16
 
 

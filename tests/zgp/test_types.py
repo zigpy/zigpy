@@ -32,7 +32,7 @@ def test_gp_group_id():
 
 
 def test_default_link_key():
-    assert DEFAULT_GP_LINK_KEY == b"ZigBeeAlliance09"
+    assert bytes(DEFAULT_GP_LINK_KEY) == b"ZigBeeAlliance09"
     assert len(DEFAULT_GP_LINK_KEY) == 16
 
 
