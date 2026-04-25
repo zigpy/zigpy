@@ -174,5 +174,10 @@ def test_exit_modes():
 
 
 def test_combined_exit_modes():
-    assert ProxyCommissioningModeExitMode.OnExpireOrFirstPairing == 0b011
-    assert ProxyCommissioningModeExitMode.OnExpireOrExplicitExit == 0b101
+    """Flags compose via bitwise OR since the type is a bitmap."""
+    on_expire = ProxyCommissioningModeExitMode.OnExpire
+    on_first = ProxyCommissioningModeExitMode.OnFirstPairing
+    on_explicit = ProxyCommissioningModeExitMode.OnExplicitExit
+
+    assert (on_expire | on_first) == 0b011
+    assert (on_expire | on_explicit) == 0b101
