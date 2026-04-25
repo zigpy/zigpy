@@ -86,20 +86,45 @@ class GreenPowerManager:
         self._devices: dict[int, GPDevice] = {}  # sourceID -> GPDevice
         self._commissioning_window_end: float = 0
         self._commissioning_task: asyncio.Task[None] | None = None
+        # Background tasks spawned from incoming frames; tracked so shutdown
+        # can cancel everything instead of leaving work attached to the app.
+        self._tasks: set[asyncio.Task[Any]] = set()
         self.proxy_table: GPProxyTable = GPProxyTable()
         # Duplicate filtering table: (source_id, frame_counter) -> monotonic timestamp
         self._dedup_cache: dict[tuple[int, int], float] = {}
 
-    async def shutdown(self) -> None:
-        """Clean up GP manager state.
+    def _create_task(
+        self, coro: Any, name: str | None = None
+    ) -> asyncio.Task[Any]:
+        """Create a task owned by the manager.
 
-        Cancels any running commissioning timer. Should be called
-        during ControllerApplication shutdown.
+        The task is stored until completion so :meth:`shutdown` can
+        cancel pending work. This keeps the GP lifecycle self-contained
+        rather than leaking tasks into the application.
+        """
+        task = asyncio.get_running_loop().create_task(coro, name=name)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+        return task
+
+    async def shutdown(self) -> None:
+        """Cancel pending work and reset state.
+
+        Called during :meth:`ControllerApplication.shutdown`. All
+        background tasks spawned from incoming GP frames and the
+        commissioning-window timer are cancelled here.
         """
         if self._commissioning_task is not None:
             self._commissioning_task.cancel()
             self._commissioning_task = None
         self._commissioning_window_end = 0
+
+        pending = list(self._tasks)
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        self._tasks.clear()
 
     @property
     def devices(self) -> dict[int, GPDevice]:
@@ -198,7 +223,7 @@ class GreenPowerManager:
             assert isinstance(packet.src.address, t.NWK)
             proxy_nwk = int(packet.src.address)
 
-        self._application.create_task(
+        self._create_task(
             self._process_zcl_command(
                 hdr.command_id, zcl_payload, is_server_to_client, proxy_nwk
             ),
@@ -620,9 +645,9 @@ class GreenPowerManager:
         if self._commissioning_task is not None:
             self._commissioning_task.cancel()
 
-        self._commissioning_task = self._application.create_task(
+        self._commissioning_task = self._create_task(
             self._commissioning_window_timer(time_s),
-            "gp_commissioning_window_timer",
+            name="gp_commissioning_window_timer",
         )
 
     async def _commissioning_window_timer(self, time_s: int) -> None:

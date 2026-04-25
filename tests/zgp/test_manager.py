@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import struct
 
 from zigpy.profiles import zgp as zgp_profile
@@ -857,6 +858,21 @@ async def test_shutdown_cancels_commissioning(manager):
 
     assert not manager.is_commissioning
     assert manager._commissioning_task is None
+
+
+async def test_shutdown_cancels_owned_tasks(manager):
+    """Shutdown must cancel tasks spawned by ``_create_task``."""
+
+    async def never_finishes() -> None:
+        await asyncio.Event().wait()
+
+    task = manager._create_task(never_finishes(), name="stuck")
+    assert task in manager._tasks
+
+    await manager.shutdown()
+
+    assert task.cancelled()
+    assert not manager._tasks
 
 
 async def test_dedup_in_notification_flow(app, manager):
