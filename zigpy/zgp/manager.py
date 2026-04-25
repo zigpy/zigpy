@@ -17,6 +17,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from zigpy.profiles import zgp as zgp_profile
+from zigpy.datastructures import Debouncer
 import zigpy.types as t
 from zigpy.zcl import foundation
 from zigpy.zcl.clusters.greenpower import (
@@ -77,9 +78,8 @@ class GreenPowerManager:
       was received from a commissioned device
     """
 
-    # Duplicate filtering per ZGP spec A.3.6.1.2
+    # Duplicate filtering window per ZGP spec A.3.6.1.2
     DEDUP_TIMEOUT_S: float = 2.0
-    DEDUP_MAX_ENTRIES: int = 64
 
     def __init__(self, application: ControllerApplication) -> None:
         self._application = application
@@ -90,8 +90,10 @@ class GreenPowerManager:
         # can cancel everything instead of leaving work attached to the app.
         self._tasks: set[asyncio.Task[Any]] = set()
         self.proxy_table: GPProxyTable = GPProxyTable()
-        # Duplicate filtering table: (source_id, frame_counter) -> monotonic timestamp
-        self._dedup_cache: dict[tuple[int, int], float] = {}
+        # Duplicate filtering via zigpy's shared Debouncer implementation
+        # (spec A.3.6.1.2): same (sourceID, frame_counter) key seen again
+        # inside DEDUP_TIMEOUT_S is a retransmission from a different proxy.
+        self._dedup_debouncer: Debouncer = Debouncer()
 
     def _create_task(
         self, coro: Any, name: str | None = None
@@ -143,34 +145,21 @@ class GreenPowerManager:
     def _is_duplicate(self, source_id: int, frame_counter: int) -> bool:
         """Check if a GP notification is a duplicate from another proxy.
 
-        Per ZGP spec A.3.6.1.2, the sink maintains a duplicate filtering
-        table indexed by (sourceID, frameCounter) with a 2-second timeout.
-        Multiple proxies forwarding the same GPD frame is normal behavior
-        and should be silently deduplicated, not treated as a replay attack.
-
-        The cache is bounded to DEDUP_MAX_ENTRIES to prevent unbounded
-        memory growth under heavy GP traffic.
+        Per ZGP spec A.3.6.1.2 the sink drops any ``(sourceID,
+        frame_counter)`` pair seen again within ``DEDUP_TIMEOUT_S``.
+        Multiple proxies forwarding the same GPDF is normal behaviour
+        and must not be treated as a replay attack.
         """
-        key = (source_id, frame_counter)
-        now = time.monotonic()
-
-        if key in self._dedup_cache:
-            if now - self._dedup_cache[key] < self.DEDUP_TIMEOUT_S:
-                LOGGER.debug(
-                    "GP dedup: dropping duplicate from 0x%08X (fc=%d)",
-                    source_id,
-                    frame_counter,
-                )
-                return True
-            # Entry expired, will be overwritten below
-
-        # Purge oldest entries if cache is full
-        if len(self._dedup_cache) >= self.DEDUP_MAX_ENTRIES:
-            oldest_key = min(self._dedup_cache, key=lambda k: self._dedup_cache[k])
-            del self._dedup_cache[oldest_key]
-
-        self._dedup_cache[key] = now
-        return False
+        filtered = self._dedup_debouncer.filter(
+            (source_id, frame_counter), self.DEDUP_TIMEOUT_S
+        )
+        if filtered:
+            LOGGER.debug(
+                "GP dedup: dropping duplicate from 0x%08X (fc=%d)",
+                source_id,
+                frame_counter,
+            )
+        return filtered
 
     def add_device(self, device: GPDevice) -> None:
         """Add or update a GP device in the registry."""

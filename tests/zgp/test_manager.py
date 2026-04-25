@@ -214,36 +214,36 @@ async def test_dispatch_increments_counter(manager):
     assert dev.frame_counter == 42
 
 
-def test_dupplication_first_notification_passes(manager):
+async def test_dupplication_first_notification_passes(manager):
     """First occurrence of (sourceID, frameCounter) should pass."""
     assert not manager._is_duplicate(0x12345678, 1)
 
 
-def test_dupplication_second_notification_blocked(manager):
+async def test_dupplication_second_notification_blocked(manager):
     """Same (sourceID, frameCounter) within timeout should be blocked."""
     assert not manager._is_duplicate(0x12345678, 1)
     assert manager._is_duplicate(0x12345678, 1)
 
 
-def test_dupplication_different_source_id_passes(manager):
+async def test_dupplication_different_source_id_passes(manager):
     """Different sourceID with same counter should pass."""
     assert not manager._is_duplicate(0x11111111, 1)
     assert not manager._is_duplicate(0x22222222, 1)
 
 
-def test_dupplication_different_counter_passes(manager):
+async def test_dupplication_different_counter_passes(manager):
     """Same sourceID with different counter should pass."""
     assert not manager._is_duplicate(0x12345678, 1)
     assert not manager._is_duplicate(0x12345678, 2)
 
 
-def test_dupplication_expired_entry_passes(manager):
+async def test_dupplication_expired_entry_passes(manager):
     """Entries older than DEDUP_TIMEOUT_S should be purged."""
+    debouncer = manager._dedup_debouncer
     manager._is_duplicate(0x12345678, 1)
 
-    # Manually expire the entry
-    for key in manager._dedup_cache:
-        manager._dedup_cache[key] -= manager.DEDUP_TIMEOUT_S + 1
+    # Fast-forward the debouncer's clock past the dedup window.
+    debouncer.clean(now=debouncer._loop.time() + manager.DEDUP_TIMEOUT_S + 1)
 
     # Should pass again after expiry
     assert not manager._is_duplicate(0x12345678, 1)
@@ -1137,23 +1137,6 @@ async def test_notification_routes_success_report(app, manager):
 
     # No device created, no command dispatched
     app.listener_event.assert_not_called()
-
-
-def test_dedup_cache_evicts_oldest_when_full(manager):
-    """When cache is full, oldest entry is evicted to accept new one."""
-    # Fill the cache to capacity
-    for i in range(manager.DEDUP_MAX_ENTRIES):
-        assert not manager._is_duplicate(0x12345678, i + 1)
-
-    assert len(manager._dedup_cache) == manager.DEDUP_MAX_ENTRIES
-
-    # One more should evict the oldest (sourceID, fc=1)
-    assert not manager._is_duplicate(0x12345678, 9999)
-    assert len(manager._dedup_cache) == manager.DEDUP_MAX_ENTRIES
-
-    # The evicted entry (fc=1) should no longer be in cache
-    # so it would pass as "not duplicate" if re-submitted
-    assert not manager._is_duplicate(0x12345678, 1)
 
 
 async def test_proxy_commissioning_mode_send_failure(app, manager):
