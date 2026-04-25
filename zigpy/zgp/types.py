@@ -110,6 +110,10 @@ class GPDCommandID(basic.enum8):
     # Application Description
     ApplicationDescription = 0xE4
 
+    # Commands sent to the GPD (sink → GPD)
+    CommissioningReply = 0xF0
+    ChannelConfiguration = 0xF3
+
     # Any GPD command
     AnyCommand = 0xFF
 

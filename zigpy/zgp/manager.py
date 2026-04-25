@@ -213,32 +213,25 @@ class GreenPowerManager:
         is_server_to_client: bool,
         proxy_nwk: int | None,
     ) -> None:
-        """Process a parsed ZCL command on the GP cluster.
+        """Dispatch a parsed ZCL command on the GP cluster.
 
-        Server commands (from proxy to sink/coordinator):
-        - 0x00: GP Notification
-        - 0x01: GP Pairing Search
-        - 0x04: GP Commissioning Notification
-
-        Client commands (from sink to proxies):
-        - 0x00: GP Notification Response
-        - 0x01: GP Pairing
-        - 0x02: GP Proxy Commissioning Mode
-        - 0x06: GP Response
+        Only server-to-sink commands are consumed here. Client commands
+        (sink → proxy) are sent by this manager, never received.
         """
-        if not is_server_to_client:
-            # Server commands (proxy → sink)
-            if command_id == 0x00:
-                await self._handle_gp_notification(payload, proxy_nwk)
-            elif command_id == 0x04:
-                await self._handle_commissioning_notification(payload, proxy_nwk)
-            else:
-                LOGGER.debug("Unhandled GP server command: 0x%02X", command_id)
-        else:
+        if is_server_to_client:
             LOGGER.debug(
                 "Received GP client command 0x%02X (unexpected direction)",
                 command_id,
             )
+            return
+
+        server_cmds = GreenPowerProxy.ServerCommandDefs
+        if command_id == server_cmds.notification.id:
+            await self._handle_gp_notification(payload, proxy_nwk)
+        elif command_id == server_cmds.commissioning_notification.id:
+            await self._handle_commissioning_notification(payload, proxy_nwk)
+        else:
+            LOGGER.debug("Unhandled GP server command: 0x%02X", command_id)
 
     async def _handle_gp_notification(
         self, payload: bytes, proxy_nwk: int | None
@@ -521,7 +514,7 @@ class GreenPowerManager:
 
         await self._send_gp_response(
             source_id=source_id,
-            gpd_command_id=0xF3,  # GP Channel Configuration
+            gpd_command_id=GPDCommandID.ChannelConfiguration,
             gpd_command_payload=bytes([channel_config_byte]),
             proxy_nwk=proxy_nwk,
         )
@@ -680,7 +673,7 @@ class GreenPowerManager:
 
         try:
             frame_data = self._build_zcl_frame(
-                command_id=0x02,  # proxy_commissioning_mode
+                command_id=GreenPowerProxy.ClientCommandDefs.proxy_commissioning_mode.id,
                 is_client=True,
                 payload=ProxyCommissioningModeSchema(**schema_kwargs).serialize(),
             )
@@ -783,7 +776,7 @@ class GreenPowerManager:
 
         try:
             frame_data = self._build_zcl_frame(
-                command_id=0x01,  # pairing
+                command_id=GreenPowerProxy.ClientCommandDefs.pairing.id,
                 is_client=True,
                 payload=PairingSchema(**schema_kwargs).serialize(),
             )
@@ -853,7 +846,7 @@ class GreenPowerManager:
 
         try:
             frame_data = self._build_zcl_frame(
-                command_id=0x06,  # GP Response
+                command_id=GreenPowerProxy.ClientCommandDefs.response.id,
                 is_client=True,
                 payload=response.serialize(),
             )
@@ -913,7 +906,7 @@ class GreenPowerManager:
 
         await self._send_gp_response(
             source_id=source_id,
-            gpd_command_id=0xF0,  # GP Commissioning Reply
+            gpd_command_id=GPDCommandID.CommissioningReply,
             gpd_command_payload=commissioning_reply_payload,
             proxy_nwk=proxy_nwk,
         )
