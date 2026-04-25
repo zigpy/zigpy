@@ -16,6 +16,7 @@ import struct
 import time
 from typing import TYPE_CHECKING, Any
 
+from zigpy.profiles import zgp as zgp_profile
 import zigpy.types as t
 from zigpy.zcl import foundation
 from zigpy.zcl.clusters.greenpower import (
@@ -691,7 +692,7 @@ class GreenPowerManager:
                 ),
                 dst_ep=t.uint8_t(GP_ENDPOINT),
                 src_ep=t.uint8_t(GP_ENDPOINT),
-                profile_id=t.uint16_t(0xA1E0),  # GP profile
+                profile_id=t.uint16_t(zgp_profile.PROFILE_ID),  # GP profile
                 cluster_id=t.uint16_t(GP_CLUSTER_ID),
                 data=t.SerializableBytes(frame_data),
             )
@@ -794,7 +795,7 @@ class GreenPowerManager:
                 ),
                 dst_ep=t.uint8_t(GP_ENDPOINT),
                 src_ep=t.uint8_t(GP_ENDPOINT),
-                profile_id=t.uint16_t(0xA1E0),
+                profile_id=t.uint16_t(zgp_profile.PROFILE_ID),
                 cluster_id=t.uint16_t(GP_CLUSTER_ID),
                 data=t.SerializableBytes(frame_data),
             )
@@ -864,7 +865,7 @@ class GreenPowerManager:
                 ),
                 dst_ep=t.uint8_t(GP_ENDPOINT),
                 src_ep=t.uint8_t(GP_ENDPOINT),
-                profile_id=t.uint16_t(0xA1E0),
+                profile_id=t.uint16_t(zgp_profile.PROFILE_ID),
                 cluster_id=t.uint16_t(GP_CLUSTER_ID),
                 data=t.SerializableBytes(frame_data),
             )

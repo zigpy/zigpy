@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 import asyncio
 
+from zigpy.profiles import zgp as zgp_profile
 import zigpy.types as t
 from zigpy.zcl.clusters.greenpower import (
     NotificationOptions,
@@ -80,7 +81,7 @@ def _make_packet(
         src_ep=t.uint8_t(GP_ENDPOINT),
         dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=t.NWK(0x0000)),
         dst_ep=t.uint8_t(GP_ENDPOINT),
-        profile_id=t.uint16_t(0xA1E0),
+        profile_id=t.uint16_t(zgp_profile.PROFILE_ID),
         cluster_id=t.uint16_t(GP_CLUSTER_ID),
         data=t.SerializableBytes(zcl_data),
     )

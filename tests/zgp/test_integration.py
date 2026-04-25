@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from zigpy.profiles import zgp as zgp_profile
 import zigpy.types as t
 from zigpy.zgp.manager import GreenPowerManager
 from zigpy.zgp.types import GP_CLUSTER_ID, GP_ENDPOINT
@@ -35,7 +36,7 @@ async def test_packet_received_routes_gp_to_manager(app):
         src_ep=t.uint8_t(GP_ENDPOINT),
         dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=t.NWK(0x0000)),
         dst_ep=t.uint8_t(GP_ENDPOINT),
-        profile_id=t.uint16_t(0xA1E0),
+        profile_id=t.uint16_t(zgp_profile.PROFILE_ID),
         cluster_id=t.uint16_t(GP_CLUSTER_ID),
         data=t.SerializableBytes(b"\x01\x00\x00" + b"\x00" * 20),
     )
@@ -78,7 +79,7 @@ async def test_gp_packet_from_unknown_device(app):
         src_ep=t.uint8_t(GP_ENDPOINT),
         dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=t.NWK(0x0000)),
         dst_ep=t.uint8_t(GP_ENDPOINT),
-        profile_id=t.uint16_t(0xA1E0),
+        profile_id=t.uint16_t(zgp_profile.PROFILE_ID),
         cluster_id=t.uint16_t(GP_CLUSTER_ID),
         data=t.SerializableBytes(b"\x01\x00\x00" + b"\x00" * 10),
     )

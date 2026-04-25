@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import struct
 
+from zigpy.profiles import zgp as zgp_profile
 from zigpy.zcl.clusters.greenpower import NotificationOptions, NotificationSchema
 import zigpy.types as t
 from zigpy.zgp.crypto import encrypt_payload, encrypt_security_key
@@ -62,7 +63,7 @@ def _make_gp_notification_packet(
         src_ep=t.uint8_t(GP_ENDPOINT),
         dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=t.NWK(0x0000)),
         dst_ep=t.uint8_t(GP_ENDPOINT),
-        profile_id=t.uint16_t(0xA1E0),
+        profile_id=t.uint16_t(zgp_profile.PROFILE_ID),
         cluster_id=t.uint16_t(GP_CLUSTER_ID),
         data=t.SerializableBytes(zcl_frame),
     )
@@ -728,7 +729,7 @@ async def test_gp_response_packet_structure(app, manager):
     assert sent.dst_ep == GP_ENDPOINT
     assert sent.src_ep == GP_ENDPOINT
     assert sent.cluster_id == GP_CLUSTER_ID
-    assert sent.profile_id == 0xA1E0
+    assert sent.profile_id == zgp_profile.PROFILE_ID
 
 
 async def test_gp_response_without_proxy(app, manager):
