@@ -26,7 +26,7 @@ from zigpy.zgp.types import (
     SecurityLevel,
 )
 
-from tests.conftest import app, make_app
+from tests.conftest import make_app
 from tests.zgp.fixtures.busch_jaeger_6716u import (
     BJ6716U_COMMISSIONING_PAYLOAD,
     BJ6716U_EXPECTED,
@@ -86,7 +86,7 @@ def _make_packet(
     )
 
 
-async def test_commission_receive_command_decommission():
+async def test_commission_receive_command_decommission(app):
     """Full lifecycle: commission a GPD, receive a command, then decommission."""
     gp = app.green_power
     source_id = 0xAABBCCDD
@@ -154,7 +154,7 @@ async def test_commission_receive_command_decommission():
     assert app.send_packet.call_count >= 1
 
 
-async def test_commission_with_security():
+async def test_commission_with_security(app):
     """Commissioning with unencrypted security key."""
     gp = app.green_power
     source_id = 0x11223344
@@ -181,7 +181,7 @@ async def test_commission_with_security():
     assert dev.model_identifier == "GreenPower_7"
 
 
-async def test_commissioning_rejected_when_window_closed():
+async def test_commissioning_rejected_when_window_closed(app):
     """Commissioning should be rejected if window is not open."""
     gp = app.green_power
     assert not gp.is_commissioning
@@ -195,7 +195,7 @@ async def test_commissioning_rejected_when_window_closed():
     assert gp.get_device(0xDEADBEEF) is None
 
 
-async def test_gp_notification_through_app():
+async def test_gp_notification_through_app(app):
     """GP Notification routed through packet_received to GP manager."""
     gp = app.green_power
     source_id = 0x55667788
@@ -229,7 +229,7 @@ async def test_gp_notification_through_app():
     assert dev.frame_counter == 1
 
 
-async def test_gp_packet_from_unknown_proxy():
+async def test_gp_packet_from_unknown_proxy(app):
     """GP packets from unknown NWK addresses should still be processed."""
     gp = app.green_power
     source_id = 0x99887766
@@ -257,7 +257,7 @@ async def test_gp_packet_from_unknown_proxy():
     )
 
 
-async def test_replay_rejected():
+async def test_replay_rejected(app):
     """Replayed frames should be silently dropped."""
     gp = app.green_power
     source_id = 0x12345678
@@ -287,7 +287,7 @@ async def test_replay_rejected():
     assert dev.frame_counter == 11
 
 
-async def test_sequential_commands():
+async def test_sequential_commands(app):
     """Sequential commands with increasing counters should all be accepted."""
     gp = app.green_power
     source_id = 0xAAAABBBB
@@ -311,7 +311,7 @@ async def test_sequential_commands():
     assert dev.frame_counter == 5
 
 
-async def test_proxy_tracked_on_notification():
+async def test_proxy_tracked_on_notification(app):
     """Proxy should be tracked when GP Notification is received."""
     gp = app.green_power
     source_id = 0xAABBCCDD
@@ -336,7 +336,7 @@ async def test_proxy_tracked_on_notification():
     assert proxy_nwk in proxies
 
 
-async def test_proxy_table_cleaned_on_decommission():
+async def test_proxy_table_cleaned_on_decommission(app):
     """Proxy table entries should be removed when device is decommissioned."""
     gp = app.green_power
     source_id = 0x55667788
@@ -355,7 +355,7 @@ async def test_proxy_table_cleaned_on_decommission():
     assert len(gp.proxy_table) == 0
 
 
-def test_persist_and_restore():
+def test_persist_and_restore(app):
     """Devices should survive a save/load cycle."""
     gp = app.green_power
 
@@ -402,7 +402,7 @@ def test_persist_and_restore():
     assert restored2.frame_counter == 100
 
 
-async def test_commission_then_operational_full_flow():
+async def test_commission_then_operational_full_flow(app):
     """Commission the switch, then receive a button press."""
     gp = app.green_power
 
@@ -446,7 +446,7 @@ async def test_commission_then_operational_full_flow():
     assert dev.frame_counter == frame.frame_counter
 
 
-async def test_command_0x68_routing():
+async def test_command_0x68_routing(app):
     """Every captured 0x68 frame reaches listeners in order."""
     gp = app.green_power
 

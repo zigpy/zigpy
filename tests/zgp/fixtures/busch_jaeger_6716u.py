@@ -31,17 +31,17 @@ BJ6716U_SOURCE_ID: int = 0x0171F886
 #   DeviceID(1) + Options(1) + ExtOptions(1) + SecurityKey(16) + KeyMIC(4)
 #   + OutgoingCounter(4) + AppInfo(1) + NumGPDCommands(1) + GPDCommands(17)
 BJ6716U_COMMISSIONING_PAYLOAD: bytes = bytes.fromhex(
-    "02"                                  # DeviceID = 0x02 (Generic 2-state switch)
-    "c5"                                  # Options = 0xC5
-    "f2"                                  # ExtOptions = 0xF2
-    "1ce9ae2f9e4f85f15de37c1ccbd94387"    # SecurityKey (encrypted, 16 bytes)
-    "0013911a"                            # GPDKeyMIC (little-endian uint32)
-    "ec1d0000"                            # OutgoingCounter = 0x00001dec (LE)
-    "04"                                  # AppInfo = 0x04 (GPDCommandsPresent)
-    "11"                                  # NumGPDCommands = 17
-    "1011121314151617"                    # Commands 0x10..0x17 (RecallScene 0-7)
-    "22"                                  # Command 0x22 (Toggle)
-    "6062636465666768"                    # Commands 0x60..0x68 (Press/Release variants)
+    "02"  # DeviceID = 0x02 (Generic 2-state switch)
+    "c5"  # Options = 0xC5
+    "f2"  # ExtOptions = 0xF2
+    "1ce9ae2f9e4f85f15de37c1ccbd94387"  # SecurityKey (encrypted, 16 bytes)
+    "0013911a"  # GPDKeyMIC (little-endian uint32)
+    "ec1d0000"  # OutgoingCounter = 0x00001dec (LE)
+    "04"  # AppInfo = 0x04 (GPDCommandsPresent)
+    "11"  # NumGPDCommands = 17
+    "1011121314151617"  # Commands 0x10..0x17 (RecallScene 0-7)
+    "22"  # Command 0x22 (Toggle)
+    "6062636465666768"  # Commands 0x60..0x68 (Press/Release variants)
 )
 
 
@@ -91,8 +91,22 @@ BJ6716U_EXPECTED: ExpectedCommissioning = ExpectedCommissioning(
     outgoing_counter=0x00001DEC,
     app_info_raw=0x04,
     gpd_commands=[
-        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,  # RecallScene 0-7
-        0x22,                                              # Toggle
-        0x60, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68,   # Press/Release
+        0x10,
+        0x11,
+        0x12,
+        0x13,
+        0x14,
+        0x15,
+        0x16,
+        0x17,  # RecallScene 0-7
+        0x22,  # Toggle
+        0x60,
+        0x62,
+        0x63,
+        0x64,
+        0x65,
+        0x66,
+        0x67,
+        0x68,  # Press/Release
     ],
 )

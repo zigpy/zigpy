@@ -372,9 +372,7 @@ def test_empty_payload_encrypted():
     source_id = 0x12345678
     key = bytes(range(16))
 
-    encrypted, mic = encrypt_payload(
-        source_id, 0, key, b"", SecurityLevel.Encrypted
-    )
+    encrypted, mic = encrypt_payload(source_id, 0, key, b"", SecurityLevel.Encrypted)
     decrypted = decrypt_payload(
         source_id, 0, key, encrypted, mic, SecurityLevel.Encrypted
     )

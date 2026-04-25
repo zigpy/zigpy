@@ -246,9 +246,7 @@ def test_with_cluster_list():
 
     data = bytearray([0x02, 0x04, 0x08])
     # length byte: lower nibble = num_server, upper = num_client
-    data.append(
-        (len(server_clusters) & 0x0F) | ((len(client_clusters) & 0x0F) << 4)
-    )
+    data.append((len(server_clusters) & 0x0F) | ((len(client_clusters) & 0x0F) << 4))
     for c in server_clusters:
         data.extend(struct.pack("<H", c))
     for c in client_clusters:
@@ -288,9 +286,7 @@ def test_full_commissioning_payload():
     data.extend(struct.pack("<H", model_id))
     data.append(len(commands))
     data.extend(commands)
-    length_byte = (len(server_clusters) & 0x0F) | (
-        (len(client_clusters) & 0x0F) << 4
-    )
+    length_byte = (len(server_clusters) & 0x0F) | ((len(client_clusters) & 0x0F) << 4)
     data.append(length_byte)
     for c in server_clusters:
         data.extend(struct.pack("<H", c))

@@ -2,32 +2,23 @@
 
 from __future__ import annotations
 
+import struct
 
-from tests.async_mock import AsyncMock, MagicMock
-
-from tests.conftest import app
-
-import pytest
-
+from zigpy.zcl.clusters.greenpower import NotificationOptions, NotificationSchema
 import zigpy.types as t
-
+from zigpy.zgp.crypto import encrypt_payload, encrypt_security_key
 from zigpy.zgp.device import GPDevice
 from zigpy.zgp.manager import GreenPowerManager
+import zigpy.zgp.types as zgptypes
 from zigpy.zgp.types import (
-    NotificationOptions,
-    NotificationSchema,
     GP_CLUSTER_ID,
     GP_ENDPOINT,
     GPDCommandID,
     SecurityKeyType,
     SecurityLevel,
 )
-import zigpy.zgp.types as zgptypes
 
-
-@pytest.fixture
-def manager():
-    return GreenPowerManager(app)
+from tests.async_mock import AsyncMock, MagicMock
 
 
 def _make_gp_notification_packet(
@@ -77,19 +68,19 @@ def _make_gp_notification_packet(
     )
 
 
-def test_gp_manager_creation():
+def test_gp_manager_creation(manager):
     assert manager.devices == {}
     assert not manager.is_commissioning
 
 
-def test_gp_manager_add_device():
+def test_gp_manager_add_device(manager):
     dev = GPDevice(source_id=0x12345678, device_id=0x02)
     manager.add_device(dev)
     assert manager.get_device(0x12345678) is dev
     assert len(manager.devices) == 1
 
 
-def test_gp_manager_remove_device():
+def test_gp_manager_remove_device(manager):
     dev = GPDevice(source_id=0x12345678, device_id=0x02)
     manager.add_device(dev)
     removed = manager.remove_device(0x12345678)
@@ -97,16 +88,16 @@ def test_gp_manager_remove_device():
     assert manager.get_device(0x12345678) is None
 
 
-def test_gp_manager_remove_nonexistent_device():
+def test_gp_manager_remove_nonexistent_device(manager):
     removed = manager.remove_device(0xDEADBEEF)
     assert removed is None
 
 
-def test_gp_manager_get_device_nonexistent():
+def test_gp_manager_get_device_nonexistent(manager):
     assert manager.get_device(0xDEADBEEF) is None
 
 
-def test_rejects_non_gp_packet():
+def test_rejects_non_gp_packet(manager):
     """Non-GP packets should be rejected."""
     packet = t.ZigbeePacket(
         src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=t.NWK(0x1234)),
@@ -118,7 +109,7 @@ def test_rejects_non_gp_packet():
     assert manager.handle_packet(packet) is False
 
 
-def test_rejects_wrong_cluster():
+def test_rejects_wrong_cluster(manager):
     packet = t.ZigbeePacket(
         src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=t.NWK(0x1234)),
         dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=t.NWK(0x0000)),
@@ -129,7 +120,7 @@ def test_rejects_wrong_cluster():
     assert manager.handle_packet(packet) is False
 
 
-def test_rejects_too_short_data():
+def test_rejects_too_short_data(manager):
     packet = t.ZigbeePacket(
         src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=t.NWK(0x1234)),
         dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=t.NWK(0x0000)),
@@ -140,7 +131,7 @@ def test_rejects_too_short_data():
     assert manager.handle_packet(packet) is False
 
 
-def test_rejects_non_cluster_specific():
+def test_rejects_non_cluster_specific(manager):
     packet = t.ZigbeePacket(
         src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=t.NWK(0x1234)),
         dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=t.NWK(0x0000)),
@@ -151,7 +142,7 @@ def test_rejects_non_cluster_specific():
     assert manager.handle_packet(packet) is False
 
 
-async def test_accepts_gp_notification():
+async def test_accepts_gp_notification(manager):
     packet = _make_gp_notification_packet(
         source_id=0x12345678,
         command_id=GPDCommandID.Toggle,
@@ -159,7 +150,7 @@ async def test_accepts_gp_notification():
     assert manager.handle_packet(packet) is True
 
 
-async def test_dispatch_known_device():
+async def test_dispatch_known_device(app, manager):
     """Commands from known devices should fire listener_event."""
     dev = GPDevice(source_id=0x12345678, device_id=0x02, frame_counter=0)
     manager.add_device(dev)
@@ -179,7 +170,7 @@ async def test_dispatch_known_device():
     )
 
 
-async def test_dispatch_unknown_device_ignored():
+async def test_dispatch_unknown_device_ignored(app, manager):
     """Commands from unknown devices should be ignored."""
     await manager._dispatch_gp_command(
         source_id=0xDEADBEEF,
@@ -191,7 +182,7 @@ async def test_dispatch_unknown_device_ignored():
     app.listener_event.assert_not_called()
 
 
-async def test_dispatch_replay_rejected():
+async def test_dispatch_replay_rejected(app, manager):
     """Replayed frames (same or lower counter) should be rejected."""
     dev = GPDevice(source_id=0x12345678, device_id=0x02, frame_counter=10)
     manager.add_device(dev)
@@ -206,7 +197,7 @@ async def test_dispatch_replay_rejected():
     app.listener_event.assert_not_called()
 
 
-async def test_dispatch_increments_counter():
+async def test_dispatch_increments_counter(manager):
     """Successful dispatch should update the frame counter."""
     dev = GPDevice(source_id=0x12345678, device_id=0x02, frame_counter=0)
     manager.add_device(dev)
@@ -221,30 +212,30 @@ async def test_dispatch_increments_counter():
     assert dev.frame_counter == 42
 
 
-def test_dupplication_first_notification_passes():
+def test_dupplication_first_notification_passes(manager):
     """First occurrence of (sourceID, frameCounter) should pass."""
     assert not manager._is_duplicate(0x12345678, 1)
 
 
-def test_dupplication_second_notification_blocked():
+def test_dupplication_second_notification_blocked(manager):
     """Same (sourceID, frameCounter) within timeout should be blocked."""
     assert not manager._is_duplicate(0x12345678, 1)
     assert manager._is_duplicate(0x12345678, 1)
 
 
-def test_dupplication_different_source_id_passes():
+def test_dupplication_different_source_id_passes(manager):
     """Different sourceID with same counter should pass."""
     assert not manager._is_duplicate(0x11111111, 1)
     assert not manager._is_duplicate(0x22222222, 1)
 
 
-def test_dupplication_different_counter_passes():
+def test_dupplication_different_counter_passes(manager):
     """Same sourceID with different counter should pass."""
     assert not manager._is_duplicate(0x12345678, 1)
     assert not manager._is_duplicate(0x12345678, 2)
 
 
-def test_dupplication_expired_entry_passes():
+def test_dupplication_expired_entry_passes(manager):
     """Entries older than DEDUP_TIMEOUT_S should be purged."""
     manager._is_duplicate(0x12345678, 1)
 
@@ -256,7 +247,7 @@ def test_dupplication_expired_entry_passes():
     assert not manager._is_duplicate(0x12345678, 1)
 
 
-async def test_commissioning_window():
+async def test_commissioning_window(manager):
     """Opening and closing commissioning window."""
     assert not manager.is_commissioning
 
@@ -267,7 +258,7 @@ async def test_commissioning_window():
     assert not manager.is_commissioning
 
 
-async def test_commissioning_sends_proxy_mode():
+async def test_commissioning_sends_proxy_mode(app, manager):
     """Opening commissioning should send ProxyCommissioningMode."""
     await manager.permit_join(time_s=60)
 
@@ -277,7 +268,7 @@ async def test_commissioning_sends_proxy_mode():
     assert sent_packet.cluster_id == GP_CLUSTER_ID
 
 
-async def test_close_commissioning_sends_exit():
+async def test_close_commissioning_sends_exit(app, manager):
     """Closing commissioning should send ProxyCommissioningMode exit."""
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
@@ -287,7 +278,7 @@ async def test_close_commissioning_sends_exit():
     assert app.send_packet.call_count == 1
 
 
-async def test_process_commissioning_creates_device():
+async def test_process_commissioning_creates_device(app, manager):
     """Commissioning command should create a GPDevice."""
     # Open commissioning window
     await manager.permit_join(time_s=60)
@@ -315,7 +306,7 @@ async def test_process_commissioning_creates_device():
     assert app.send_packet.call_count >= 1
 
 
-async def test_commissioning_ignored_when_window_closed():
+async def test_commissioning_ignored_when_window_closed(app, manager):
     """Commissioning should be ignored if window is not open."""
     comm_payload = bytes([0x02, 0x00])
 
@@ -329,7 +320,7 @@ async def test_commissioning_ignored_when_window_closed():
     app.listener_event.assert_not_called()
 
 
-async def test_commissioning_rejects_unspecified_source_id():
+async def test_commissioning_rejects_unspecified_source_id(app, manager):
     """SourceID 0x00000000 is unspecified per ZGP spec and must be rejected."""
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
@@ -347,7 +338,7 @@ async def test_commissioning_rejects_unspecified_source_id():
         assert call[0][0] != "gp_device_joined"
 
 
-async def test_commissioning_with_security_key():
+async def test_commissioning_with_security_key(app, manager):
     """Commissioning with unencrypted security key.
 
     Extended options byte 0x23 = 0b00100011:
@@ -378,11 +369,9 @@ async def test_commissioning_with_security_key():
     assert dev.security_key_type == SecurityKeyType.NoKey
 
 
-async def test_commissioning_with_outgoing_counter():
+async def test_commissioning_with_outgoing_counter(manager):
     """Commissioning with outgoing frame counter."""
     await manager.permit_join(time_s=60)
-
-    import struct
 
     # extended: outgoing_counter_present = 0x80
     comm_payload = bytes([0x02, 0x80, 0x80]) + struct.pack("<I", 42)
@@ -398,15 +387,13 @@ async def test_commissioning_with_outgoing_counter():
     assert dev.frame_counter == 42
 
 
-async def test_commissioning_with_outgoing_counter_zero():
+async def test_commissioning_with_outgoing_counter_zero(manager):
     """Outgoing counter of 0 must be used, not confused with None.
 
     Per the ZGP spec, outgoing_counter=0 is a valid initial frame
     counter. It must not be treated as absent (Python falsy).
     """
     await manager.permit_join(time_s=60)
-
-    import struct
 
     # extended: outgoing_counter_present (bit 7) = 0x80
     comm_payload = bytes([0x02, 0x80, 0x80]) + struct.pack("<I", 0)
@@ -423,7 +410,7 @@ async def test_commissioning_with_outgoing_counter_zero():
     assert dev.frame_counter == 0
 
 
-async def test_decommission_known_device():
+async def test_decommission_known_device(app, manager):
     """Decommissioning a known device should remove it."""
     dev = GPDevice(source_id=0x12345678, device_id=0x02)
     manager.add_device(dev)
@@ -436,20 +423,19 @@ async def test_decommission_known_device():
     assert app.send_packet.call_count >= 1
 
 
-async def test_decommission_unknown_device():
+async def test_decommission_unknown_device(app, manager):
     """Decommissioning unknown device should be a no-op."""
     await manager._process_decommissioning(0xDEADBEEF)
     app.listener_event.assert_not_called()
 
 
-async def test_pairing_encrypts_security_key():
+async def test_pairing_encrypts_security_key(app, manager):
     """GP Pairing must encrypt the security key before sending.
 
     The key in the GP Pairing should NOT be the plaintext key.
     It should be encrypted via encrypt_security_key(sourceID, key)
     matching zigbee-herdsman's behavior.
     """
-    from zigpy.zgp.crypto import encrypt_security_key
 
     source_id = 0x12345678
     plaintext_key = bytes(range(16))
@@ -476,7 +462,7 @@ async def test_pairing_encrypts_security_key():
     assert bytes(encrypted_key) in sent_data
 
 
-def test_load_devices():
+def test_load_devices(manager):
     """Loading persisted device data."""
     data = [
         {
@@ -507,7 +493,7 @@ def test_load_devices():
     assert dev2.device_id == 0x07
 
 
-def test_get_devices_data():
+def test_get_devices_data(manager):
     """Serializing devices for persistence."""
     dev1 = GPDevice(source_id=0x12345678, device_id=0x02, frame_counter=10)
     dev2 = GPDevice(source_id=0xAABBCCDD, device_id=0x07)
@@ -521,7 +507,7 @@ def test_get_devices_data():
     assert source_ids == {0x12345678, 0xAABBCCDD}
 
 
-def test_load_save_roundtrip():
+def test_load_save_roundtrip(manager):
     """Saving and loading should preserve all data."""
     dev = GPDevice(
         source_id=0x12345678,
@@ -549,7 +535,7 @@ def test_load_save_roundtrip():
     assert restored.gpd_commands == dev.gpd_commands
 
 
-def test_load_invalid_data_skipped():
+def test_load_invalid_data_skipped(manager):
     """Invalid device data should be skipped without crashing."""
     data = [
         {"invalid": "data"},
@@ -587,7 +573,7 @@ def test_empty_payload():
     assert len(frame) == 3
 
 
-async def test_channel_request_sends_response():
+async def test_channel_request_sends_response(app, manager):
     """Channel Request should trigger a GP Response with Channel Config."""
     # Channel Request payload: next_channel=15 (offset 4), second=20 (offset 9)
     channel_req_payload = bytes([4 | (9 << 4)])
@@ -605,7 +591,7 @@ async def test_channel_request_sends_response():
     assert sent.cluster_id == GP_CLUSTER_ID
 
 
-async def test_channel_config_contains_correct_channel():
+async def test_channel_config_contains_correct_channel(app, manager):
     """Channel Config payload must contain the coordinator's channel.
 
     Per ZGP spec, GP Channel Configuration (0xF3) payload is 1 byte:
@@ -630,7 +616,7 @@ async def test_channel_config_contains_correct_channel():
     assert bytes([0x19]) in zcl_data
 
 
-async def test_channel_request_without_proxy():
+async def test_channel_request_without_proxy(app, manager):
     """Channel Request without proxy_nwk should use coordinator NWK."""
     await manager._process_channel_request(
         source_id=0x12345678,
@@ -641,7 +627,7 @@ async def test_channel_request_without_proxy():
     assert app.send_packet.call_count == 1
 
 
-async def test_invalid_channel_request_ignored():
+async def test_invalid_channel_request_ignored(app, manager):
     """Invalid channel request payload should be ignored."""
     await manager._process_channel_request(
         source_id=0x12345678,
@@ -652,7 +638,7 @@ async def test_invalid_channel_request_ignored():
     app.send_packet.assert_not_called()
 
 
-async def test_rx_capable_gets_commissioning_reply():
+async def test_rx_capable_gets_commissioning_reply(app, manager):
     """RX-capable GPD commissioning should send a Commissioning Reply."""
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
@@ -676,7 +662,7 @@ async def test_rx_capable_gets_commissioning_reply():
     assert dev.rx_on_capability is True
 
 
-async def test_non_rx_skips_commissioning_reply():
+async def test_non_rx_skips_commissioning_reply(app, manager):
     """Non-RX GPD should NOT get a Commissioning Reply."""
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
@@ -695,7 +681,7 @@ async def test_non_rx_skips_commissioning_reply():
     assert app.send_packet.call_count == 1
 
 
-async def test_commissioning_reply_uses_proxy_as_temp_master():
+async def test_commissioning_reply_uses_proxy_as_temp_master(app, manager):
     """Commissioning Reply should be a GP Response (cmd 0x06) with 0xF0.
 
     Per ZGP spec, the GP Commissioning Reply (0xF0) is sent via
@@ -728,7 +714,7 @@ async def test_commissioning_reply_uses_proxy_as_temp_master():
     assert bytes([0xF0]) in reply_data
 
 
-async def test_gp_response_packet_structure():
+async def test_gp_response_packet_structure(app, manager):
     """GP Response should be sent with correct endpoint/cluster/profile."""
     await manager._send_gp_response(
         source_id=0x12345678,
@@ -745,7 +731,7 @@ async def test_gp_response_packet_structure():
     assert sent.profile_id == 0xA1E0
 
 
-async def test_gp_response_without_proxy():
+async def test_gp_response_without_proxy(app, manager):
     """GP Response without proxy should use coordinator as temp master."""
     await manager._send_gp_response(
         source_id=0x12345678,
@@ -757,7 +743,7 @@ async def test_gp_response_without_proxy():
     assert app.send_packet.call_count == 1
 
 
-async def test_gp_response_send_failure():
+async def test_gp_response_send_failure(app, manager):
     """GP Response send failure should be handled gracefully."""
     app.send_packet = AsyncMock(side_effect=TimeoutError)
 
@@ -771,13 +757,12 @@ async def test_gp_response_send_failure():
     # Should not raise, just log warning
 
 
-async def test_dispatch_with_encrypted_payload():
+async def test_dispatch_with_encrypted_payload(app, manager):
     """Command dispatch should decrypt payload when security is active.
 
     Tests the decryption path in _dispatch_gp_command that was
     previously uncovered (SecurityLevel != NoSecurity).
     """
-    from zigpy.zgp.crypto import encrypt_payload
 
     source_id = 0xAABBCCDD
     security_key = bytes(range(16))
@@ -819,15 +804,12 @@ async def test_dispatch_with_encrypted_payload():
     )
 
 
-async def test_commissioning_with_encrypted_key():
+async def test_commissioning_with_encrypted_key(app, manager):
     """Commissioning with key_encrypted=True should decrypt the key.
 
     Tests the path in _process_commissioning where the GPD provides
     its security key encrypted with the GP link key.
     """
-    import struct
-
-    from zigpy.zgp.crypto import encrypt_security_key
 
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
@@ -865,7 +847,7 @@ async def test_commissioning_with_encrypted_key():
 # definition (PR #1659), not in the GP manager module.
 
 
-async def test_shutdown_cancels_commissioning():
+async def test_shutdown_cancels_commissioning(manager):
     """Shutdown should cancel the commissioning timer and reset state."""
     await manager.permit_join(time_s=300)
     assert manager.is_commissioning
@@ -876,7 +858,7 @@ async def test_shutdown_cancels_commissioning():
     assert manager._commissioning_task is None
 
 
-async def test_dedup_in_notification_flow():
+async def test_dedup_in_notification_flow(app, manager):
     """Duplicate filtering should work within _handle_gp_notification.
 
     When two proxies forward the same GPD frame, only the first
@@ -885,12 +867,6 @@ async def test_dedup_in_notification_flow():
     source_id = 0x12345678
     dev = GPDevice(source_id=source_id, device_id=0x02, frame_counter=0)
     manager.add_device(dev)
-
-    from zigpy.zcl.clusters.greenpower import (
-        NotificationOptions,
-        NotificationSchema,
-    )
-    import zigpy.zgp.types as zgptypes
 
     options = NotificationOptions(
         application_id=zgptypes.ApplicationID.SrcID,
@@ -919,14 +895,12 @@ async def test_dedup_in_notification_flow():
 
     # Only ONE gp_command_received should fire
     command_events = [
-        c
-        for c in app.listener_event.call_args_list
-        if c[0][0] == "gp_command_received"
+        c for c in app.listener_event.call_args_list if c[0][0] == "gp_command_received"
     ]
     assert len(command_events) == 1
 
 
-async def test_notification_with_corrupt_payload():
+async def test_notification_with_corrupt_payload(app, manager):
     """Corrupt GP Notification payload must be ignored, no event fired."""
     await manager._handle_gp_notification(
         payload=b"\xff\xff",  # too short / invalid for NotificationSchema
@@ -935,7 +909,7 @@ async def test_notification_with_corrupt_payload():
     app.listener_event.assert_not_called()
 
 
-async def test_commissioning_with_corrupt_payload():
+async def test_commissioning_with_corrupt_payload(app, manager):
     """Corrupt commissioning payload must not create a device."""
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
@@ -949,9 +923,8 @@ async def test_commissioning_with_corrupt_payload():
     assert manager.get_device(0x12345678) is None
 
 
-async def test_commissioning_with_bad_encrypted_key():
+async def test_commissioning_with_bad_encrypted_key(manager):
     """Invalid encrypted key MIC must reject commissioning."""
-    import struct
 
     await manager.permit_join(time_s=60)
 
@@ -970,7 +943,7 @@ async def test_commissioning_with_bad_encrypted_key():
     assert manager.get_device(0xBBBBBBBB) is None
 
 
-async def test_decrypt_payload_failure_drops_command():
+async def test_decrypt_payload_failure_drops_command(app, manager):
     """Corrupted encrypted payload must be dropped, no event fired."""
     dev = GPDevice(
         source_id=0xAABBCCDD,
@@ -996,7 +969,7 @@ async def test_decrypt_payload_failure_drops_command():
         assert call[0][0] != "gp_command_received"
 
 
-async def test_unhandled_server_command_ignored():
+async def test_unhandled_server_command_ignored(app, manager):
     """Unknown server command (e.g. PairingSearch 0x01) is ignored."""
     await manager._process_zcl_command(
         command_id=0x01,  # GP Pairing Search, not implemented
@@ -1007,7 +980,7 @@ async def test_unhandled_server_command_ignored():
     app.listener_event.assert_not_called()
 
 
-async def test_unexpected_client_direction_ignored():
+async def test_unexpected_client_direction_ignored(app, manager):
     """Client-to-server direction (server→client) in reception is unexpected."""
     await manager._process_zcl_command(
         command_id=0x01,
@@ -1018,7 +991,7 @@ async def test_unexpected_client_direction_ignored():
     app.listener_event.assert_not_called()
 
 
-async def test_commissioning_notification_cmd_routed():
+async def test_commissioning_notification_cmd_routed(app, manager):
     """Server cmd 0x04 is routed to _handle_commissioning_notification.
 
     The handler itself has a schema bug (pragma: no cover) but the
@@ -1035,13 +1008,8 @@ async def test_commissioning_notification_cmd_routed():
     app.listener_event.assert_not_called()
 
 
-async def test_notification_routes_commissioning():
+async def test_notification_routes_commissioning(app, manager):
     """GP Notification carrying CommissioningRequest (0xE0) triggers commissioning."""
-    from zigpy.zcl.clusters.greenpower import (
-        NotificationOptions,
-        NotificationSchema,
-    )
-    import zigpy.zgp.types as zgptypes
 
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
@@ -1071,13 +1039,8 @@ async def test_notification_routes_commissioning():
     assert manager.get_device(0xAAAA1111) is not None
 
 
-async def test_notification_routes_decommissioning():
+async def test_notification_routes_decommissioning(manager):
     """GP Notification with DecommissioningRequest (0xE1) removes device."""
-    from zigpy.zcl.clusters.greenpower import (
-        NotificationOptions,
-        NotificationSchema,
-    )
-    import zigpy.zgp.types as zgptypes
 
     dev = GPDevice(source_id=0xBBBB2222, device_id=0x02)
     manager.add_device(dev)
@@ -1105,13 +1068,8 @@ async def test_notification_routes_decommissioning():
     assert manager.get_device(0xBBBB2222) is None
 
 
-async def test_notification_routes_channel_request():
+async def test_notification_routes_channel_request(app, manager):
     """GP Notification with ChannelRequest (0xE3) triggers a GP Response."""
-    from zigpy.zcl.clusters.greenpower import (
-        NotificationOptions,
-        NotificationSchema,
-    )
-    import zigpy.zgp.types as zgptypes
 
     options = NotificationOptions(
         application_id=zgptypes.ApplicationID.SrcID,
@@ -1137,13 +1095,8 @@ async def test_notification_routes_channel_request():
     assert app.send_packet.call_count >= 1
 
 
-async def test_notification_routes_success_report():
+async def test_notification_routes_success_report(app, manager):
     """GP SuccessReport (0xE2) is accepted silently with no side effects."""
-    from zigpy.zcl.clusters.greenpower import (
-        NotificationOptions,
-        NotificationSchema,
-    )
-    import zigpy.zgp.types as zgptypes
 
     options = NotificationOptions(
         application_id=zgptypes.ApplicationID.SrcID,
@@ -1169,7 +1122,7 @@ async def test_notification_routes_success_report():
     app.listener_event.assert_not_called()
 
 
-def test_dedup_cache_evicts_oldest_when_full():
+def test_dedup_cache_evicts_oldest_when_full(manager):
     """When cache is full, oldest entry is evicted to accept new one."""
     # Fill the cache to capacity
     for i in range(manager.DEDUP_MAX_ENTRIES):
@@ -1186,7 +1139,7 @@ def test_dedup_cache_evicts_oldest_when_full():
     assert not manager._is_duplicate(0x12345678, 1)
 
 
-async def test_proxy_commissioning_mode_send_failure():
+async def test_proxy_commissioning_mode_send_failure(app, manager):
     """ProxyCommissioningMode send failure still opens window locally."""
     app.send_packet = AsyncMock(side_effect=TimeoutError)
 
@@ -1196,7 +1149,7 @@ async def test_proxy_commissioning_mode_send_failure():
     assert manager.is_commissioning
 
 
-async def test_pairing_send_failure():
+async def test_pairing_send_failure(app, manager):
     """GP Pairing send failure must not crash the sink."""
     app.send_packet = AsyncMock(side_effect=TimeoutError)
 
@@ -1207,7 +1160,7 @@ async def test_pairing_send_failure():
     await manager.send_pairing(dev, add_sink=True)
 
 
-async def test_reopen_commissioning_cancels_previous():
+async def test_reopen_commissioning_cancels_previous(manager):
     """Opening a new window cancels the previous timer."""
     await manager.permit_join(time_s=300)
     first_task = manager._commissioning_task
