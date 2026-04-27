@@ -1561,6 +1561,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     async def permit(self, time_s: int = 60, node: t.EUI64 | str | None = None) -> None:
         """Permit joining on a specific node or all router nodes."""
         assert 0 <= time_s <= 254
+        await self.permit_gp(time_s)
+
         if node is not None:
             if not isinstance(node, t.EUI64):
                 node = t.EUI64([t.uint8_t(p) for p in node])
@@ -1587,20 +1589,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             broadcast_address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
         )
         await self.permit_ncp(time_s)
-        # Open the GP commissioning window in parallel so GP devices
-        # (Friends-of-Hue, EnOcean PTM 215Z, ...) pair when the user
-        # presses "Add device" without a separate API call. This matches
-        # zigbee-herdsman's behaviour. permit_gp(0) is honoured too,
-        # which closes the window when permit() is called with time_s=0.
-        await self.permit_gp(time_s)
 
     async def permit_gp(self, time_s: int = 180) -> None:
-        """Open the Green Power commissioning window.
-
-        Called automatically by broadcast :meth:`permit`. Can also be
-        invoked directly to open the GP window without a regular permit
-        (or to close it with ``time_s=0``).
-        """
+        """Open or close (``time_s=0``) the Green Power commissioning window."""
         await self.green_power.permit_join(time_s)
 
     def get_sequence(self) -> int:

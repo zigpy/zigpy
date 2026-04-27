@@ -91,16 +91,26 @@ async def test_permit_opens_gp_window(app):
     app.green_power.permit_join.assert_called_once_with(120)
 
 
-async def test_permit_node_does_not_open_gp_window(app, ieee):
-    """Permit targeted at a single node must not touch the GP window."""
+async def test_permit_node_also_opens_gp_window(app, ieee):
+    """Targeted permit must still open the GP window."""
     app.devices[ieee] = MagicMock()
     app.devices[ieee].zdo.permit = AsyncMock()
     app.green_power.permit_join = AsyncMock()
     app.permit_ncp = AsyncMock()
 
-    await app.permit(node=ieee)
+    await app.permit(time_s=60, node=ieee)
 
-    app.green_power.permit_join.assert_not_called()
+    app.green_power.permit_join.assert_called_once_with(60)
+
+
+async def test_permit_ncp_node_also_opens_gp_window(app):
+    """Permit targeted at the NCP also opens the GP window."""
+    app.green_power.permit_join = AsyncMock()
+    app.permit_ncp = AsyncMock()
+
+    await app.permit(time_s=60, node=NCP_IEEE)
+
+    app.green_power.permit_join.assert_called_once_with(60)
 
 
 @patch("zigpy.device.Device.initialize", new_callable=AsyncMock)
