@@ -2177,6 +2177,16 @@ async def test_reinterview_during_initialization(dev):
     dev._initialize_task.cancel()
 
 
+async def test_reinterview_during_ota(dev):
+    """Test that reinterview is skipped while an OTA is in progress."""
+    dev.ota_in_progress = True
+    dev._application._device_reinterviewed = AsyncMock()
+
+    await dev.reinterview()
+
+    dev._application._device_reinterviewed.assert_not_called()
+
+
 async def test_update_firmware_triggers_reinterview(monkeypatch, dev):
     """Test that successful OTA triggers reinterview."""
     ep = dev.add_endpoint(1)

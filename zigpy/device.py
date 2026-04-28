@@ -316,6 +316,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self.debug("Initialization in progress, skipping re-interview")
             return
 
+        if self.ota_in_progress:
+            self.debug("OTA in progress, skipping re-interview")
+            return
+
         self._reinterview_in_progress = True
 
         try:
