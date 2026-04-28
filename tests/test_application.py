@@ -458,6 +458,31 @@ async def test_device_join_rejoin(is_init_mock, group_scan_mock, init_mock, app,
     init_mock.assert_called_once()
 
 
+def test_register_callback_listener_cancel_is_idempotent(app):
+    """Cancelling the same callback twice is safe (no KeyError, no resurrected slot)."""
+    dev = app.add_device(ieee=make_ieee(), nwk=t.NWK(0x1234))
+    # Clear the PollControl listener that Device.__init__ registers, so the
+    # deque slot is empty after our cancel below.
+    dev.on_remove()
+    assert dev not in app._req_listeners
+
+    cancel = app.register_callback_listener(
+        src=dev,
+        filters=[clusters.general.PollControl.ClientCommandDefs.checkin.schema()],
+        callback=lambda hdr, cmd: None,
+    )
+    assert dev in app._req_listeners
+
+    # First cancel removes the listener and drops the empty deque slot.
+    cancel()
+    assert dev not in app._req_listeners
+
+    # Second cancel hits the early-return path: no slot, no work.
+    cancel()
+    assert dev not in app._req_listeners
+
+
+
 async def test_get_device(app):
     """Test get_device."""
 
