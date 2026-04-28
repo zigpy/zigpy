@@ -12,6 +12,7 @@ import pytest
 import zigpy.application
 import zigpy.config as conf
 from zigpy.datastructures import RequestLimiter
+import zigpy.device
 from zigpy.exceptions import (
     DeliveryError,
     NetworkNotFormed,
@@ -481,6 +482,53 @@ def test_register_callback_listener_cancel_is_idempotent(app):
     cancel()
     assert dev not in app._req_listeners
 
+
+async def test_device_initialized_cleans_up_replaced_device(app):
+    """When a quirk replaces the device, the original is fully released."""
+    ieee = make_ieee()
+    nwk = t.NWK(0x1234)
+
+    original = app.add_device(ieee=ieee, nwk=nwk)
+    original.node_desc = make_node_desc()
+    original.add_endpoint(1)
+    original[1].profile_id = 260
+    original[1].device_type = 0x0100
+    original[1].status = zigpy.endpoint.Status.ZDO_INIT
+
+    # Sanity check: the PollControl listener registered in Device.__init__
+    # is keyed on the device itself.
+    assert original in app._req_listeners
+
+    quirked = zigpy.device.Device(app, ieee, nwk)
+    quirked.node_desc = make_node_desc()
+
+    with patch("zigpy.quirks.get_device", return_value=quirked):
+        app.device_initialized(original)
+
+    assert app.devices[ieee] is quirked
+    # Original's PollControl listener was cancelled, dropping its slot.
+    assert original not in app._req_listeners
+    # Quirked device has its own slot (registered in its own __init__).
+    assert quirked in app._req_listeners
+
+
+async def test_device_initialized_no_quirk_keeps_device(app):
+    """If no quirk applies, the device is kept and not erroneously cleaned up."""
+    ieee = make_ieee()
+    nwk = t.NWK(0x1234)
+
+    dev = app.add_device(ieee=ieee, nwk=nwk)
+    dev.node_desc = make_node_desc()
+    dev.add_endpoint(1)
+    dev[1].profile_id = 260
+    dev[1].device_type = 0x0100
+    dev[1].status = zigpy.endpoint.Status.ZDO_INIT
+
+    with patch("zigpy.quirks.get_device", side_effect=lambda d: d):
+        app.device_initialized(dev)
+
+    assert app.devices[ieee] is dev
+    assert dev in app._req_listeners
 
 
 async def test_get_device(app):
