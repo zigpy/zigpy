@@ -61,6 +61,21 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
     metadata: zigpy.ota.providers.BaseOtaImageMetadata
     firmware: BaseOTAImage | None
 
+    def __repr__(self) -> str:
+        if self.firmware is not None:
+            firmware_repr = (
+                f"<{type(self.firmware).__name__}: "
+                f"{self.firmware.header.image_size} bytes>"
+            )
+        else:
+            firmware_repr = "None"
+
+        return (
+            f"{type(self).__name__}("
+            f"metadata={self.metadata!r}, "
+            f"firmware={firmware_repr})"
+        )
+
     @property
     def version(self) -> int:
         return self.metadata.file_version

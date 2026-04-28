@@ -1,9 +1,9 @@
 """Homeassistant sensor platform quirks v2 supporting items."""
 
-from enum import Enum
+from enum import StrEnum
 
 
-class SensorDeviceClass(Enum):
+class SensorDeviceClass(StrEnum):
     """Device class for sensors."""
 
     # Non-numerical device classes
@@ -32,23 +32,28 @@ class SensorDeviceClass(Enum):
     """
 
     # Numerical device classes, these should be aligned with NumberDeviceClass
+    ABSOLUTE_HUMIDITY = "absolute_humidity"
+    """Absolute humidity.
 
-    ACCELERATION = "acceleration"
-    """Acceleration.
-
-    Unit of measurement: `G`, `m/s²`
+    Unit of measurement: `g/m³`, `mg/m³`
     """
 
     APPARENT_POWER = "apparent_power"
     """Apparent power.
 
-    Unit of measurement: `VA`
+    Unit of measurement: `mVA`, `VA`, `kVA`
     """
 
     AQI = "aqi"
     """Air Quality Index.
 
     Unit of measurement: `None`
+    """
+
+    AREA = "area"
+    """Area
+
+    Unit of measurement: `UnitOfArea` units
     """
 
     ATMOSPHERIC_PRESSURE = "atmospheric_pressure"
@@ -63,10 +68,16 @@ class SensorDeviceClass(Enum):
     Unit of measurement: `%`
     """
 
+    BLOOD_GLUCOSE_CONCENTRATION = "blood_glucose_concentration"
+    """Blood glucose concentration.
+
+    Unit of measurement: `mg/dL`, `mmol/L`
+    """
+
     CO = "carbon_monoxide"
     """Carbon Monoxide gas concentration.
 
-    Unit of measurement: `ppm` (parts per million)
+    Unit of measurement: `ppb` (parts per billion), `ppm` (parts per million), `mg/m³`, `μg/m³`
     """
 
     CO2 = "carbon_dioxide"
@@ -78,7 +89,7 @@ class SensorDeviceClass(Enum):
     CONDUCTIVITY = "conductivity"
     """Conductivity.
 
-    Unit of measurement: 'S/cm', 'µS/cm', 'mS/cm'
+    Unit of measurement: `S/cm`, `mS/cm`, `μS/cm`
     """
 
     CURRENT = "current"
@@ -110,7 +121,7 @@ class SensorDeviceClass(Enum):
     DURATION = "duration"
     """Fixed duration.
 
-    Unit of measurement: `d`, `h`, `min`, `s`, `ms`
+    Unit of measurement: `d`, `h`, `min`, `s`, `ms`, `μs`
     """
 
     ENERGY = "energy"
@@ -118,7 +129,16 @@ class SensorDeviceClass(Enum):
 
     Use this device class for sensors measuring energy consumption, for example
     electric energy consumption.
-    Unit of measurement: `Wh`, `kWh`, `MWh`, `MJ`, `GJ`
+    Unit of measurement: `J`, `kJ`, `MJ`, `GJ`, `mWh`, `Wh`, `kWh`, `MWh`, `GWh`, `TWh`, `cal`, `kcal`, `Mcal`, `Gcal`
+    """
+
+    ENERGY_DISTANCE = "energy_distance"
+    """Energy distance.
+
+    Use this device class for sensors measuring energy by distance, for example the amount
+    of electric energy consumed by an electric car.
+
+    Unit of measurement: `kWh/100km`, `Wh/km`, `mi/kWh`, `km/kWh`
     """
 
     ENERGY_STORAGE = "energy_storage"
@@ -127,7 +147,7 @@ class SensorDeviceClass(Enum):
     Use this device class for sensors measuring stored energy, for example the amount
     of electric energy currently stored in a battery or the capacity of a battery.
 
-    Unit of measurement: `Wh`, `kWh`, `MWh`, `MJ`, `GJ`
+    Unit of measurement: `J`, `kJ`, `MJ`, `GJ`, `mWh`, `Wh`, `kWh`, `MWh`, `GWh`, `TWh`, `cal`, `kcal`, `Mcal`, `Gcal`
     """
 
     FREQUENCY = "frequency"
@@ -140,8 +160,8 @@ class SensorDeviceClass(Enum):
     """Gas.
 
     Unit of measurement:
-    - SI / metric: `m³`
-    - USCS / imperial: `ft³`, `CCF`
+    - SI / metric: `L`, `m³`
+    - USCS / imperial: `ft³`, `CCF`, `MCF`
     """
 
     HUMIDITY = "humidity"
@@ -181,25 +201,25 @@ class SensorDeviceClass(Enum):
     NITROGEN_DIOXIDE = "nitrogen_dioxide"
     """Amount of NO2.
 
-    Unit of measurement: `µg/m³`
+    Unit of measurement: `ppb` (parts per billion), `ppm` (parts per million), `μg/m³`
     """
 
     NITROGEN_MONOXIDE = "nitrogen_monoxide"
     """Amount of NO.
 
-    Unit of measurement: `µg/m³`
+    Unit of measurement: `ppb` (parts per billion), `μg/m³`
     """
 
     NITROUS_OXIDE = "nitrous_oxide"
     """Amount of N2O.
 
-    Unit of measurement: `µg/m³`
+    Unit of measurement: `μg/m³`
     """
 
     OZONE = "ozone"
     """Amount of O3.
 
-    Unit of measurement: `µg/m³`
+    Unit of measurement: `ppb` (parts per billion), `ppm` (parts per million), `μg/m³`
     """
 
     PH = "ph"
@@ -211,19 +231,25 @@ class SensorDeviceClass(Enum):
     PM1 = "pm1"
     """Particulate matter <= 1 μm.
 
-    Unit of measurement: `µg/m³`
+    Unit of measurement: `μg/m³`
     """
 
     PM10 = "pm10"
     """Particulate matter <= 10 μm.
 
-    Unit of measurement: `µg/m³`
+    Unit of measurement: `μg/m³`
     """
 
     PM25 = "pm25"
     """Particulate matter <= 2.5 μm.
 
-    Unit of measurement: `µg/m³`
+    Unit of measurement: `μg/m³`
+    """
+
+    PM4 = "pm4"
+    """Particulate matter <= 4 μm.
+
+    Unit of measurement: `μg/m³`
     """
 
     POWER_FACTOR = "power_factor"
@@ -235,7 +261,7 @@ class SensorDeviceClass(Enum):
     POWER = "power"
     """Power.
 
-    Unit of measurement: `W`, `kW`
+    Unit of measurement: `mW`, `W`, `kW`, `MW`, `GW`, `TW`, `BTU/h`
     """
 
     PRECIPITATION = "precipitation"
@@ -259,15 +285,22 @@ class SensorDeviceClass(Enum):
 
     Unit of measurement:
     - `mbar`, `cbar`, `bar`
-    - `Pa`, `hPa`, `kPa`
+    - `mPa`, `Pa`, `hPa`, `kPa`
     - `inHg`
     - `psi`
+    - `inH₂O`
+    """
+
+    REACTIVE_ENERGY = "reactive_energy"
+    """Reactive energy.
+
+    Unit of measurement: `varh`, `kvarh`
     """
 
     REACTIVE_POWER = "reactive_power"
     """Reactive power.
 
-    Unit of measurement: `var`
+    Unit of measurement: `mvar`, `var`, `kvar`
     """
 
     SIGNAL_STRENGTH = "signal_strength"
@@ -286,15 +319,16 @@ class SensorDeviceClass(Enum):
     """Generic speed.
 
     Unit of measurement: `SPEED_*` units or `UnitOfVolumetricFlux`
-    - SI /metric: `mm/d`, `mm/h`, `m/s`, `km/h`
-    - USCS / imperial: `in/d`, `in/h`, `ft/s`, `mph`
+    - SI /metric: `mm/d`, `mm/h`, `m/s`, `km/h`, `mm/s`
+    - USCS / imperial: `in/d`, `in/h`, `in/s`, `ft/s`, `mph`
     - Nautical: `kn`
+    - Beaufort: `Beaufort`
     """
 
     SULPHUR_DIOXIDE = "sulphur_dioxide"
     """Amount of SO2.
 
-    Unit of measurement: `µg/m³`
+    Unit of measurement: `ppb` (parts per billion), `μg/m³`
     """
 
     TEMPERATURE = "temperature"
@@ -303,10 +337,16 @@ class SensorDeviceClass(Enum):
     Unit of measurement: `°C`, `°F`, `K`
     """
 
+    TEMPERATURE_DELTA = "temperature_delta"
+    """Difference of temperatures - Temperature range.
+
+    Unit of measurement: `°C`, `°F`, `K`
+    """
+
     VOLATILE_ORGANIC_COMPOUNDS = "volatile_organic_compounds"
     """Amount of VOC.
 
-    Unit of measurement: `µg/m³`
+    Unit of measurement: `μg/m³`, `mg/m³`
     """
 
     VOLATILE_ORGANIC_COMPOUNDS_PARTS = "volatile_organic_compounds_parts"
@@ -318,7 +358,7 @@ class SensorDeviceClass(Enum):
     VOLTAGE = "voltage"
     """Voltage.
 
-    Unit of measurement: `V`, `mV`
+    Unit of measurement: `V`, `mV`, `μV`, `kV`, `MV`
     """
 
     VOLUME = "volume"
@@ -326,7 +366,7 @@ class SensorDeviceClass(Enum):
 
     Unit of measurement: `VOLUME_*` units
     - SI / metric: `mL`, `L`, `m³`
-    - USCS / imperial: `ft³`, `CCF`, `fl. oz.`, `gal` (warning: volumes expressed in
+    - USCS / imperial: `ft³`, `CCF`, `MCF`, `fl. oz.`, `gal` (warning: volumes expressed in
     USCS/imperial units are currently assumed to be US volumes)
     """
 
@@ -338,7 +378,7 @@ class SensorDeviceClass(Enum):
 
     Unit of measurement: `VOLUME_*` units
     - SI / metric: `mL`, `L`, `m³`
-    - USCS / imperial: `ft³`, `CCF`, `fl. oz.`, `gal` (warning: volumes expressed in
+    - USCS / imperial: `ft³`, `CCF`, `MCF`, `fl. oz.`, `gal` (warning: volumes expressed in
     USCS/imperial units are currently assumed to be US volumes)
     """
 
@@ -346,8 +386,8 @@ class SensorDeviceClass(Enum):
     """Generic flow rate
 
     Unit of measurement: UnitOfVolumeFlowRate
-    - SI / metric: `m³/h`, `L/min`
-    - USCS / imperial: `ft³/min`, `gal/min`
+    - SI / metric: `m³/h`, `m³/min`, `m³/s`, `L/h`, `L/min`, `L/s`, `mL/s`
+    - USCS / imperial: `ft³/min`, `gal/min`, `gal/d`
     """
 
     WATER = "water"
@@ -355,7 +395,7 @@ class SensorDeviceClass(Enum):
 
     Unit of measurement:
     - SI / metric: `m³`, `L`
-    - USCS / imperial: `ft³`, `CCF`, `gal` (warning: volumes expressed in
+    - USCS / imperial: `ft³`, `CCF`, `MCF`, `gal` (warning: volumes expressed in
     USCS/imperial units are currently assumed to be US volumes)
     """
 
@@ -365,8 +405,14 @@ class SensorDeviceClass(Enum):
     Weight is used instead of mass to fit with every day language.
 
     Unit of measurement: `MASS_*` units
-    - SI / metric: `µg`, `mg`, `g`, `kg`
+    - SI / metric: `μg`, `mg`, `g`, `kg`
     - USCS / imperial: `oz`, `lb`
+    """
+
+    WIND_DIRECTION = "wind_direction"
+    """Wind direction.
+
+    Unit of measurement: `°`
     """
 
     WIND_SPEED = "wind_speed"
@@ -376,14 +422,18 @@ class SensorDeviceClass(Enum):
     - SI /metric: `m/s`, `km/h`
     - USCS / imperial: `ft/s`, `mph`
     - Nautical: `kn`
+    - Beaufort: `Beaufort`
     """
 
 
-class SensorStateClass(Enum):
+class SensorStateClass(StrEnum):
     """State class for sensors."""
 
     MEASUREMENT = "measurement"
     """The state represents a measurement in present time."""
+
+    MEASUREMENT_ANGLE = "measurement_angle"
+    """The state represents a angle measurement in present time. Currently only degrees are supported."""
 
     TOTAL = "total"
     """The state represents a total amount.
