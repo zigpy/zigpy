@@ -596,9 +596,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.devices[ieee] = dev
         return dev
 
-    def device_initialized(self, device: zigpy.device.Device) -> None:
-        """Used by a device to signal that it is initialized"""
-        LOGGER.debug("Device is initialized %s", device)
+    def _finalize_device(self, device: zigpy.device.Device) -> zigpy.device.Device:
+        """Apply quirks, persist to DB, and register the device.
+
+        Returns the (possibly quirked) device stored in ``self.devices``.
+        Does **not** fire any listener events beyond ``raw_device_initialized``
+        (which triggers the DB save).
+        """
         device.original_signature = device.get_signature()
 
         self.listener_event("raw_device_initialized", device)
@@ -606,7 +610,84 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.devices[device.ieee] = device
         if self._dblistener is not None:
             device.add_context_listener(self._dblistener)
+
+        return device
+
+    def device_initialized(self, device: zigpy.device.Device) -> None:
+        """Used by a device to signal that it is initialized"""
+        LOGGER.debug("Device is initialized %s", device)
+        device = self._finalize_device(device)
         self.listener_event("device_initialized", device)
+
+    async def _device_reinterviewed(
+        self,
+        old_device: zigpy.device.Device,
+        shadow: zigpy.device.Device,
+    ) -> None:
+        """Swap an old device with a successfully re-interviewed shadow.
+
+        Preserves non-discovery state (last_seen, relays, lqi, rssi) and group
+        memberships.  Exceptions propagate to ``reinterview()`` which logs them
+        and fires the ``device_reinterview_failure`` event.
+        """
+        # Copy non-discovery state from old device to shadow
+        shadow._last_seen = old_device._last_seen
+        shadow._relays = old_device._relays
+        shadow.lqi = old_device.lqi
+        shadow.rssi = old_device.rssi
+
+        # Collect group memberships and remove old endpoints from groups
+        old_group_memberships: dict[int, set[int]] = {}
+        for ep in old_device.non_zdo_endpoints:
+            if ep.member_of:
+                old_group_memberships[ep.endpoint_id] = set(ep.member_of)
+                for group in list(ep.member_of.values()):
+                    group.remove_member(ep, suppress_event=True)
+
+        # Remove old device data from DB (cascade deletes endpoints, clusters,
+        # attribute cache, group members, and relays).  We call _remove_device
+        # directly instead of the public device_removed() because we need the
+        # delete to complete before _finalize_device enqueues the save.
+        if self._dblistener is not None:
+            old_device.remove_listener(self._dblistener)
+            await self._dblistener._remove_device(old_device)
+
+        # Clean up old device's callbacks and tasks
+        old_device.on_remove()
+
+        # Apply quirks, persist to DB, and register the device — but do NOT
+        # fire the device_initialized listener event.  Callers (and ZHA)
+        # should listen for device_reinterviewed instead.
+        new_device = self._finalize_device(shadow)
+
+        # Clear the reinterview flag so the new device isn't permanently stuck
+        # (relevant when no quirk is applied and new_device is the shadow itself)
+        new_device._reinterview_in_progress = False
+
+        # Restore group memberships on the new device's matching endpoints.
+        # A group may have been removed while we were awaiting `_remove_device`,
+        # so guard against missing entries rather than aborting the reinterview.
+        for ep_id, group_ids in old_group_memberships.items():
+            if ep_id in new_device.endpoints:
+                new_ep = new_device.endpoints[ep_id]
+                for group_id in group_ids:
+                    group = self.groups.get(group_id)
+                    if group is not None:
+                        group.add_member(new_ep)
+
+        # Persist relays for the new device (cascade deleted the old row)
+        if self._dblistener is not None and new_device._relays is not None:
+            self._dblistener.device_relays_updated(new_device, new_device._relays)
+
+        self.listener_event("device_reinterviewed", new_device)
+
+    async def reinterview_device(self, ieee: t.EUI64) -> None:
+        """Re-interview a device. Safe for sleepy end-devices.
+
+        If the device does not respond, existing state is preserved.
+        """
+        dev = self.get_device(ieee=ieee)
+        await dev.reinterview()
 
     async def remove(
         self, ieee: t.EUI64, remove_children: bool = True, rejoin: bool = False

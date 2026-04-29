@@ -102,6 +102,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._last_seen: datetime | None = None
 
         self._initialize_task: asyncio.Task | None = None
+        self._reinterview_in_progress: bool = False
         self._group_scan_task: asyncio.Task | None = None
         self._fast_polling_reset_task: asyncio.Task | None = None
 
@@ -271,6 +272,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         """Return True if device is being initialized."""
         return self._initialize_task is not None and not self._initialize_task.done()
 
+    @property
+    def reinterviewing(self) -> bool:
+        """Return True if device is being re-interviewed."""
+        return self._reinterview_in_progress
+
     def cancel_initialization(self) -> None:
         """Cancel initialization call."""
         if self.initializing:
@@ -284,12 +290,71 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self._application.device_initialized(self)
             return None
 
+        if self.reinterviewing:
+            self.debug("Skipping initialization, re-interview in progress")
+            return None
+
         self.debug("Scheduling initialization")
 
         self.cancel_initialization()
         self._initialize_task = self.create_task(self.initialize(), name="initialize")
 
         return self._initialize_task
+
+    async def reinterview(self) -> None:
+        """Re-interview this device using a shadow device for safety.
+
+        Creates a fresh Device, discovers its endpoints/clusters/model info,
+        and on success swaps the old device out. On failure, the old device
+        and its DB state are preserved.
+        """
+        if self.reinterviewing:
+            self.debug("Re-interview already in progress, skipping")
+            return
+
+        if self.initializing:
+            self.debug("Initialization in progress, skipping re-interview")
+            return
+
+        if self.ota_in_progress:
+            self.debug("OTA in progress, skipping re-interview")
+            return
+
+        self._reinterview_in_progress = True
+
+        try:
+            shadow = Device(self._application, self._ieee, self.nwk)
+            shadow._reinterview_in_progress = True  # prevent auto-initialization
+
+            # Temporarily register the shadow in app.devices so it receives
+            # ZDO responses routed by packet_received().
+            self._application.devices[self._ieee] = shadow
+
+            try:
+                async with self._application.request_priority(
+                    t.PacketPriority.CRITICAL
+                ):
+                    await zigpy.util.retryable_request(tries=2, delay=0.5)(
+                        shadow._discover
+                    )()
+            except Exception:
+                # Discovery failed — restore old device, clean up shadow
+                self._application.devices[self._ieee] = self
+                shadow.on_remove()
+                raise
+
+            # Discovery succeeded — swap the old device for the new one.
+            # If this somehow fails, the state may be partially swapped; attempting
+            # to undo would likely make things worse.
+            await self._application._device_reinterviewed(self, shadow)
+        except Exception:  # noqa: BLE001
+            self.warning(
+                "Re-interview failed, keeping existing device",
+                exc_info=True,
+            )
+            self._application.listener_event("device_reinterview_failure", self)
+        finally:
+            self._reinterview_in_progress = False
 
     async def get_node_descriptor(self) -> zdo_t.NodeDescriptor:
         self.info("Requesting 'Node Descriptor'")
@@ -348,6 +413,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             # to be sent
             if (
                 self.initializing
+                or self.reinterviewing
                 or self._concurrent_requests_semaphore.active_requests > 0
                 or self._fast_polling
             ):
@@ -421,11 +487,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             LOGGER.debug("Stopping fast polling on next device check-in")
             self._fast_polling = False
 
-    @zigpy.util.retryable_request(tries=5, delay=0.5)
-    async def _initialize(self) -> None:
-        """Attempts multiple times to discover all basic information about a device: namely
-        its node descriptor, all endpoints and clusters, and the model and manufacturer
-        attributes from any Basic cluster exposing those attributes.
+    async def _discover(self) -> None:
+        """Discover all basic information about a device: its node descriptor, all
+        endpoints and clusters, and the model and manufacturer attributes from any
+        Basic cluster exposing those attributes. Does not signal completion.
         """
 
         # Some devices are improperly initialized and are missing a node descriptor
@@ -523,6 +588,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.status = Status.ENDPOINTS_INIT
 
         self.info("Discovered basic device information for %s", self)
+
+    @zigpy.util.retryable_request(tries=5, delay=0.5)
+    async def _initialize(self) -> None:
+        """Discover device information and signal to the application."""
+        await self._discover()
 
         # Signal to the application that the device is ready
         self._application.device_initialized(self)
@@ -961,6 +1031,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             )
         except Exception:  # noqa: BLE001
             self.debug("Post-OTA image_notify failed", exc_info=True)
+
+        # Re-interview the device after successful OTA to pick up
+        # any changes in clusters/endpoints/model and re-apply quirks.
+        # reinterview() handles its own errors internally.
+        await self.reinterview()
 
         return result
 
