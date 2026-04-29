@@ -1961,6 +1961,56 @@ async def test_device_reinterviewed_preserves_groups(app):
     assert not old_ep.member_of
 
 
+async def test_device_reinterviewed_skips_group_removed_during_swap(app):
+    """If a group is removed while `_remove_device` is awaiting, restoration skips it
+    instead of raising and aborting the reinterview.
+    """
+    ieee = make_ieee()
+    nwk = t.NWK(0x1234)
+
+    old_dev = app.add_device(ieee=ieee, nwk=nwk)
+    old_dev.node_desc = make_node_desc()
+    old_ep = old_dev.add_endpoint(1)
+    old_ep.profile_id = 260
+    old_ep.device_type = 0x0100
+    old_ep.status = zigpy.endpoint.Status.ZDO_INIT
+
+    surviving = app.groups.add_group(10, "Group 10")
+    doomed = app.groups.add_group(20, "Group 20")
+    surviving.add_member(old_ep, suppress_event=True)
+    doomed.add_member(old_ep, suppress_event=True)
+
+    # Simulate the race: between `_remove_device` returning and group restoration
+    # running, group 20 is removed. We trigger this by patching the dblistener's
+    # `_remove_device` to drop the group as a side effect.
+    db_listener = MagicMock()
+
+    async def fake_remove(_dev):
+        app.groups.pop(20, None)
+
+    db_listener._remove_device = AsyncMock(side_effect=fake_remove)
+    app._dblistener = db_listener
+    old_dev.add_context_listener(db_listener)
+
+    shadow = zigpy.device.Device(app, ieee, nwk)
+    shadow.node_desc = make_node_desc()
+    shadow.status = zigpy.device.Status.ENDPOINTS_INIT
+    new_ep = shadow.add_endpoint(1)
+    new_ep.profile_id = 260
+    new_ep.device_type = 0x0100
+    new_ep.status = zigpy.endpoint.Status.ZDO_INIT
+
+    await app._device_reinterviewed(old_dev, shadow)
+
+    new_dev = app.devices[ieee]
+    new_ep = new_dev.endpoints[1]
+
+    # Surviving group has the new endpoint; doomed group is gone, no KeyError raised.
+    assert new_ep.unique_id in surviving
+    assert 20 not in app.groups
+    app.listener_event.assert_any_call("device_reinterviewed", new_dev)
+
+
 async def test_device_reinterviewed_finalization_failure_propagates(app):
     """Test that _device_reinterviewed lets exceptions propagate to reinterview()."""
     ieee = make_ieee()

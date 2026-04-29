@@ -664,12 +664,16 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         # (relevant when no quirk is applied and new_device is the shadow itself)
         new_device._reinterview_in_progress = False
 
-        # Restore group memberships on the new device's matching endpoints
+        # Restore group memberships on the new device's matching endpoints.
+        # A group may have been removed while we were awaiting `_remove_device`,
+        # so guard against missing entries rather than aborting the reinterview.
         for ep_id, group_ids in old_group_memberships.items():
             if ep_id in new_device.endpoints:
                 new_ep = new_device.endpoints[ep_id]
                 for group_id in group_ids:
-                    self.groups[group_id].add_member(new_ep)
+                    group = self.groups.get(group_id)
+                    if group is not None:
+                        group.add_member(new_ep)
 
         # Persist relays for the new device (cascade deleted the old row)
         if self._dblistener is not None and new_device._relays is not None:
