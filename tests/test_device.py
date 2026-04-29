@@ -1778,6 +1778,42 @@ async def test_on_remove_callbacks(dev: device.Device) -> None:
     assert not dev._on_remove_callbacks
 
 
+def test_on_remove_no_running_loop(dev: device.Device) -> None:
+    """`on_remove()` is safe to call from synchronous code (no running loop)."""
+    callback = MagicMock()
+    dev._on_remove_callbacks.append(callback)
+
+    # No event loop is running here; `asyncio.current_task()` would raise.
+    dev.on_remove()
+
+    callback.assert_called_once()
+    assert not dev._on_remove_callbacks
+    assert not dev._tasks
+
+
+async def test_on_remove_from_within_tracked_task(dev: device.Device) -> None:
+    """`on_remove()` is safe to call from inside one of the device's own tasks.
+
+    The current task should not be cancelled, and its done-callback should
+    not raise `KeyError` when `_tasks` was cleared during `on_remove()`.
+    """
+    started = asyncio.Event()
+
+    async def inner() -> str:
+        started.set()
+        dev.on_remove()
+        return "done"
+
+    task = dev.create_task(inner(), name="inner")
+    await started.wait()
+    result = await task
+
+    assert result == "done"
+    assert not task.cancelled()
+    # Done-callback ran without raising; `_tasks` is empty.
+    assert not dev._tasks
+
+
 async def test_initialize_fast_polling_failure(dev: device.Device) -> None:
     """Test that fast polling is attempted during initialization."""
     ep = dev.add_endpoint(1)

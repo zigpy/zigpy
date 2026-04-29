@@ -12,6 +12,7 @@ import pytest
 import zigpy.application
 import zigpy.config as conf
 from zigpy.datastructures import RequestLimiter
+import zigpy.device
 from zigpy.exceptions import (
     DeliveryError,
     NetworkNotFormed,
@@ -456,6 +457,78 @@ async def test_device_join_rejoin(is_init_mock, group_scan_mock, init_mock, app,
     app.listener_event.assert_called_once_with("device_joined", ANY)
     group_scan_mock.assert_not_called()
     init_mock.assert_called_once()
+
+
+def test_register_callback_listener_cancel_is_idempotent(app):
+    """Cancelling the same callback twice is safe (no KeyError, no resurrected slot)."""
+    dev = app.add_device(ieee=make_ieee(), nwk=t.NWK(0x1234))
+    # Clear the PollControl listener that Device.__init__ registers, so the
+    # deque slot is empty after our cancel below.
+    dev.on_remove()
+    assert dev not in app._req_listeners
+
+    cancel = app.register_callback_listener(
+        src=dev,
+        filters=[clusters.general.PollControl.ClientCommandDefs.checkin.schema()],
+        callback=lambda hdr, cmd: None,
+    )
+    assert dev in app._req_listeners
+
+    # First cancel removes the listener and drops the empty deque slot.
+    cancel()
+    assert dev not in app._req_listeners
+
+    # Second cancel hits the early-return path: no slot, no work.
+    cancel()
+    assert dev not in app._req_listeners
+
+
+async def test_device_initialized_cleans_up_replaced_device(app):
+    """When a quirk replaces the device, the original is fully released."""
+    ieee = make_ieee()
+    nwk = t.NWK(0x1234)
+
+    original = app.add_device(ieee=ieee, nwk=nwk)
+    original.node_desc = make_node_desc()
+    original.add_endpoint(1)
+    original[1].profile_id = 260
+    original[1].device_type = 0x0100
+    original[1].status = zigpy.endpoint.Status.ZDO_INIT
+
+    # Sanity check: the PollControl listener registered in Device.__init__
+    # is keyed on the device itself.
+    assert original in app._req_listeners
+
+    quirked = zigpy.device.Device(app, ieee, nwk)
+    quirked.node_desc = make_node_desc()
+
+    with patch("zigpy.quirks.get_device", return_value=quirked):
+        app.device_initialized(original)
+
+    assert app.devices[ieee] is quirked
+    # Original's PollControl listener was cancelled, dropping its slot.
+    assert original not in app._req_listeners
+    # Quirked device has its own slot (registered in its own __init__).
+    assert quirked in app._req_listeners
+
+
+async def test_device_initialized_no_quirk_keeps_device(app):
+    """If no quirk applies, the device is kept and not erroneously cleaned up."""
+    ieee = make_ieee()
+    nwk = t.NWK(0x1234)
+
+    dev = app.add_device(ieee=ieee, nwk=nwk)
+    dev.node_desc = make_node_desc()
+    dev.add_endpoint(1)
+    dev[1].profile_id = 260
+    dev[1].device_type = 0x0100
+    dev[1].status = zigpy.endpoint.Status.ZDO_INIT
+
+    with patch("zigpy.quirks.get_device", side_effect=lambda d: d):
+        app.device_initialized(dev)
+
+    assert app.devices[ieee] is dev
+    assert dev in app._req_listeners
 
 
 async def test_get_device(app):

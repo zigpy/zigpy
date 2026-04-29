@@ -148,7 +148,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         """
         task = asyncio.get_running_loop().create_task(target, name=name)
         self._tasks.add(task)
-        task.add_done_callback(self._tasks.remove)
+        # `discard` is idempotent so the callback is safe even if `on_remove()`
+        # cleared `_tasks` before the task completed.
+        task.add_done_callback(self._tasks.discard)
         return task
 
     def on_remove(self) -> None:
@@ -158,8 +160,17 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self._on_remove_callbacks.clear()
 
+        # Don't cancel the task we're currently running in (e.g. when on_remove
+        # is called from inside `device_initialized` after a quirk replacement).
+        # `current_task()` raises if no event loop is running; on_remove can be
+        # called from sync code (tests, shutdown), so treat that as no current task.
+        try:
+            current_task = asyncio.current_task()
+        except RuntimeError:
+            current_task = None
         for task in self._tasks:
-            task.cancel()
+            if task is not current_task:
+                task.cancel()
 
         self._tasks.clear()
 
