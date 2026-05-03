@@ -1098,7 +1098,13 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
           that reboot without sending any traffic of their own).
         - A new `QueryNextImageCommand` whose `current_file_version` differs
           from the value cached on the OTA cluster before this wait began.
-        - A `Device_annce` from this device.
+        - A `device_joined` event for this device on the Application (fires
+          on TC-join and on the Device_annce path when the device's NWK
+          changes or it was unknown).
+
+        Listeners are attached only at the start of this wait and torn down
+        on resolution, timeout, or cancellation, so unrelated joins from
+        before the OTA do not get counted.
         """
         snapshot = (
             ota.last_query_cmd.current_file_version
@@ -1107,6 +1113,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         )
 
         confirmed = asyncio.Event()
+        device_ieee = self.ieee
 
         def on_qni_update(event: OtaQueryCacheUpdatedEvent) -> None:
             if (
@@ -1117,12 +1124,13 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         unsub_qni = ota.on_event(OtaQueryCacheUpdatedEvent.event_type, on_qni_update)
 
-        class _DeviceAnnounceListener:
-            def device_announce(self, _device: Device) -> None:
-                confirmed.set()
+        class _PostOtaJoinListener:
+            def device_joined(self, joined_dev: Device) -> None:
+                if joined_dev.ieee == device_ieee:
+                    confirmed.set()
 
-        annce_listener = _DeviceAnnounceListener()
-        self.zdo.add_listener(annce_listener)
+        join_listener = _PostOtaJoinListener()
+        self._application.add_listener(join_listener)
 
         async def probe_version() -> None:
             # Actively poll the firmware version: sleepy devices won't answer,
@@ -1161,7 +1169,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             with contextlib.suppress(asyncio.CancelledError):
                 await probe_task
             unsub_qni()
-            self.zdo.remove_listener(annce_listener)
+            self._application.remove_listener(join_listener)
 
     def get_last_ota_query_cmd(self) -> QueryNextImageCommand | None:
         """Return the last cached QueryNextImageCommand, preferring client clusters."""

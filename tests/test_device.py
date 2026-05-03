@@ -719,7 +719,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
                 # post-OTA image_notify.
                 async def fire_announce() -> None:
                     await asyncio.sleep(0.05)
-                    dev.zdo.listener_event("device_announce", dev)
+                    dev.application.listener_event("device_joined", dev)
 
                 asyncio.create_task(fire_announce())  # noqa: RUF006
 
@@ -1087,7 +1087,7 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
                 # Simulate the device rebooting and announcing itself.
                 async def fire_announce() -> None:
                     await asyncio.sleep(0.05)
-                    dev.zdo.listener_event("device_announce", dev)
+                    dev.application.listener_event("device_joined", dev)
 
                 asyncio.create_task(fire_announce())  # noqa: RUF006
 
@@ -2154,16 +2154,36 @@ async def ota_dev(dev):
     return dev, cluster
 
 
-async def test_post_ota_confirmation_resolves_on_device_announce(ota_dev):
-    """A Device_annce on the device's ZDO resolves the wait."""
+async def test_post_ota_confirmation_resolves_on_device_joined(ota_dev):
+    """A `device_joined` event for this device resolves the wait."""
     dev, cluster = ota_dev
 
     wait_task = asyncio.create_task(dev._wait_for_post_ota_confirmation(cluster))
     # Give the wait function a chance to attach its listeners
     await asyncio.sleep(0)
 
-    dev.zdo.listener_event("device_announce", dev)
+    dev.application.listener_event("device_joined", dev)
     await asyncio.wait_for(wait_task, timeout=1.0)
+
+
+async def test_post_ota_confirmation_ignores_other_devices_joining(ota_dev):
+    """A `device_joined` event for a DIFFERENT device must NOT resolve the wait."""
+    dev, cluster = ota_dev
+
+    other = MagicMock()
+    other.ieee = t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11")
+    assert other.ieee != dev.ieee
+
+    wait_task = asyncio.create_task(dev._wait_for_post_ota_confirmation(cluster))
+    await asyncio.sleep(0)
+
+    dev.application.listener_event("device_joined", other)
+    await asyncio.sleep(0)
+    assert not wait_task.done()
+
+    wait_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await wait_task
 
 
 async def test_post_ota_confirmation_resolves_on_version_change(ota_dev):
@@ -2259,7 +2279,7 @@ async def test_post_ota_confirmation_cleans_up_listeners_on_cancel(ota_dev):
     qni_listeners_before = len(
         cluster._event_listeners.get("ota_query_cache_updated", [])
     )
-    zdo_listeners_before = len(dev.zdo._listeners)
+    app_listeners_before = len(dev.application._listeners)
 
     wait_task = asyncio.create_task(dev._wait_for_post_ota_confirmation(cluster))
     await asyncio.sleep(0)
@@ -2268,7 +2288,7 @@ async def test_post_ota_confirmation_cleans_up_listeners_on_cancel(ota_dev):
         len(cluster._event_listeners.get("ota_query_cache_updated", []))
         == qni_listeners_before + 1
     )
-    assert len(dev.zdo._listeners) == zdo_listeners_before + 1
+    assert len(dev.application._listeners) == app_listeners_before + 1
 
     wait_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
@@ -2279,7 +2299,7 @@ async def test_post_ota_confirmation_cleans_up_listeners_on_cancel(ota_dev):
         len(cluster._event_listeners.get("ota_query_cache_updated", []))
         == qni_listeners_before
     )
-    assert len(dev.zdo._listeners) == zdo_listeners_before
+    assert len(dev.application._listeners) == app_listeners_before
 
 
 async def test_update_firmware_post_ota_timeout(monkeypatch, dev, caplog):
@@ -2324,7 +2344,7 @@ async def test_update_firmware_post_ota_sends_image_notify_after_confirmation(
 
     async def fire_announce_soon():
         await asyncio.sleep(0.02)
-        dev.zdo.listener_event("device_announce", dev)
+        dev.application.listener_event("device_joined", dev)
 
     asyncio.create_task(fire_announce_soon())  # noqa: RUF006
 
@@ -2355,7 +2375,7 @@ async def test_update_firmware_post_ota_image_notify_failure_is_swallowed(
 
     async def fire_announce_soon():
         await asyncio.sleep(0.02)
-        dev.zdo.listener_event("device_announce", dev)
+        dev.application.listener_event("device_joined", dev)
 
     asyncio.create_task(fire_announce_soon())  # noqa: RUF006
 
