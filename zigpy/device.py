@@ -54,10 +54,12 @@ PACKET_DEBOUNCE_WINDOW = 10
 MAX_DEVICE_CONCURRENCY = 2
 DEFAULT_FAST_POLL_TIMEOUT = 30
 
+# Initial sleep after OTA flash before probing the device. The retry
+# delay below is decoupled because the two serve different purposes: this
+# is the "let the device finish rebooting" pause; the retry delay backs
+# off failed reads while the device is still unresponsive on a marginal mesh.
 AFTER_OTA_ATTR_READ_DELAY = 10
-OTA_RETRY_DECORATOR = zigpy.util.retryable_request(
-    tries=4, delay=AFTER_OTA_ATTR_READ_DELAY
-)
+OTA_RETRY_DECORATOR = zigpy.util.retryable_request(tries=10, delay=15)
 
 
 @dataclass(frozen=True, slots=True)
