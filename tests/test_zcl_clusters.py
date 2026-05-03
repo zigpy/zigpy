@@ -396,6 +396,162 @@ async def test_ota_handle_query_next_image(ota_cluster):
     assert image_events[0].query_cmd is cmd
 
 
+def _make_qni_cmd(version: int) -> Ota.QueryNextImageCommand:
+    """Build a real QueryNextImageCommand with the given current_file_version."""
+    return Ota.QueryNextImageCommand(
+        field_control=Ota.QueryNextImageCommand.FieldControl(0),
+        manufacturer_code=0x1234,
+        image_type=0x90,
+        current_file_version=version,
+    )
+
+
+@pytest.fixture
+def ota_cluster_for_reinterview(ota_cluster):
+    """ota_cluster fixture with reinterview-relevant defaults set up."""
+    dev = ota_cluster.endpoint.device
+    dev.ota_in_progress = False
+    dev._reinterview_in_progress = False
+    dev.reinterview = AsyncMock()
+    ota_cluster.query_next_image_response = AsyncMock()
+
+    # Stub OTA image lookup so the handler doesn't try to fetch images
+    dev.application.ota.check_cluster_for_ota = AsyncMock()
+
+    return ota_cluster
+
+
+async def test_qni_reinterview_on_version_change(ota_cluster_for_reinterview):
+    """A new current_file_version triggers a scheduled re-interview."""
+    ota_cluster = ota_cluster_for_reinterview
+    dev = ota_cluster.endpoint.device
+
+    hdr = zigpy.zcl.foundation.ZCLHeader.cluster(
+        tsn=0x12, command_id=Ota.ServerCommandDefs.query_next_image.id
+    )
+
+    # First observation: should NOT trigger reinterview (no prior baseline)
+    await ota_cluster._handle_query_next_image(hdr, _make_qni_cmd(0x00000001))
+    await asyncio.sleep(0)
+    assert dev.reinterview.call_count == 0
+
+    # Second observation with a different version: SHOULD trigger reinterview
+    await ota_cluster._handle_query_next_image(hdr, _make_qni_cmd(0x00000002))
+    await asyncio.sleep(0)
+    assert dev.reinterview.call_count == 1
+
+
+async def test_qni_no_reinterview_when_version_unchanged(ota_cluster_for_reinterview):
+    """Same version reported twice does not trigger a re-interview."""
+    ota_cluster = ota_cluster_for_reinterview
+    dev = ota_cluster.endpoint.device
+
+    hdr = zigpy.zcl.foundation.ZCLHeader.cluster(
+        tsn=0x12, command_id=Ota.ServerCommandDefs.query_next_image.id
+    )
+
+    await ota_cluster._handle_query_next_image(hdr, _make_qni_cmd(0x00000001))
+    await ota_cluster._handle_query_next_image(hdr, _make_qni_cmd(0x00000001))
+    await asyncio.sleep(0)
+
+    assert dev.reinterview.call_count == 0
+
+
+async def test_qni_no_reinterview_for_coordinator(ota_cluster_for_reinterview):
+    """The active coordinator is never re-interviewed via this path."""
+    ota_cluster = ota_cluster_for_reinterview
+    dev = ota_cluster.endpoint.device
+
+    # Make this device the active coordinator
+    dev.application.state.node_info.ieee = dev.ieee
+
+    hdr = zigpy.zcl.foundation.ZCLHeader.cluster(
+        tsn=0x12, command_id=Ota.ServerCommandDefs.query_next_image.id
+    )
+
+    await ota_cluster._handle_query_next_image(hdr, _make_qni_cmd(0x00000001))
+    await ota_cluster._handle_query_next_image(hdr, _make_qni_cmd(0x00000002))
+    await asyncio.sleep(0)
+
+    assert dev.reinterview.call_count == 0
+
+
+async def test_qni_no_reinterview_during_ota(ota_cluster_for_reinterview):
+    """A version change during an in-progress OTA defers to update_firmware()."""
+    ota_cluster = ota_cluster_for_reinterview
+    dev = ota_cluster.endpoint.device
+
+    hdr = zigpy.zcl.foundation.ZCLHeader.cluster(
+        tsn=0x12, command_id=Ota.ServerCommandDefs.query_next_image.id
+    )
+
+    await ota_cluster._handle_query_next_image(hdr, _make_qni_cmd(0x00000001))
+
+    # An OTA is now running for this device
+    dev.ota_in_progress = True
+    await ota_cluster._handle_query_next_image(hdr, _make_qni_cmd(0x00000002))
+    await asyncio.sleep(0)
+
+    assert dev.reinterview.call_count == 0
+
+
+async def test_qni_no_reinterview_when_already_reinterviewing(
+    ota_cluster_for_reinterview,
+):
+    """Skip if a re-interview is already running for this device."""
+    ota_cluster = ota_cluster_for_reinterview
+    dev = ota_cluster.endpoint.device
+
+    hdr = zigpy.zcl.foundation.ZCLHeader.cluster(
+        tsn=0x12, command_id=Ota.ServerCommandDefs.query_next_image.id
+    )
+
+    await ota_cluster._handle_query_next_image(hdr, _make_qni_cmd(0x00000001))
+
+    dev._reinterview_in_progress = True
+    await ota_cluster._handle_query_next_image(hdr, _make_qni_cmd(0x00000002))
+    await asyncio.sleep(0)
+
+    assert dev.reinterview.call_count == 0
+
+
+async def test_qni_reinterview_is_scheduled_not_awaited(ota_cluster_for_reinterview):
+    """Reinterview must be scheduled as a task so it doesn't block the receive path."""
+    ota_cluster = ota_cluster_for_reinterview
+    dev = ota_cluster.endpoint.device
+
+    # Make reinterview hang forever — if the handler awaits it inline,
+    # _handle_query_next_image will never return.
+    blocker = asyncio.Event()
+
+    async def hanging_reinterview():
+        await blocker.wait()
+
+    dev.reinterview = AsyncMock(side_effect=hanging_reinterview)
+
+    hdr = zigpy.zcl.foundation.ZCLHeader.cluster(
+        tsn=0x12, command_id=Ota.ServerCommandDefs.query_next_image.id
+    )
+
+    # First, establish a baseline version
+    await ota_cluster._handle_query_next_image(hdr, _make_qni_cmd(0x00000001))
+
+    # Second, with a changed version. Must complete promptly even while the
+    # reinterview task is hanging.
+    await asyncio.wait_for(
+        ota_cluster._handle_query_next_image(hdr, _make_qni_cmd(0x00000002)),
+        timeout=1.0,
+    )
+
+    # Let the scheduled task start and hit the blocker
+    await asyncio.sleep(0)
+    assert dev.reinterview.call_count == 1
+
+    # Release the hanging reinterview so verify_cleanup doesn't see a lingering task
+    blocker.set()
+    await asyncio.sleep(0)
+
+
 async def test_ota_handle_image_block_req(ota_cluster):
     dev = ota_cluster.endpoint.device
 
