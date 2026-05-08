@@ -56,7 +56,7 @@ DEFAULT_FAST_POLL_TIMEOUT = 30
 
 AFTER_OTA_ATTR_READ_DELAY = 10
 OTA_RETRY_DECORATOR = zigpy.util.retryable_request(
-    tries=4, delay=AFTER_OTA_ATTR_READ_DELAY
+    tries=10, delay=AFTER_OTA_ATTR_READ_DELAY
 )
 
 
