@@ -44,9 +44,6 @@ CONF_OTA_PROVIDERS_DEFAULT = [
     {
         CONF_OTA_PROVIDER_TYPE: "sonoff",
     },
-    {
-        CONF_OTA_PROVIDER_TYPE: "thirdreality",
-    },
 ]
 CONF_OTA_EXTRA_PROVIDERS_DEFAULT: list[dict[str, typing.Any]] = []
 CONF_SOURCE_ROUTING_DEFAULT = False
