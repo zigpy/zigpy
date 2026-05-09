@@ -19,7 +19,6 @@ from zigpy.config import (
     CONF_OTA_ENABLED,
     CONF_OTA_EXTRA_PROVIDERS,
     CONF_OTA_IKEA,
-    CONF_OTA_INOVELLI,
     CONF_OTA_LEDVANCE,
     CONF_OTA_PROVIDER_MANUF_IDS,
     CONF_OTA_PROVIDER_URL,
@@ -407,10 +406,6 @@ class OTA:
         register_deprecated_provider(
             enabled=config.get(CONF_OTA_IKEA),
             provider=zigpy.ota.providers.Tradfri,
-        )
-        register_deprecated_provider(
-            enabled=config.get(CONF_OTA_INOVELLI),
-            provider=zigpy.ota.providers.Inovelli,
         )
         register_deprecated_provider(
             enabled=config.get(CONF_OTA_LEDVANCE),

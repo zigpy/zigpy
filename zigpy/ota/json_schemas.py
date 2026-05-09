@@ -192,35 +192,6 @@ SONOFF_SCHEMA = {
     },
 }
 
-INOVELLI_SCHEMA = {
-    "type": "object",
-    "patternProperties": {
-        "^[A-Z0-9_-]+$": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "version": {
-                        "type": "string",
-                        "pattern": "^(?:[0-9A-F]{8}|[0-9]+)$",
-                    },
-                    "channel": {"type": "string"},
-                    "firmware": {"type": "string", "format": "uri"},
-                    "manufacturer_id": {"type": "integer"},
-                    "image_type": {"type": "integer"},
-                },
-                "required": [
-                    "version",
-                    "channel",
-                    "firmware",
-                    "manufacturer_id",
-                    "image_type",
-                ],
-            },
-        }
-    },
-}
-
 THIRD_REALITY_SCHEMA = {
     "type": "object",
     "properties": {
