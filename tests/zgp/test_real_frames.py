@@ -1,38 +1,23 @@
-"""Manager tests driven by real-device frames.
+"""Manager tests driven by frames captured from a real Busch-Jaeger 6716 U.
 
-These tests exercise ``GreenPowerManager._process_commissioning`` and
-``_dispatch_gp_command`` with payloads captured from an actual Busch-Jaeger
-6716 U "Friends of Hue" switch. The goal is to pin behaviour against real
-hardware, not to cover more code paths than the synthetic tests already do.
-
-The frames arrive below the bellows EZSP layer, so the public packet entry
-point (``handle_packet``) cannot be used directly without first solving the
-bellows parsing bug that is out of scope for this PR. We call the internal
-async methods directly, which is the same injection point every other
-manager test uses.
+These pin behaviour against actual hardware. The frames arrive below the
+bellows EZSP layer, so we call the manager's internal async methods directly
+(the same injection point the other manager tests use).
 """
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
-from zigpy.zgp.device import GPDevice
-from zigpy.zgp.events import CommandReceived, DeviceJoined
-from zigpy.zgp.manager import GreenPowerManager
-from zigpy.zgp.types import SecurityLevel
-
 from tests.zgp.fixtures.busch_jaeger_6716u import (
     BJ6716U_COMMISSIONING_PAYLOAD,
+    BJ6716U_DECRYPTED_KEY,
     BJ6716U_EXPECTED,
     BJ6716U_OPERATIONAL_FRAMES,
     BJ6716U_SOURCE_ID,
 )
-
-
-# A fake decrypted key used when we want to bypass the real AES-CCM key
-# unwrap (which would fail because the device uses an out-of-band key that
-# is not the default GP link key).
-FAKE_DECRYPTED_KEY: bytes = bytes(range(16))
+from zigpy.zgp.device import GPDevice
+from zigpy.zgp.events import CommandReceived, DeviceJoined
+from zigpy.zgp.manager import GreenPowerManager
+from zigpy.zgp.types import SecurityLevel
 
 
 async def _commission(manager: GreenPowerManager) -> None:
@@ -48,63 +33,32 @@ async def _commission(manager: GreenPowerManager) -> None:
 # -- Commissioning -----------------------------------------------------------
 
 
-async def test_rejects_oob_encrypted_key_gracefully(manager, gp_events) -> None:
-    """No device is created when the OOB key cannot be decrypted.
-
-    The FoH switch encrypts its GPD key with an individual out-of-band
-    key that zigpy does not know. The manager should log a warning and
-    bail out cleanly without creating a half-configured device.
-    """
+async def test_real_commissioning_succeeds(manager, gp_events) -> None:
+    """The captured 0xE0 frame unwraps its key and registers the device."""
     await _commission(manager)
-
-    assert manager.get_device(BJ6716U_SOURCE_ID) is None
-    assert not any(isinstance(e, DeviceJoined) for _, e in gp_events)
-
-
-async def test_creates_device_when_key_unwrap_succeeds(manager) -> None:
-    """Patching key unwrap lets us exercise the rest of the flow."""
-    with patch(
-        "zigpy.zgp.manager.decrypt_security_key",
-        return_value=FAKE_DECRYPTED_KEY,
-    ):
-        await _commission(manager)
 
     device = manager.get_device(BJ6716U_SOURCE_ID)
     assert device is not None
     assert device.source_id == BJ6716U_SOURCE_ID
     assert device.device_id == BJ6716U_EXPECTED.device_id
-    assert bytes(device.security_key) == FAKE_DECRYPTED_KEY
+    assert bytes(device.security_key) == BJ6716U_DECRYPTED_KEY
     assert device.security_level == SecurityLevel.FullFrameCounterAndMIC
-    # The manager prefers the advertised OutgoingCounter over the
-    # notification frame counter when the payload provides one.
+    # The advertised OutgoingCounter wins over the notification frame counter.
     assert device.frame_counter == BJ6716U_EXPECTED.outgoing_counter
+
+    joined = [e for _, e in gp_events if isinstance(e, DeviceJoined)]
+    assert len(joined) == 1
+    assert joined[0].device.source_id == BJ6716U_SOURCE_ID
 
 
 async def test_stores_all_17_gpd_commands(manager) -> None:
-    """The device exposes every button/scene command it can emit."""
-    with patch(
-        "zigpy.zgp.manager.decrypt_security_key",
-        return_value=FAKE_DECRYPTED_KEY,
-    ):
-        await _commission(manager)
+    """The device exposes every button/scene command it advertised."""
+    await _commission(manager)
 
     device = manager.get_device(BJ6716U_SOURCE_ID)
     assert device is not None
     assert device.gpd_commands == BJ6716U_EXPECTED.gpd_commands
     assert len(device.gpd_commands) == 17
-
-
-async def test_fires_joined_event(manager, gp_events) -> None:
-    """Successful commissioning notifies listeners."""
-    with patch(
-        "zigpy.zgp.manager.decrypt_security_key",
-        return_value=FAKE_DECRYPTED_KEY,
-    ):
-        await _commission(manager)
-
-    joined = [e for _, e in gp_events if isinstance(e, DeviceJoined)]
-    assert len(joined) == 1
-    assert joined[0].device.source_id == BJ6716U_SOURCE_ID
 
 
 # -- Operational frame handling ---------------------------------------------

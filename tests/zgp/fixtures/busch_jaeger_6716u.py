@@ -1,56 +1,42 @@
-"""Captured Green Power frames from a Busch-Jaeger "Friends of Hue" switch.
+"""Captured Green Power frames from a Busch-Jaeger 6716 U "Friends of Hue" switch.
 
-Device: Busch-Jaeger 6716 U (battery-less, energy-harvesting 4-button switch)
-Coordinator: Silabs ZBT-1 stick (EZSP v13/v14 firmware)
-Captured on: 2026-04-22 by a community tester running the branch of PR #1814.
+Captured 2026-04-22 on a Silabs ZBT-1 (EZSP v13): top-left button held 10 s
+to commission, then normal button presses. Raw EZSP payloads pulled from the
+bellows debug log. See zigpy/zigpy#1814.
 
-The switch emitted these frames while we held the top-left button for 10
-seconds (commissioning) and then pressed buttons normally (operational).
-The raw EZSP payloads were extracted from the bellows debug log after
-bellows dropped them with "Failed to parse frame gpepIncomingMessageHandler".
-
-This is a pure data module. Import the constants directly from tests.
-
-Related upstream issues:
-- zigpy/bellows#110 (2018): initial request for Green Power support
-- zigpy/bellows#229: same "not a valid EmberStatus" error with a Niko FoH switch
+Pure data module — import the constants directly.
 """
 
 from __future__ import annotations
 
 from typing import NamedTuple
 
-
-# GPD source ID (32-bit little-endian on the wire as "86 f8 71 01").
+# GPD source ID (on the wire as "86 f8 71 01", little-endian).
 BJ6716U_SOURCE_ID: int = 0x0171F886
 
-
-# GP Commissioning payload (command 0xE0), 46 bytes.
-#
-# Layout per ZGP spec Tables 53-55:
-#   DeviceID(1) + Options(1) + ExtOptions(1) + SecurityKey(16) + KeyMIC(4)
-#   + OutgoingCounter(4) + AppInfo(1) + NumGPDCommands(1) + GPDCommands(17)
+# GP Commissioning payload (command 0xE0), 46 bytes, per ZGP Tables 53-55:
+#   DeviceID(1) Options(1) ExtOptions(1) SecurityKey(16) KeyMIC(4)
+#   OutgoingCounter(4) AppInfo(1) NumGPDCommands(1) GPDCommands(17)
 BJ6716U_COMMISSIONING_PAYLOAD: bytes = bytes.fromhex(
     "02"  # DeviceID = 0x02 (Generic 2-state switch)
     "c5"  # Options = 0xC5
     "f2"  # ExtOptions = 0xF2
     "1ce9ae2f9e4f85f15de37c1ccbd94387"  # SecurityKey (encrypted, 16 bytes)
-    "0013911a"  # GPDKeyMIC (little-endian uint32)
+    "0013911a"  # GPDKeyMIC (LE uint32)
     "ec1d0000"  # OutgoingCounter = 0x00001dec (LE)
     "04"  # AppInfo = 0x04 (GPDCommandsPresent)
     "11"  # NumGPDCommands = 17
-    "1011121314151617"  # Commands 0x10..0x17 (RecallScene 0-7)
-    "22"  # Command 0x22 (Toggle)
-    "6062636465666768"  # Commands 0x60..0x68 (Press/Release variants)
+    "1011121314151617"  # 0x10..0x17 (RecallScene 0-7)
+    "22"  # 0x22 (Toggle)
+    "6062636465666768"  # 0x60..0x68 (press/release variants)
 )
 
+# GPD key after unwrapping SecurityKey with ZigBeeAlliance09 and the SrcID AAD.
+BJ6716U_DECRYPTED_KEY: bytes = bytes.fromhex("62ca321d983016720e7aaca37fc46f73")
 
-# Operational frames (command 0x68 = Press 2 of 2 for a 2-state switch).
-# Empty GPD payload; security level 2 (Full Frame Counter + MIC) on the wire.
-# The MIC values below are the 4 bytes captured in each frame; they cannot be
-# verified without the device's NWK key (not available to us).
+
 class OperationalFrame(NamedTuple):
-    """Single operational GP frame captured from the device."""
+    """One operational GP frame captured from the device (0x68 = Press 2 of 2)."""
 
     frame_counter: int
     command_id: int
@@ -65,8 +51,6 @@ BJ6716U_OPERATIONAL_FRAMES: list[OperationalFrame] = [
 ]
 
 
-# Expected parse result for the commissioning payload.
-# Used by tests to assert every field in one place.
 class ExpectedCommissioning(NamedTuple):
     """Expected values after parsing BJ6716U_COMMISSIONING_PAYLOAD."""
 
@@ -85,10 +69,8 @@ BJ6716U_EXPECTED: ExpectedCommissioning = ExpectedCommissioning(
     options_raw=0xC5,
     ext_options_raw=0xF2,
     security_key=bytes.fromhex("1ce9ae2f9e4f85f15de37c1ccbd94387"),
-    # KeyMIC = little-endian unpack of "00 13 91 1a"
-    key_mic=0x1A911300,
-    # OutgoingCounter = little-endian unpack of "ec 1d 00 00"
-    outgoing_counter=0x00001DEC,
+    key_mic=0x1A911300,  # LE unpack of "00 13 91 1a"
+    outgoing_counter=0x00001DEC,  # LE unpack of "ec 1d 00 00"
     app_info_raw=0x04,
     gpd_commands=[
         0x10,
@@ -107,6 +89,6 @@ BJ6716U_EXPECTED: ExpectedCommissioning = ExpectedCommissioning(
         0x65,
         0x66,
         0x67,
-        0x68,  # Press/Release
+        0x68,  # press/release
     ],
 )
