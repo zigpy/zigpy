@@ -29,6 +29,7 @@ from zigpy.zcl.clusters.greenpower import (
     ProxyCommissioningModeSchema,
     ResponseOptions,
     ResponseSchema,
+    TempMasterTxChannel,
 )
 from zigpy.zgp.crypto import (
     SECURITY_LEVEL_MIC_LENGTH,
@@ -670,18 +671,18 @@ class GreenPowerManager(EventBase):
             window: Commissioning window duration in seconds (optional).
 
         """
+        has_window = enter and window is not None
         options = ProxyCommissioningModeOptions(
             enter=int(enter),
-            exit_mode=zgptypes.ProxyCommissioningModeExitMode.OnExpire
-            if enter
-            else zgptypes.ProxyCommissioningModeExitMode.NotDefined,
+            commissioning_window_present=int(has_window),
+            exit_mode=0,  # exit on window expiry only
             channel_present=0,
             unicast=0,
             _reserved=0,
         )
 
         schema_kwargs: dict[str, Any] = {"options": options}
-        if window is not None and enter:
+        if has_window:
             schema_kwargs["window"] = window
 
         try:
@@ -755,7 +756,7 @@ class GreenPowerManager(EventBase):
             security_frame_counter_present=int(add_sink),
             security_key_present=int(add_sink and device.security_key is not None),
             assigned_alias_present=0,
-            forwarding_radius_present=0,
+            groupcast_radius_present=0,
             _reserved=0,
         )
 
@@ -848,10 +849,13 @@ class GreenPowerManager(EventBase):
         response = ResponseSchema(
             options=ResponseOptions(
                 application_id=zgptypes.ApplicationID.SrcID,
+                transmit_on_endpoint_match=0,
                 _reserved=0,
             ),
             temp_master_short_addr=t.uint16_t(temp_master),
-            temp_master_tx_channel=t.uint8_t(channel - 11),
+            temp_master_tx_channel=TempMasterTxChannel(
+                transmit_channel=t.uint4_t(channel - 11), _reserved=0
+            ),
             gpd_id=zgptypes.DeviceID(source_id),
             gpd_command_id=t.uint8_t(gpd_command_id),
             gpd_command_payload=t.LVBytes(gpd_command_payload),

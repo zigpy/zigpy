@@ -46,16 +46,24 @@ class CommissioningNotificationSchema(foundation.CommandSchema):
     )
 
 
+# Figure 59
 class ResponseOptions(t.Struct):
     application_id: zgptypes.ApplicationID
-    _reserved: t.uint5_t
+    transmit_on_endpoint_match: t.uint1_t
+    _reserved: t.uint4_t
 
 
-# Figure 45
+# Figure 60 — TempMaster TX channel sub-field of the GP Response command
+class TempMasterTxChannel(t.Struct):
+    transmit_channel: t.uint4_t  # IEEE 802.15.4 channel == transmit_channel + 11
+    _reserved: t.uint4_t
+
+
+# Figure 58
 class ResponseSchema(foundation.CommandSchema):
     options: ResponseOptions
     temp_master_short_addr: t.uint16_t
-    temp_master_tx_channel: t.uint8_t
+    temp_master_tx_channel: TempMasterTxChannel
     gpd_id: zgptypes.DeviceID
     gpd_command_id: t.uint8_t
     gpd_command_payload: t.LVBytes
@@ -117,7 +125,7 @@ class PairingOptions(t.Struct):
     security_frame_counter_present: t.uint1_t
     security_key_present: t.uint1_t
     assigned_alias_present: t.uint1_t
-    forwarding_radius_present: t.uint1_t
+    groupcast_radius_present: t.uint1_t
     _reserved: t.uint6_t
 
 
@@ -162,8 +170,8 @@ class PairingSchema(foundation.CommandSchema):
     alias: t.uint16_t = StructField(
         requires=lambda s: s.options.add_sink and s.options.assigned_alias_present
     )
-    forwarding_radius: t.uint8_t = StructField(
-        requires=lambda s: s.options.add_sink and s.options.forwarding_radius_present
+    groupcast_radius: t.uint8_t = StructField(
+        requires=lambda s: s.options.add_sink and s.options.groupcast_radius_present
     )
 
 
@@ -181,18 +189,26 @@ class NotificationResponseSchema(foundation.CommandSchema):
     frame_counter: t.uint32_t
 
 
-# Figure 43
+# Figure 56
 class ProxyCommissioningModeOptions(t.Struct):
     enter: t.uint1_t
-    exit_mode: zgptypes.ProxyCommissioningModeExitMode
+    commissioning_window_present: t.uint1_t
+    # Exit-mode sub-field (Figure 57): bit 0 = on first pairing, bit 1 = on
+    # explicit exit. Only 2 bits here, unlike the 3-bit gpsCommissioningExitMode
+    # attribute (Figure 22).
+    exit_mode: t.uint2_t
     channel_present: t.uint1_t
     unicast: t.uint1_t
     _reserved: t.uint2_t
 
 
+# Figure 55
 class ProxyCommissioningModeSchema(foundation.CommandSchema):
     options: ProxyCommissioningModeOptions
-    window: t.uint16_t = StructField(optional=True)
+    window: t.uint16_t = StructField(
+        requires=lambda s: s.options.commissioning_window_present
+    )
+    channel: t.uint8_t = StructField(requires=lambda s: s.options.channel_present)
 
 
 class GreenPowerProxy(Cluster):
