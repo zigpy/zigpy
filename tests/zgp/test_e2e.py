@@ -7,26 +7,8 @@ events fire correctly and state is maintained throughout.
 
 from __future__ import annotations
 
-
-from unittest.mock import patch
-
 import asyncio
-
-from zigpy.profiles import zgp as zgp_profile
-import zigpy.types as t
-from zigpy.zcl.clusters.greenpower import (
-    NotificationOptions,
-    NotificationSchema,
-)
-import zigpy.zgp.types as zgptypes
-from zigpy.zgp.device import GPDevice
-from zigpy.zgp.events import CommandReceived, DeviceJoined, DeviceLeft
-from zigpy.zgp.types import (
-    GP_CLUSTER_ID,
-    GP_ENDPOINT,
-    GPDCommandID,
-    SecurityLevel,
-)
+from unittest.mock import patch
 
 from tests.conftest import make_app
 from tests.zgp.fixtures.busch_jaeger_6716u import (
@@ -35,7 +17,13 @@ from tests.zgp.fixtures.busch_jaeger_6716u import (
     BJ6716U_OPERATIONAL_FRAMES,
     BJ6716U_SOURCE_ID,
 )
-
+from zigpy.profiles import zgp as zgp_profile
+import zigpy.types as t
+from zigpy.zcl.clusters.greenpower import NotificationOptions, NotificationSchema
+from zigpy.zgp.device import GPDevice
+from zigpy.zgp.events import CommandReceived, DeviceJoined, DeviceLeft
+import zigpy.zgp.types as zgptypes
+from zigpy.zgp.types import GP_CLUSTER_ID, GP_ENDPOINT, GPDCommandID, SecurityLevel
 
 # Fake AES-CCM output so the test does not depend on the OOB key the
 # Busch-Jaeger switch uses (which zigpy does not know).

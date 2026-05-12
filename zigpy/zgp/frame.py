@@ -12,10 +12,7 @@ import dataclasses
 import struct
 from typing import ClassVar
 
-from zigpy.zgp.types import (
-    SecurityKeyType,
-    SecurityLevel,
-)
+from zigpy.zgp.types import SecurityKeyType, SecurityLevel
 
 
 @dataclasses.dataclass

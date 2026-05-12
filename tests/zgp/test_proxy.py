@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 from zigpy.zgp.proxy import GPProxyTable, GPProxyTableEntry
 from zigpy.zgp.types import CommunicationMode, SecurityLevel
 

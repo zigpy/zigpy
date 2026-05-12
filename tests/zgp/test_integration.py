@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
+from tests.async_mock import AsyncMock, Mock
+from tests.conftest import add_initialized_device
 from zigpy.profiles import zgp as zgp_profile
 import zigpy.types as t
 from zigpy.zgp.manager import GreenPowerManager
 from zigpy.zgp.types import GP_CLUSTER_ID, GP_ENDPOINT
-
-from tests.async_mock import AsyncMock, Mock
-from tests.conftest import add_initialized_device
 
 
 def test_app_has_gp_manager(app):

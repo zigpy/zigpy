@@ -5,9 +5,10 @@ from __future__ import annotations
 import asyncio
 import struct
 
+from tests.async_mock import AsyncMock, MagicMock
 from zigpy.profiles import zgp as zgp_profile
-from zigpy.zcl.clusters.greenpower import NotificationOptions, NotificationSchema
 import zigpy.types as t
+from zigpy.zcl.clusters.greenpower import NotificationOptions, NotificationSchema
 from zigpy.zgp.crypto import encrypt_payload, encrypt_security_key
 from zigpy.zgp.device import GPDevice
 from zigpy.zgp.events import CommandReceived, DeviceJoined, DeviceLeft
@@ -20,8 +21,6 @@ from zigpy.zgp.types import (
     SecurityKeyType,
     SecurityLevel,
 )
-
-from tests.async_mock import AsyncMock, MagicMock
 
 
 def _make_gp_notification_packet(

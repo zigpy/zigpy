@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import pytest
 from cryptography.exceptions import InvalidTag
+import pytest
 
 from zigpy.zgp.crypto import (
     build_nonce,

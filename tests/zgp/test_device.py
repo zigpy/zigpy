@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-
 import zigpy.types as t
-
 from zigpy.zgp.device import (
     GP_IEEE_SUFFIX,
     GPDevice,

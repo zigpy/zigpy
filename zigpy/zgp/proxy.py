@@ -13,8 +13,8 @@ the sink's perspective.
 from __future__ import annotations
 
 import dataclasses
-import logging
 from datetime import UTC, datetime
+import logging
 
 from zigpy.zgp.types import CommunicationMode, SecurityLevel
 

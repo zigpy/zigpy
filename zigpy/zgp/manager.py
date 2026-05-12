@@ -16,9 +16,9 @@ import struct
 import time
 from typing import TYPE_CHECKING, Any
 
-from zigpy.profiles import zgp as zgp_profile
 from zigpy.datastructures import Debouncer
 from zigpy.event import EventBase
+from zigpy.profiles import zgp as zgp_profile
 import zigpy.types as t
 from zigpy.zcl import foundation
 from zigpy.zcl.clusters.greenpower import (
@@ -30,7 +30,6 @@ from zigpy.zcl.clusters.greenpower import (
     ResponseOptions,
     ResponseSchema,
 )
-import zigpy.zgp.types as zgptypes
 from zigpy.zgp.crypto import (
     SECURITY_LEVEL_MIC_LENGTH,
     decrypt_payload,
@@ -39,11 +38,9 @@ from zigpy.zgp.crypto import (
 )
 from zigpy.zgp.device import GPDevice
 from zigpy.zgp.events import CommandReceived, DeviceJoined, DeviceLeft
+from zigpy.zgp.frame import GPChannelRequestPayload, GPCommissioningPayload
 from zigpy.zgp.proxy import GPProxyTable
-from zigpy.zgp.frame import (
-    GPChannelRequestPayload,
-    GPCommissioningPayload,
-)
+import zigpy.zgp.types as zgptypes
 from zigpy.zgp.types import (
     GP_CLUSTER_ID,
     GP_ENDPOINT,

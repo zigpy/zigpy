@@ -9,16 +9,12 @@ through GP Proxy devices.
 from __future__ import annotations
 
 import dataclasses
+from datetime import UTC, datetime
 import logging
 import struct
-from datetime import UTC, datetime
 
 import zigpy.types as t
-
-from zigpy.zgp.types import (
-    SecurityKeyType,
-    SecurityLevel,
-)
+from zigpy.zgp.types import SecurityKeyType, SecurityLevel
 
 LOGGER = logging.getLogger(__name__)
 

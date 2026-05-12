@@ -17,6 +17,7 @@ import struct
 
 from cryptography.hazmat.primitives.ciphers.aead import AESCCM
 
+from zigpy.types import KeyData
 from zigpy.zgp.types import DEFAULT_GP_LINK_KEY, SecurityLevel
 
 # Security level to MIC length mapping (Table 12 in ZGP spec)
@@ -65,7 +66,7 @@ def build_nonce(source_id: int, frame_counter: int) -> bytes:
 def encrypt_security_key(
     source_id: int,
     security_key: bytes,
-    link_key: bytes = DEFAULT_GP_LINK_KEY,
+    link_key: KeyData | bytes = DEFAULT_GP_LINK_KEY,
 ) -> tuple[bytes, bytes]:
     """Encrypt a GP security key for transmission during commissioning.
 
@@ -111,7 +112,7 @@ def decrypt_security_key(
     source_id: int,
     encrypted_key: bytes,
     mic: bytes,
-    link_key: bytes = DEFAULT_GP_LINK_KEY,
+    link_key: KeyData | bytes = DEFAULT_GP_LINK_KEY,
 ) -> bytes:
     """Decrypt a GP security key received during commissioning.
 
