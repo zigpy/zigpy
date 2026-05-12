@@ -16,6 +16,7 @@ from zigpy.zcl.foundation import (
 import zigpy.zgp.types as zgptypes
 
 
+# Figure 31 — 16 bits total
 class CommissioningNotificationOptions(t.Struct):
     application_id: zgptypes.ApplicationID
     rx_after_tx: t.uint1_t
@@ -24,10 +25,10 @@ class CommissioningNotificationOptions(t.Struct):
     security_failed: t.uint1_t
     bidirectional_cap: t.uint1_t
     proxy_info_present: t.uint1_t
-    _reserved: t.uint6_t
+    _reserved: t.uint4_t
 
 
-# Figure 27
+# Figure 30
 class CommissioningNotificationSchema(foundation.CommandSchema):
     options: CommissioningNotificationOptions
     gpd_id: zgptypes.DeviceID
@@ -35,12 +36,14 @@ class CommissioningNotificationSchema(foundation.CommandSchema):
     command_id: t.uint8_t
     payload: t.LVBytes
     gpp_short_addr: t.uint16_t = StructField(
-        requires=lambda s: s.proxy_info_present, optional=True
+        requires=lambda s: s.options.proxy_info_present, optional=True
     )
-    distance: t.uint8_t = StructField(
-        requires=lambda s: s.proxy_info_present, optional=True
+    gpp_gpd_link: t.uint8_t = StructField(
+        requires=lambda s: s.options.proxy_info_present, optional=True
     )
-    mic: t.uint32_t = StructField(requires=lambda s: s.security_failed, optional=True)
+    mic: t.uint32_t = StructField(
+        requires=lambda s: s.options.security_failed, optional=True
+    )
 
 
 class ResponseOptions(t.Struct):
