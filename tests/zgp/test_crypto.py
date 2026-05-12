@@ -386,16 +386,17 @@ def test_default_link_key_is_zigbee_alliance():
 
 
 def test_key_encryption_known_vector():
-    """Verify key encryption against independently computed values.
+    """Regression fixture for key encryption.
 
-    sourceID=0x12345678, link_key=ZigBeeAlliance09, plaintext=00..0F
-    nonce=78563412785634127856341205
+    sourceID=0x12345678, link_key=ZigBeeAlliance09, plaintext=00..0F.
+    AAD is the 4-byte SrcID (A.3.7.1.2.3), so it changes the MIC but not
+    the ciphertext.
     """
     encrypted, mic = encrypt_security_key(
         source_id=0x12345678, security_key=bytes(range(16))
     )
     assert encrypted == bytes.fromhex("bdd7bb125e603d6670d7c3a5471ce6c0")
-    assert mic == bytes.fromhex("d8b031bc")
+    assert mic == bytes.fromhex("d24ca0a9")
 
 
 def test_key_decryption_known_vector():
@@ -403,7 +404,7 @@ def test_key_decryption_known_vector():
     decrypted = decrypt_security_key(
         source_id=0x12345678,
         encrypted_key=bytes.fromhex("bdd7bb125e603d6670d7c3a5471ce6c0"),
-        mic=bytes.fromhex("d8b031bc"),
+        mic=bytes.fromhex("d24ca0a9"),
     )
     assert decrypted == bytes(range(16))
 

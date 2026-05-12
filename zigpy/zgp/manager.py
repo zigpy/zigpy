@@ -412,22 +412,19 @@ class GreenPowerManager(EventBase):
 
             if comm.extended_options.key_present and comm.security_key is not None:
                 if comm.extended_options.key_encrypted and comm.key_mic is not None:
-                    # Key is encrypted - decrypt it
+                    mic_bytes = struct.pack("<I", comm.key_mic)
                     try:
-                        mic_bytes = struct.pack("<I", comm.key_mic)
-                        security_key = t.KeyData(
-                            decrypt_security_key(
-                                source_id,
-                                comm.security_key,
-                                mic_bytes,
-                            )
+                        key_data = decrypt_security_key(
+                            source_id, comm.security_key, mic_bytes
                         )
                     except Exception:  # noqa: BLE001
                         LOGGER.warning(
                             "Failed to decrypt security key from 0x%08X",
                             source_id,
+                            exc_info=True,
                         )
                         return
+                    security_key = t.KeyData(key_data)
                 else:
                     security_key = t.KeyData(comm.security_key)
 

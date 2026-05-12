@@ -1,23 +1,14 @@
-"""Green Power security primitives.
+"""Green Power security primitives: AES-128-CCM* per ZGP spec A.1.5.4.
 
-Implements AES-128-CCM encryption/decryption for Zigbee Green Power frames
-as specified in the ZGP specification (A.1.5.4).
+Nonce is 13 bytes built from the source ID and frame counter; MIC length
+depends on the SecurityLevel.
 
-The GP security uses CCM* (CCM-star) mode with:
-- 128-bit AES key
-- 13-byte nonce constructed from sourceID and frame counter
-- Variable MIC length depending on SecurityLevel
+Key encryption/decryption (commissioning, A.3.7.1.2.3) uses the 4-byte SrcID
+as associated data for ApplicationID=0b000.
 
-Limitation: per the ZGP spec (A.1.5.4.3), the CCM* associated data (AAD)
-should include the GPDF header (NWK Frame Control, Extended NWK FC, SrcID,
-Security Frame Counter). However, when GP frames arrive via GP Notification
-ZCL commands, the original GPDF header is no longer available — only the
-extracted fields (sourceID, frameCounter, commandID, payload) are present.
-Furthermore, radio adapters (EZSP, Z-Stack) typically handle GP decryption
-in firmware before delivering the payload to the host. This matches the
-approach used by zigbee-herdsman. If raw GPDF header data becomes available
-in the future, the encrypt/decrypt functions should be updated to accept
-an optional ``header`` parameter for AAD.
+Operational payload AAD (A.1.5.4.3) is the full GPDF header, which isn't
+available once a frame arrives as a GP Notification ZCL command. Radios
+decrypt those in firmware anyway, same as zigbee-herdsman.
 """
 
 from __future__ import annotations
@@ -103,10 +94,11 @@ def encrypt_security_key(
 
     # For key encryption, frame counter = sourceID
     nonce = build_nonce(source_id, source_id)
+    # CCM* associated data for ApplicationID=0b000 is the SrcID (A.3.7.1.2.3)
+    header = struct.pack("<I", source_id)
 
-    # AES-CCM with 4-byte tag (MIC)
     aesccm = AESCCM(bytes(link_key), tag_length=4)
-    ciphertext_and_mic = aesccm.encrypt(nonce, security_key, associated_data=None)
+    ciphertext_and_mic = aesccm.encrypt(nonce, security_key, associated_data=header)
 
     # Split into encrypted key (16 bytes) and MIC (4 bytes)
     encrypted_key = ciphertext_and_mic[:16]
@@ -144,9 +136,11 @@ def decrypt_security_key(
         raise ValueError(f"Link key must be 16 bytes, got {len(link_key)}")
 
     nonce = build_nonce(source_id, source_id)
+    # CCM* associated data for ApplicationID=0b000 is the SrcID (A.3.7.1.2.3)
+    header = struct.pack("<I", source_id)
     aesccm = AESCCM(bytes(link_key), tag_length=4)
 
-    return aesccm.decrypt(nonce, encrypted_key + mic, associated_data=None)
+    return aesccm.decrypt(nonce, encrypted_key + mic, associated_data=header)
 
 
 def _is_auth_only(security_level: SecurityLevel) -> bool:
