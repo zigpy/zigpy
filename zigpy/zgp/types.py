@@ -67,6 +67,7 @@ class GPDCommandID(basic.enum8):
     Off = 0x20
     On = 0x21
     Toggle = 0x22
+    Release = 0x23
 
     # Level Control
     LevelControlStop = 0x34
@@ -92,6 +93,17 @@ class GPDCommandID(basic.enum8):
     # Door Lock
     LockDoor = 0x50
     UnlockDoor = 0x51
+
+    # Generic switch button events (Table 49)
+    Press1of1 = 0x60
+    Release1of1 = 0x61
+    Press1of2 = 0x62
+    Release1of2 = 0x63
+    Press2of2 = 0x64
+    Release2of2 = 0x65
+    ShortPress1of1 = 0x66
+    ShortPress1of2 = 0x67
+    ShortPress2of2 = 0x68
 
     # Attribute Reporting
     AttributeReporting = 0xA0
