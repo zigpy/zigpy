@@ -1378,7 +1378,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                             )
             else:
                 # Default response: apply status to all attributes in this group
-                status = result[0]
+                status = result[1]
                 records_group.extend(
                     foundation.WriteAttributesStatusRecord(
                         status=status, attrid=zcl_attr.attrid
