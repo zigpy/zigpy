@@ -450,37 +450,6 @@ async def test_sonoff_provider():
         assert not obj
 
 
-async def test_third_reality_provider():
-    index_json = (FILES_DIR / "thirdreality_firmware.json").read_text()
-    index_obj = json.loads(index_json)
-
-    provider = providers.ThirdReality()
-    assert provider == provider  # noqa: PLR0124
-    assert provider != object()
-
-    with aioresponses() as mock_http:
-        mock_http.get(
-            "https://tr-zha.s3.amazonaws.com/firmware.json",
-            body=index_json,
-            content_type="application/json",
-        )
-
-        index = await provider.load_index()
-
-    assert len(index) == len(index_obj["versions"])
-
-    for obj, meta in zip(index_obj["versions"], index, strict=True):
-        assert isinstance(meta, providers.RemoteOtaImageMetadata)
-        assert meta.model_names == (obj.pop("modelId"),)
-        assert meta.url == obj.pop("url")
-        assert meta.image_type == obj.pop("imageType")
-        assert meta.manufacturer_id == obj.pop("manufacturerId")
-        assert meta.file_version == obj.pop("fileVersion")
-
-        obj.pop("version")
-        assert not obj
-
-
 async def test_remote_zigpy_provider():
     index_json = (FILES_DIR / "remote_index.json").read_text()
     index_obj = json.loads(index_json)

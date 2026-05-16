@@ -329,10 +329,7 @@ SCHEMA_OTA_DEPRECATED = {
         ),
     ),
     vol.Optional(CONF_OTA_THIRDREALITY): vol.All(
-        cv_deprecated(
-            "The `thirdreality_provider` key is deprecated, migrate your configuration"
-            " to the `extra_providers` list instead: `extra_providers: [{'type': 'thirdreality'}]`"
-        ),
+        cv_deprecated("The `thirdreality_provider` key is deprecated"),
         vol.Any(
             cv_boolean,
             vol.Url(),

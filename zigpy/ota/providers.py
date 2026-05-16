@@ -417,33 +417,6 @@ class Sonoff(BaseOtaProvider):
             )
 
 
-@register_provider
-class ThirdReality(BaseOtaProvider):
-    NAME = "thirdreality"
-    MANUFACTURER_IDS = (4659, 4877, 5127)
-
-    JSON_SCHEMA = json_schemas.THIRD_REALITY_SCHEMA
-    VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
-
-    async def _load_index(
-        self, session: aiohttp.ClientSession
-    ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
-        async with session.get("https://tr-zha.s3.amazonaws.com/firmware.json") as rsp:
-            fw_lst = await rsp.json()
-
-        jsonschema.validate(fw_lst, self.JSON_SCHEMA)
-
-        for fw in fw_lst["versions"]:
-            yield RemoteOtaImageMetadata(
-                file_version=fw["fileVersion"],
-                manufacturer_id=fw["manufacturerId"],
-                model_names=(fw["modelId"],),
-                image_type=fw["imageType"],
-                url=fw["url"],
-                source="ThirdReality",
-            )
-
-
 class BaseZigpyProvider(BaseOtaProvider):
     JSON_SCHEMA = json_schemas.REMOTE_PROVIDER_SCHEMA
 

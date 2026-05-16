@@ -192,38 +192,6 @@ SONOFF_SCHEMA = {
     },
 }
 
-THIRD_REALITY_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "versions": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "modelId": {"type": "string"},
-                    "url": {"type": "string", "format": "uri"},
-                    "version": {
-                        "type": "string",
-                        "pattern": "^\\d+\\.\\d+\\.\\d+$",
-                    },
-                    "imageType": {"type": "integer"},
-                    "manufacturerId": {"type": "integer"},
-                    "fileVersion": {"type": "integer"},
-                },
-                "required": [
-                    "modelId",
-                    "url",
-                    "version",
-                    "imageType",
-                    "manufacturerId",
-                    "fileVersion",
-                ],
-            },
-        }
-    },
-    "required": ["versions"],
-}
-
 REMOTE_PROVIDER_SCHEMA = {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",

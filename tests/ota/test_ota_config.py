@@ -84,7 +84,7 @@ async def test_ota_enabled_legacy(tmp_path: pathlib.Path) -> None:
     )
 
     # All are enabled
-    assert len(ota._providers) == 8
+    assert len(ota._providers) == 7
 
 
 async def test_ota_config(tmp_path: pathlib.Path) -> None:
@@ -109,7 +109,6 @@ async def test_ota_config(tmp_path: pathlib.Path) -> None:
         zigpy.ota.providers.ZigpyOtaProvider(),
         zigpy.ota.providers.Ledvance(),
         zigpy.ota.providers.Sonoff(),
-        zigpy.ota.providers.ThirdReality(),
         zigpy.ota.providers.Tradfri(),
     ]
 
@@ -215,7 +214,6 @@ async def test_ota_config_complex(tmp_path: pathlib.Path) -> None:
         # zigpy.ota.providers.ZigpyOtaProvider(),
         # zigpy.ota.providers.Ledvance(),
         # zigpy.ota.providers.Sonoff(),
-        zigpy.ota.providers.ThirdReality(),
         zigpy.ota.providers.Salus(url="https://salus.example.org/"),
         zigpy.ota.providers.RemoteZ2MProvider(url="https://z2m.example.org/"),
         zigpy.ota.providers.Tradfri(
