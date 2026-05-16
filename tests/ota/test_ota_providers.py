@@ -450,42 +450,6 @@ async def test_sonoff_provider():
         assert not obj
 
 
-async def test_inovelli_provider():
-    index_json = (FILES_DIR / "inovelli_firmware-zha.json").read_text()
-    index_obj = json.loads(index_json)
-
-    provider = providers.Inovelli()
-
-    with aioresponses() as mock_http:
-        mock_http.get(
-            "https://files.inovelli.com/firmware/firmware-zha-v2.json",
-            body=index_json,
-        )
-
-        index = await provider.load_index()
-
-    unpacked_objs = [(model, obj) for model, fws in index_obj.items() for obj in fws]
-    assert len(index) == len(unpacked_objs)
-
-    for (model, obj), meta in zip(unpacked_objs, index, strict=True):
-        assert isinstance(meta, providers.RemoteOtaImageMetadata)
-
-        if obj["version"] == "0000000B":
-            assert meta.file_version == 0x0000000B
-        else:
-            assert meta.file_version == int(obj["version"])
-
-        obj.pop("version")
-
-        assert meta.url == obj.pop("firmware")
-        assert meta.manufacturer_id == obj.pop("manufacturer_id")
-        assert meta.image_type == obj.pop("image_type")
-        assert meta.model_names == (model,)
-
-        obj.pop("channel")
-        assert not obj
-
-
 async def test_third_reality_provider():
     index_json = (FILES_DIR / "thirdreality_firmware.json").read_text()
     index_obj = json.loads(index_json)

@@ -418,42 +418,6 @@ class Sonoff(BaseOtaProvider):
 
 
 @register_provider
-class Inovelli(BaseOtaProvider):
-    NAME = "inovelli"
-    MANUFACTURER_IDS = (4655,)
-
-    JSON_SCHEMA = json_schemas.INOVELLI_SCHEMA
-    VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
-
-    async def _load_index(
-        self, session: aiohttp.ClientSession
-    ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
-        async with session.get(
-            "https://files.inovelli.com/firmware/firmware-zha-v2.json"
-        ) as rsp:
-            fw_lst = await rsp.json()
-
-        jsonschema.validate(fw_lst, self.JSON_SCHEMA)
-
-        for model, firmwares in fw_lst.items():
-            for fw in firmwares:
-                version = int(fw["version"], 16)
-
-                if version > 0x0000000B:
-                    # Only the first firmware was in hex, all others are decimal
-                    version = int(fw["version"])
-
-                yield RemoteOtaImageMetadata(
-                    file_version=version,
-                    manufacturer_id=fw["manufacturer_id"],
-                    image_type=fw["image_type"],
-                    model_names=(model,),
-                    url=fw["firmware"],
-                    source="Inovelli",
-                )
-
-
-@register_provider
 class ThirdReality(BaseOtaProvider):
     NAME = "thirdreality"
     MANUFACTURER_IDS = (4659, 4877, 5127)
