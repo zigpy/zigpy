@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import collections
 from collections import defaultdict
-from collections.abc import Generator, Iterable, Sequence
+from collections.abc import Callable, Generator, Iterable, Sequence
 import contextlib
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -12,7 +12,7 @@ import functools
 import itertools
 import logging
 import types
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, TypeVar
 import warnings
 
 from zigpy import util
@@ -32,6 +32,34 @@ if TYPE_CHECKING:
 
 
 LOGGER = logging.getLogger(__name__)
+
+# Cap on the serialized size of attribute records in a single Read/Write/Configure
+# Reporting request. Matches the OTA image-block size we've validated in the wild,
+# which stays under the unfragmented Zigbee APS budget even with worst-case NWK
+# security and source routing overhead.
+MAX_ATTRIBUTE_RECORDS_BYTES = 50
+
+_RecordT = TypeVar("_RecordT")
+
+
+def _chunk_records_by_size(
+    records: Iterable[_RecordT],
+    get_size: Callable[[_RecordT], int],
+    *,
+    max_bytes: int = MAX_ATTRIBUTE_RECORDS_BYTES,
+) -> list[list[_RecordT]]:
+    """Split records into chunks not exceeding max_bytes of serialized payload."""
+    chunks: list[list[_RecordT]] = []
+    chunk_size = 0
+    for record in records:
+        record_size = get_size(record)
+        if not chunks or chunk_size + record_size > max_bytes:
+            chunks.append([])
+            chunk_size = 0
+        chunks[-1].append(record)
+        chunk_size += record_size
+    return chunks
+
 
 # Tracks (cluster_id, attrid) pairs for which AttributeUpdatedEvent should be suppressed.
 # Used during Report_Attributes handling to allow quirks that update other clusters or
@@ -1109,91 +1137,91 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         # Now, we can perform the reads for each manufacturer code group
         for manufacturer_code, attribute_group in reads_by_manuf_code.items():
-            result = await self.read_attributes_raw(
-                [attr_def.id for attr_def in attribute_group],
-                manufacturer=manufacturer_code,
-                **kwargs,
-            )
+            # Each attribute id serializes to a 2-byte uint16
+            for chunk in _chunk_records_by_size(attribute_group, lambda _: 2):
+                result = await self.read_attributes_raw(
+                    [attr_def.id for attr_def in chunk],
+                    manufacturer=manufacturer_code,
+                    **kwargs,
+                )
 
-            # The read response should contain only these attributes
-            potential_attributes = {
-                attr_def.id: attr_def for attr_def in attribute_group
-            }
+                # The read response should contain only these attributes
+                potential_attributes = {attr_def.id: attr_def for attr_def in chunk}
 
-            if not isinstance(result[0], list):
-                # If we get back a single response status, all reads failed
-                for attr_def in attribute_group:
-                    failure[attribute_map[attr_def]] = result[0]
-            else:
-                for record in result[0]:
-                    attr_def = potential_attributes[record.attrid]
+                if not isinstance(result[0], list):
+                    # If we get back a single response status, all reads failed
+                    for attr_def in chunk:
+                        failure[attribute_map[attr_def]] = result[0]
+                else:
+                    for record in result[0]:
+                        attr_def = potential_attributes[record.attrid]
 
-                    if record.status == foundation.Status.SUCCESS:
-                        if record.value.value is None:
-                            # TODO: remove this workaround when `LocalDataCluster` and
-                            # `_VALID_ATTRIBUTES` are removed from quirks. There is no
-                            # way for `value` to actually be `None` when read from a
-                            # real device.
-                            value = None
+                        if record.status == foundation.Status.SUCCESS:
+                            if record.value.value is None:
+                                # TODO: remove this workaround when `LocalDataCluster` and
+                                # `_VALID_ATTRIBUTES` are removed from quirks. There is no
+                                # way for `value` to actually be `None` when read from a
+                                # real device.
+                                value = None
+                            else:
+                                value = attr_def.type(record.value.value)
+
+                            success[attribute_map[attr_def]] = value
+
+                            cached_value = self._legacy_apply_quirk_attribute_update(
+                                attr_def, value
+                            )
+
+                            if cached_value is None:
+                                # Quirk swallowed the attribute
+                                continue
+                            elif cached_value != value:
+                                # Quirk transformed the value, emit AttributeUpdatedEvent
+                                self.emit(
+                                    AttributeUpdatedEvent.event_type,
+                                    AttributeUpdatedEvent(
+                                        device_ieee=str(self.endpoint.device.ieee),
+                                        endpoint_id=self.endpoint.endpoint_id,
+                                        cluster_type=self._type,
+                                        cluster_id=self.cluster_id,
+                                        attribute_name=attr_def.name,
+                                        attribute_id=attr_def.id,
+                                        manufacturer_code=manufacturer_code,
+                                        value=cached_value,
+                                    ),
+                                )
+                            else:
+                                # Value unchanged, emit AttributeReadEvent
+                                self.emit(
+                                    AttributeReadEvent.event_type,
+                                    AttributeReadEvent(
+                                        device_ieee=str(self.endpoint.device.ieee),
+                                        endpoint_id=self.endpoint.endpoint_id,
+                                        cluster_type=self._type,
+                                        cluster_id=self.cluster_id,
+                                        attribute_name=attr_def.name,
+                                        attribute_id=attr_def.id,
+                                        manufacturer_code=manufacturer_code,
+                                        raw_value=record.value.value,
+                                        value=value,
+                                    ),
+                                )
                         else:
-                            value = attr_def.type(record.value.value)
+                            if record.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
+                                self.emit(
+                                    AttributeUnsupportedEvent.event_type,
+                                    AttributeUnsupportedEvent(
+                                        device_ieee=str(self.endpoint.device.ieee),
+                                        endpoint_id=self.endpoint.endpoint_id,
+                                        cluster_type=self._type,
+                                        cluster_id=self.cluster_id,
+                                        attribute_name=attr_def.name,
+                                        attribute_id=attr_def.id,
+                                        manufacturer_code=manufacturer_code,
+                                    ),
+                                )
 
-                        success[attribute_map[attr_def]] = value
-
-                        cached_value = self._legacy_apply_quirk_attribute_update(
-                            attr_def, value
-                        )
-
-                        if cached_value is None:
-                            # Quirk swallowed the attribute
-                            continue
-                        elif cached_value != value:
-                            # Quirk transformed the value, emit AttributeUpdatedEvent
-                            self.emit(
-                                AttributeUpdatedEvent.event_type,
-                                AttributeUpdatedEvent(
-                                    device_ieee=str(self.endpoint.device.ieee),
-                                    endpoint_id=self.endpoint.endpoint_id,
-                                    cluster_type=self._type,
-                                    cluster_id=self.cluster_id,
-                                    attribute_name=attr_def.name,
-                                    attribute_id=attr_def.id,
-                                    manufacturer_code=manufacturer_code,
-                                    value=cached_value,
-                                ),
-                            )
-                        else:
-                            # Value unchanged, emit AttributeReadEvent
-                            self.emit(
-                                AttributeReadEvent.event_type,
-                                AttributeReadEvent(
-                                    device_ieee=str(self.endpoint.device.ieee),
-                                    endpoint_id=self.endpoint.endpoint_id,
-                                    cluster_type=self._type,
-                                    cluster_id=self.cluster_id,
-                                    attribute_name=attr_def.name,
-                                    attribute_id=attr_def.id,
-                                    manufacturer_code=manufacturer_code,
-                                    raw_value=record.value.value,
-                                    value=value,
-                                ),
-                            )
-                    else:
-                        if record.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
-                            self.emit(
-                                AttributeUnsupportedEvent.event_type,
-                                AttributeUnsupportedEvent(
-                                    device_ieee=str(self.endpoint.device.ieee),
-                                    endpoint_id=self.endpoint.endpoint_id,
-                                    cluster_type=self._type,
-                                    cluster_id=self.cluster_id,
-                                    attribute_name=attr_def.name,
-                                    attribute_id=attr_def.id,
-                                    manufacturer_code=manufacturer_code,
-                                ),
-                            )
-
-                        failure[attribute_map[attr_def]] = record.status
+                            failure[attribute_map[attr_def]] = record.status
 
         return success, failure
 
@@ -1340,51 +1368,55 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 zcl_attr.value.value = attr_def.type(value)
                 zcl_attrs.append(zcl_attr)
 
-            result = await self.write_attributes_raw(
-                zcl_attrs, manufacturer_code=manufacturer_code, **kwargs
-            )
-
             records_group: list[foundation.WriteAttributesStatusRecord] = []
 
-            if isinstance(result[0], list):
-                # Check for global success (status=SUCCESS, attrid=None)
-                if (
-                    len(result[0]) == 1
-                    and result[0][0].status == foundation.Status.SUCCESS
-                    and result[0][0].attrid is None
-                ):
-                    # Global success: all attributes succeeded
+            for chunk in _chunk_records_by_size(
+                zcl_attrs, lambda a: len(a.serialize())
+            ):
+                result = await self.write_attributes_raw(
+                    chunk, manufacturer_code=manufacturer_code, **kwargs
+                )
+
+                if isinstance(result[0], list):
+                    # Check for global success (status=SUCCESS, attrid=None)
+                    if (
+                        len(result[0]) == 1
+                        and result[0][0].status == foundation.Status.SUCCESS
+                        and result[0][0].attrid is None
+                    ):
+                        # Global success: all attributes succeeded
+                        records_group.extend(
+                            foundation.WriteAttributesStatusRecord(
+                                status=foundation.Status.SUCCESS,
+                                attrid=zcl_attr.attrid,
+                            )
+                            for zcl_attr in chunk
+                        )
+                    else:
+                        # Only failed writes are in the response. Attributes not
+                        # present implicitly succeeded.
+                        failed_attrids = {r.attrid for r in result[0]}
+                        for zcl_attr in chunk:
+                            if zcl_attr.attrid in failed_attrids:
+                                records_group.extend(
+                                    r for r in result[0] if r.attrid == zcl_attr.attrid
+                                )
+                            else:
+                                records_group.append(
+                                    foundation.WriteAttributesStatusRecord(
+                                        status=foundation.Status.SUCCESS,
+                                        attrid=zcl_attr.attrid,
+                                    )
+                                )
+                else:
+                    # Default response: apply status to all attributes in this group
+                    status = result[0]
                     records_group.extend(
                         foundation.WriteAttributesStatusRecord(
-                            status=foundation.Status.SUCCESS, attrid=zcl_attr.attrid
+                            status=status, attrid=zcl_attr.attrid
                         )
-                        for zcl_attr in zcl_attrs
+                        for zcl_attr in chunk
                     )
-                else:
-                    # Only failed writes are in the response. Attributes not
-                    # present implicitly succeeded.
-                    failed_attrids = {r.attrid for r in result[0]}
-                    for zcl_attr in zcl_attrs:
-                        if zcl_attr.attrid in failed_attrids:
-                            records_group.extend(
-                                r for r in result[0] if r.attrid == zcl_attr.attrid
-                            )
-                        else:
-                            records_group.append(
-                                foundation.WriteAttributesStatusRecord(
-                                    status=foundation.Status.SUCCESS,
-                                    attrid=zcl_attr.attrid,
-                                )
-                            )
-            else:
-                # Default response: apply status to all attributes in this group
-                status = result[0]
-                records_group.extend(
-                    foundation.WriteAttributesStatusRecord(
-                        status=status, attrid=zcl_attr.attrid
-                    )
-                    for zcl_attr in zcl_attrs
-                )
 
             results.extend(records_group)
 
@@ -1512,40 +1544,42 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         results: dict[foundation.ZCLAttributeDef, foundation.Status] = {}
 
         for manufacturer_code, reporting_configs in reporting_by_manuf_code.items():
-            configs = [cfg for _attr_def, cfg in reporting_configs]
-
-            rsp = await self._configure_reporting(
-                configs, manufacturer=manufacturer_code
-            )
-
             group_results: dict[foundation.ZCLAttributeDef, foundation.Status] = {}
 
-            if isinstance(rsp[0], list):
-                records = rsp[0]
+            for chunk in _chunk_records_by_size(
+                reporting_configs, lambda pair: len(pair[1].serialize())
+            ):
+                rsp = await self._configure_reporting(
+                    [cfg for _attr_def, cfg in chunk],
+                    manufacturer=manufacturer_code,
+                )
 
-                # Check for global success (status=SUCCESS, attrid=None)
-                if (
-                    len(records) == 1
-                    and records[0].status == foundation.Status.SUCCESS
-                    and records[0].attrid is None
-                ):
-                    # Global success: all attributes succeeded
-                    for attr_def, _cfg in reporting_configs:
-                        group_results[attr_def] = foundation.Status.SUCCESS
-                else:
-                    # Only failed reports are in the response. Attributes not
-                    # present implicitly succeeded.
-                    failed_attrids = {r.attrid: r.status for r in records}
-                    for attr_def, _cfg in reporting_configs:
-                        if attr_def.id in failed_attrids:
-                            group_results[attr_def] = failed_attrids[attr_def.id]
-                        else:
+                if isinstance(rsp[0], list):
+                    records = rsp[0]
+
+                    # Check for global success (status=SUCCESS, attrid=None)
+                    if (
+                        len(records) == 1
+                        and records[0].status == foundation.Status.SUCCESS
+                        and records[0].attrid is None
+                    ):
+                        # Global success: all attributes succeeded
+                        for attr_def, _cfg in chunk:
                             group_results[attr_def] = foundation.Status.SUCCESS
-            else:
-                # Default response: apply status to all attributes in this group
-                status = rsp[1]
-                for attr_def, _cfg in reporting_configs:
-                    group_results[attr_def] = status
+                    else:
+                        # Only failed reports are in the response. Attributes not
+                        # present implicitly succeeded.
+                        failed_attrids = {r.attrid: r.status for r in records}
+                        for attr_def, _cfg in chunk:
+                            if attr_def.id in failed_attrids:
+                                group_results[attr_def] = failed_attrids[attr_def.id]
+                            else:
+                                group_results[attr_def] = foundation.Status.SUCCESS
+                else:
+                    # Default response: apply status to all attributes in this group
+                    status = rsp[1]
+                    for attr_def, _cfg in chunk:
+                        group_results[attr_def] = status
 
             for attr_def, status in group_results.items():
                 if status == foundation.Status.SUCCESS:
