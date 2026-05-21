@@ -33,11 +33,16 @@ if TYPE_CHECKING:
 
 LOGGER = logging.getLogger(__name__)
 
-# Cap on the serialized size of attribute records in a single Read/Write/Configure
-# Reporting request. Matches the OTA image-block size we've validated in the wild,
-# which stays under the unfragmented Zigbee APS budget even with worst-case NWK
-# security and source routing overhead.
+# Cap on the serialized size of attribute records in a single Write_Attributes or
+# Configure_Reporting request. Matches the OTA image-block size we've validated in
+# the wild, which stays under the unfragmented Zigbee APS budget even with worst-
+# case NWK security and source routing overhead.
 MAX_ATTRIBUTE_RECORDS_BYTES = 50
+
+# Cap on the number of attributes per Read_Attributes request. Reads can't use a
+# byte budget because the response size depends on the (potentially variable-
+# length) attribute values, which aren't known when chunking.
+MAX_READ_ATTRIBUTES_PER_REQ = 5
 
 _RecordT = TypeVar("_RecordT")
 
@@ -1137,8 +1142,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         # Now, we can perform the reads for each manufacturer code group
         for manufacturer_code, attribute_group in reads_by_manuf_code.items():
-            # Each attribute id serializes to a 2-byte uint16
-            for chunk in _chunk_records_by_size(attribute_group, lambda _: 2):
+            for i in range(0, len(attribute_group), MAX_READ_ATTRIBUTES_PER_REQ):
+                chunk = attribute_group[i : i + MAX_READ_ATTRIBUTES_PER_REQ]
                 result = await self.read_attributes_raw(
                     [attr_def.id for attr_def in chunk],
                     manufacturer=manufacturer_code,
