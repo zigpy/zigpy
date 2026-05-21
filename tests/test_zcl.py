@@ -21,6 +21,7 @@ import zigpy.endpoint
 import zigpy.profiles.zha
 import zigpy.types as t
 from zigpy.zcl import (
+    MAX_ATTRIBUTE_RECORDS_BYTES,
     AttributeReadEvent,
     AttributeReportedEvent,
     AttributeUpdatedEvent,
@@ -2399,6 +2400,66 @@ async def test_configure_reporting_multiple_manufacturer_groups(app_mock) -> Non
     assert manuf_call.args[0][0].min_interval == 10
     assert manuf_call.args[0][0].max_interval == 30
     assert manuf_call.args[0][0].reportable_change == 5
+
+
+async def test_configure_reporting_multiple_chunked_by_size(app_mock) -> None:
+    """Configure_reporting_multiple splits requests so no single one exceeds
+    MAX_ATTRIBUTE_RECORDS_BYTES of serialized records.
+    """
+
+    class TestCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            # 6 uint8 attrs, each serializing to 9 bytes as a SendReports config
+            # (1 dir + 2 attrid + 1 type + 2 min + 2 max + 1 reportable_change).
+            # 6 * 9 = 54 bytes > 50, so the request must split into 2 chunks.
+            attr_a = foundation.ZCLAttributeDef(id=0xFF00, type=t.uint8_t)
+            attr_b = foundation.ZCLAttributeDef(id=0xFF01, type=t.uint8_t)
+            attr_c = foundation.ZCLAttributeDef(id=0xFF02, type=t.uint8_t)
+            attr_d = foundation.ZCLAttributeDef(id=0xFF03, type=t.uint8_t)
+            attr_e = foundation.ZCLAttributeDef(id=0xFF04, type=t.uint8_t)
+            attr_f = foundation.ZCLAttributeDef(id=0xFF05, type=t.uint8_t)
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    cfg_success = zcl.foundation.ConfigureReportingResponse(
+        [zcl.foundation.ConfigureReportingResponseRecord(zcl.foundation.Status.SUCCESS)]
+    )
+
+    cfg = ReportingConfig(min_interval=1, max_interval=2, reportable_change=3)
+    attrs = [
+        TestCluster.AttributeDefs.attr_a,
+        TestCluster.AttributeDefs.attr_b,
+        TestCluster.AttributeDefs.attr_c,
+        TestCluster.AttributeDefs.attr_d,
+        TestCluster.AttributeDefs.attr_e,
+        TestCluster.AttributeDefs.attr_f,
+    ]
+
+    with patch.object(
+        cluster,
+        "_configure_reporting",
+        new_callable=AsyncMock,
+        side_effect=[[cfg_success], [cfg_success]],
+    ) as mock_configure:
+        results = await cluster.configure_reporting_multiple(dict.fromkeys(attrs, cfg))
+
+    assert mock_configure.await_count == 2
+
+    sent_attrids = []
+    for call_obj in mock_configure.call_args_list:
+        chunk_configs = call_obj.args[0]
+        chunk_size = sum(len(c.serialize()) for c in chunk_configs)
+        assert chunk_size <= MAX_ATTRIBUTE_RECORDS_BYTES
+        sent_attrids.extend(c.attrid for c in chunk_configs)
+
+    assert sent_attrids == [a.id for a in attrs]
+
+    assert len(results) == 6
+    assert all(s == zcl.foundation.Status.SUCCESS for s in results.values())
 
 
 def test_manufacturer_id_override_manuf_specific_cluster(app_mock) -> None:
