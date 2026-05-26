@@ -947,13 +947,7 @@ async def test_request(app, device, packet):
     app.send_packet.reset_mock()
 
 
-async def test_request_retrying_success(app, device, packet) -> None:
-    app.send_packet.side_effect = [
-        DeliveryError("Failure"),
-        DeliveryError("Failure"),
-        None,
-    ]
-
+async def test_force_route_discovery(app, device, packet) -> None:
     await app.request(
         device=device,
         profile=0x1234,
@@ -965,54 +959,10 @@ async def test_request_retrying_success(app, device, packet) -> None:
         expect_reply=True,
         use_ieee=False,
         extended_timeout=False,
+        force_route_discovery=True,
     )
 
     assert app.send_packet.mock_calls == [
-        call(packet.replace(priority=t.PacketPriority.NORMAL)),
-        call(
-            packet.replace(
-                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY,
-                priority=t.PacketPriority.NORMAL,
-            )
-        ),
-        call(
-            packet.replace(
-                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY,
-                priority=t.PacketPriority.NORMAL,
-            )
-        ),
-    ]
-
-
-async def test_request_retrying_failure(app, device, packet) -> None:
-    app.send_packet.side_effect = [
-        DeliveryError("Failure"),
-        DeliveryError("Failure"),
-        DeliveryError("Failure"),
-    ]
-
-    with pytest.raises(DeliveryError):
-        await app.request(
-            device=device,
-            profile=0x1234,
-            cluster=0x0006,
-            src_ep=0x9A,
-            dst_ep=0xBC,
-            sequence=0xDE,
-            data=b"test data",
-            expect_reply=True,
-            use_ieee=False,
-            extended_timeout=False,
-        )
-
-    assert app.send_packet.mock_calls == [
-        call(packet.replace(priority=t.PacketPriority.NORMAL)),
-        call(
-            packet.replace(
-                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY,
-                priority=t.PacketPriority.NORMAL,
-            )
-        ),
         call(
             packet.replace(
                 tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY,

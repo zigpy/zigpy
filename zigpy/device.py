@@ -623,6 +623,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         use_ieee=False,
         ask_for_ack: bool | None = None,
         priority: int | None = None,
+        retries: int = 5,
+        **kwargs,
     ):
         extended_timeout = False
 
@@ -631,8 +633,36 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             timeout = APS_REPLY_TIMEOUT_EXTENDED
             extended_timeout = True
 
-        # Use a lambda so we don't leave the coroutine unawaited in case of an exception
-        send_request = lambda: self._application.request(  # noqa: E731
+        if dst_ep == zdo.ZDO_ENDPOINT:
+            rsp_key = ResponseKey(
+                endpoint_id=dst_ep,
+                # e.g. Node_Desc_req = 0x0002 corresponds to Node_Desc_rsp = 0x8002
+                cluster_id=cluster ^ 0x8000,
+                direction=None,
+                tsn=sequence,
+            )
+        else:
+            zcl_hdr, _ = foundation.ZCLHeader.deserialize(data)
+            rsp_key = ResponseKey(
+                endpoint_id=dst_ep,
+                cluster_id=cluster,
+                direction=zcl_hdr.frame_control.direction.flip(),
+                tsn=sequence,
+            )
+
+        if expect_reply and rsp_key in self._requests:
+            self.debug(
+                "Duplicate request key %s, pending requests %s",
+                rsp_key,
+                self._requests,
+            )
+            raise zigpy.exceptions.ControllerException(
+                f"Duplicate request key: {rsp_key}"
+            )
+
+        max_attempts = retries + 1
+
+        send_request = lambda attempt: self._application.request(  # noqa: E731
             device=self,
             profile=profile,
             cluster=cluster,
@@ -645,53 +675,45 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             extended_timeout=extended_timeout,
             ask_for_ack=ask_for_ack,
             priority=priority,
+            force_route_discovery=(attempt > 0),
+            **kwargs,
         )
 
-        async with self._limit_concurrency(priority=priority):
-            if not expect_reply:
-                await send_request()
-                return None
+        for attempt in range(max_attempts):
+            # Use a lambda so we don't leave the coroutine unawaited in case of an exception
+            async with self._limit_concurrency(priority=priority):
+                try:
+                    if not expect_reply:
+                        await send_request(attempt=attempt)
+                        return None
 
-            if dst_ep == zdo.ZDO_ENDPOINT:
-                rsp_key = ResponseKey(
-                    endpoint_id=dst_ep,
-                    # e.g. Node_Desc_req = 0x0002 corresponds to Node_Desc_rsp = 0x8002
-                    cluster_id=cluster ^ 0x8000,
-                    direction=None,
-                    tsn=sequence,
-                )
-            else:
-                zcl_hdr, _ = foundation.ZCLHeader.deserialize(data)
-                rsp_key = ResponseKey(
-                    endpoint_id=dst_ep,
-                    cluster_id=cluster,
-                    direction=zcl_hdr.frame_control.direction.flip(),
-                    tsn=sequence,
-                )
+                    future: asyncio.Future[
+                        list[typing.Any] | foundation.CommandSchema
+                    ] = asyncio.Future()
+                    self._requests[rsp_key] = future
 
-            if rsp_key in self._requests:
-                self.debug(
-                    "Duplicate request key %s, pending requests %s",
-                    rsp_key,
-                    self._requests,
-                )
-                raise zigpy.exceptions.ControllerException(
-                    f"Duplicate request key: {rsp_key}"
-                )
+                    try:
+                        await send_request(attempt=attempt)
+                        async with asyncio_timeout(timeout):
+                            return await future
+                    finally:
+                        if not future.done():
+                            future.cancel()
+                        self._requests.pop(rsp_key, None)
+                except zigpy.exceptions.ParsingError:
+                    raise
+                except Exception:
+                    LOGGER.debug(
+                        "Failed to send request, attempt %d of %d",
+                        attempt + 1,
+                        max_attempts,
+                        exc_info=True,
+                    )
 
-            future: asyncio.Future[list[typing.Any] | foundation.CommandSchema] = (
-                asyncio.Future()
-            )
-            self._requests[rsp_key] = future
+                    if attempt >= max_attempts - 1:
+                        raise
 
-            try:
-                await send_request()
-                async with asyncio_timeout(timeout):
-                    return await future
-            finally:
-                if not future.done():
-                    future.cancel()
-                self._requests.pop(rsp_key, None)
+                    continue
 
     def handle_message(
         self,
