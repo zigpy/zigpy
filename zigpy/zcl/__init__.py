@@ -56,13 +56,23 @@ def _chunk_records_by_size(
     """Split records into chunks not exceeding max_bytes of serialized payload."""
     chunks: list[list[_RecordT]] = []
     chunk_size = 0
+
     for record in records:
         record_size = get_size(record)
+
+        if record_size > max_bytes:
+            raise ValueError(
+                f"Record {record!r} is too large to fit in a single request: "
+                f"{record_size} > {max_bytes} bytes"
+            )
+
         if not chunks or chunk_size + record_size > max_bytes:
             chunks.append([])
             chunk_size = 0
+
         chunks[-1].append(record)
         chunk_size += record_size
+
     return chunks
 
 

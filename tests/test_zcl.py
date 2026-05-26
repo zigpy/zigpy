@@ -26,6 +26,7 @@ from zigpy.zcl import (
     AttributeReportedEvent,
     AttributeUpdatedEvent,
     AttributeWrittenEvent,
+    _chunk_records_by_size,
     foundation,
 )
 from zigpy.zcl.clusters.general import Basic, OnOff, Ota
@@ -2460,6 +2461,140 @@ async def test_configure_reporting_multiple_chunked_by_size(app_mock) -> None:
 
     assert len(results) == 6
     assert all(s == zcl.foundation.Status.SUCCESS for s in results.values())
+
+
+async def test_read_attributes_chunked_by_count(app_mock) -> None:
+    """Read_attributes splits requests into chunks of at most five."""
+
+    class TestCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            attr_0 = foundation.ZCLAttributeDef(id=0xFF00, type=t.uint8_t)
+            attr_1 = foundation.ZCLAttributeDef(id=0xFF01, type=t.uint8_t)
+            attr_2 = foundation.ZCLAttributeDef(id=0xFF02, type=t.uint8_t)
+            attr_3 = foundation.ZCLAttributeDef(id=0xFF03, type=t.uint8_t)
+            attr_4 = foundation.ZCLAttributeDef(id=0xFF04, type=t.uint8_t)
+            attr_5 = foundation.ZCLAttributeDef(id=0xFF05, type=t.uint8_t)
+            attr_6 = foundation.ZCLAttributeDef(id=0xFF06, type=t.uint8_t)
+            attr_7 = foundation.ZCLAttributeDef(id=0xFF07, type=t.uint8_t)
+            attr_8 = foundation.ZCLAttributeDef(id=0xFF08, type=t.uint8_t)
+            attr_9 = foundation.ZCLAttributeDef(id=0xFF09, type=t.uint8_t)
+            attr_10 = foundation.ZCLAttributeDef(id=0xFF0A, type=t.uint8_t)
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    attrs = [getattr(TestCluster.AttributeDefs, f"attr_{i}") for i in range(11)]
+
+    # Exclude 2 and 7 so the mock returns UNSUPPORTED
+    supported = {attr: i for i, attr in enumerate(attrs) if i not in (2, 7)}
+    with mock_attribute_reads(cluster, supported) as (mock_read, _):
+        success, failure = await cluster.read_attributes(attrs)
+
+    # 11 attributes, at most MAX_READ_ATTRIBUTES_PER_REQ (5) per request -> 5 + 5 + 1
+    chunks = [call_obj.args[0] for call_obj in mock_read.call_args_list]
+    assert [len(chunk) for chunk in chunks] == [5, 5, 1]
+
+    # Every attribute was requested exactly once, in order, across the chunks
+    requested_ids = []
+    for chunk in chunks:
+        requested_ids.extend(chunk)
+    assert requested_ids == [attr.id for attr in attrs]
+
+    # Supported attributes succeed; the two omitted ones fail
+    assert success == supported
+    assert failure == {
+        attrs[2]: foundation.Status.UNSUPPORTED_ATTRIBUTE,
+        attrs[7]: foundation.Status.UNSUPPORTED_ATTRIBUTE,
+    }
+
+
+async def test_write_attributes_chunked_by_size(app_mock) -> None:
+    """Write_attributes splits requests if a single one would exceed the limit."""
+
+    class TestCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            attr_a = foundation.ZCLAttributeDef(id=0xFF00, type=t.uint64_t)
+            attr_b = foundation.ZCLAttributeDef(id=0xFF01, type=t.uint64_t)
+            attr_c = foundation.ZCLAttributeDef(id=0xFF02, type=t.uint64_t)
+            attr_d = foundation.ZCLAttributeDef(id=0xFF03, type=t.uint64_t)
+            attr_e = foundation.ZCLAttributeDef(id=0xFF04, type=t.uint64_t)
+            attr_f = foundation.ZCLAttributeDef(id=0xFF05, type=t.uint64_t)
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    attrs = [
+        TestCluster.AttributeDefs.attr_a,
+        TestCluster.AttributeDefs.attr_b,
+        TestCluster.AttributeDefs.attr_c,
+        TestCluster.AttributeDefs.attr_d,
+        TestCluster.AttributeDefs.attr_e,
+        TestCluster.AttributeDefs.attr_f,
+    ]
+
+    with mock_attribute_writes(
+        cluster, dict.fromkeys(attrs, foundation.Status.SUCCESS)
+    ) as (mock_write, _):
+        [results] = await cluster.write_attributes(dict.fromkeys(attrs, 1))
+
+    # 6 records of 11 bytes each split into 2 chunks: 44 bytes + 22 bytes
+    assert mock_write.call_count == 2
+
+    sent_attrids = []
+    for call_obj in mock_write.call_args_list:
+        chunk_attrs = call_obj.args[0]
+        chunk_size = sum(len(a.serialize()) for a in chunk_attrs)
+        assert chunk_size <= MAX_ATTRIBUTE_RECORDS_BYTES
+        sent_attrids.extend(a.attrid for a in chunk_attrs)
+
+    assert sent_attrids == [attr.id for attr in attrs]
+
+    assert len(results) == 6
+    assert all(r.status == foundation.Status.SUCCESS for r in results)
+
+
+@pytest.mark.parametrize(
+    ("sizes", "max_bytes", "expected"),
+    [
+        # No records produces no chunks
+        ([], 10, []),
+        # Records that all fit stay in a single chunk
+        ([3, 3, 3], 10, [[3, 3, 3]]),
+        # Filling exactly to the limit does not start a new chunk
+        ([5, 5], 10, [[5, 5]]),
+        # A single record exactly at the limit is allowed
+        ([10], 10, [[10]]),
+        # Exceeding the limit rolls over into a new chunk
+        ([5, 5, 1], 10, [[5, 5], [1]]),
+    ],
+)
+def test_chunk_records_by_size(sizes, max_bytes, expected) -> None:
+    """The chunker packs records into chunks that never exceed max_bytes."""
+    chunks = _chunk_records_by_size(sizes, lambda size: size, max_bytes=max_bytes)
+    assert chunks == expected
+
+
+@pytest.mark.parametrize(
+    ("sizes", "max_bytes"),
+    [
+        # A single record larger than the limit, on its own
+        ([15], 10),
+        # An oversized record surrounded by ones that would otherwise fit
+        ([3, 15, 4], 10),
+    ],
+)
+def test_chunk_records_by_size_oversized_record(sizes, max_bytes) -> None:
+    """A record that on its own exceeds max_bytes can never be sent, so the chunker
+    fails loudly instead of emitting an oversized chunk the transport would reject.
+    """
+    with pytest.raises(ValueError, match="too large to fit in a single request"):
+        _chunk_records_by_size(sizes, lambda size: size, max_bytes=max_bytes)
 
 
 def test_manufacturer_id_override_manuf_specific_cluster(app_mock) -> None:
