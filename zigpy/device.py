@@ -53,6 +53,7 @@ LOGGER = logging.getLogger(__name__)
 PACKET_DEBOUNCE_WINDOW = 10
 MAX_DEVICE_CONCURRENCY = 2
 DEFAULT_FAST_POLL_TIMEOUT = 30
+DEFAULT_REQUEST_RETRIES = 2
 
 AFTER_OTA_ATTR_READ_DELAY = 10
 OTA_RETRY_DECORATOR = zigpy.util.retryable_request(
@@ -623,7 +624,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         use_ieee=False,
         ask_for_ack: bool | None = None,
         priority: int | None = None,
-        retries: int = 5,
+        retries: int = DEFAULT_REQUEST_RETRIES,
+        retry_delay: float = 0.1,
         **kwargs,
     ):
         extended_timeout = False
@@ -713,6 +715,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     if attempt >= max_attempts - 1:
                         raise
 
+                    await asyncio.sleep(retry_delay)
                     continue
 
     def handle_message(
