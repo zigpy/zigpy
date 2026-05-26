@@ -635,32 +635,35 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             timeout = APS_REPLY_TIMEOUT_EXTENDED
             extended_timeout = True
 
-        if dst_ep == zdo.ZDO_ENDPOINT:
-            rsp_key = ResponseKey(
-                endpoint_id=dst_ep,
-                # e.g. Node_Desc_req = 0x0002 corresponds to Node_Desc_rsp = 0x8002
-                cluster_id=cluster ^ 0x8000,
-                direction=None,
-                tsn=sequence,
-            )
-        else:
-            zcl_hdr, _ = foundation.ZCLHeader.deserialize(data)
-            rsp_key = ResponseKey(
-                endpoint_id=dst_ep,
-                cluster_id=cluster,
-                direction=zcl_hdr.frame_control.direction.flip(),
-                tsn=sequence,
-            )
+        if expect_reply:
+            if dst_ep == zdo.ZDO_ENDPOINT:
+                rsp_key = ResponseKey(
+                    endpoint_id=dst_ep,
+                    # e.g. Node_Desc_req = 0x0002 corresponds to Node_Desc_rsp = 0x8002
+                    cluster_id=cluster ^ 0x8000,
+                    direction=None,
+                    tsn=sequence,
+                )
+            else:
+                zcl_hdr, _ = foundation.ZCLHeader.deserialize(data)
+                rsp_key = ResponseKey(
+                    endpoint_id=dst_ep,
+                    cluster_id=cluster,
+                    direction=zcl_hdr.frame_control.direction.flip(),
+                    tsn=sequence,
+                )
 
-        if expect_reply and rsp_key in self._requests:
-            self.debug(
-                "Duplicate request key %s, pending requests %s",
-                rsp_key,
-                self._requests,
-            )
-            raise zigpy.exceptions.ControllerException(
-                f"Duplicate request key: {rsp_key}"
-            )
+            if rsp_key in self._requests:
+                self.debug(
+                    "Duplicate request key %s, pending requests %s",
+                    rsp_key,
+                    self._requests,
+                )
+                raise zigpy.exceptions.ControllerException(
+                    f"Duplicate request key: {rsp_key}"
+                )
+        else:
+            rsp_key = None
 
         max_attempts = retries + 1
 
@@ -689,9 +692,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                         await send_request(attempt=attempt)
                         return None
 
-                    future: asyncio.Future[
-                        list[typing.Any] | foundation.CommandSchema
-                    ] = asyncio.Future()
+                    assert rsp_key is not None
+
+                    future: asyncio.Future[list[Any] | foundation.CommandSchema] = (
+                        asyncio.Future()
+                    )
                     self._requests[rsp_key] = future
 
                     try:

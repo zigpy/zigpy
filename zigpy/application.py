@@ -1056,7 +1056,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         :param expect_reply: True if this is essentially a request
         :param use_ieee: use EUI64 for destination addressing
         :param extended_timeout: instruct the radio to use slower APS retries
-        :param force_route_discovery: force route re-discovery during a retry state
+        :param force_route_discovery: force route re-discovery for this transmission
         """
 
         if use_ieee:

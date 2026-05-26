@@ -1359,7 +1359,7 @@ async def test_request_exception_propagation(dev):
             data=t.SerializableBytes(
                 foundation.ZCLHeader(
                     frame_control=foundation.FrameControl(
-                        frame_type=foundation.FrameType.CLUSTER_COMMAND,
+                        frame_type=foundation.FrameType.GLOBAL_COMMAND,
                         is_manufacturer_specific=False,
                         direction=foundation.Direction.Server_to_Client,
                         disable_default_response=True,
@@ -2227,3 +2227,143 @@ async def test_update_firmware_triggers_reinterview(monkeypatch, dev):
 
     assert result == foundation.Status.SUCCESS
     dev.reinterview.assert_awaited_once()
+
+
+async def test_request_retry_success(app) -> None:
+    """Test retry logic when all attempts fail."""
+    tsn = 0x12
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+    ep.add_input_cluster(Basic.cluster_id)
+
+    attempt = 0
+
+    def send_packet(*args, **kwargs) -> None:
+        nonlocal attempt
+        attempt += 1
+
+        if attempt < 3:
+            raise zigpy.exceptions.DeliveryError("Failure")
+
+        asyncio.get_running_loop().call_soon(
+            dev.packet_received,
+            t.ZigbeePacket(
+                profile_id=260,
+                cluster_id=Basic.cluster_id,
+                src_ep=1,
+                dst_ep=1,
+                data=t.SerializableBytes(
+                    foundation.ZCLHeader(
+                        frame_control=foundation.FrameControl(
+                            frame_type=foundation.FrameType.GLOBAL_COMMAND,
+                            is_manufacturer_specific=False,
+                            direction=foundation.Direction.Server_to_Client,
+                            disable_default_response=True,
+                            reserved=0,
+                        ),
+                        tsn=tsn,
+                        command_id=foundation.GeneralCommand.Default_Response,
+                        manufacturer=None,
+                    ).serialize()
+                    + (
+                        foundation.GENERAL_COMMANDS[
+                            foundation.GeneralCommand.Default_Response
+                        ]
+                        .schema(
+                            command_id=Basic.ServerCommandDefs.reset_fact_default.id,
+                            status=foundation.Status.SUCCESS,
+                        )
+                        .serialize()
+                    )
+                ),
+                src=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.NWK,
+                    address=dev.nwk,
+                ),
+                dst=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.NWK,
+                    address=0x0000,
+                ),
+            ),
+        )
+
+    app.send_packet.side_effect = send_packet
+    dev.get_sequence = MagicMock(return_value=tsn)
+
+    rsp = await dev.endpoints[1].basic.reset_fact_default()
+    assert rsp == foundation.DefaultResponse(
+        command_id=Basic.ServerCommandDefs.reset_fact_default.id,
+        status=foundation.Status.SUCCESS,
+    )
+
+    assert len(app.send_packet.mock_calls) == 3
+
+
+async def test_request_retry_failure(app) -> None:
+    """Test retry logic when all attempts fail."""
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+    ep.add_input_cluster(Basic.cluster_id)
+
+    app.send_packet.side_effect = [
+        zigpy.exceptions.DeliveryError("Failure"),
+        zigpy.exceptions.DeliveryError("Failure"),
+        zigpy.exceptions.DeliveryError("Failure"),
+        zigpy.exceptions.DeliveryError("Failure"),
+    ]
+
+    with pytest.raises(zigpy.exceptions.DeliveryError):
+        await dev.request(
+            profile=0x1234,
+            cluster=0x0006,
+            src_ep=1,
+            dst_ep=1,
+            sequence=0xDE,
+            data=b"test data",
+            expect_reply=True,
+            use_ieee=False,
+            retries=3,
+        )
+
+    packet = t.ZigbeePacket(
+        priority=None,
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+        src_ep=1,
+        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+        dst_ep=1,
+        source_route=None,
+        extended_timeout=False,
+        tsn=222,
+        profile_id=4660,
+        cluster_id=6,
+        data=t.SerializableBytes(b"test data"),
+        tx_options=t.TransmitOptions.NONE,
+        radius=0,
+        non_member_radius=0,
+    )
+
+    assert app.send_packet.mock_calls == [
+        call(packet),
+        call(
+            packet.replace(
+                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY
+            )
+        ),
+        call(
+            packet.replace(
+                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY
+            )
+        ),
+        call(
+            packet.replace(
+                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY
+            )
+        ),
+    ]
