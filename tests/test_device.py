@@ -2230,7 +2230,7 @@ async def test_update_firmware_triggers_reinterview(monkeypatch, dev):
 
 
 async def test_request_retry_success(app) -> None:
-    """Test retry logic when all attempts fail."""
+    """Test retry logic succeeding after a few attempts."""
     tsn = 0x12
 
     dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
