@@ -2435,3 +2435,43 @@ async def test_request_retry_reply_timeout(app) -> None:
     )
 
     assert len(app.send_packet.mock_calls) == 3
+
+
+async def test_request_retry_delay_releases_concurrency(app) -> None:
+    """A request awaiting its post-retry delay must not hold a concurrency slot."""
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+
+    # Every send fails, so each request enters its (long) post-retry delay
+    app.send_packet.side_effect = zigpy.exceptions.DeliveryError("Failure")
+
+    async def make_request(sequence: int) -> None:
+        await dev.request(
+            profile=0x1234,
+            cluster=0x0006,
+            src_ep=1,
+            dst_ep=1,
+            sequence=sequence,
+            data=b"",
+            expect_reply=False,
+            retries=1,
+            retry_delay=10,
+        )
+
+    async with asyncio.TaskGroup() as tg:
+        tasks = [
+            tg.create_task(make_request(seq))
+            for seq in range(2 * device.MAX_DEVICE_CONCURRENCY)
+        ]
+
+        # Each request is now parked in a 10s post-retry delay. Even so, every one
+        # should still get its first attempt sent: the concurrency slot is released
+        # *before* the delay, not held during it.
+        async with asyncio.timeout(1):
+            while len(app.send_packet.mock_calls) < len(tasks):
+                await asyncio.sleep(0)
+
+        assert len(app.send_packet.mock_calls) == len(tasks)
+
+        # Tear down the still-pending requests so the task group can exit
+        for task in tasks:
+            task.cancel()

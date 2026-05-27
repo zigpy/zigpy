@@ -687,8 +687,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         for attempt in range(max_attempts):
             # Use a lambda so we don't leave the coroutine unawaited in case of an exception
-            async with self._limit_concurrency(priority=priority):
-                try:
+            try:
+                async with self._limit_concurrency(priority=priority):
                     if not expect_reply:
                         await send_request(attempt=attempt)
                         return None
@@ -708,21 +708,21 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                         if not future.done():
                             future.cancel()
                         self._requests.pop(rsp_key, None)
-                except zigpy.exceptions.ParsingError:
+            except zigpy.exceptions.ParsingError:
+                raise
+            except Exception:
+                LOGGER.debug(
+                    "Failed to send request, attempt %d of %d",
+                    attempt + 1,
+                    max_attempts,
+                    exc_info=True,
+                )
+
+                if attempt >= max_attempts - 1:
                     raise
-                except Exception:
-                    LOGGER.debug(
-                        "Failed to send request, attempt %d of %d",
-                        attempt + 1,
-                        max_attempts,
-                        exc_info=True,
-                    )
 
-                    if attempt >= max_attempts - 1:
-                        raise
-
-                    await asyncio.sleep(retry_delay)
-                    continue
+                await asyncio.sleep(retry_delay)
+                continue
 
     def handle_message(
         self,
