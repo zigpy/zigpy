@@ -668,6 +668,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         max_attempts = retries + 1
 
+        # Use a lambda so we don't leave the coroutine unawaited in case of an exception
         send_request = lambda attempt: self._application.request(  # noqa: E731
             device=self,
             profile=profile,
@@ -686,7 +687,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         )
 
         for attempt in range(max_attempts):
-            # Use a lambda so we don't leave the coroutine unawaited in case of an exception
             try:
                 async with self._limit_concurrency(priority=priority):
                     if not expect_reply:
