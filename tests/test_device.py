@@ -523,10 +523,6 @@ async def test_update_device_firmware_already_in_progress(dev, caplog):
 
 @patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
 @patch("zigpy.device.AFTER_OTA_ATTR_READ_DELAY", 0.01)
-@patch(
-    "zigpy.device.OTA_RETRY_DECORATOR",
-    zigpy.util.retryable_request(tries=1, delay=0.01),
-)
 async def test_update_device_firmware(monkeypatch, dev, caplog):
     """Test that device firmware updates execute the expected calls."""
     ep = dev.add_endpoint(1)
@@ -947,10 +943,6 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
 
 @patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
 @patch("zigpy.device.AFTER_OTA_ATTR_READ_DELAY", 0.01)
-@patch(
-    "zigpy.device.OTA_RETRY_DECORATOR",
-    zigpy.util.retryable_request(tries=1, delay=0.01),
-)
 async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     """Legrand device (manufacturer_code == 4129) firmware update expects the "image_block" command "maximum_data_size" to be complied with."""
     ep = dev.add_endpoint(1)
@@ -1359,7 +1351,7 @@ async def test_request_exception_propagation(dev):
             data=t.SerializableBytes(
                 foundation.ZCLHeader(
                     frame_control=foundation.FrameControl(
-                        frame_type=foundation.FrameType.CLUSTER_COMMAND,
+                        frame_type=foundation.FrameType.GLOBAL_COMMAND,
                         is_manufacturer_specific=False,
                         direction=foundation.Direction.Server_to_Client,
                         disable_default_response=True,
@@ -2227,3 +2219,259 @@ async def test_update_firmware_triggers_reinterview(monkeypatch, dev):
 
     assert result == foundation.Status.SUCCESS
     dev.reinterview.assert_awaited_once()
+
+
+async def test_request_retry_success(app) -> None:
+    """Test retry logic succeeding after a few attempts."""
+    tsn = 0x12
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+    ep.add_input_cluster(Basic.cluster_id)
+
+    attempt = 0
+
+    def send_packet(*args, **kwargs) -> None:
+        nonlocal attempt
+        attempt += 1
+
+        if attempt < 3:
+            raise zigpy.exceptions.DeliveryError("Failure")
+
+        asyncio.get_running_loop().call_soon(
+            dev.packet_received,
+            t.ZigbeePacket(
+                profile_id=260,
+                cluster_id=Basic.cluster_id,
+                src_ep=1,
+                dst_ep=1,
+                data=t.SerializableBytes(
+                    foundation.ZCLHeader(
+                        frame_control=foundation.FrameControl(
+                            frame_type=foundation.FrameType.GLOBAL_COMMAND,
+                            is_manufacturer_specific=False,
+                            direction=foundation.Direction.Server_to_Client,
+                            disable_default_response=True,
+                            reserved=0,
+                        ),
+                        tsn=tsn,
+                        command_id=foundation.GeneralCommand.Default_Response,
+                        manufacturer=None,
+                    ).serialize()
+                    + (
+                        foundation.GENERAL_COMMANDS[
+                            foundation.GeneralCommand.Default_Response
+                        ]
+                        .schema(
+                            command_id=Basic.ServerCommandDefs.reset_fact_default.id,
+                            status=foundation.Status.SUCCESS,
+                        )
+                        .serialize()
+                    )
+                ),
+                src=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.NWK,
+                    address=dev.nwk,
+                ),
+                dst=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.NWK,
+                    address=0x0000,
+                ),
+            ),
+        )
+
+    app.send_packet.side_effect = send_packet
+    dev.get_sequence = MagicMock(return_value=tsn)
+
+    rsp = await dev.endpoints[1].basic.reset_fact_default()
+    assert rsp == foundation.DefaultResponse(
+        command_id=Basic.ServerCommandDefs.reset_fact_default.id,
+        status=foundation.Status.SUCCESS,
+    )
+
+    assert len(app.send_packet.mock_calls) == 3
+
+
+async def test_request_retry_failure(app) -> None:
+    """Test retry logic when all attempts fail."""
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+    ep.add_input_cluster(Basic.cluster_id)
+
+    app.send_packet.side_effect = [
+        zigpy.exceptions.DeliveryError("Failure"),
+        zigpy.exceptions.DeliveryError("Failure"),
+        zigpy.exceptions.DeliveryError("Failure"),
+        zigpy.exceptions.DeliveryError("Failure"),
+    ]
+
+    with pytest.raises(zigpy.exceptions.DeliveryError):
+        await dev.request(
+            profile=0x1234,
+            cluster=0x0006,
+            src_ep=1,
+            dst_ep=1,
+            sequence=0xDE,
+            data=b"test data",
+            expect_reply=True,
+            use_ieee=False,
+            retries=3,
+        )
+
+    packet = t.ZigbeePacket(
+        priority=None,
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+        src_ep=1,
+        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+        dst_ep=1,
+        source_route=None,
+        extended_timeout=False,
+        tsn=222,
+        profile_id=4660,
+        cluster_id=6,
+        data=t.SerializableBytes(b"test data"),
+        tx_options=t.TransmitOptions.NONE,
+        radius=0,
+        non_member_radius=0,
+    )
+
+    assert app.send_packet.mock_calls == [
+        call(packet),
+        call(
+            packet.replace(
+                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY
+            )
+        ),
+        call(
+            packet.replace(
+                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY
+            )
+        ),
+        call(
+            packet.replace(
+                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY
+            )
+        ),
+    ]
+
+
+async def test_request_retry_reply_timeout(app) -> None:
+    """Test retry logic when a request is enqueued but no reply arrives, then a later attempt succeeds."""
+    tsn = 0x12
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+    ep.add_input_cluster(Basic.cluster_id)
+
+    attempt = 0
+
+    def send_packet(*args, **kwargs) -> None:
+        nonlocal attempt
+        attempt += 1
+
+        # The first two attempts are enqueued successfully but no reply ever arrives
+        if attempt < 3:
+            return
+
+        # The third attempt receives a reply
+        asyncio.get_running_loop().call_soon(
+            dev.packet_received,
+            t.ZigbeePacket(
+                profile_id=260,
+                cluster_id=Basic.cluster_id,
+                src_ep=1,
+                dst_ep=1,
+                data=t.SerializableBytes(
+                    foundation.ZCLHeader(
+                        frame_control=foundation.FrameControl(
+                            frame_type=foundation.FrameType.GLOBAL_COMMAND,
+                            is_manufacturer_specific=False,
+                            direction=foundation.Direction.Server_to_Client,
+                            disable_default_response=True,
+                            reserved=0,
+                        ),
+                        tsn=tsn,
+                        command_id=foundation.GeneralCommand.Default_Response,
+                        manufacturer=None,
+                    ).serialize()
+                    + (
+                        foundation.GENERAL_COMMANDS[
+                            foundation.GeneralCommand.Default_Response
+                        ]
+                        .schema(
+                            command_id=Basic.ServerCommandDefs.reset_fact_default.id,
+                            status=foundation.Status.SUCCESS,
+                        )
+                        .serialize()
+                    )
+                ),
+                src=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.NWK,
+                    address=dev.nwk,
+                ),
+                dst=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.NWK,
+                    address=0x0000,
+                ),
+            ),
+        )
+
+    app.send_packet.side_effect = send_packet
+    dev.get_sequence = MagicMock(return_value=tsn)
+
+    rsp = await dev.endpoints[1].basic.reset_fact_default(timeout=0.01, retry_delay=0)
+    assert rsp == foundation.DefaultResponse(
+        command_id=Basic.ServerCommandDefs.reset_fact_default.id,
+        status=foundation.Status.SUCCESS,
+    )
+
+    assert len(app.send_packet.mock_calls) == 3
+
+
+async def test_request_retry_delay_releases_concurrency(app) -> None:
+    """A request awaiting its post-retry delay must not hold a concurrency slot."""
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+
+    # Every send fails, so each request enters its (long) post-retry delay
+    app.send_packet.side_effect = zigpy.exceptions.DeliveryError("Failure")
+
+    async def make_request(sequence: int) -> None:
+        await dev.request(
+            profile=0x1234,
+            cluster=0x0006,
+            src_ep=1,
+            dst_ep=1,
+            sequence=sequence,
+            data=b"",
+            expect_reply=False,
+            retries=1,
+            retry_delay=10,
+        )
+
+    async with asyncio.TaskGroup() as tg:
+        tasks = [
+            tg.create_task(make_request(seq))
+            for seq in range(2 * device.MAX_DEVICE_CONCURRENCY)
+        ]
+
+        # Each request is now parked in a 10s post-retry delay. Even so, every one
+        # should still get its first attempt sent: the concurrency slot is released
+        # *before* the delay, not held during it.
+        async with asyncio.timeout(1):
+            while len(app.send_packet.mock_calls) < len(tasks):
+                await asyncio.sleep(0)
+
+        assert len(app.send_packet.mock_calls) == len(tasks)
+
+        # Tear down the still-pending requests so the task group can exit
+        for task in tasks:
+            task.cancel()

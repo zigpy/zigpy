@@ -175,6 +175,8 @@ async def test_reply_change_profile_id(ep):
             use_ieee=False,
             ask_for_ack=None,
             priority=None,
+            retries=None,
+            retry_delay=None,
         )
     ]
 
@@ -193,6 +195,8 @@ async def test_reply_change_profile_id(ep):
             use_ieee=False,
             ask_for_ack=None,
             priority=None,
+            retries=None,
+            retry_delay=None,
         )
     ]
 
@@ -212,6 +216,8 @@ async def test_reply_change_profile_id(ep):
             use_ieee=False,
             ask_for_ack=None,
             priority=None,
+            retries=None,
+            retry_delay=None,
         )
     ]
 

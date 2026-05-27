@@ -797,6 +797,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         priority: int | None = None,
         tsn: int | t.uint8_t | None = None,
         timeout=APS_REPLY_TIMEOUT,
+        retries: int | None = None,
+        retry_delay: float | None = None,
         **kwargs,
     ):
         if disable_default_response is None:
@@ -832,6 +834,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             use_ieee=use_ieee,
             ask_for_ack=ask_for_ack,
             priority=priority,
+            retries=retries,
+            retry_delay=retry_delay,
         )
 
     async def reply(
@@ -848,6 +852,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         ask_for_ack: bool | None = None,
         disable_default_response: bool | None = None,
         priority: int | None = None,
+        retries: int | None = None,
+        retry_delay: float | None = None,
         **kwargs,
     ) -> None:
         if disable_default_response is None:
@@ -883,6 +889,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             use_ieee=use_ieee,
             ask_for_ack=ask_for_ack,
             priority=priority,
+            retries=retries,
+            retry_delay=retry_delay,
         )
 
     def handle_message(
