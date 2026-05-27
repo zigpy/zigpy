@@ -523,10 +523,6 @@ async def test_update_device_firmware_already_in_progress(dev, caplog):
 
 @patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
 @patch("zigpy.device.AFTER_OTA_ATTR_READ_DELAY", 0.01)
-@patch(
-    "zigpy.device.OTA_RETRY_DECORATOR",
-    zigpy.util.retryable_request(tries=1, delay=0.01),
-)
 async def test_update_device_firmware(monkeypatch, dev, caplog):
     """Test that device firmware updates execute the expected calls."""
     ep = dev.add_endpoint(1)
@@ -947,10 +943,6 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
 
 @patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
 @patch("zigpy.device.AFTER_OTA_ATTR_READ_DELAY", 0.01)
-@patch(
-    "zigpy.device.OTA_RETRY_DECORATOR",
-    zigpy.util.retryable_request(tries=1, delay=0.01),
-)
 async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     """Legrand device (manufacturer_code == 4129) firmware update expects the "image_block" command "maximum_data_size" to be complied with."""
     ep = dev.add_endpoint(1)

@@ -54,11 +54,9 @@ PACKET_DEBOUNCE_WINDOW = 10
 MAX_DEVICE_CONCURRENCY = 2
 DEFAULT_FAST_POLL_TIMEOUT = 30
 DEFAULT_REQUEST_RETRIES = 2
+DEFAULT_REQUEST_RETRY_DELAY = 0.1
 
 AFTER_OTA_ATTR_READ_DELAY = 10
-OTA_RETRY_DECORATOR = zigpy.util.retryable_request(
-    tries=10, delay=AFTER_OTA_ATTR_READ_DELAY
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -335,9 +333,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 async with self._application.request_priority(
                     t.PacketPriority.CRITICAL
                 ):
-                    await zigpy.util.retryable_request(tries=2, delay=0.5)(
-                        shadow._discover
-                    )()
+                    await shadow._discover()
             except Exception:
                 # Discovery failed — restore old device, clean up shadow
                 self._application.devices[self._ieee] = self
@@ -590,7 +586,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self.info("Discovered basic device information for %s", self)
 
-    @zigpy.util.retryable_request(tries=5, delay=0.5)
     async def _initialize(self) -> None:
         """Discover device information and signal to the application."""
         await self._discover()
@@ -624,10 +619,16 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         use_ieee=False,
         ask_for_ack: bool | None = None,
         priority: int | None = None,
-        retries: int = DEFAULT_REQUEST_RETRIES,
-        retry_delay: float = 0.1,
+        retries: int | None = None,
+        retry_delay: float | None = None,
         **kwargs,
     ):
+        if retries is None:
+            retries = DEFAULT_REQUEST_RETRIES
+
+        if retry_delay is None:
+            retry_delay = DEFAULT_REQUEST_RETRY_DELAY
+
         extended_timeout = False
 
         if self.node_desc is None or self.node_desc.is_end_device:
@@ -990,6 +991,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
         priority: int | None = None,
+        **kwargs,
     ):
         return await self.request(
             profile=profile,
@@ -1003,6 +1005,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             use_ieee=use_ieee,
             ask_for_ack=ask_for_ack,
             priority=priority,
+            **kwargs,
         )
 
     async def update_firmware(
@@ -1049,8 +1052,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         )
 
         await asyncio.sleep(AFTER_OTA_ATTR_READ_DELAY)
-        await OTA_RETRY_DECORATOR(ota.read_attributes)(
-            [Ota.AttributeDefs.current_file_version.name]
+        await ota.read_attributes(
+            [Ota.AttributeDefs.current_file_version.name],
+            retries=10,
+            retry_delay=AFTER_OTA_ATTR_READ_DELAY,
         )
 
         # Prompt device to send QueryNextImage with updated version for query cache

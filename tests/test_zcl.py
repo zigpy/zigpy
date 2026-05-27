@@ -1612,6 +1612,8 @@ async def test_received_onoff_toggle_generates_default_response():
             use_ieee=False,
             ask_for_ack=None,
             priority=t.PacketPriority.LOW,
+            retries=None,
+            retry_delay=None,
         )
     ]
 

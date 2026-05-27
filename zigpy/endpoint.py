@@ -217,6 +217,8 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
         priority: int | None = None,
+        retries: int | None = None,
+        retry_delay: float | None = None,
     ):
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
             cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
@@ -238,6 +240,8 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             use_ieee=use_ieee,
             ask_for_ack=ask_for_ack,
             priority=priority,
+            retries=retries,
+            retry_delay=retry_delay,
         )
 
     async def reply(
@@ -251,6 +255,8 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         use_ieee: bool = False,
         ask_for_ack: bool | None = None,
         priority: int | None = None,
+        retries: int | None = None,
+        retry_delay: float | None = None,
     ) -> None:
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
             cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
@@ -272,6 +278,8 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             use_ieee=use_ieee,
             ask_for_ack=ask_for_ack,
             priority=priority,
+            retries=retries,
+            retry_delay=retry_delay,
         )
 
     def log(self, lvl: int, msg: str, *args: Any, **kwargs: Any) -> None:
