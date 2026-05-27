@@ -375,10 +375,12 @@ class Ledvance(BaseOtaProvider):
 class StubOtaProvider(BaseOtaProvider):
     """Stub provider to keep existing configurations working."""
 
+    VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
+
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
-        if False:
+        if typing.TYPE_CHECKING:
             yield  # pragma: no cover
 
 
@@ -387,23 +389,17 @@ class Salus(StubOtaProvider):
     NAME = "salus"
     MANUFACTURER_IDS = (4216, 43981)
 
-    VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
-
 
 @register_provider
 class ThirdReality(StubOtaProvider):
     NAME = "thirdreality"
     MANUFACTURER_IDS = (4659, 4877, 5127)
 
-    VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
-
 
 @register_provider
 class Inovelli(StubOtaProvider):
     NAME = "inovelli"
     MANUFACTURER_IDS = (4655,)
-
-    VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
 
 
 @register_provider
