@@ -2359,3 +2359,79 @@ async def test_request_retry_failure(app) -> None:
             )
         ),
     ]
+
+
+async def test_request_retry_reply_timeout(app) -> None:
+    """Test retry logic when a request is enqueued but no reply arrives, then a later attempt succeeds."""
+    tsn = 0x12
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+    ep.add_input_cluster(Basic.cluster_id)
+
+    attempt = 0
+
+    def send_packet(*args, **kwargs) -> None:
+        nonlocal attempt
+        attempt += 1
+
+        # The first two attempts are enqueued successfully but no reply ever arrives
+        if attempt < 3:
+            return
+
+        # The third attempt receives a reply
+        asyncio.get_running_loop().call_soon(
+            dev.packet_received,
+            t.ZigbeePacket(
+                profile_id=260,
+                cluster_id=Basic.cluster_id,
+                src_ep=1,
+                dst_ep=1,
+                data=t.SerializableBytes(
+                    foundation.ZCLHeader(
+                        frame_control=foundation.FrameControl(
+                            frame_type=foundation.FrameType.GLOBAL_COMMAND,
+                            is_manufacturer_specific=False,
+                            direction=foundation.Direction.Server_to_Client,
+                            disable_default_response=True,
+                            reserved=0,
+                        ),
+                        tsn=tsn,
+                        command_id=foundation.GeneralCommand.Default_Response,
+                        manufacturer=None,
+                    ).serialize()
+                    + (
+                        foundation.GENERAL_COMMANDS[
+                            foundation.GeneralCommand.Default_Response
+                        ]
+                        .schema(
+                            command_id=Basic.ServerCommandDefs.reset_fact_default.id,
+                            status=foundation.Status.SUCCESS,
+                        )
+                        .serialize()
+                    )
+                ),
+                src=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.NWK,
+                    address=dev.nwk,
+                ),
+                dst=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.NWK,
+                    address=0x0000,
+                ),
+            ),
+        )
+
+    app.send_packet.side_effect = send_packet
+    dev.get_sequence = MagicMock(return_value=tsn)
+
+    rsp = await dev.endpoints[1].basic.reset_fact_default(timeout=0.01, retry_delay=0)
+    assert rsp == foundation.DefaultResponse(
+        command_id=Basic.ServerCommandDefs.reset_fact_default.id,
+        status=foundation.Status.SUCCESS,
+    )
+
+    assert len(app.send_packet.mock_calls) == 3
