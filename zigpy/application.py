@@ -15,7 +15,7 @@ import os
 import random
 import time
 import typing
-from typing import Any, ParamSpec, TypeVar
+from typing import Any, ParamSpec, TypeVar, cast
 import warnings
 
 import zigpy.appdb
@@ -92,7 +92,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         ] = collections.defaultdict(list)
 
         # Context variable for request priority context manager
-        self._packet_priority_var = contextvars.ContextVar(
+        self._packet_priority_var: contextvars.ContextVar[int] = contextvars.ContextVar(
             "request_priority", default=t.PacketPriority.NORMAL
         )
 
@@ -509,7 +509,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             extended_pan_id=extended_pan_id,
             pan_id=pan_id,
             nwk_update_id=config[conf.CONF_NWK_UPDATE_ID],
-            nwk_manager_id=0x0000,
+            nwk_manager_id=t.NWK(0x0000),
             channel=channel,
             channel_mask=t.Channels.from_channel_list([channel]),
             security_level=5,
@@ -534,7 +534,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         )
 
         node_info = zigpy.state.NodeInfo(
-            nwk=0x0000,
+            nwk=t.NWK(0x0000),
             ieee=t.EUI64.UNKNOWN,  # Use the device IEEE address
             logical_type=zdo_types.LogicalType.Coordinator,
         )
@@ -767,7 +767,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self,
         nwk: t.NWK,
         ieee: t.EUI64,
-        parent_nwk: t.NWK,
+        parent_nwk: t.NWK | None,
         *,
         handle_rejoin: bool = True,
     ) -> None:
@@ -1139,7 +1139,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                     addr_mode=t.AddrMode.NWK, address=self.state.node_info.nwk
                 ),
                 src_ep=src_ep,
-                dst=t.AddrModeAddress(addr_mode=t.AddrMode.Group, address=group_id),
+                dst=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.Group, address=t.Group(group_id)
+                ),
                 tsn=sequence,
                 profile_id=profile,
                 cluster_id=cluster,
@@ -1253,6 +1255,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         LOGGER.debug("Received a packet: %r", packet)
         assert packet.src is not None
         assert packet.dst is not None
+        assert packet.src_ep is not None
+        assert packet.dst_ep is not None
 
         # Peek into ZDO packets to handle possible ZDO notifications
         if zigpy.zdo.ZDO_ENDPOINT in (packet.src_ep, packet.dst_ep):
@@ -1266,7 +1270,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             if packet.src.addr_mode == t.AddrMode.NWK:
                 # Manually send a ZDO IEEE address request to discover the device
                 self.create_task(
-                    self._discover_unknown_device(packet.src.address),
+                    self._discover_unknown_device(cast(t.NWK, packet.src.address)),
                     f"discover_unknown_device_from_packet-nwk={packet.src.address!r}",
                 )
 
@@ -1374,9 +1378,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """Gets a `Device` object using the provided address mode address."""
 
         if address.addr_mode == t.AddrMode.NWK:
-            return self.get_device(nwk=address.address)
+            return self.get_device(nwk=cast(t.NWK, address.address))
         elif address.addr_mode == t.AddrMode.IEEE:
-            return self.get_device(ieee=address.address)
+            return self.get_device(ieee=cast(t.EUI64, address.address))
         else:
             raise ValueError(f"Invalid address: {address!r}")
 
@@ -1442,7 +1446,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     ) -> typing.Callable[[], None]:
         listener = zigpy.listeners.CallbackListener(
             matchers=tuple(filters),
-            callback=self.wrap_callback(src, callback),
+            # The callback only handles `ZCLHeader`, but `CallbackListener` is generic
+            # over the listener framework's `ZCLHeader | ZDOHeader`. A ZDO header can
+            # only reach it via a callable matcher, which no caller uses.
+            callback=self.wrap_callback(src, callback),  # type: ignore[arg-type]
         )
 
         self._req_listeners[src].append(listener)

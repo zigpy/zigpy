@@ -23,7 +23,7 @@ ANY_DEVICE = AnyDeviceType._singleton  # noqa: SLF001
 
 @dataclasses.dataclass(frozen=True)
 class BaseRequestListener:
-    matchers: tuple[MatcherType]
+    matchers: tuple[MatcherType, ...]
 
     def resolve(
         self,

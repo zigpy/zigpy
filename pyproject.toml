@@ -374,6 +374,14 @@ disable_error_code = [
 ]
 
 [[tool.mypy.overrides]]
+module = "zigpy.application"
+disable_error_code = [
+    "assignment",  # 4
+    "attr-defined",  # 2
+    "misc",  # 3
+]
+
+[[tool.mypy.overrides]]
 module = "zigpy.ota.providers"
 disable_error_code = [
     "arg-type",  # 6
@@ -437,15 +445,6 @@ disable_error_code = [
     "arg-type",  # 5
     "assignment",  # 13
     "attr-defined",  # 4
-]
-
-[[tool.mypy.overrides]]
-module = "zigpy.application"
-disable_error_code = [
-    "arg-type",  # 16
-    "assignment",  # 4
-    "attr-defined",  # 2
-    "misc",  # 3
 ]
 
 [[tool.mypy.overrides]]

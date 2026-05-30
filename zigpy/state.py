@@ -114,7 +114,7 @@ class NetworkInfo(t.BaseDataclassMixin):
     key_table: list[Key] = dataclasses.field(default_factory=list)
     children: list[t.EUI64] = dataclasses.field(default_factory=list)
     route_table: dict[t.NWK, t.NWK] = dataclasses.field(default_factory=dict)
-    tx_power: int | None = None
+    tx_power: float | None = None
 
     # If exposed by the stack, NWK addresses of other connected devices on the network
     nwk_addresses: dict[t.EUI64, t.NWK] = dataclasses.field(default_factory=dict)

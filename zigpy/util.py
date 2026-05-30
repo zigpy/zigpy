@@ -425,7 +425,7 @@ def pick_optimal_channel(
     return optimal_channel
 
 
-def filter_relays(relays: list[int]) -> list[int]:
+def filter_relays(relays: list[t.NWK]) -> list[t.NWK]:
     """Filter out invalid relays."""
     filtered_relays = []
 
