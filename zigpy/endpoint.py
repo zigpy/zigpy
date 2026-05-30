@@ -40,7 +40,9 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self.status: Status = Status.NEW
         self.profile_id: int | None = None
-        self.device_type: zigpy.profiles.zha.DeviceType | None = None
+        self.device_type: (
+            zigpy.profiles.zha.DeviceType | zigpy.profiles.zll.DeviceType | int | None
+        ) = None
         self.in_clusters: dict = {}
         self.out_clusters: dict = {}
         self._cluster_attr: dict = {}

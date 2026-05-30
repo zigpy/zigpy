@@ -36,11 +36,14 @@ class BaseRequestListener:
 
         for matcher in self.matchers:
             match = None
-            is_matcher_cmd = isinstance(matcher, foundation.CommandSchema)
 
-            if is_matcher_cmd and isinstance(command, foundation.CommandSchema):
+            if isinstance(matcher, foundation.CommandSchema) and isinstance(
+                command, foundation.CommandSchema
+            ):
                 match = command.matches(matcher)
-            elif is_matcher_cmd and isinstance(hdr, zdo_t.ZDOHeader):
+            elif isinstance(matcher, foundation.CommandSchema) and isinstance(
+                hdr, zdo_t.ZDOHeader
+            ):
                 # FIXME: ZDO does not use command schemas and cannot be matched
                 pass
             elif callable(matcher):

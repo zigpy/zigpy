@@ -1160,7 +1160,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return self._relays
 
     @relays.setter
-    def relays(self, relays: t.Relays | None) -> None:
+    def relays(self, relays: list[t.NWK] | None) -> None:
         if relays is None:
             pass
         elif not isinstance(relays, t.Relays):
