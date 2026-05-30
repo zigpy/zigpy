@@ -10,7 +10,6 @@ from enum import Enum
 import inspect
 import logging
 import pathlib
-from types import FrameType
 from typing import TYPE_CHECKING, Any, Self, cast, overload
 
 import attrs
@@ -25,6 +24,7 @@ from zigpy.const import (
     SIG_NODE_DESC,
     SIG_SKIP_CONFIG,
 )
+from zigpy.endpoint import Endpoint
 import zigpy.profiles.zha
 from zigpy.quirks import DEVICE_REGISTRY, BaseCustomDevice, CustomCluster, FilterType
 from zigpy.quirks.registry import DeviceRegistry
@@ -42,7 +42,6 @@ from zigpy.zdo.types import NodeDescriptor
 if TYPE_CHECKING:
     from zigpy.application import ControllerApplication
     from zigpy.device import Device
-    from zigpy.endpoint import Endpoint
     from zigpy.zcl import Cluster
     from zigpy.zcl.foundation import ZCLAttributeDef
 
@@ -188,7 +187,8 @@ class AddsMetadata:
 
     def __call__(self, device: CustomDeviceV2) -> None:
         """Process the add."""
-        endpoint: Endpoint = device.endpoints[self.endpoint_id]
+        endpoint = cast(Endpoint, device.endpoints[self.endpoint_id])
+
         if is_server_cluster := self.cluster_type == ClusterType.Server:
             add_cluster = endpoint.add_input_cluster
         else:
@@ -308,7 +308,7 @@ class ReplacesEndpointMetadata:
     def __call__(self, device: CustomDeviceV2) -> None:
         """Process the replace."""
         if self.endpoint_id in device.endpoints:
-            ep: Endpoint = device.endpoints[self.endpoint_id]
+            ep = cast(Endpoint, device.endpoints[self.endpoint_id])
         else:
             ep = device.add_endpoint(self.endpoint_id)
         ep.profile_id = self.profile_id
@@ -655,8 +655,10 @@ class QuirkBuilder:
             tuple[str, str], dict[str, str]
         ] = {}
 
-        current_frame: FrameType = inspect.currentframe()
-        caller: FrameType = current_frame.f_back
+        current_frame = inspect.currentframe()
+        assert current_frame is not None
+        caller = current_frame.f_back
+        assert caller is not None
         self.quirk_file = pathlib.Path(caller.f_code.co_filename)
         self.quirk_file_line = caller.f_lineno
 

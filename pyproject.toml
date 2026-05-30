@@ -301,12 +301,6 @@ disable_error_code = [
 ]
 
 [[tool.mypy.overrides]]
-module = "zigpy.quirks.v2"
-disable_error_code = [
-    "assignment",  # 4
-]
-
-[[tool.mypy.overrides]]
 module = "zigpy.state"
 disable_error_code = [
     "arg-type",  # 1
