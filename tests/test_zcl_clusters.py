@@ -486,7 +486,7 @@ def test_security_iaswd_warning_mode(raw, mode, name):
         assert warning == raw
         assert warning.mode == mode
         assert warning.mode.name == name
-        warning.mode = mode
+        warning = warning.replace(mode=mode)
         assert warning.serialize() == data
         assert warning.mode == mode
 
@@ -509,7 +509,7 @@ def test_security_iaswd_warning_mode_2():
         assert warning == raw
         assert warning.mode == mode
         assert warning.mode.name == name
-        warning.mode = mode
+        warning = warning.replace(mode=mode)
         assert warning.serialize() == data
         assert warning.mode == mode
 
@@ -534,7 +534,7 @@ def test_security_iaswd_warning_strobe():
                 assert warning == raw
                 assert warning.strobe == strobe.value
                 assert warning.strobe.name == strobe.name
-                warning.strobe = strobe
+                warning = warning.replace(strobe=strobe)
                 assert warning.serialize() == data
                 assert warning.strobe == strobe.value
 
@@ -553,7 +553,7 @@ def test_security_iaswd_warning_siren():
                 assert warning == raw
                 assert warning.level == siren.value
                 assert warning.level.name == siren.name
-                warning.level = siren
+                warning = warning.replace(level=siren)
                 assert warning.serialize() == data
                 assert warning.level == siren.value
 
@@ -579,7 +579,7 @@ def test_security_iaswd_squawk_mode(raw, mode, name):
         assert squawk == raw
         assert squawk.mode == mode
         assert squawk.mode.name == name
-        squawk.mode = mode
+        squawk = squawk.replace(mode=mode)
         assert squawk.serialize() == data
         assert squawk.mode == mode
 
@@ -608,7 +608,7 @@ def test_security_iaswd_squawk_strobe():
                 assert squawk.strobe == strobe.value
                 assert squawk.strobe == strobe
                 assert squawk.strobe.name == strobe.name
-                squawk.strobe = strobe
+                squawk = squawk.replace(strobe=strobe)
                 assert squawk.serialize() == data
                 assert squawk.strobe == strobe
 
@@ -626,7 +626,7 @@ def test_security_iaswd_squawk_level():
             assert squawk.level == level.value
             assert squawk.level == level
             assert squawk.level.name == level.name
-            squawk.level = level
+            squawk = squawk.replace(level=level)
             assert squawk.serialize() == data
             assert squawk.level == level
 
