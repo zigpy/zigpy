@@ -158,6 +158,8 @@ class Topology(zigpy.util.ListenableMixin):
         if devices is None:
             # We iterate over a copy of the devices as opposed to the live dictionary
             devices = list(self._app.devices.values())
+        else:
+            devices = list(devices)
 
         for index, device in enumerate(devices):
             LOGGER.debug(

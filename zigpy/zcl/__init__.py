@@ -748,14 +748,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         return hdr, response
 
+    @staticmethod
     def _create_request(
-        self,
         *,
         general: bool,
         command_id: foundation.GeneralCommand | int,
         schema: type[CommandSchema],
         manufacturer: int | None = None,
-        tsn: int | None = None,
+        tsn: int,
         disable_default_response: bool,
         direction: foundation.Direction,
         # Schema args and kwargs
@@ -764,9 +764,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     ) -> tuple[foundation.ZCLHeader, CommandSchema]:
         request = schema(*args, **kwargs)
         request.serialize()  # Throw an error before generating a new TSN
-
-        if tsn is None:
-            tsn = self._endpoint.device.get_sequence()
 
         frame_control = foundation.FrameControl(
             frame_type=(
@@ -809,6 +806,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     ):
         if disable_default_response is None:
             disable_default_response = self.is_client
+
+        if tsn is None:
+            tsn = self._endpoint.device.get_sequence()
 
         hdr, request = self._create_request(
             general=general,
@@ -864,6 +864,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     ) -> None:
         if disable_default_response is None:
             disable_default_response = True
+
+        if tsn is None:
+            tsn = self._endpoint.device.get_sequence()
 
         hdr, request = self._create_request(
             general=general,

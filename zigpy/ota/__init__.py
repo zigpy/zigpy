@@ -244,7 +244,7 @@ class OTA:
             zigpy.ota.providers.BaseOtaImageMetadata, OtaImageWithMetadata
         ] = {}
 
-        self._broadcast_loop_task = None
+        self._broadcast_loop_task: asyncio.Task[None] | None = None
 
         if config[CONF_OTA_ENABLED]:
             self._register_providers(self._config)
@@ -686,7 +686,6 @@ class OTA:
             jitter = int(100 * min(max(0.0, ratio), 1.0))
 
         hdr, request = Ota._create_request(
-            self=None,
             general=False,
             command_id=command.id,
             schema=command.schema,

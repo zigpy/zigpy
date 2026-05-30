@@ -284,12 +284,6 @@ disable_error_code = [
 ]
 
 [[tool.mypy.overrides]]
-module = "zigpy.topology"
-disable_error_code = [
-    "arg-type",  # 1
-]
-
-[[tool.mypy.overrides]]
 module = "zigpy.appdb"
 disable_error_code = [
     "assignment",  # 2
@@ -300,19 +294,6 @@ module = "zigpy.datastructures"
 disable_error_code = [
     "assignment",  # 1
     "attr-defined",  # 1
-]
-
-[[tool.mypy.overrides]]
-module = "zigpy.group"
-disable_error_code = [
-    "assignment",  # 2
-]
-
-[[tool.mypy.overrides]]
-module = "zigpy.ota"
-disable_error_code = [
-    "arg-type",  # 1
-    "assignment",  # 1
 ]
 
 [[tool.mypy.overrides]]
@@ -389,19 +370,18 @@ disable_error_code = [
 ]
 
 [[tool.mypy.overrides]]
+module = "zigpy.ota.image"
+disable_error_code = [
+    "arg-type",  # 1
+    "assignment",  # 8
+]
+
+[[tool.mypy.overrides]]
 module = "zigpy.ota.providers"
 disable_error_code = [
     "arg-type",  # 6
     "assignment",  # 1
     "misc",  # 2
-]
-
-[[tool.mypy.overrides]]
-module = "zigpy.ota.image"
-disable_error_code = [
-    "arg-type",  # 1
-    "assignment",  # 8
-    "misc",  # 1
 ]
 
 [[tool.mypy.overrides]]
@@ -413,20 +393,20 @@ disable_error_code = [
 ]
 
 [[tool.mypy.overrides]]
+module = "zigpy.device"
+disable_error_code = [
+    "arg-type",  # 8
+    "assignment",  # 2
+    "attr-defined",  # 2
+    "misc",  # 1
+]
+
+[[tool.mypy.overrides]]
 module = "zigpy.quirks.registry"
 disable_error_code = [
     "arg-type",  # 3
     "assignment",  # 1
     "attr-defined",  # 9
-]
-
-[[tool.mypy.overrides]]
-module = "zigpy.device"
-disable_error_code = [
-    "arg-type",  # 9
-    "assignment",  # 2
-    "attr-defined",  # 2
-    "misc",  # 1
 ]
 
 [[tool.mypy.overrides]]
@@ -442,7 +422,7 @@ disable_error_code = [
 module = "zigpy.zcl.foundation"
 disable_error_code = [
     "arg-type",  # 5
-    "assignment",  # 13
+    "assignment",  # 11
     "attr-defined",  # 4
 ]
 

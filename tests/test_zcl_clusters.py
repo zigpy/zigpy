@@ -83,6 +83,7 @@ async def read_attributes(cluster, attribute_ids: list[int]) -> dict[int, Any]:
         general=True,
         command_id=foundation.GeneralCommand.Read_Attributes,
         schema=schema,
+        tsn=cluster.endpoint.device.get_sequence(),
         disable_default_response=False,
         direction=foundation.Direction.Client_to_Server,
         args=(),
