@@ -49,6 +49,8 @@ testing = [
     "pytest-timeout",
     "ruff==0.14.14",
     "tomli",
+    "types-jsonschema",
+    "types-setuptools",
 ]
 ci = [
     {include-group = "testing"},
