@@ -911,9 +911,9 @@ class QuirkBuilder:
         reporting_config: ReportingConfig | None = None,
         unique_id_suffix: str | None = None,
         translation_key: str | None = None,
-        fallback_name: str | None = None,
         primary: bool | None = None,
         *,
+        fallback_name: str,
         translation_placeholders: dict[str, str] | None = None,
     ) -> Self:
         """Add an EntityMetadata containing ZCLEnumMetadata and return self.
@@ -960,9 +960,9 @@ class QuirkBuilder:
         reporting_config: ReportingConfig | None = None,
         unique_id_suffix: str | None = None,
         translation_key: str | None = None,
-        fallback_name: str | None = None,
         primary: bool | None = None,
         *,
+        fallback_name: str,
         translation_placeholders: dict[str, str] | None = None,
     ) -> Self:
         """Add an EntityMetadata containing ZCLSensorMetadata and return self.
@@ -1013,9 +1013,9 @@ class QuirkBuilder:
         reporting_config: ReportingConfig | None = None,
         unique_id_suffix: str | None = None,
         translation_key: str | None = None,
-        fallback_name: str | None = None,
         primary: bool | None = None,
         *,
+        fallback_name: str,
         translation_placeholders: dict[str, str] | None = None,
     ) -> Self:
         """Add an EntityMetadata containing SwitchMetadata and return self.
@@ -1065,9 +1065,9 @@ class QuirkBuilder:
         reporting_config: ReportingConfig | None = None,
         unique_id_suffix: str | None = None,
         translation_key: str | None = None,
-        fallback_name: str | None = None,
         primary: bool | None = None,
         *,
+        fallback_name: str,
         translation_placeholders: dict[str, str] | None = None,
     ) -> Self:
         """Add an EntityMetadata containing NumberMetadata and return self.
@@ -1115,9 +1115,9 @@ class QuirkBuilder:
         reporting_config: ReportingConfig | None = None,
         unique_id_suffix: str | None = None,
         translation_key: str | None = None,
-        fallback_name: str | None = None,
         primary: bool | None = None,
         *,
+        fallback_name: str,
         translation_placeholders: dict[str, str] | None = None,
     ) -> Self:
         """Add an EntityMetadata containing BinarySensorMetadata and return self.
@@ -1158,9 +1158,9 @@ class QuirkBuilder:
         attribute_initialized_from_cache: bool = True,
         unique_id_suffix: str | None = None,
         translation_key: str | None = None,
-        fallback_name: str | None = None,
         primary: bool | None = None,
         *,
+        fallback_name: str,
         translation_placeholders: dict[str, str] | None = None,
     ) -> Self:
         """Add an EntityMetadata containing WriteAttributeButtonMetadata and return self.
@@ -1200,9 +1200,9 @@ class QuirkBuilder:
         initially_disabled: bool = False,
         unique_id_suffix: str | None = None,
         translation_key: str | None = None,
-        fallback_name: str | None = None,
         primary: bool | None = None,
         *,
+        fallback_name: str,
         translation_placeholders: dict[str, str] | None = None,
     ) -> Self:
         """Add an EntityMetadata containing ZCLCommandButtonMetadata and return self.
