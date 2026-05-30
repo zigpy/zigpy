@@ -352,7 +352,9 @@ module = "zigpy.appdb"
 disable_error_code = [
     "no-untyped-call",  # 82
     "no-untyped-def",  # 21
+    "redundant-expr",  # 1
     "type-arg",  # 1
+    "unreachable",  # 1
 ]
 
 [[tool.mypy.overrides]]
@@ -362,7 +364,10 @@ disable_error_code = [
     "no-any-return",  # 5
     "no-untyped-call",  # 18
     "no-untyped-def",  # 10
+    "redundant-expr",  # 1
     "type-arg",  # 5
+    "unreachable",  # 2
+    "unused-awaitable",  # 5
 ]
 
 [[tool.mypy.overrides]]
@@ -378,27 +383,32 @@ disable_error_code = [
 [[tool.mypy.overrides]]
 module = "zigpy.config.validators"
 disable_error_code = [
+    "redundant-expr",  # 1
     "type-arg",  # 1
 ]
 
 [[tool.mypy.overrides]]
 module = "zigpy.datastructures"
 disable_error_code = [
+    "explicit-override",  # 4
     "type-arg",  # 3
 ]
 
 [[tool.mypy.overrides]]
 module = "zigpy.device"
 disable_error_code = [
+    "explicit-override",  # 2
     "no-any-return",  # 5
     "no-untyped-call",  # 7
     "no-untyped-def",  # 15
     "type-arg",  # 7
+    "unreachable",  # 1
 ]
 
 [[tool.mypy.overrides]]
 module = "zigpy.endpoint"
 disable_error_code = [
+    "explicit-override",  # 2
     "no-any-return",  # 8
     "no-untyped-call",  # 4
     "no-untyped-def",  # 6
@@ -415,6 +425,7 @@ disable_error_code = [
 [[tool.mypy.overrides]]
 module = "zigpy.group"
 disable_error_code = [
+    "explicit-override",  # 4
     "no-any-return",  # 6
     "no-untyped-call",  # 3
     "no-untyped-def",  # 7
@@ -424,21 +435,27 @@ disable_error_code = [
 [[tool.mypy.overrides]]
 module = "zigpy.listeners"
 disable_error_code = [
+    "explicit-override",  # 4
     "no-untyped-def",  # 3
     "type-arg",  # 1
+    "unreachable",  # 2
 ]
 
 [[tool.mypy.overrides]]
 module = "zigpy.ota"
 disable_error_code = [
+    "explicit-override",  # 1
     "no-untyped-call",  # 1
+    "redundant-expr",  # 2
 ]
 
 [[tool.mypy.overrides]]
 module = "zigpy.ota.image"
 disable_error_code = [
+    "explicit-override",  # 12
     "no-untyped-call",  # 5
     "no-untyped-def",  # 7
+    "unreachable",  # 3
     "var-annotated",  # 1
 ]
 
@@ -453,6 +470,8 @@ disable_error_code = [
 [[tool.mypy.overrides]]
 module = "zigpy.ota.providers"
 disable_error_code = [
+    "explicit-override",  # 32
+    "mutable-override",  # 11
     "no-untyped-def",  # 5
     "type-arg",  # 3
 ]
@@ -460,6 +479,7 @@ disable_error_code = [
 [[tool.mypy.overrides]]
 module = "zigpy.quirks"
 disable_error_code = [
+    "explicit-override",  # 5
     "no-any-return",  # 1
     "no-untyped-call",  # 11
     "no-untyped-def",  # 7
@@ -481,9 +501,16 @@ disable_error_code = [
 ]
 
 [[tool.mypy.overrides]]
+module = "zigpy.serial"
+disable_error_code = [
+    "explicit-override",  # 3
+]
+
+[[tool.mypy.overrides]]
 module = "zigpy.state"
 disable_error_code = [
     "attr-defined",  # 1
+    "explicit-override",  # 5
     "no-any-return",  # 1
     "no-untyped-call",  # 8
     "no-untyped-def",  # 1
@@ -506,24 +533,32 @@ disable_error_code = [
 module = "zigpy.types.basic"
 disable_error_code = [
     "assignment",  # 1
+    "explicit-override",  # 19
     "no-any-return",  # 4
     "no-untyped-call",  # 6
     "no-untyped-def",  # 22
+    "redundant-expr",  # 2
     "return-value",  # 1
     "type-arg",  # 11
+    "unreachable",  # 1
 ]
 
 [[tool.mypy.overrides]]
 module = "zigpy.types.named"
 disable_error_code = [
+    "explicit-override",  # 8
+    "mutable-override",  # 1
     "no-untyped-call",  # 6
     "no-untyped-def",  # 7
+    "redundant-expr",  # 1
     "type-arg",  # 3
+    "unreachable",  # 2
 ]
 
 [[tool.mypy.overrides]]
 module = "zigpy.types.struct"
 disable_error_code = [
+    "explicit-override",  # 9
     "no-untyped-call",  # 3
     "no-untyped-def",  # 5
     "type-arg",  # 2
@@ -538,21 +573,27 @@ disable_error_code = [
     "no-any-return",  # 2
     "no-untyped-call",  # 1
     "no-untyped-def",  # 13
+    "possibly-undefined",  # 1
     "type-arg",  # 11
 ]
 
 [[tool.mypy.overrides]]
 module = "zigpy.zcl"
 disable_error_code = [
+    "explicit-override",  # 2
     "no-any-return",  # 5
     "no-untyped-call",  # 5
     "no-untyped-def",  # 21
+    "redundant-expr",  # 2
     "type-arg",  # 3
+    "unreachable",  # 1
 ]
 
 [[tool.mypy.overrides]]
 module = "zigpy.zcl.clusters.*"
 disable_error_code = [
+    "explicit-override",  # 4
+    "mutable-override",  # 129
     "no-untyped-call",  # 48
     "no-untyped-def",  # 7
 ]
@@ -560,10 +601,13 @@ disable_error_code = [
 [[tool.mypy.overrides]]
 module = "zigpy.zcl.foundation"
 disable_error_code = [
+    "explicit-override",  # 17
+    "mutable-override",  # 7
     "no-any-return",  # 1
     "no-untyped-call",  # 44
     "no-untyped-def",  # 10
     "type-arg",  # 4
+    "unreachable",  # 7
 ]
 
 [[tool.mypy.overrides]]
@@ -575,6 +619,7 @@ disable_error_code = [
 [[tool.mypy.overrides]]
 module = "zigpy.zdo"
 disable_error_code = [
+    "explicit-override",  # 1
     "no-any-return",  # 1
     "no-untyped-call",  # 9
     "no-untyped-def",  # 19
@@ -584,8 +629,10 @@ disable_error_code = [
 [[tool.mypy.overrides]]
 module = "zigpy.zdo.types"
 disable_error_code = [
+    "explicit-override",  # 5
     "no-untyped-call",  # 19
     "no-untyped-def",  # 6
+    "unreachable",  # 9
 ]
 # Autogenerated mypy overrides: end
 
