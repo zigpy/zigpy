@@ -21,7 +21,6 @@ def run_mypy() -> list[str]:
             "zigpy",
             "--no-error-summary",
             "--config-file=/dev/null",
-            "--ignore-missing-imports",
         ]
     )
     return stdout.splitlines() + stderr.splitlines()

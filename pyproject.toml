@@ -256,7 +256,6 @@ skip = ["./.*", "tests/*", "pyproject.toml"]
 quiet-level = 2
 
 [tool.mypy]
-ignore_missing_imports = true
 install_types = true
 non_interactive = true
 show_error_codes = true
@@ -358,6 +357,7 @@ module = "zigpy.util"
 disable_error_code = [
     "arg-type",  # 1
     "assignment",  # 4
+    "import-untyped",  # 1
     "misc",  # 2
 ]
 
@@ -366,6 +366,7 @@ module = "zigpy.ota.providers"
 disable_error_code = [
     "arg-type",  # 6
     "assignment",  # 1
+    "import-untyped",  # 1
     "misc",  # 2
 ]
 
