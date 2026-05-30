@@ -129,8 +129,9 @@ class BaseOtaImageMetadata(t.BaseDataclassMixin):
 class RemoteOtaImageMetadata(BaseOtaImageMetadata):
     url: str
 
-    # If a provider uses a self-signed certificate, it can override this
-    ssl_ctx: ssl.SSLContext | None = None
+    # If a provider uses a self-signed certificate, it can override this. Mirrors
+    # aiohttp's `ssl` argument: `True` verifies with the default context.
+    ssl_ctx: ssl.SSLContext | bool = True
 
     async def _fetch(self) -> bytes:
         async with aiohttp.ClientSession(raise_for_status=True) as req:
@@ -193,7 +194,6 @@ class SignedIkeaRemoteOtaImageMetadata(IkeaRemoteOtaImageMetadata):
 class BaseOtaProvider:
     NAME: str
     MANUFACTURER_IDS: tuple[int, ...] = ()
-    DEFAULT_URL: str | None = None
     VOL_SCHEMA: vol.Schema
     JSON_SCHEMA: dict | None = None
     INDEX_EXPIRATION_TIME = datetime.timedelta(hours=24)
@@ -201,12 +201,10 @@ class BaseOtaProvider:
 
     def __init__(
         self,
-        url: str | typing.Literal[True] | None = None,
         manufacturer_ids: list[int] | None = None,
         *,
         override_previous: bool = False,
     ) -> None:
-        self.url = self.DEFAULT_URL if url in (True, None) else url
         self._index_last_updated = datetime.datetime.fromtimestamp(0, tz=datetime.UTC)
 
         if manufacturer_ids is not None:
@@ -250,6 +248,37 @@ class BaseOtaProvider:
         if not isinstance(other, self.__class__):
             return NotImplemented
 
+        return self.manufacturer_ids == other.manufacturer_ids
+
+    def __hash__(self) -> int:
+        return hash(self.manufacturer_ids)
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(manufacturer_ids={self.manufacturer_ids!r})"
+
+
+class BaseNetworkOtaProvider(BaseOtaProvider):
+    """Base provider for OTA providers that fetch from a network resource."""
+
+    # Concrete providers set this; stub providers leave it empty since they never fetch
+    DEFAULT_URL: str = ""
+
+    def __init__(
+        self,
+        url: str | typing.Literal[True] | None = None,
+        manufacturer_ids: list[int] | None = None,
+        *,
+        override_previous: bool = False,
+    ) -> None:
+        super().__init__(
+            manufacturer_ids=manufacturer_ids, override_previous=override_previous
+        )
+        self.url = self.DEFAULT_URL if url is True or url is None else url
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+
         return self.url == other.url and self.manufacturer_ids == other.manufacturer_ids
 
     def __hash__(self) -> int:
@@ -260,7 +289,7 @@ class BaseOtaProvider:
 
 
 @register_provider
-class Tradfri(BaseOtaProvider):
+class Tradfri(BaseNetworkOtaProvider):
     NAME = "ikea"
     MANUFACTURER_IDS = (4476,)
     DEFAULT_URL = "https://fw.ota.homesmart.ikea.com/DIRIGERA/version_info.json"
@@ -327,7 +356,7 @@ class Tradfri(BaseOtaProvider):
 
 
 @register_provider
-class Ledvance(BaseOtaProvider):
+class Ledvance(BaseNetworkOtaProvider):
     NAME = "ledvance"
     # This isn't static but no more than these two have ever existed
     MANUFACTURER_IDS = (4489, 4364)
@@ -372,7 +401,7 @@ class Ledvance(BaseOtaProvider):
             )
 
 
-class StubOtaProvider(BaseOtaProvider):
+class StubOtaProvider(BaseNetworkOtaProvider):
     """Stub provider to keep existing configurations working."""
 
     VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL
@@ -403,7 +432,7 @@ class Inovelli(StubOtaProvider):
 
 
 @register_provider
-class Sonoff(BaseOtaProvider):
+class Sonoff(BaseNetworkOtaProvider):
     NAME = "sonoff"
     MANUFACTURER_IDS = (4742,)
 
@@ -441,7 +470,7 @@ class BaseZigpyProvider(BaseOtaProvider):
         index: dict,
         *,
         index_root: pathlib.Path | None = None,
-        ssl_ctx: ssl.SSLContext | None = None,
+        ssl_ctx: ssl.SSLContext | bool = True,
     ):
         jsonschema.validate(index, cls.JSON_SCHEMA)
 
@@ -481,7 +510,7 @@ class LocalZigpyProvider(BaseZigpyProvider):
     VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_JSON_INDEX
 
     def __init__(self, index_file: pathlib.Path, **kwargs):
-        super().__init__(url=None, **kwargs)
+        super().__init__(**kwargs)
         self.index_file = index_file
 
     async def _load_index(
@@ -512,7 +541,7 @@ class LocalZigpyProvider(BaseZigpyProvider):
 
 
 @register_provider
-class RemoteZigpyProvider(BaseZigpyProvider):
+class RemoteZigpyProvider(BaseNetworkOtaProvider, BaseZigpyProvider):
     NAME = "zigpy_remote"
     VOL_SCHEMA = zigpy.config.SCHEMA_OTA_PROVIDER_URL_REQUIRED
 
@@ -537,7 +566,7 @@ class BaseZ2MProvider(BaseOtaProvider):
         index: dict,
         *,
         index_root: pathlib.Path | None = None,
-        ssl_ctx: ssl.SSLContext | None = None,
+        ssl_ctx: ssl.SSLContext | bool = True,
     ) -> typing.Iterator[LocalOtaImageMetadata | RemoteOtaImageMetadata]:
         jsonschema.validate(index, cls.JSON_SCHEMA)
 
@@ -605,7 +634,7 @@ class LocalZ2MProvider(BaseZ2MProvider):
 
 
 @register_provider
-class RemoteZ2MProvider(BaseZ2MProvider):
+class RemoteZ2MProvider(BaseNetworkOtaProvider, BaseZ2MProvider):
     NAME = "z2m"
     DEFAULT_URL = (
         "https://raw.githubusercontent.com/Koenkk/zigbee-OTA/master/index.json"
@@ -626,7 +655,7 @@ class RemoteZ2MProvider(BaseZ2MProvider):
 
 
 @register_provider
-class ZigpyOtaProvider(BaseZigpyProvider):
+class ZigpyOtaProvider(BaseNetworkOtaProvider, BaseZigpyProvider):
     """OTA provider for zigpy-ota repository with multiple release channels.
 
     The provider uses a two-step fetch process:
@@ -650,6 +679,9 @@ class ZigpyOtaProvider(BaseZigpyProvider):
     SSL_CTX: ssl.SSLContext = ssl.create_default_context()
     SSL_CTX.load_verify_locations(cadata=IKEA_CERT)
     SSL_CTX.load_verify_locations(cadata=HUE_CERT)
+
+    # `None` when constructed with an explicit URL instead of a channel
+    channel: str | None
 
     def __init__(
         self,
@@ -718,7 +750,7 @@ class AdvancedFileProvider(BaseOtaProvider):
         # The `vol` schema passes through the `warning` key, which is unused
         kwargs.pop("warning", None)
 
-        super().__init__(url=None, **kwargs)
+        super().__init__(**kwargs)
         self.path = path
 
     async def _load_index(
