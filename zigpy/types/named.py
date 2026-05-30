@@ -65,12 +65,10 @@ class EUI64(basic.FixedList, item_type=basic.uint8_t, length=8):
         return hash(repr(self))
 
     @classmethod
-    def convert(cls, ieee: str) -> EUI64:
-        if ieee is None:
-            return None
-        ieee = [basic.uint8_t(p) for p in _hex_string_to_bytes(ieee)[::-1]]
-        assert len(ieee) == cls._length
-        return cls(ieee)
+    def convert(cls, ieee: str) -> Self:
+        octets = [basic.uint8_t(p) for p in _hex_string_to_bytes(ieee)[::-1]]
+        assert len(octets) == cls._length
+        return cls(octets)
 
 
 EUI64.UNKNOWN = EUI64.convert("FF:FF:FF:FF:FF:FF:FF:FF")
@@ -83,10 +81,10 @@ class KeyData(basic.FixedList, item_type=basic.uint8_t, length=16):
         return ":".join(f"{i:02x}" for i in self)
 
     @classmethod
-    def convert(cls, key: str) -> KeyData:
-        key = [basic.uint8_t(p) for p in _hex_string_to_bytes(key)]
-        assert len(key) == cls._length
-        return cls(key)
+    def convert(cls, key: str) -> Self:
+        octets = [basic.uint8_t(p) for p in _hex_string_to_bytes(key)]
+        assert len(octets) == cls._length
+        return cls(octets)
 
 
 KeyData.UNKNOWN = KeyData.convert("FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF")
@@ -177,7 +175,7 @@ class Date(Struct):
 
 class NWK(basic.uint16_t, repr="hex"):
     @classmethod
-    def convert(cls, data: str) -> NWK:
+    def convert(cls, data: str) -> Self:
         assert 4 * len(data) == cls._bits
         return cls.deserialize(bytes.fromhex(data)[::-1])[0]
 
@@ -187,7 +185,10 @@ class PanId(NWK):
 
 
 class ExtendedPanId(EUI64):
-    pass
+    UNKNOWN: ClassVar[ExtendedPanId]
+
+
+ExtendedPanId.UNKNOWN = ExtendedPanId.convert("FF:FF:FF:FF:FF:FF:FF:FF")
 
 
 class Group(basic.uint16_t, repr="hex"):
