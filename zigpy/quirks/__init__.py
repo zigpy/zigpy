@@ -231,7 +231,7 @@ class CustomCluster(zigpy.zcl.Cluster):
 
         succeeded = [
             foundation.ReadAttributeRecord(
-                attrid=attr,
+                attrid=t.uint16_t(attr),
                 status=foundation.Status.SUCCESS,
                 value=foundation.TypeValue(
                     type=None,
@@ -256,9 +256,9 @@ class CustomCluster(zigpy.zcl.Cluster):
             for attrid in attrs_to_read:
                 succeeded.append(  # noqa: PERF401
                     foundation.ReadAttributeRecord(
-                        attrid,
-                        results[0],
-                        foundation.TypeValue(),
+                        attrid=t.uint16_t(attrid),
+                        status=results[0],
+                        value=foundation.TypeValue(),
                     )
                 )
         else:
