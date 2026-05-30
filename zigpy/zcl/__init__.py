@@ -325,8 +325,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     # registries, since they're device-specific and collide with existing clusters.
     _skip_registry: bool = False
 
-    # Most clusters are identified by a single cluster ID
-    cluster_id: ClassVar[int | None] = None
+    # Most clusters are identified by a single cluster ID. Concrete clusters set it;
+    # abstract base clusters (and range-based clusters) leave it unset.
+    cluster_id: int
 
     # If set, this manufacturer code will be used for all manufacturer-specific
     # attributes and commands in this cluster.
@@ -519,7 +520,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         if cls._skip_registry:
             return
 
-        if cls.cluster_id is not None:
+        if getattr(cls, "cluster_id", None) is not None:
             cls._registry[cls.cluster_id] = cls
 
         if cls.cluster_id_range is not None:
