@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import typing
+from typing import ClassVar
 
 from zigpy.const import (  # noqa: F401
     SIG_ENDPOINTS,
@@ -142,7 +143,7 @@ class BaseCustomDevice(zigpy.device.Device):
 class CustomDevice(BaseCustomDevice):
     """Implementation of a quirks v1 custom device."""
 
-    signature: dict[str, typing.Any] | None = None
+    signature: ClassVar[dict[str, typing.Any]]
 
     def __init_subclass__(cls) -> None:
         if getattr(cls, "signature", None) is not None:
