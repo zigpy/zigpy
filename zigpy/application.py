@@ -47,11 +47,17 @@ TRANSIENT_CONNECTION_ERRORS = {
 }
 
 ENERGY_SCAN_WARN_THRESHOLD = 0.75 * 255
-_R = TypeVar("_R")
-_P = ParamSpec("_P")
 
 CHANNEL_CHANGE_BROADCAST_DELAY_S = 1.0
 CHANNEL_CHANGE_SETTINGS_RELOAD_DELAY_S = 1.0
+
+
+_R = TypeVar("_R")
+_P = ParamSpec("_P")
+
+# A response callback is registered against a filter, so it receives a specific
+# command schema rather than the base `CommandSchema`.
+_CommandT = TypeVar("_CommandT", bound="zigpy.zcl.foundation.CommandSchema")
 
 
 class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
@@ -1428,10 +1434,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         src: zigpy.device.Device | zigpy.listeners.AnyDeviceType,
         filters: list[zigpy.listeners.MatcherType],
         callback: typing.Callable[
-            [
-                zigpy.zcl.foundation.ZCLHeader,
-                zigpy.zcl.foundation.CommandSchema,
-            ],
+            [zigpy.zcl.foundation.ZCLHeader, _CommandT],
             typing.Any,
         ],
     ) -> typing.Callable[[], None]:
@@ -1458,10 +1461,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         src: zigpy.device.Device | zigpy.listeners.AnyDeviceType,
         filters: list[zigpy.listeners.MatcherType],
         callback: typing.Callable[
-            [
-                zigpy.zcl.foundation.ZCLHeader,
-                zigpy.zcl.foundation.CommandSchema,
-            ],
+            [zigpy.zcl.foundation.ZCLHeader, _CommandT],
             typing.Any,
         ],
     ) -> typing.Any:

@@ -2016,6 +2016,13 @@ class ImageBlockResponseCommand(foundation.CommandSchema):
     )
 
 
+class UpgradeEndCommand(foundation.CommandSchema):
+    status: foundation.Status
+    manufacturer_code: t.uint16_t
+    image_type: t.uint16_t
+    file_version: t.uint32_t
+
+
 class Ota(Cluster):
     ImageUpgradeStatus: TypeAlias = ImageUpgradeStatus
     UpgradeActivationPolicy: TypeAlias = UpgradeActivationPolicy
@@ -2072,15 +2079,7 @@ class Ota(Cluster):
         query_next_image: Final = ZCLCommandDef(id=0x01, schema=QueryNextImageCommand)
         image_block: Final = ZCLCommandDef(id=0x03, schema=ImageBlockCommand)
         image_page: Final = ZCLCommandDef(id=0x04, schema=ImagePageCommand)
-        upgrade_end: Final = ZCLCommandDef(
-            id=0x06,
-            schema={
-                "status": foundation.Status,
-                "manufacturer_code": t.uint16_t,
-                "image_type": t.uint16_t,
-                "file_version": t.uint32_t,
-            },
-        )
+        upgrade_end: Final = ZCLCommandDef(id=0x06, schema=UpgradeEndCommand)
         query_specific_file: Final = ZCLCommandDef(
             id=0x08,
             schema={

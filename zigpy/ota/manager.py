@@ -18,6 +18,7 @@ from zigpy.zcl.clusters.general import (
     ImagePageCommand,
     Ota,
     QueryNextImageCommand,
+    UpgradeEndCommand,
 )
 
 if TYPE_CHECKING:
@@ -222,7 +223,7 @@ class OTAManager:
         self, hdr: foundation.ZCLHeader, command: ImagePageCommand
     ) -> None:
         """Handle image page request."""
-        offset = command.file_offset
+        offset: int = command.file_offset
         max_block_size = _image_block_size_for_manufacturer(
             command.manufacturer_code, command.maximum_data_size
         )
@@ -282,7 +283,7 @@ class OTAManager:
             await asyncio.sleep(command.response_spacing / 1000)
 
     async def _upgrade_end(
-        self, hdr: foundation.ZCLHeader, command: foundation.CommandSchema
+        self, hdr: foundation.ZCLHeader, command: UpgradeEndCommand
     ) -> None:
         """Handle upgrade end request."""
         try:
