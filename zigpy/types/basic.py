@@ -115,10 +115,20 @@ NOT_SET = object()
 
 
 class FixedIntType(int):
-    _signed: bool = None
-    _bits: int = None
-    _size: int = None  # Only for backwards compatibility, not set for smaller ints
-    _byteorder: Literal["big", "little"] = None
+    # `None` on the abstract base; `__init_subclass__` fills these in on every concrete
+    # subclass (and `__new__` refuses to construct a class where they are still `None`),
+    # so the checker treats them as their resolved types.
+    if TYPE_CHECKING:
+        _signed: bool
+        _bits: int
+        # Only for backwards compatibility, not set for sub-byte ints
+        _size: int | None
+        _byteorder: Literal["big", "little"]
+    else:
+        _signed = None
+        _bits = None
+        _size = None
+        _byteorder = None
 
     min_value: int
     max_value: int
@@ -171,9 +181,9 @@ class FixedIntType(int):
 
         if repr == "hex":
             assert cls._bits % 4 == 0
-            cls.__str__ = cls.__repr__ = cls._hex_repr
+            cls.__str__ = cls.__repr__ = cls._hex_repr  # type: ignore[assignment]
         elif repr == "bin":
-            cls.__str__ = cls.__repr__ = cls._bin_repr
+            cls.__str__ = cls.__repr__ = cls._bin_repr  # type: ignore[assignment]
         elif not repr:
             cls.__str__ = super().__str__
             cls.__repr__ = super().__repr__
@@ -829,9 +839,16 @@ class bitmap64_be(
 
 
 class BaseFloat(float):
-    _exponent_bits: int = None
-    _fraction_bits: int = None
-    _size: int = None
+    # `None` on the abstract base; `__init_subclass__` fills these in on every concrete
+    # subclass, so the checker treats them as their resolved types.
+    if TYPE_CHECKING:
+        _exponent_bits: int
+        _fraction_bits: int
+        _size: int
+    else:
+        _exponent_bits = None
+        _fraction_bits = None
+        _size = None
 
     def __init_subclass__(cls, exponent_bits, fraction_bits):
         size_bits = 1 + exponent_bits + fraction_bits
@@ -1068,7 +1085,12 @@ class List(list, Generic[_T], metaclass=KwargTypeMeta):
 
 class LVList(list, Generic[_T, _V], metaclass=KwargTypeMeta):
     _item_type: type[_T] | None
-    _length_type: type[_V] = uint8_t
+
+    # Defaults to `uint8_t` at runtime; the concrete length type is supplied per subclass
+    if TYPE_CHECKING:
+        _length_type: type[_V]
+    else:
+        _length_type = uint8_t
 
     _getitem_kwargs = {"item_type": None, "length_type": uint8_t}
 

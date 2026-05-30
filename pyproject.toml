@@ -284,9 +284,8 @@ disable_error_code = [
 module = "zigpy.types.basic"
 disable_error_code = [
     "arg-type",  # 5
-    "assignment",  # 11
     "attr-defined",  # 7
-    "method-assign",  # 5
+    "method-assign",  # 3
     "misc",  # 10
 ]
 
