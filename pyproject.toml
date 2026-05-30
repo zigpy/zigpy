@@ -292,13 +292,6 @@ disable_error_code = [
 ]
 
 [[tool.mypy.overrides]]
-module = "zigpy.ota.image"
-disable_error_code = [
-    "arg-type",  # 1
-    "assignment",  # 8
-]
-
-[[tool.mypy.overrides]]
 module = "zigpy.ota.manager"
 disable_error_code = [
     "arg-type",  # 4
