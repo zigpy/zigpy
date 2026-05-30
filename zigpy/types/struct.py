@@ -417,7 +417,7 @@ class Struct:
         fields, data = cls._deserialize_internal(cls.fields, data)
         return cls(**fields), data
 
-    def replace(self, **kwargs: dict[str, typing.Any]) -> Self:
+    def replace(self, **kwargs: Any) -> Self:
         d = self.as_dict().copy()
         d.update(kwargs)
 

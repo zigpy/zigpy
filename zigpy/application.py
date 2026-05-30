@@ -1680,11 +1680,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         :param cluster: cluster instance to be bound to coordinator
         :returns: returns a "destination address"
         """
-        dstaddr = zdo_types.MultiAddress()
-        dstaddr.addrmode = 3
-        dstaddr.ieee = self.state.node_info.ieee
-        dstaddr.endpoint = self.get_endpoint_id(cluster.cluster_id, cluster.is_server)
-        return dstaddr
+        return zdo_types.MultiAddress(
+            addrmode=t.AddrMode.IEEE,
+            ieee=self.state.node_info.ieee,
+            endpoint=self.get_endpoint_id(
+                cluster.cluster_id, is_server_cluster=cluster.is_server
+            ),
+        )
 
     @property
     def config(self) -> dict:

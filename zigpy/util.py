@@ -213,7 +213,7 @@ def aes_mmo_hash(data: bytes) -> t.KeyData:
     result_len = 0
     remaining_length = 0
     length = len(data)
-    result = bytearray([0] * block_size)
+    result = bytes(block_size)
     temp = bytearray([0] * block_size)
 
     if data and length > 0:
@@ -364,7 +364,7 @@ def pick_optimal_channel(
     channel_energy: dict[int, float],
     channels: t.Channels = t.Channels.from_channel_list([11, 15, 20, 25]),
     *,
-    kernel: list[float] = (0.1, 0.5, 1.0, 0.5, 0.1),
+    kernel: tuple[float, ...] = (0.1, 0.5, 1.0, 0.5, 0.1),
     channel_penalty: dict[int, float] = {
         11: 2.0,  # ZLL but WiFi interferes
         12: 3.0,

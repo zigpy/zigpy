@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import typing
-from typing import Any, TypeAlias
+from typing import Any, Self, TypeAlias
 
 import zigpy.types as t
 
@@ -115,7 +115,7 @@ class NodeDescriptor(t.Struct):
 
     @classmethod
     def _old_constructor(
-        cls: NodeDescriptor,
+        cls: type[Self],
         byte1: t.uint8_t | None = None,
         byte2: t.uint8_t | None = None,
         mac_capability_flags: MACCapabilityFlags | None = None,
@@ -125,7 +125,7 @@ class NodeDescriptor(t.Struct):
         server_mask: t.uint16_t | None = None,
         maximum_outgoing_transfer_size: t.uint16_t | None = None,
         descriptor_capability_field: t.uint8_t | None = None,
-    ) -> NodeDescriptor:
+    ) -> Self:
         logical_type = None
         complex_descriptor_available = None
         user_descriptor_available = None
@@ -242,22 +242,24 @@ class NodeDescriptor(t.Struct):
 class MultiAddress(t.Struct):
     """Used for binds, represents an IEEE+endpoint or NWK address"""
 
-    addrmode: t.uint8_t
-    nwk: t.uint16_t = t.StructField(requires=lambda s: s.addrmode == 0x01)
-    ieee: t.EUI64 = t.StructField(requires=lambda s: s.addrmode == 0x03)
-    endpoint: t.uint8_t = t.StructField(requires=lambda s: s.addrmode == 0x03)
+    addrmode: t.AddrMode
+    nwk: t.uint16_t = t.StructField(requires=lambda s: s.addrmode == t.AddrMode.Group)
+    ieee: t.EUI64 = t.StructField(requires=lambda s: s.addrmode == t.AddrMode.IEEE)
+    endpoint: t.uint8_t = t.StructField(
+        requires=lambda s: s.addrmode == t.AddrMode.IEEE
+    )
 
     @classmethod
     def deserialize(cls, data):
         r, data = super().deserialize(data)
 
-        if r.addrmode not in (0x01, 0x03):
+        if r.addrmode not in (t.AddrMode.Group, t.AddrMode.IEEE):
             raise ValueError("Invalid MultiAddress - unknown address mode")
 
         return r, data
 
     def serialize(self):
-        if self.addrmode not in (0x01, 0x03):
+        if self.addrmode not in (t.AddrMode.Group, t.AddrMode.IEEE):
             raise ValueError("Invalid MultiAddress - unknown address mode")
 
         return super().serialize()
@@ -539,7 +541,7 @@ class ZDOCmd(t.enum16):
     Mgmt_NWK_Update_rsp = 0x8038
 
 
-CLUSTERS: dict[ZDOCmd, tuple[tuple[str, Any], ...]] = {
+_CLUSTER_SCHEMAS: dict[ZDOCmd, tuple[tuple[str, Any], ...]] = {
     # Device and Service Discovery Server Requests
     ZDOCmd.NWK_addr_req: (
         IEEE,
@@ -741,17 +743,17 @@ CLUSTERS: dict[ZDOCmd, tuple[tuple[str, Any], ...]] = {
 }
 
 
-# Rewrite to (name, param_names, param_types)
-for command_id, schema in CLUSTERS.items():
-    param_names = [p[0] for p in schema]
-    param_types = [p[1] for p in schema]
-    CLUSTERS[command_id] = (param_names, param_types)
+# Rewrite each schema to parallel (param_names, param_types) lists
+CLUSTERS: dict[ZDOCmd, tuple[list[str], list[Any]]] = {
+    command_id: ([p[0] for p in schema], [p[1] for p in schema])
+    for command_id, schema in _CLUSTER_SCHEMAS.items()
+}
 
 
 class ZDOHeader:
     """Just a wrapper representing ZDO header, similar to ZCL header."""
 
-    def __init__(self, command_id: t.uint16_t = 0x0000, tsn: t.uint8_t = 0) -> None:
+    def __init__(self, command_id: int = 0x0000, tsn: int = 0) -> None:
         self._command_id = ZDOCmd(command_id)
         self._tsn = t.uint8_t(tsn)
 
