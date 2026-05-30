@@ -5,7 +5,7 @@ import enum
 import inspect
 import logging
 import struct
-from typing import TYPE_CHECKING, Generic, Literal, Protocol, Self, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, Literal, Protocol, Self, TypeVar
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -409,7 +409,7 @@ class _AlwaysCreateEnumMeta(enum.EnumMeta):
     def __call__(cls, value, *args, **kwargs) -> type[enum.Enum]:  # type: ignore[override]
         # Until zigpy stops using constructs like `t.enum8(0xFF)`, we need this check
         if not cls._member_map_:
-            return cls._missing_(value)
+            return cls._missing_(value)  # type: ignore[attr-defined]
 
         return super().__call__(value, *args, **kwargs)
 
@@ -470,6 +470,11 @@ class _IntEnumMeta(_AlwaysCreateEnumMeta):
 
 
 class _EnumMixin:
+    # Provided by the enum machinery / the mixed-in integer type. `_member_type_` is
+    # the dynamic underlying type used for unbound `__new__`/`__format__` dispatch.
+    _member_type_: Any
+    _bits: int
+
     @classmethod
     def _missing_(cls, value):
         new = cls._member_type_.__new__(cls, value)
@@ -967,6 +972,9 @@ class LongOctetString(LVBytes):
 
 
 class KwargTypeMeta(type):
+    # Provided by the classes using this metaclass (e.g. `LVList`, `FixedList`)
+    _getitem_kwargs: dict[str, type | None]
+
     # So things like `LVList[NWK, t.uint8_t]` are singletons
     _anonymous_classes: dict[tuple[type, tuple[type, ...]], type] = {}
 
@@ -1151,6 +1159,9 @@ class FixedList(list, Generic[_T], metaclass=KwargTypeMeta):
 
 class CharacterString(str):
     __slots__ = ("invalid", "raw")
+
+    invalid: bool
+    raw: str | bytes
 
     _prefix_length = 1
     _invalid_length = (1 << (8 * _prefix_length)) - 1
