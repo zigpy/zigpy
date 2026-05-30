@@ -67,16 +67,14 @@ def generate_overrides(errors_by_module: dict[str, dict[str, int]]) -> str:
         else:
             non_clusters[module] = codes
 
-    # Sort by (total error count, module name) so easiest fixes are at the top
-    sorted_modules = sorted(
-        non_clusters.items(), key=lambda x: (sum(x[1].values()), x[0])
-    )
+    # Fold the aggregated clusters entry in so it sorts alongside everything else
+    if clusters_errors:
+        non_clusters["zigpy.zcl.clusters.*"] = dict(clusters_errors)
+
+    # Sort alphabetically by module name
+    sorted_modules = sorted(non_clusters.items(), key=lambda x: x[0])
 
     sections = [format_override(module, codes) for module, codes in sorted_modules]
-
-    # Add aggregated clusters entry at the end
-    if clusters_errors:
-        sections.append(format_override("zigpy.zcl.clusters.*", dict(clusters_errors)))
 
     return "\n\n".join(sections)
 
