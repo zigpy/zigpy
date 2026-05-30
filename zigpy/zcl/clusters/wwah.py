@@ -61,8 +61,8 @@ class WwahClusterStatusToUseTC(t.Struct):
 class WorksWithAllHubs(Cluster):
     """Works With All Hubs cluster"""
 
-    cluster_id: Final[t.uint16_t] = 0xFC57
-    ep_attribute: Final = "works_with_all_hubs"
+    cluster_id = 0xFC57
+    ep_attribute = "works_with_all_hubs"
 
     class AttributeDefs(BaseAttributeDefs):
         # 0x0000 and 0x0001 were removed from the spec

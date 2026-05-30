@@ -12,7 +12,7 @@ import functools
 import itertools
 import logging
 import types
-from typing import TYPE_CHECKING, Any, Final, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Final, TypeVar
 import warnings
 
 from zigpy import util
@@ -326,14 +326,18 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     _skip_registry: bool = False
 
     # Most clusters are identified by a single cluster ID
-    cluster_id: t.uint16_t = None
+    cluster_id: ClassVar[int | None] = None
 
     # If set, this manufacturer code will be used for all manufacturer-specific
     # attributes and commands in this cluster.
     manufacturer_id_override: t.uint16_t | UndefinedType | None = UNDEFINED
 
     # Clusters are accessible by name from their endpoint as an attribute
-    ep_attribute: str = None
+    ep_attribute: ClassVar[str | None] = None
+
+    # Human-readable cluster name. Defaults to the class name in `__init_subclass__`
+    # but may be overridden by a subclass.
+    name: ClassVar[str]
 
     # Manufacturer specific clusters exist between 0xFC00 and 0xFFFF. This exists solely
     # to remove the need to create 1024 "ManufacturerSpecificCluster" instances.
@@ -361,8 +365,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     _registry_range: dict = {}
 
     def __init_subclass__(cls) -> None:
-        if cls.cluster_id is not None:
-            cls.cluster_id = t.ClusterId(cls.cluster_id)
+        # Default the human-readable name to the class name unless explicitly set
+        if "name" not in cls.__dict__:
+            cls.name = cls.__name__
 
         # Compile the old command definitions
         for commands in [cls.server_commands, cls.client_commands]:
@@ -1698,10 +1703,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     def is_server(self) -> bool:
         """Return True if this is a server cluster."""
         return self._type == ClusterType.Server
-
-    @property
-    def name(self) -> str:
-        return self.__class__.__name__
 
     @property
     def endpoint(self) -> Endpoint:

@@ -46,6 +46,7 @@ for cls in (
             not inspect.isclass(obj)
             or not issubclass(obj, Cluster)
             or obj.cluster_id is None
+            or obj.ep_attribute is None
         ):
             continue
 

@@ -33,9 +33,9 @@ class Shade(Cluster):
     ShadeStatus: TypeAlias = ShadeStatus
     ShadeMode: TypeAlias = ShadeMode
 
-    cluster_id: Final[t.uint16_t] = 0x0100
-    name: Final = "Shade Configuration"
-    ep_attribute: Final = "shade"
+    cluster_id = 0x0100
+    name = "Shade Configuration"
+    ep_attribute = "shade"
 
     class AttributeDefs(BaseAttributeDefs):
         # Shade Information
@@ -288,9 +288,9 @@ class DoorLock(Cluster):
     DayMask: TypeAlias = DayMask
     EventType: TypeAlias = EventType
 
-    cluster_id: Final[t.uint16_t] = 0x0101
-    name: Final = "Door Lock"
-    ep_attribute: Final = "door_lock"
+    cluster_id = 0x0101
+    name = "Door Lock"
+    ep_attribute = "door_lock"
 
     class AttributeDefs(BaseAttributeDefs):
         lock_state: Final = ZCLAttributeDef(
@@ -738,9 +738,9 @@ class WindowCovering(Cluster):
     ConfigStatus: TypeAlias = ConfigStatus
     WindowCoveringMode: TypeAlias = WindowCoveringMode
 
-    cluster_id: Final[t.uint16_t] = 0x0102
-    name: Final = "Window Covering"
-    ep_attribute: Final = "window_covering"
+    cluster_id = 0x0102
+    name = "Window Covering"
+    ep_attribute = "window_covering"
 
     class AttributeDefs(BaseAttributeDefs):
         # Window Covering Information
@@ -845,9 +845,9 @@ class Capabilities(t.bitmap8):
 
 
 class BarrierControl(Cluster):
-    cluster_id: Final = 0x0103
-    name: Final = "Barrier Control"
-    ep_attribute: Final = "barrier_control"
+    cluster_id = 0x0103
+    name = "Barrier Control"
+    ep_attribute = "barrier_control"
 
     class AttributeDefs(BaseAttributeDefs):
         moving_state: Final = ZCLAttributeDef(

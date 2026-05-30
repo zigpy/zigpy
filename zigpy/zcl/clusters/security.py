@@ -76,9 +76,9 @@ class IasZone(Cluster):
     reports and supervision of the IAS network.
     """
 
-    cluster_id: Final[t.uint16_t] = 0x0500
-    name: Final = "IAS Zone"
-    ep_attribute: Final = "ias_zone"
+    cluster_id = 0x0500
+    name = "IAS Zone"
+    ep_attribute = "ias_zone"
 
     class AttributeDefs(BaseAttributeDefs):
         # Zone Information
@@ -239,9 +239,9 @@ class IasAce(Cluster):
     ZoneStatus: Final = IasZone.ZoneStatus
     ZoneStatusRsp: TypeAlias = ZoneStatusRsp
 
-    cluster_id: Final[t.uint16_t] = 0x0501
-    name: Final = "IAS Ancillary Control Equipment"
-    ep_attribute: Final = "ias_ace"
+    cluster_id = 0x0501
+    name = "IAS Ancillary Control Equipment"
+    ep_attribute = "ias_ace"
 
     class AttributeDefs(BaseAttributeDefs):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
@@ -503,9 +503,9 @@ class IasWd(Cluster):
     Warning: Final = WarningType
     Squawk: TypeAlias = Squawk
 
-    cluster_id: Final[t.uint16_t] = 0x0502
-    name: Final = "IAS Warning Device"
-    ep_attribute: Final = "ias_wd"
+    cluster_id = 0x0502
+    name = "IAS Warning Device"
+    ep_attribute = "ias_wd"
 
     class AttributeDefs(BaseAttributeDefs):
         max_duration: Final = ZCLAttributeDef(

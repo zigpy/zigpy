@@ -193,9 +193,9 @@ class ProxyCommissioningModeSchema(foundation.CommandSchema):
 
 
 class GreenPowerProxy(Cluster):
-    cluster_id: Final[t.uint16_t] = 0x0021
-    name: Final = "Green Power"
-    ep_attribute: Final = "green_power"
+    cluster_id = 0x0021
+    name = "Green Power"
+    ep_attribute = "green_power"
 
     NotificationSchema: TypeAlias = NotificationSchema
     PairingSearchSchema: TypeAlias = PairingSearchSchema

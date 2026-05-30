@@ -13,9 +13,9 @@ from zigpy.zcl.foundation import (
 
 
 class ApplianceIdentification(Cluster):
-    cluster_id: Final[t.uint16_t] = 0x0B00
-    name: Final = "Appliance Identification"
-    ep_attribute: Final = "appliance_id"
+    cluster_id = 0x0B00
+    name = "Appliance Identification"
+    ep_attribute = "appliance_id"
 
     class AttributeDefs(BaseAttributeDefs):
         basic_identification: Final = ZCLAttributeDef(
@@ -51,9 +51,9 @@ class ApplianceIdentification(Cluster):
 
 
 class MeterIdentification(Cluster):
-    cluster_id: Final[t.uint16_t] = 0x0B01
-    name: Final = "Meter Identification"
-    ep_attribute: Final = "meter_id"
+    cluster_id = 0x0B01
+    name = "Meter Identification"
+    ep_attribute = "meter_id"
 
     class AttributeDefs(BaseAttributeDefs):
         company_name: Final = ZCLAttributeDef(
@@ -95,9 +95,9 @@ class MeterIdentification(Cluster):
 
 
 class ApplianceEventAlerts(Cluster):
-    cluster_id: Final[t.uint16_t] = 0x0B02
-    name: Final = "Appliance Event Alerts"
-    ep_attribute: Final = "appliance_event"
+    cluster_id = 0x0B02
+    name = "Appliance Event Alerts"
+    ep_attribute = "appliance_event"
 
     class AttributeDefs(BaseAttributeDefs):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
@@ -113,9 +113,9 @@ class ApplianceEventAlerts(Cluster):
 
 
 class ApplianceStatistics(Cluster):
-    cluster_id: Final[t.uint16_t] = 0x0B03
-    name: Final = "Appliance Statistics"
-    ep_attribute: Final = "appliance_stats"
+    cluster_id = 0x0B03
+    name = "Appliance Statistics"
+    ep_attribute = "appliance_stats"
 
     class AttributeDefs(BaseAttributeDefs):
         log_max_size: Final = ZCLAttributeDef(
@@ -169,9 +169,9 @@ class ACAlarmsMask(t.bitmap16):
 
 
 class ElectricalMeasurement(Cluster):
-    cluster_id: Final[t.uint16_t] = 0x0B04
-    name: Final = "Electrical Measurement"
-    ep_attribute: Final = "electrical_measurement"
+    cluster_id = 0x0B04
+    name = "Electrical Measurement"
+    ep_attribute = "electrical_measurement"
 
     MeasurementType: TypeAlias = MeasurementType
     DCOverloadAlarmMark: TypeAlias = DCOverloadAlarmMark
@@ -537,8 +537,8 @@ class ElectricalMeasurement(Cluster):
 
 
 class Diagnostic(Cluster):
-    cluster_id: Final[t.uint16_t] = 0x0B05
-    ep_attribute: Final = "diagnostic"
+    cluster_id = 0x0B05
+    ep_attribute = "diagnostic"
 
     class AttributeDefs(BaseAttributeDefs):
         # Hardware Information
