@@ -6,7 +6,7 @@ import functools
 import keyword
 import logging
 import typing
-from typing import TYPE_CHECKING, Final, Self
+from typing import TYPE_CHECKING, Any, Final, Protocol, Self, cast
 
 import zigpy.types as t
 from zigpy.typing import UNDEFINED, UndefinedType
@@ -22,6 +22,17 @@ def ensure_valid_name(name: str | None) -> None:
     """Ensures that the name of an attribute or command is valid."""
     if name is not None and not name.isidentifier():
         raise ValueError(f"{name!r} is not a valid identifier name.")
+
+
+class Serializable(Protocol):
+    """Serializable type protocol."""
+
+    def __init__(self, value: Any) -> Self: ...
+
+    def serialize(self) -> bytes: ...
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]: ...
 
 
 class Status(t.enum8):
@@ -92,10 +103,12 @@ class Unknown(t.NoData):
 
 @dataclasses.dataclass()
 class TypeValue:
-    type: t.uint8_t = dataclasses.field(default=None)
-    value: typing.Any = dataclasses.field(default=None)
+    type: DataTypeId | None = dataclasses.field(default=None)
+    value: Serializable | None = dataclasses.field(default=None)
 
-    def __init__(self, type: t.uint8_t | None = None, value: typing.Any = None) -> None:
+    def __init__(
+        self, type: DataTypeId | None = None, value: typing.Any = None
+    ) -> None:
         # "Copy constructor"
         if type is not None and value is None and isinstance(type, self.__class__):
             other = type
@@ -106,11 +119,14 @@ class TypeValue:
         self.value = value
 
     def serialize(self) -> bytes:
+        if self.type is None or self.value is None:
+            raise ValueError("Cannot serialize TypeValue with type=None or value=None")
+
         return self.type.to_bytes(1, "little") + self.value.serialize()
 
     @classmethod
-    def deserialize(cls, data: bytes) -> tuple[TypeValue, bytes]:
-        data_type, data = t.uint8_t.deserialize(data)
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
+        data_type, data = DataTypeId.deserialize(data)
         python_type = DataType.from_type_id(data_type).python_type
         value, data = python_type.deserialize(data)
 
@@ -126,8 +142,8 @@ class TypeValue:
 
 class TypedCollection(TypeValue):
     @classmethod
-    def deserialize(cls, data):
-        data_type, data = t.uint8_t.deserialize(data)
+    def deserialize(cls, data) -> tuple[Self, bytes]:
+        data_type, data = DataTypeId.deserialize(data)
         python_type = DataType.from_type_id(data_type).python_type
         values, data = t.LVList[python_type, t.uint16_t].deserialize(data)
 
@@ -212,7 +228,7 @@ class DataTypeId(t.enum8):
 @dataclasses.dataclass(frozen=True)
 class DataTypeInfo:
     type_id: DataTypeId
-    python_type: type
+    python_type: type[Serializable]
     type_class: DataClass
     description: str
     non_value: typing.Any | None
@@ -614,11 +630,11 @@ class DataType(DataTypeInfo, enum.Enum):
 
     @classmethod
     @functools.cache
-    def _python_type_index(cls: type[Self]) -> dict[type, Self]:
+    def _python_type_index(cls: type[Self]) -> dict[type[Serializable], Self]:
         return {d.python_type: d for d in cls}
 
     @classmethod
-    def from_python_type(cls: type[Self], python_type: type) -> Self:
+    def from_python_type(cls: type[Self], python_type: type[Serializable]) -> Self:
         """Return Zigbee Datatype ID for a give python type."""
         python_type_index = cls._python_type_index()
 
@@ -668,18 +684,18 @@ class ReadAttributeRecord:
     def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         attrid, data = t.uint16_t.deserialize(data)
         status, data = Status.deserialize(data)
-        value = None
 
-        if status == Status.SUCCESS:
-            type_id, data = DataTypeId.deserialize(data)
+        if status is not Status.SUCCESS:
+            return cls(attrid=attrid, status=status, value=None), data
 
-            # Arrays, Sets, and Bags are treated differently
-            if type_id in (DataTypeId.array, DataTypeId.set, DataTypeId.bag):
-                value, data = DataType.from_type_id(type_id).python_type.deserialize(
-                    data
-                )
-            else:
-                value, data = TypeValue.deserialize(type_id.serialize() + data)
+        type_id, data = DataTypeId.deserialize(data)
+
+        # Arrays, Sets, and Bags are treated differently
+        if type_id in (DataTypeId.array, DataTypeId.set, DataTypeId.bag):
+            value, data = DataType.from_type_id(type_id).python_type.deserialize(data)
+            value = cast(Array | Set | Bag, value)
+        else:
+            value, data = TypeValue.deserialize(type_id.serialize() + data)
 
         return cls(attrid=attrid, status=status, value=value), data
 
@@ -808,7 +824,7 @@ class AttributeReportingConfig:
             self.timeout, data = t.uint16_t.deserialize(data)
         else:
             # Notifying that I will report things to you
-            self.datatype, data = t.uint8_t.deserialize(data)
+            self.datatype, data = DataTypeId.deserialize(data)
             self.min_interval, data = t.uint16_t.deserialize(data)
             self.max_interval, data = t.uint16_t.deserialize(data)
 
@@ -820,9 +836,8 @@ class AttributeReportingConfig:
                 )
             else:
                 if data_type.type_class is Analog:
-                    self.reportable_change, data = data_type.python_type.deserialize(
-                        data
-                    )
+                    reportable_change, data = data_type.python_type.deserialize(data)
+                    self.reportable_change = cast(int, reportable_change)
 
         return self, data
 
@@ -1166,28 +1181,17 @@ class ZCLHeader(t.Struct):
         )
 
 
-@dataclasses.dataclass(frozen=True)
-class ZCLCommandDef(t.BaseDataclassMixin):
-    id: t.uint8_t = None
-    schema: type[CommandSchema] = None
-    direction: Direction = None
-    is_manufacturer_specific: bool | None = None
-
-    # set later
-    name: str = None
-    manufacturer_code: t.uint16_t | UndefinedType | None = UNDEFINED
-
+class _ZCLCommandDefBase(t.BaseDataclassMixin):
+    # The fields are declared here (with their draft, `None`-allowing types) only so
+    # the method bodies below type-check. The real dataclass and the strict view are
+    # defined in the `TYPE_CHECKING`/`else` block that follows.
     if TYPE_CHECKING:
-        # Help mypy understand the type conversions that happen in __post_init__
-        def __init__(
-            self,
-            id: int | str | None = ...,
-            schema: type[CommandSchema] | dict[str, type] | None = ...,
-            direction: Direction | bool | None = ...,
-            is_manufacturer_specific: bool | None = ...,
-            name: str | None = ...,
-            manufacturer_code: t.uint16_t | int | UndefinedType | None = ...,
-        ) -> None: ...
+        id: t.uint8_t | None
+        schema: type[CommandSchema] | None
+        direction: Direction | None
+        is_manufacturer_specific: bool | None
+        name: str | None
+        manufacturer_code: t.uint16_t | UndefinedType | None
 
     def __post_init__(self) -> None:
         # Backwards compatibility with positional syntax where the name was first
@@ -1207,7 +1211,7 @@ class ZCLCommandDef(t.BaseDataclassMixin):
                 self, "is_manufacturer_specific", self.manufacturer_code is not None
             )
 
-    def with_compiled_schema(self) -> ZCLCommandDef:
+    def with_compiled_schema(self) -> Self:
         """Return a copy of the ZCL command definition object with its dictionary command
         schema converted into a `CommandSchema` subclass.
         """
@@ -1219,6 +1223,7 @@ class ZCLCommandDef(t.BaseDataclassMixin):
             )
         elif not isinstance(self.schema, dict):
             # If the schema is already a struct, do nothing
+            assert self.schema is not None
             self.schema.command = self
             return self
 
@@ -1262,10 +1267,68 @@ class ZCLCommandDef(t.BaseDataclassMixin):
         )
 
 
+if TYPE_CHECKING:
+    # A `ZCLCommandDef` is built in a "draft" state inside a `Cluster` subclass body and
+    # then finished by the subclass hook, which fills in `id` / `schema` /
+    # `direction` / `name`. The default `ZCLCommandDef` is the finished  view, since
+    # that is what essentially all code reads. `UnresolvedZCLCommandDef` is the draft
+    # view, for the rare code that handles a not-yet-finished definition. At runtime
+    # both are the same `Optional`-fielded dataclass.
+    class ZCLCommandDef(_ZCLCommandDefBase):
+        id: t.uint8_t
+        schema: type[CommandSchema]
+        direction: Direction
+        is_manufacturer_specific: bool | None
+        name: str
+        manufacturer_code: t.uint16_t | UndefinedType | None
+
+        def __init__(
+            self,
+            id: int | str | None = ...,
+            schema: type[CommandSchema] | dict[str, type] | None = ...,
+            direction: Direction | bool | None = ...,
+            is_manufacturer_specific: bool | None = ...,
+            name: str | None = ...,
+            manufacturer_code: t.uint16_t | int | UndefinedType | None = ...,
+        ) -> None: ...
+
+    class UnresolvedZCLCommandDef(_ZCLCommandDefBase):
+        id: t.uint8_t | None
+        schema: type[CommandSchema] | None
+        direction: Direction | None
+        is_manufacturer_specific: bool | None
+        name: str | None
+        manufacturer_code: t.uint16_t | UndefinedType | None
+
+        def __init__(
+            self,
+            id: int | str | None = ...,
+            schema: type[CommandSchema] | dict[str, type] | None = ...,
+            direction: Direction | bool | None = ...,
+            is_manufacturer_specific: bool | None = ...,
+            name: str | None = ...,
+            manufacturer_code: t.uint16_t | int | UndefinedType | None = ...,
+        ) -> None: ...
+else:
+
+    @dataclasses.dataclass(frozen=True, repr=False)
+    class ZCLCommandDef(_ZCLCommandDefBase):
+        id: t.uint8_t | None = None
+        schema: type[CommandSchema] | None = None
+        direction: Direction | None = None
+        is_manufacturer_specific: bool | None = None
+
+        # set later
+        name: str | None = None
+        manufacturer_code: t.uint16_t | UndefinedType | None = UNDEFINED
+
+    UnresolvedZCLCommandDef = ZCLCommandDef
+
+
 class CommandSchema(t.Struct, tuple):  # noqa: SLOT001, PLW1641
     """Struct subclass that behaves more like a tuple."""
 
-    command: ZCLCommandDef = None
+    command: _ZCLCommandDefBase | None = None
 
     def __iter__(self):
         return iter(self.as_tuple())
@@ -1339,34 +1402,19 @@ ZCLAttributeAccess._names = {
 }
 
 
-@dataclasses.dataclass(frozen=True)
-class ZCLAttributeDef(t.BaseDataclassMixin):
-    id: t.uint16_t = None
-    type: typing.Any = None
-    zcl_type: DataTypeId = None
-    access: ZCLAttributeAccess = (
-        ZCLAttributeAccess.Read | ZCLAttributeAccess.Write | ZCLAttributeAccess.Report
-    )
-    mandatory: bool = False
-    is_manufacturer_specific: bool | None = None
-
-    # These are (optionally) computed later in the ZCL cluster subclass hook
-    name: str = None
-    manufacturer_code: t.uint16_t | UndefinedType | None = UNDEFINED
-
+class _ZCLAttributeDefBase(t.BaseDataclassMixin):
+    # The fields are declared here (with their draft, `None`-allowing types) only so
+    # the method bodies below type-check. The real dataclass and the strict view are
+    # defined in the `TYPE_CHECKING`/`else` block that follows.
     if TYPE_CHECKING:
-        # Help mypy understand the type conversions that happen in __post_init__
-        def __init__(
-            self,
-            id: int | str | None = ...,
-            type: typing.Any = ...,
-            zcl_type: DataTypeId | None = ...,
-            access: ZCLAttributeAccess | str = ...,
-            mandatory: bool = ...,
-            is_manufacturer_specific: bool | None = ...,
-            name: str | None = ...,
-            manufacturer_code: t.uint16_t | int | UndefinedType | None = ...,
-        ) -> None: ...
+        id: t.uint16_t | None
+        type: typing.Any
+        zcl_type: DataTypeId | None
+        access: ZCLAttributeAccess
+        mandatory: bool
+        is_manufacturer_specific: bool | None
+        name: str | None
+        manufacturer_code: t.uint16_t | UndefinedType | None
 
     def __post_init__(self) -> None:
         # Backwards compatibility with positional syntax where the name was first
@@ -1405,6 +1453,75 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
             f"manufacturer_code={self.manufacturer_code}"
             f")"
         )
+
+
+if TYPE_CHECKING:
+    # See `ZCLCommandDef` above: the default is the finished (strict) view and
+    # `UnresolvedZCLAttributeDef` is the draft view. At runtime both are the same
+    # `Optional`-fielded dataclass.
+    class ZCLAttributeDef(_ZCLAttributeDefBase):
+        id: t.uint16_t
+        type: typing.Any
+        zcl_type: DataTypeId
+        access: ZCLAttributeAccess
+        mandatory: bool
+        is_manufacturer_specific: bool | None
+        name: str
+        manufacturer_code: t.uint16_t | UndefinedType | None
+
+        def __init__(
+            self,
+            id: int | str | None = ...,
+            type: typing.Any = ...,
+            zcl_type: DataTypeId | None = ...,
+            access: ZCLAttributeAccess | str = ...,
+            mandatory: bool = ...,
+            is_manufacturer_specific: bool | None = ...,
+            name: str | None = ...,
+            manufacturer_code: t.uint16_t | int | UndefinedType | None = ...,
+        ) -> None: ...
+
+    class UnresolvedZCLAttributeDef(_ZCLAttributeDefBase):
+        id: t.uint16_t | None
+        type: typing.Any
+        zcl_type: DataTypeId | None
+        access: ZCLAttributeAccess
+        mandatory: bool
+        is_manufacturer_specific: bool | None
+        name: str | None
+        manufacturer_code: t.uint16_t | UndefinedType | None
+
+        def __init__(
+            self,
+            id: int | str | None = ...,
+            type: typing.Any = ...,
+            zcl_type: DataTypeId | None = ...,
+            access: ZCLAttributeAccess | str = ...,
+            mandatory: bool = ...,
+            is_manufacturer_specific: bool | None = ...,
+            name: str | None = ...,
+            manufacturer_code: t.uint16_t | int | UndefinedType | None = ...,
+        ) -> None: ...
+else:
+
+    @dataclasses.dataclass(frozen=True, repr=False)
+    class ZCLAttributeDef(_ZCLAttributeDefBase):
+        id: t.uint16_t | None = None
+        type: typing.Any = None
+        zcl_type: DataTypeId | None = None
+        access: ZCLAttributeAccess = (
+            ZCLAttributeAccess.Read
+            | ZCLAttributeAccess.Write
+            | ZCLAttributeAccess.Report
+        )
+        mandatory: bool = False
+        is_manufacturer_specific: bool | None = None
+
+        # These are (optionally) computed later in the ZCL cluster subclass hook
+        name: str | None = None
+        manufacturer_code: t.uint16_t | UndefinedType | None = UNDEFINED
+
+    UnresolvedZCLAttributeDef = ZCLAttributeDef
 
 
 class IterableMemberMeta(type):
