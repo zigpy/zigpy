@@ -527,23 +527,27 @@ class QuirksV2RegistryEntry:
     disabled_default_entities: tuple[PreventDefaultEntityCreationMetadata] = (
         attrs.field(factory=tuple)
     )
-    changed_entity_metadata: tuple[ChangedEntityMetadata] = attrs.field(factory=tuple)
-    filters: tuple[FilterType] = attrs.field(factory=tuple)
+    changed_entity_metadata: tuple[ChangedEntityMetadata, ...] = attrs.field(
+        factory=tuple
+    )
+    filters: tuple[FilterType, ...] = attrs.field(factory=tuple)
     fw_version_filter: FirmwareVersionFilterMetadata | None = attrs.field(default=None)
     custom_device_class: type[CustomDeviceV2] | None = attrs.field(default=None)
     device_node_descriptor: NodeDescriptor | None = attrs.field(default=None)
     skip_device_configuration: bool = attrs.field(default=False)
-    adds_metadata: tuple[AddsMetadata] = attrs.field(factory=tuple)
-    removes_metadata: tuple[RemovesMetadata] = attrs.field(factory=tuple)
-    replaces_metadata: tuple[ReplacesMetadata] = attrs.field(factory=tuple)
-    replaces_cluster_occurrences_metadata: tuple[ReplaceClusterOccurrencesMetadata] = (
-        attrs.field(factory=tuple)
-    )
-    adds_endpoint_metadata: tuple[AddsEndpointMetadata] = attrs.field(factory=tuple)
-    removes_endpoint_metadata: tuple[RemovesEndpointMetadata] = attrs.field(
+    adds_metadata: tuple[AddsMetadata, ...] = attrs.field(factory=tuple)
+    removes_metadata: tuple[RemovesMetadata, ...] = attrs.field(factory=tuple)
+    replaces_metadata: tuple[ReplacesMetadata, ...] = attrs.field(factory=tuple)
+    replaces_cluster_occurrences_metadata: tuple[
+        ReplaceClusterOccurrencesMetadata, ...
+    ] = attrs.field(factory=tuple)
+    adds_endpoint_metadata: tuple[AddsEndpointMetadata, ...] = attrs.field(
         factory=tuple
     )
-    replaces_endpoint_metadata: tuple[ReplacesEndpointMetadata] = attrs.field(
+    removes_endpoint_metadata: tuple[RemovesEndpointMetadata, ...] = attrs.field(
+        factory=tuple
+    )
+    replaces_endpoint_metadata: tuple[ReplacesEndpointMetadata, ...] = attrs.field(
         factory=tuple
     )
     entity_metadata: tuple[
@@ -552,7 +556,8 @@ class QuirksV2RegistryEntry:
         | NumberMetadata
         | BinarySensorMetadata
         | WriteAttributeButtonMetadata
-        | ZCLCommandButtonMetadata
+        | ZCLCommandButtonMetadata,
+        ...,
     ] = attrs.field(factory=tuple)
     device_automation_triggers_metadata: frozendict[
         tuple[str, str], frozendict[str, str]
