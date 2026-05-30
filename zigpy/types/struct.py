@@ -135,7 +135,7 @@ class Struct:
         ) is not None and not issubclass(cls, IntStruct):
             raise TypeError("Integer structs must be subclasses of `IntStruct`")
 
-    def __new__(cls: type[Self], *args, **kwargs) -> Self:
+    def __new__(cls, *args, **kwargs) -> Self:
         cls = cls._real_cls()  # noqa: PLW0642
 
         if len(args) == 1 and isinstance(args[0], cls):
@@ -246,7 +246,7 @@ class Struct:
         return assigned_fields
 
     @classmethod
-    def from_dict(cls: type[Self], obj: dict[str, typing.Any]) -> Self:
+    def from_dict(cls, obj: dict[str, typing.Any]) -> Self:
         instance = cls()
 
         for key, value in obj.items():
@@ -414,7 +414,7 @@ class Struct:
         return result, data
 
     @classmethod
-    def deserialize(cls: type[Self], data: bytes) -> tuple[Self, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         fields, data = cls._deserialize_internal(cls.fields, data)
         return cls(**fields), data
 
@@ -552,9 +552,7 @@ class IntStruct(Struct, IntMixin):
         except StopIteration:
             raise TypeError("Integer structs must be an integer subclasses") from None
 
-    def __new__(
-        cls: type[Self], *args, _underlying_int: int | None = None, **kwargs
-    ) -> Self:
+    def __new__(cls, *args, _underlying_int: int | None = None, **kwargs) -> Self:
         # Integers are immutable in Python so we need to know, at creation time, what
         # the integer value of this object will be. This means that these structs *must*
         # also be immutable.
@@ -626,7 +624,7 @@ class IntStruct(Struct, IntMixin):
         return int(self) == int(other)
 
     @classmethod
-    def deserialize(cls: type[Self], data: bytes) -> tuple[Self, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         fields, remaining = cls._deserialize_internal(cls.fields, data)
         underlying_int, _ = cls._int_type.deserialize(
             data[: len(data) - len(remaining)]

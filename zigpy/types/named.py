@@ -126,7 +126,7 @@ class Channels(basic.bitmap32):
     CHANNEL_26 = 0x04000000
 
     @classmethod
-    def from_channel_list(cls: type[Self], channels: typing.Iterable[int]) -> Channels:
+    def from_channel_list(cls, channels: typing.Iterable[int]) -> Channels:
         mask = cls.NO_CHANNELS
 
         for channel in channels:

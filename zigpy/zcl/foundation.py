@@ -630,11 +630,11 @@ class DataType(DataTypeInfo, enum.Enum):
 
     @classmethod
     @functools.cache
-    def _python_type_index(cls: type[Self]) -> dict[type[Serializable], Self]:
+    def _python_type_index(cls) -> dict[type[Serializable], Self]:
         return {d.python_type: d for d in cls}
 
     @classmethod
-    def from_python_type(cls: type[Self], python_type: type[Serializable]) -> Self:
+    def from_python_type(cls, python_type: type[Serializable]) -> Self:
         """Return Zigbee Datatype ID for a give python type."""
         python_type_index = cls._python_type_index()
 
@@ -647,11 +647,11 @@ class DataType(DataTypeInfo, enum.Enum):
 
     @classmethod
     @functools.cache
-    def _data_type_index(cls: type[Self]) -> dict[DataTypeId, Self]:
+    def _data_type_index(cls) -> dict[DataTypeId, Self]:
         return {d.type_id: d for d in cls}
 
     @classmethod
-    def from_type_id(cls: type[Self], type_id: DataTypeId) -> Self:
+    def from_type_id(cls, type_id: DataTypeId) -> Self:
         return cls._data_type_index()[type_id]
 
 
@@ -1116,7 +1116,7 @@ class ZCLHeader(t.Struct):
     command_id: t.uint8_t
 
     def __new__(
-        cls: type[Self],
+        cls,
         frame_control: FrameControl | None = None,
         manufacturer: int | None = None,
         tsn: int | None = None,

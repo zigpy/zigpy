@@ -115,7 +115,7 @@ class NodeDescriptor(t.Struct):
 
     @classmethod
     def _old_constructor(
-        cls: type[Self],
+        cls,
         byte1: t.uint8_t | None = None,
         byte2: t.uint8_t | None = None,
         mac_capability_flags: MACCapabilityFlags | None = None,
