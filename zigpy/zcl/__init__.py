@@ -342,7 +342,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
     # Manufacturer specific clusters exist between 0xFC00 and 0xFFFF. This exists solely
     # to remove the need to create 1024 "ManufacturerSpecificCluster" instances.
-    cluster_id_range: tuple[int, int] = None
+    cluster_id_range: tuple[int, int] | None = None
 
     # Internal cache to speed up attribute finding. Nested layering, keyed by:
     # attr_id, is_manufacturer_specific, manufacturer_code
@@ -408,27 +408,30 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         # Create new definitions from the old-style definitions
         if cls.attributes and "AttributeDefs" not in cls.__dict__:
-            cls.AttributeDefs = types.new_class(
-                name="AttributeDefs",
-                bases=(BaseAttributeDefs,),
+            setattr(
+                cls,
+                "AttributeDefs",
+                types.new_class(name="AttributeDefs", bases=(BaseAttributeDefs,)),
             )
 
             for attr in cls.attributes.values():
                 setattr(cls.AttributeDefs, attr.name, attr)
 
         if cls.server_commands and "ServerCommandDefs" not in cls.__dict__:
-            cls.ServerCommandDefs = types.new_class(
-                name="ServerCommandDefs",
-                bases=(BaseCommandDefs,),
+            setattr(
+                cls,
+                "ServerCommandDefs",
+                types.new_class(name="ServerCommandDefs", bases=(BaseCommandDefs,)),
             )
 
             for command in cls.server_commands.values():
                 setattr(cls.ServerCommandDefs, command.name, command)
 
         if cls.client_commands and "ClientCommandDefs" not in cls.__dict__:
-            cls.ClientCommandDefs = types.new_class(
-                name="ClientCommandDefs",
-                bases=(BaseCommandDefs,),
+            setattr(
+                cls,
+                "ClientCommandDefs",
+                types.new_class(name="ClientCommandDefs", bases=(BaseCommandDefs,)),
             )
 
             for command in cls.client_commands.values():
@@ -943,7 +946,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     def handle_cluster_general_request(
         self,
         hdr: foundation.ZCLHeader,
-        args: list,
+        args: Any,
         *,
         # This parameter is unused and kept only for backwards compatibility
         dst_addressing: t.AddrMode | None = None,
@@ -956,13 +959,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 records.append(record)
 
                 try:
-                    attr_def = self.find_attribute(attrid)
+                    read_attr_def = self.find_attribute(attrid)
                 except KeyError:
                     record.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
                     continue
 
                 attr_read_func = getattr(
-                    self, f"handle_read_attribute_{attr_def.name}", None
+                    self, f"handle_read_attribute_{read_attr_def.name}", None
                 )
 
                 if attr_read_func is None:
@@ -971,7 +974,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
                 record.status = foundation.Status.SUCCESS
                 record.value = foundation.TypeValue(
-                    type=attr_def.zcl_type,
+                    type=read_attr_def.zcl_type,
                     value=attr_read_func(),
                 )
 
@@ -982,6 +985,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         if hdr.command_id == foundation.GeneralCommand.Report_Attributes:
             for attr in args.attribute_reports:
+                attr_def: foundation.ZCLAttributeDef | None
+
                 try:
                     attr_def = self.find_attribute(
                         attr.attrid, manufacturer_code=hdr.manufacturer
