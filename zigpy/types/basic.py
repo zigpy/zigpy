@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 import enum
 import inspect
 import logging
@@ -32,7 +32,7 @@ class Bits:  # noqa: PLW1641
     def __iter__(self) -> Iterator[int]:
         return iter(self._bits)
 
-    def extend(self, bits: list[int]) -> None:
+    def extend(self, bits: Iterable[int]) -> None:
         self._bits.extend(bits)
 
     def __repr__(self) -> str:
@@ -179,14 +179,19 @@ class FixedIntType(int):
                 cls.min_value = 0
                 cls.max_value = 2**cls._bits - 1
 
+        # The repr is swapped per-subclass instead of via a dispatching method on the
+        # base: such a method would precede `enum.Enum` in the MRO of the enum int types
+        # and clobber their member repr. `setattr` expresses this dynamic assignment.
         if repr == "hex":
             assert cls._bits % 4 == 0
-            cls.__str__ = cls.__repr__ = cls._hex_repr  # type: ignore[assignment]
+            setattr(cls, "__str__", cls._hex_repr)
+            setattr(cls, "__repr__", cls._hex_repr)
         elif repr == "bin":
-            cls.__str__ = cls.__repr__ = cls._bin_repr  # type: ignore[assignment]
+            setattr(cls, "__str__", cls._bin_repr)
+            setattr(cls, "__repr__", cls._bin_repr)
         elif not repr:
-            cls.__str__ = super().__str__
-            cls.__repr__ = super().__repr__
+            setattr(cls, "__str__", super().__str__)
+            setattr(cls, "__repr__", super().__repr__)
         elif repr is not NOT_SET:
             raise ValueError(f"Invalid repr value {repr!r}. Must be either hex or bin")
 
@@ -197,7 +202,7 @@ class FixedIntType(int):
 
         # XXX: The enum module sabotages pickling using the same logic.
         if "__reduce_ex__" not in cls.__dict__:
-            cls.__reduce_ex__ = cls.__reduce_ex__
+            setattr(cls, "__reduce_ex__", cls.__reduce_ex__)
 
     def bits(self) -> Bits:
         return Bits([(self >> n) & 0b1 for n in range(self._bits - 1, -1, -1)])
@@ -851,7 +856,7 @@ class BaseFloat(float):
         cls._size = size_bits // 8
 
     @staticmethod
-    def _convert_format(*, src: BaseFloat, dst: BaseFloat, n: int) -> int:
+    def _convert_format(*, src: type[BaseFloat], dst: type[BaseFloat], n: int) -> int:
         """Converts an integer representing a float from one format into another. Note:
 
         1. Format is assumed to be little endian: 0b[sign bit] [exponent] [fraction]
@@ -890,7 +895,9 @@ class BaseFloat(float):
 
     def serialize(self) -> bytes:
         return self._convert_format(
-            src=Double, dst=self, n=int.from_bytes(struct.pack("<d", self), "little")
+            src=Double,
+            dst=type(self),
+            n=int.from_bytes(struct.pack("<d", self), "little"),
         ).to_bytes(self._size, "little")
 
     @classmethod
@@ -1150,6 +1157,8 @@ class FixedList(list, Generic[_T], metaclass=KwargTypeMeta):
     @classmethod
     def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         assert cls._item_type is not None
+        assert cls._length is not None
+
         r = cls()
         for _i in range(cls._length):
             item, data = cls._item_type.deserialize(data)

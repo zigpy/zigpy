@@ -274,13 +274,6 @@ disable_error_code = [
 ]
 
 [[tool.mypy.overrides]]
-module = "zigpy.types.basic"
-disable_error_code = [
-    "arg-type",  # 5
-    "method-assign",  # 3
-]
-
-[[tool.mypy.overrides]]
 module = "zigpy.types.struct"
 disable_error_code = [
     "arg-type",  # 1
