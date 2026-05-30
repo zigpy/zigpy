@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Final
+from typing import Final, TypeAlias
 
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
@@ -173,9 +173,9 @@ class ElectricalMeasurement(Cluster):
     name: Final = "Electrical Measurement"
     ep_attribute: Final = "electrical_measurement"
 
-    MeasurementType: Final = MeasurementType
-    DCOverloadAlarmMark: Final = DCOverloadAlarmMark
-    ACAlarmsMask: Final = ACAlarmsMask
+    MeasurementType: TypeAlias = MeasurementType
+    DCOverloadAlarmMark: TypeAlias = DCOverloadAlarmMark
+    ACAlarmsMask: TypeAlias = ACAlarmsMask
 
     class AttributeDefs(BaseAttributeDefs):
         # Basic Information

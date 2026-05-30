@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Final
+from typing import Final, TypeAlias
 
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
@@ -16,7 +16,7 @@ class LightSensorType(t.enum8):
 
 
 class IlluminanceMeasurement(Cluster):
-    LightSensorType: Final = LightSensorType
+    LightSensorType: TypeAlias = LightSensorType
 
     cluster_id: Final[t.uint16_t] = 0x0400
     name: Final = "Illuminance Measurement"
@@ -47,8 +47,8 @@ class LevelStatus(t.enum8):
 
 
 class IlluminanceLevelSensing(Cluster):
-    LevelStatus: Final = LevelStatus
-    LightSensorType: Final = LightSensorType
+    LevelStatus: TypeAlias = LevelStatus
+    LightSensorType: TypeAlias = LightSensorType
 
     cluster_id: Final[t.uint16_t] = 0x0401
     name: Final = "Illuminance Level Sensing"
@@ -180,9 +180,9 @@ class OccupancySensorTypeBitmap(t.bitmap8):
 
 
 class OccupancySensing(Cluster):
-    Occupancy: Final = Occupancy
-    OccupancySensorType: Final = OccupancySensorType
-    OccupancySensorTypeBitmap: Final = OccupancySensorTypeBitmap
+    Occupancy: TypeAlias = Occupancy
+    OccupancySensorType: TypeAlias = OccupancySensorType
+    OccupancySensorTypeBitmap: TypeAlias = OccupancySensorTypeBitmap
 
     cluster_id: Final[t.uint16_t] = 0x0406
     name: Final = "Occupancy Sensing"

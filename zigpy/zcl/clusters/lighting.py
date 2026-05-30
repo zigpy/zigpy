@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Final
+from typing import Final, TypeAlias
 
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
@@ -92,18 +92,18 @@ class Color(Cluster):
     properties of a color-capable light
     """
 
-    ColorMode: Final = ColorMode
-    EnhancedColorMode: Final = EnhancedColorMode
-    ColorCapabilities: Final = ColorCapabilities
-    Direction: Final = Direction
-    MoveMode: Final = MoveMode
-    StepMode: Final = StepMode
-    ColorLoopUpdateFlags: Final = ColorLoopUpdateFlags
-    ColorLoopAction: Final = ColorLoopAction
-    ColorLoopDirection: Final = ColorLoopDirection
-    DriftCompensation: Final = DriftCompensation
-    Options: Final = Options
-    OptionsMask: Final = OptionsMask
+    ColorMode: TypeAlias = ColorMode
+    EnhancedColorMode: TypeAlias = EnhancedColorMode
+    ColorCapabilities: TypeAlias = ColorCapabilities
+    Direction: TypeAlias = Direction
+    MoveMode: TypeAlias = MoveMode
+    StepMode: TypeAlias = StepMode
+    ColorLoopUpdateFlags: TypeAlias = ColorLoopUpdateFlags
+    ColorLoopAction: TypeAlias = ColorLoopAction
+    ColorLoopDirection: TypeAlias = ColorLoopDirection
+    DriftCompensation: TypeAlias = DriftCompensation
+    Options: TypeAlias = Options
+    OptionsMask: TypeAlias = OptionsMask
 
     cluster_id: Final[t.uint16_t] = 0x0300
     name: Final = "Color Control"
@@ -426,8 +426,8 @@ class Ballast(Cluster):
     ballast
     """
 
-    BallastStatus: Final = BallastStatus
-    LampAlarmMode: Final = LampAlarmMode
+    BallastStatus: TypeAlias = BallastStatus
+    LampAlarmMode: TypeAlias = LampAlarmMode
 
     cluster_id: Final[t.uint16_t] = 0x0301
     ep_attribute: Final = "light_ballast"

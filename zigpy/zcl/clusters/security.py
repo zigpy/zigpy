@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Final
+from typing import Final, TypeAlias
 
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
@@ -139,10 +139,10 @@ class IasZone(Cluster):
         )
 
     # For backwards compatibility
-    ZoneState: Final = ZoneState
-    ZoneType: Final = ZoneType
-    ZoneStatus: Final = ZoneStatus
-    EnrollResponse: Final = EnrollResponse
+    ZoneState: TypeAlias = ZoneState
+    ZoneType: TypeAlias = ZoneType
+    ZoneStatus: TypeAlias = ZoneStatus
+    EnrollResponse: TypeAlias = EnrollResponse
 
 
 class AlarmStatus(t.enum8):
@@ -229,15 +229,15 @@ class ZoneStatusRsp(t.Struct):
 class IasAce(Cluster):
     """IAS Ancillary Control Equipment cluster."""
 
-    AlarmStatus: Final = AlarmStatus
-    ArmMode: Final = ArmMode
-    ArmNotification: Final = ArmNotification
-    AudibleNotification: Final = AudibleNotification
-    BypassResponse: Final = BypassResponse
-    PanelStatus: Final = PanelStatus
+    AlarmStatus: TypeAlias = AlarmStatus
+    ArmMode: TypeAlias = ArmMode
+    ArmNotification: TypeAlias = ArmNotification
+    AudibleNotification: TypeAlias = AudibleNotification
+    BypassResponse: TypeAlias = BypassResponse
+    PanelStatus: TypeAlias = PanelStatus
     ZoneType: Final = IasZone.ZoneType
     ZoneStatus: Final = IasZone.ZoneStatus
-    ZoneStatusRsp: Final = ZoneStatusRsp
+    ZoneStatusRsp: TypeAlias = ZoneStatusRsp
 
     cluster_id: Final[t.uint16_t] = 0x0501
     name: Final = "IAS Ancillary Control Equipment"
@@ -444,9 +444,9 @@ class WarningType(_SquawkOrWarningCommand):
         self.value = (self.value & 0xFC) | (level & 0x03)
 
     # For backwards compatibility
-    Strobe: Final = Strobe
-    WarningMode: Final = WarningMode
-    SirenLevel: Final = SirenLevel
+    Strobe: TypeAlias = Strobe
+    WarningMode: TypeAlias = WarningMode
+    SirenLevel: TypeAlias = SirenLevel
 
 
 class SquawkLevel(t.enum8):
@@ -487,9 +487,9 @@ class Squawk(_SquawkOrWarningCommand):
         self.value = (self.value & 0xFC) | (level & 0x03)
 
     # For backwards compatibility
-    Strobe: Final = Strobe
-    SquawkLevel: Final = SquawkLevel
-    SquawkMode: Final = SquawkMode
+    Strobe: TypeAlias = Strobe
+    SquawkLevel: TypeAlias = SquawkLevel
+    SquawkMode: TypeAlias = SquawkMode
 
 
 class IasWd(Cluster):
@@ -499,9 +499,9 @@ class IasWd(Cluster):
     (siren, strobe lighting, etc.) when a system alarm condition is detected
     """
 
-    StrobeLevel: Final = StrobeLevel
+    StrobeLevel: TypeAlias = StrobeLevel
     Warning: Final = WarningType
-    Squawk: Final = Squawk
+    Squawk: TypeAlias = Squawk
 
     cluster_id: Final[t.uint16_t] = 0x0502
     name: Final = "IAS Warning Device"

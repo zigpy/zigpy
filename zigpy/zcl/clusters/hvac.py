@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Final
+from typing import Final, TypeAlias
 
 import zigpy.types as t
 from zigpy.zcl import Cluster
@@ -63,9 +63,9 @@ class Pump(Cluster):
     """An interface for configuring and controlling pumps."""
 
     AlarmMask: Final = PumpAlarmMask
-    ControlMode: Final = ControlMode
-    OperationMode: Final = OperationMode
-    PumpStatus: Final = PumpStatus
+    ControlMode: TypeAlias = ControlMode
+    OperationMode: TypeAlias = OperationMode
+    PumpStatus: TypeAlias = PumpStatus
 
     cluster_id: Final[t.uint16_t] = 0x0200
     name: Final = "Pump Configuration and Control"
@@ -328,24 +328,24 @@ class Thermostat(Cluster):
     functionality of a thermostat.
     """
 
-    ACCapacityFormat: Final = ACCapacityFormat
-    ACErrorCode: Final = ACErrorCode
-    ACLouverPosition: Final = ACLouverPosition
-    AlarmMask: Final = AlarmMask
-    ControlSequenceOfOperation: Final = ControlSequenceOfOperation
-    SeqDayOfWeek: Final = SeqDayOfWeek
-    SeqMode: Final = SeqMode
-    Occupancy: Final = Occupancy
-    ProgrammingOperationMode: Final = ProgrammingOperationMode
-    RemoteSensing: Final = RemoteSensing
-    SetpointChangeSource: Final = SetpointChangeSource
-    SetpointMode: Final = SetpointMode
-    StartOfWeek: Final = StartOfWeek
-    SystemMode: Final = SystemMode
-    SystemType: Final = SystemType
-    TemperatureSetpointHold: Final = TemperatureSetpointHold
-    RunningMode: Final = RunningMode
-    RunningState: Final = RunningState
+    ACCapacityFormat: TypeAlias = ACCapacityFormat
+    ACErrorCode: TypeAlias = ACErrorCode
+    ACLouverPosition: TypeAlias = ACLouverPosition
+    AlarmMask: TypeAlias = AlarmMask
+    ControlSequenceOfOperation: TypeAlias = ControlSequenceOfOperation
+    SeqDayOfWeek: TypeAlias = SeqDayOfWeek
+    SeqMode: TypeAlias = SeqMode
+    Occupancy: TypeAlias = Occupancy
+    ProgrammingOperationMode: TypeAlias = ProgrammingOperationMode
+    RemoteSensing: TypeAlias = RemoteSensing
+    SetpointChangeSource: TypeAlias = SetpointChangeSource
+    SetpointMode: TypeAlias = SetpointMode
+    StartOfWeek: TypeAlias = StartOfWeek
+    SystemMode: TypeAlias = SystemMode
+    SystemType: TypeAlias = SystemType
+    TemperatureSetpointHold: TypeAlias = TemperatureSetpointHold
+    RunningMode: TypeAlias = RunningMode
+    RunningState: TypeAlias = RunningState
 
     cluster_id: Final[t.uint16_t] = 0x0201
     ep_attribute: Final = "thermostat"
@@ -561,8 +561,8 @@ class Fan(Cluster):
     cooling system.
     """
 
-    FanMode: Final = FanMode
-    FanModeSequence: Final = FanModeSequence
+    FanMode: TypeAlias = FanMode
+    FanModeSequence: TypeAlias = FanModeSequence
 
     cluster_id: Final[t.uint16_t] = 0x0202
     name: Final = "Fan Control"
@@ -593,9 +593,9 @@ class RelativeHumidityDisplay(t.enum8):
 class Dehumidification(Cluster):
     """An interface for controlling dehumidification."""
 
-    RelativeHumidityMode: Final = RelativeHumidityMode
-    DehumidificationLockout: Final = DehumidificationLockout
-    RelativeHumidityDisplay: Final = RelativeHumidityDisplay
+    RelativeHumidityMode: TypeAlias = RelativeHumidityMode
+    DehumidificationLockout: TypeAlias = DehumidificationLockout
+    RelativeHumidityDisplay: TypeAlias = RelativeHumidityDisplay
 
     cluster_id: Final[t.uint16_t] = 0x0203
     ep_attribute: Final = "dehumidification"
@@ -654,9 +654,9 @@ class UserInterface(Cluster):
     thermostat).
     """
 
-    TemperatureDisplayMode: Final = TemperatureDisplayMode
-    KeypadLockout: Final = KeypadLockout
-    ScheduleProgrammingVisibility: Final = ScheduleProgrammingVisibility
+    TemperatureDisplayMode: TypeAlias = TemperatureDisplayMode
+    KeypadLockout: TypeAlias = KeypadLockout
+    ScheduleProgrammingVisibility: TypeAlias = ScheduleProgrammingVisibility
 
     cluster_id: Final[t.uint16_t] = 0x0204
     name: Final = "Thermostat User Interface Configuration"

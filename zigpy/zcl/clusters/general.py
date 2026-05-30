@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any, Final, Self
+from typing import Any, Final, Self, TypeAlias
 
 import zigpy.types as t
 from zigpy.zcl import Cluster, OtaQueryCacheUpdatedEvent, foundation
@@ -282,12 +282,12 @@ class Basic(Cluster):
         return PowerSource.DC_Source
 
     # For backwards compatibility
-    PowerSource: Final = PowerSource
-    PhysicalEnvironment: Final = PhysicalEnvironment
-    AlarmMask: Final = AlarmMask
-    DisableLocalConfig: Final = DisableLocalConfig
-    GenericDeviceClass: Final = GenericDeviceClass
-    GenericLightingDeviceType: Final = GenericLightingDeviceType
+    PowerSource: TypeAlias = PowerSource
+    PhysicalEnvironment: TypeAlias = PhysicalEnvironment
+    AlarmMask: TypeAlias = AlarmMask
+    DisableLocalConfig: TypeAlias = DisableLocalConfig
+    GenericDeviceClass: TypeAlias = GenericDeviceClass
+    GenericLightingDeviceType: TypeAlias = GenericLightingDeviceType
 
 
 class MainsAlarmMask(t.bitmap8):
@@ -315,8 +315,8 @@ class PowerConfiguration(Cluster):
     under/over voltage alarms.
     """
 
-    MainsAlarmMask: Final = MainsAlarmMask
-    BatterySize: Final = BatterySize
+    MainsAlarmMask: TypeAlias = MainsAlarmMask
+    BatterySize: TypeAlias = BatterySize
 
     cluster_id: Final[t.uint16_t] = 0x0001
     name: Final = "Power Configuration"
@@ -511,7 +511,7 @@ class DeviceTemperature(Cluster):
     temperature alarms.
     """
 
-    DeviceTempAlarmMask: Final = DeviceTempAlarmMask
+    DeviceTempAlarmMask: TypeAlias = DeviceTempAlarmMask
 
     cluster_id: Final[t.uint16_t] = 0x0002
     name: Final = "Device Temperature"
@@ -565,8 +565,8 @@ class Identify(Cluster):
     Identification mode (e.g. flashing a light)
     """
 
-    EffectIdentifier: Final = EffectIdentifier
-    EffectVariant: Final = EffectVariant
+    EffectIdentifier: TypeAlias = EffectIdentifier
+    EffectVariant: TypeAlias = EffectVariant
 
     cluster_id: Final[t.uint16_t] = 0x0003
     ep_attribute: Final = "identify"
@@ -607,7 +607,7 @@ class Groups(Cluster):
     manipulation.
     """
 
-    NameSupport: Final = NameSupport
+    NameSupport: TypeAlias = NameSupport
 
     cluster_id: Final[t.uint16_t] = 0x0004
     ep_attribute: Final = "groups"
@@ -664,7 +664,7 @@ class Scenes(Cluster):
     manipulation.
     """
 
-    NameSupport: Final = NameSupport
+    NameSupport: TypeAlias = NameSupport
 
     cluster_id: Final[t.uint16_t] = 0x0005
     ep_attribute: Final = "scenes"
@@ -848,9 +848,9 @@ class OnOff(Cluster):
     ‘On’ and ‘Off’ states.
     """
 
-    StartUpOnOff: Final = StartUpOnOff
-    OffEffectIdentifier: Final = OffEffectIdentifier
-    OnOffControl: Final = OnOffControl
+    StartUpOnOff: TypeAlias = StartUpOnOff
+    OffEffectIdentifier: TypeAlias = OffEffectIdentifier
+    OnOffControl: TypeAlias = OnOffControl
 
     DELAYED_ALL_OFF_FADE_TO_OFF = 0x00
     DELAYED_ALL_OFF_NO_FADE = 0x01
@@ -911,8 +911,8 @@ class SwitchActions(t.enum8):
 class OnOffConfiguration(Cluster):
     """Attributes and commands for configuring On/Off switching devices"""
 
-    SwitchType: Final = SwitchType
-    SwitchActions: Final = SwitchActions
+    SwitchType: TypeAlias = SwitchType
+    SwitchActions: TypeAlias = SwitchActions
 
     cluster_id: Final[t.uint16_t] = 0x0007
     name: Final = "On/Off Switch Configuration"
@@ -954,10 +954,10 @@ class LevelControl(Cluster):
     can be set to a level between fully ‘On’ and fully ‘Off’.
     """
 
-    MoveMode: Final = MoveMode
-    StepMode: Final = StepMode
-    Options: Final = Options
-    OptionsMask: Final = OptionsMask
+    MoveMode: TypeAlias = MoveMode
+    StepMode: TypeAlias = StepMode
+    Options: TypeAlias = Options
+    OptionsMask: TypeAlias = OptionsMask
 
     cluster_id: Final[t.uint16_t] = 0x0008
     name: Final = "Level control"
@@ -1161,7 +1161,7 @@ class Time(Cluster):
         return t.LocalTime(utc_seconds + utc_offset.total_seconds())
 
     # For backwards compatibility
-    TimeStatus: Final = TimeStatus
+    TimeStatus: TypeAlias = TimeStatus
 
 
 class LocationMethod(t.enum8):
@@ -1187,8 +1187,8 @@ class RSSILocation(Cluster):
     among devices.
     """
 
-    LocationMethod: Final = LocationMethod
-    NeighborInfo: Final = NeighborInfo
+    LocationMethod: TypeAlias = LocationMethod
+    NeighborInfo: TypeAlias = NeighborInfo
 
     cluster_id: Final[t.uint16_t] = 0x000B
     ep_attribute: Final = "rssi_location"
@@ -1354,7 +1354,7 @@ class Reliability(t.enum8):
 
 
 class AnalogInput(Cluster):
-    Reliability: Final = Reliability
+    Reliability: TypeAlias = Reliability
 
     cluster_id: Final[t.uint16_t] = 0x000C
     ep_attribute: Final = "analog_input"
@@ -1702,8 +1702,8 @@ class Commissioning(Cluster):
     managing a Zigbee device.
     """
 
-    StartupControl: Final = StartupControl
-    NetworkKeyType: Final = NetworkKeyType
+    StartupControl: TypeAlias = StartupControl
+    NetworkKeyType: TypeAlias = NetworkKeyType
 
     cluster_id: Final[t.uint16_t] = 0x0015
     ep_attribute: Final = "commissioning"
@@ -2017,14 +2017,14 @@ class ImageBlockResponseCommand(foundation.CommandSchema):
 
 
 class Ota(Cluster):
-    ImageUpgradeStatus: Final = ImageUpgradeStatus
-    UpgradeActivationPolicy: Final = UpgradeActivationPolicy
-    UpgradeTimeoutPolicy: Final = UpgradeTimeoutPolicy
-    ImageNotifyCommand: Final = ImageNotifyCommand
-    QueryNextImageCommand: Final = QueryNextImageCommand
-    ImageBlockCommand: Final = ImageBlockCommand
-    ImagePageCommand: Final = ImagePageCommand
-    ImageBlockResponseCommand: Final = ImageBlockResponseCommand
+    ImageUpgradeStatus: TypeAlias = ImageUpgradeStatus
+    UpgradeActivationPolicy: TypeAlias = UpgradeActivationPolicy
+    UpgradeTimeoutPolicy: TypeAlias = UpgradeTimeoutPolicy
+    ImageNotifyCommand: TypeAlias = ImageNotifyCommand
+    QueryNextImageCommand: TypeAlias = QueryNextImageCommand
+    ImageBlockCommand: TypeAlias = ImageBlockCommand
+    ImagePageCommand: TypeAlias = ImagePageCommand
+    ImageBlockResponseCommand: TypeAlias = ImageBlockResponseCommand
 
     cluster_id: Final[t.uint16_t] = 0x0019
     ep_attribute: Final = "ota"
@@ -2208,8 +2208,8 @@ class PowerProfileType(t.Struct):
 
 
 class PowerProfile(Cluster):
-    ScheduleRecord: Final = ScheduleRecord
-    PowerProfilePhase: Final = PowerProfilePhase
+    ScheduleRecord: TypeAlias = ScheduleRecord
+    PowerProfilePhase: TypeAlias = PowerProfilePhase
     PowerProfile: Final = PowerProfileType
 
     cluster_id: Final[t.uint16_t] = 0x001A

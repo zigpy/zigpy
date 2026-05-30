@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import typing
-from typing import Any, Final
+from typing import Any, TypeAlias
 
 import zigpy.types as t
 
@@ -33,9 +33,9 @@ class PowerDescriptor(t.Struct):
     current_power_source_level: PowerSourceLevel
 
     # Kept for backwards compatibility
-    CurrentPowerMode: Final = CurrentPowerMode
-    PowerSources: Final = PowerSources
-    PowerSourceLevel: Final = PowerSourceLevel
+    CurrentPowerMode: TypeAlias = CurrentPowerMode
+    PowerSources: TypeAlias = PowerSources
+    PowerSourceLevel: TypeAlias = PowerSourceLevel
 
 
 class SimpleDescriptor(t.Struct):
@@ -234,9 +234,9 @@ class NodeDescriptor(t.Struct):
         return bool(self.mac_capability_flags & self.MACCapabilityFlags.AllocateAddress)
 
     # Kept for backwards compatibility
-    FrequencyBand: Final = FrequencyBand
-    MACCapabilityFlags: Final = MACCapabilityFlags
-    DescriptorCapability: Final = DescriptorCapability
+    FrequencyBand: TypeAlias = FrequencyBand
+    MACCapabilityFlags: TypeAlias = MACCapabilityFlags
+    DescriptorCapability: TypeAlias = DescriptorCapability
 
 
 class MultiAddress(t.Struct):
@@ -324,10 +324,10 @@ class Neighbor(t.Struct):
         }
 
     # Kept for backwards compatibility
-    PermitJoins: Final = PermitJoins
-    DeviceType: Final = DeviceType
-    RxOnWhenIdle: Final = RxOnWhenIdle
-    Relationship: Final = Relationship
+    PermitJoins: TypeAlias = PermitJoins
+    DeviceType: TypeAlias = DeviceType
+    RxOnWhenIdle: TypeAlias = RxOnWhenIdle
+    Relationship: TypeAlias = Relationship
 
 
 class Neighbors(t.Struct):

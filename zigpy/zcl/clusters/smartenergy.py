@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Final
+from typing import Final, TypeAlias
 
 import zigpy.types as t
 from zigpy.zcl import Cluster
@@ -136,10 +136,10 @@ class MeteringStatus(t.bitmap8):
 
 
 class Metering(Cluster):
-    RegisteredTier: Final = RegisteredTier
-    MeteringDeviceType: Final = MeteringDeviceType
-    MeteringUnitofMeasure: Final = MeteringUnitofMeasure
-    NumberFormatting: Final = NumberFormatting
+    RegisteredTier: TypeAlias = RegisteredTier
+    MeteringDeviceType: TypeAlias = MeteringDeviceType
+    MeteringUnitofMeasure: TypeAlias = MeteringUnitofMeasure
+    NumberFormatting: TypeAlias = NumberFormatting
 
     cluster_id: Final[t.uint16_t] = 0x0702
     ep_attribute: Final = "smartenergy_metering"
