@@ -4,6 +4,7 @@ import dataclasses
 from datetime import UTC, datetime
 import enum
 import typing
+from typing import ClassVar
 
 import attrs
 
@@ -55,6 +56,8 @@ class BroadcastAddress(basic.enum16):
 
 class EUI64(basic.FixedList, item_type=basic.uint8_t, length=8):
     # EUI 64-bit ID (an IEEE address).
+    UNKNOWN: ClassVar[EUI64]
+
     def __repr__(self) -> str:
         return ":".join(f"{i:02x}" for i in self[::-1])
 
@@ -74,6 +77,8 @@ EUI64.UNKNOWN = EUI64.convert("FF:FF:FF:FF:FF:FF:FF:FF")
 
 
 class KeyData(basic.FixedList, item_type=basic.uint8_t, length=16):
+    UNKNOWN: ClassVar[KeyData]
+
     def __repr__(self) -> str:
         return ":".join(f"{i:02x}" for i in self)
 
