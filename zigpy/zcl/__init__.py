@@ -342,7 +342,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
     # Manufacturer specific clusters exist between 0xFC00 and 0xFFFF. This exists solely
     # to remove the need to create 1024 "ManufacturerSpecificCluster" instances.
-    cluster_id_range: tuple[t.uint16_t, t.uint16_t] = None
+    cluster_id_range: tuple[int, int] = None
 
     # Internal cache to speed up attribute finding. Nested layering, keyed by:
     # attr_id, is_manufacturer_specific, manufacturer_code

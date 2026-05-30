@@ -20,8 +20,8 @@ from . import (
     wwah,
 )
 
-CLUSTERS_BY_ID: dict[int, Cluster] = {}
-CLUSTERS_BY_NAME: dict[str, Cluster] = {}
+CLUSTERS_BY_ID: dict[int, type[Cluster]] = {}
+CLUSTERS_BY_NAME: dict[str, type[Cluster]] = {}
 
 for cls in (
     closures,

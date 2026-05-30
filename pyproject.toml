@@ -307,7 +307,6 @@ disable_error_code = [
 module = "zigpy.zcl.clusters.*"
 disable_error_code = [
     "annotation-unchecked",  # 1
-    "assignment",  # 9
 ]
 
 [[tool.mypy.overrides]]
