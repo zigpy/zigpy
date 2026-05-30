@@ -269,7 +269,6 @@ follow_imports = "silent"
 module = "zigpy.application"
 disable_error_code = [
     "assignment",  # 2
-    "attr-defined",  # 1
 ]
 
 [[tool.mypy.overrides]]
@@ -333,7 +332,6 @@ disable_error_code = [
 module = "zigpy.quirks.v2"
 disable_error_code = [
     "assignment",  # 4
-    "name-defined",  # 1
 ]
 
 [[tool.mypy.overrides]]

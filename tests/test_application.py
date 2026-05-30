@@ -224,12 +224,6 @@ def test_config(app):
     assert app.config == app._config
 
 
-def test_deserialize(app, ieee):
-    dev = MagicMock()
-    app.deserialize(dev, 1, 1, b"")
-    assert dev.deserialize.call_count == 1
-
-
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
 async def test_handle_message_shim(app):
     dev = MagicMock()

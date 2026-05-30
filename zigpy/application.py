@@ -754,15 +754,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         self.devices.pop(device.ieee, None)
 
-    def deserialize(
-        self,
-        sender: zigpy.device.Device,
-        endpoint_id: t.uint8_t,
-        cluster_id: t.uint16_t,
-        data: bytes,
-    ) -> tuple[Any, bytes]:
-        return sender.deserialize(endpoint_id, cluster_id, data)
-
     def handle_join(
         self,
         nwk: t.NWK,
