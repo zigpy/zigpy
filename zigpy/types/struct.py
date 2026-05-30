@@ -29,7 +29,7 @@ class EmptyObject:
 
 
 @dataclasses.dataclass(frozen=True)
-class StructField:
+class _StructField:
     name: str | None = None
     type: type[Any] | None = None
 
@@ -63,8 +63,21 @@ class StructField:
 
 
 if TYPE_CHECKING:
+    # `StructField(...)` is typed to return `Any` so the dataclass-style declaration
+    # `field: SomeType = StructField(...)` type-checks without widening the field type,
+    # exactly like `dataclasses.field()`. At runtime `StructField` is `_StructField`.
+    def StructField(
+        *,
+        name: str | None = ...,
+        type: type[Any] | None = ...,
+        requires: typing.Callable[[Struct], bool] | None = ...,
+        optional: bool | None = ...,
+        length: typing.Callable[[Struct], int] | None = ...,
+        default: Any = ...,
+        repr: typing.Callable[[typing.Any], str] | None = ...,
+    ) -> Any: ...
 
-    class ResolvedStructField(StructField):
+    class ResolvedStructField(_StructField):
         """`StructField` instance with name and type resolved."""
 
         name: str
@@ -76,12 +89,14 @@ if TYPE_CHECKING:
         type: type[t.List[Any]]
         length: typing.Callable[[Struct], int]
 else:
-    ResolvedStructField = StructField
-    ResolvedArrayStructField = StructField
+    StructField = _StructField
+    ResolvedStructField = _StructField
+    ResolvedArrayStructField = _StructField
 
 
 class Struct:
     fields: ClassVar[list[ResolvedStructField]]
+    _signature: ClassVar[inspect.Signature]
 
     @classmethod
     def _real_cls(cls) -> type:
@@ -155,7 +170,7 @@ class Struct:
         for name in vars(cls._real_cls()):
             value = getattr(cls, name)
 
-            if isinstance(value, StructField) and name not in annotations:
+            if isinstance(value, _StructField) and name not in annotations:
                 raise TypeError(
                     f"Field {name!r}={value} must have some annotation."
                     f" Use `None` if it is specified in the `StructField`."
@@ -169,9 +184,9 @@ class Struct:
             if typing.get_origin(annotation) is ClassVar:
                 continue
 
-            field = getattr(cls, name, StructField())
+            field = getattr(cls, name, _StructField())
 
-            if not isinstance(field, StructField):
+            if not isinstance(field, _StructField):
                 continue
 
             field = field.replace(name=name)
