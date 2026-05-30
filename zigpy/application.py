@@ -1033,7 +1033,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         use_ieee: bool = False,
         extended_timeout: bool = False,
         ask_for_ack: bool | None = None,
-        priority: int = t.PacketPriority.NORMAL,
+        priority: int | None = t.PacketPriority.NORMAL,
         force_route_discovery: bool = False,
     ) -> tuple[zigpy.zcl.foundation.Status, str]:
         """Submit and send data out as an unicast transmission.

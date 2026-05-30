@@ -814,10 +814,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     ) -> tuple[zdo_t.ZDOHeader | foundation.ZCLHeader, ResponseKey] | tuple[None, None]:
         """Parse packet header and create response key."""
         data = packet.data.serialize()
+        assert packet.src_ep is not None
 
         hdr: zdo_t.ZDOHeader | foundation.ZCLHeader
         if packet.src_ep == zdo.ZDO_ENDPOINT:
-            hdr, _ = zdo_t.ZDOHeader.deserialize(packet.cluster_id, data)
+            hdr, _ = zdo_t.ZDOHeader.deserialize(t.uint16_t(packet.cluster_id), data)
             rsp_key = ResponseKey(
                 endpoint_id=packet.src_ep,
                 cluster_id=packet.cluster_id,
@@ -860,6 +861,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             return endpoint, None
         else:
             assert isinstance(endpoint, zigpy.endpoint.Endpoint)
+            assert isinstance(hdr, foundation.ZCLHeader)
             try:
                 zcl_cluster = self._find_zcl_cluster(hdr, packet)
             except KeyError:
@@ -936,6 +938,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         if hdr is None:
             self.custom_profile_packet_received(packet)
             return
+        assert rsp_key is not None
 
         # Validate packet routing and find target endpoint/cluster
         endpoint, zcl_cluster = self._match_packet_endpoint_cluster(packet, hdr)
@@ -943,6 +946,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             return
 
         # Deserialize packet data
+        error: zigpy.exceptions.ParsingError | None
         try:
             cmd = self._parse_packet_command(packet, endpoint, zcl_cluster)
         except Exception as exc:  # noqa: BLE001
@@ -974,9 +978,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         # Finally, pass it off to the cluster message handler. This will be removed.
         if zcl_cluster is not None:
+            assert isinstance(hdr, foundation.ZCLHeader)
             zcl_cluster.handle_message(hdr, cmd)
         else:
             assert isinstance(endpoint, zdo.ZDO)
+            assert isinstance(hdr, zdo_t.ZDOHeader)
             endpoint.handle_message(packet.profile_id, packet.cluster_id, hdr, cmd)
 
     async def reply(
