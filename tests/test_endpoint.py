@@ -137,25 +137,25 @@ def test_cluster_attr(ep):
 
 async def test_request(ep):
     ep.profile_id = 260
-    await ep.request(7, 8, b"")
+    await ep.request(7, 8, b"", command_id=0x00)
     assert ep._device.request.call_count == 1
     assert ep._device.request.await_count == 1
 
 
 async def test_request_change_profileid(ep):
     ep.profile_id = 49246
-    await ep.request(7, 9, b"")
+    await ep.request(7, 9, b"", command_id=0x00)
     ep.profile_id = 49246
-    await ep.request(0x1000, 10, b"")
+    await ep.request(0x1000, 10, b"", command_id=0x00)
     ep.profile_id = 260
-    await ep.request(0x1000, 11, b"")
+    await ep.request(0x1000, 11, b"", command_id=0x00)
     assert ep._device.request.call_count == 3
     assert ep._device.request.await_count == 3
 
 
 async def test_reply(ep):
     ep.profile_id = 260
-    await ep.reply(7, 8, b"")
+    await ep.reply(7, 8, b"", command_id=0x00)
     assert ep._device.reply.call_count == 1
 
 

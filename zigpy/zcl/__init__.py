@@ -1107,7 +1107,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
     async def read_attributes(
         self,
-        attributes: list[int | str | foundation.ZCLAttributeDef],
+        attributes: Sequence[int | str | foundation.ZCLAttributeDef],
         allow_cache: bool = False,
         only_cache: bool = False,
         manufacturer: int | UndefinedType | None = UNDEFINED,

@@ -285,11 +285,10 @@ class CounterGroup(dict):
 
     def __repr__(self) -> str:
         """Representation magic method."""
-        counters = (
+        counters = ", ".join(
             f"{counter.__class__.__name__}('{counter.name}', {int(counter)})"
             for counter in self.counters()
         )
-        counters = ", ".join(counters)
         return f"{self.__class__.__name__}('{self.name}', {{{counters}}})"
 
     def __str__(self) -> str:
@@ -338,15 +337,18 @@ class CounterGroups(dict):
 class State:
     node_info: NodeInfo = dataclasses.field(default_factory=NodeInfo)
     network_info: NetworkInfo = dataclasses.field(default_factory=NetworkInfo)
-    counters: CounterGroups = dataclasses.field(init=False, default=None)
-    broadcast_counters: CounterGroups = dataclasses.field(init=False, default=None)
-    device_counters: CounterGroups = dataclasses.field(init=False, default=None)
-    group_counters: CounterGroups = dataclasses.field(init=False, default=None)
-
-    def __post_init__(self) -> None:
-        """Initialize default counters."""
-        for col_name in ("", "broadcast_", "device_", "group_"):
-            setattr(self, f"{col_name}counters", CounterGroups())
+    counters: CounterGroups = dataclasses.field(
+        init=False, default_factory=CounterGroups
+    )
+    broadcast_counters: CounterGroups = dataclasses.field(
+        init=False, default_factory=CounterGroups
+    )
+    device_counters: CounterGroups = dataclasses.field(
+        init=False, default_factory=CounterGroups
+    )
+    group_counters: CounterGroups = dataclasses.field(
+        init=False, default_factory=CounterGroups
+    )
 
     @property
     @zigpy.util.deprecated("`network_information` has been renamed to `network_info`")
