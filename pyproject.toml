@@ -304,7 +304,7 @@ module = "zigpy.ota.manager"
 disable_error_code = [
     "arg-type",  # 4
     "assignment",  # 1
-    "attr-defined",  # 2
+    "attr-defined",  # 1
 ]
 
 [[tool.mypy.overrides]]

@@ -14,6 +14,7 @@ import zigpy.types as t
 from zigpy.zcl import ClusterType, foundation
 from zigpy.zcl.clusters.general import (
     ImageBlockCommand,
+    ImageNotifyCommand,
     ImagePageCommand,
     Ota,
     QueryNextImageCommand,
@@ -303,9 +304,7 @@ class OTAManager:
         """Notify device of new image."""
         try:
             await self.ota_cluster.image_notify(
-                payload_type=(
-                    self.ota_cluster.ImageNotifyCommand.PayloadType.QueryJitter
-                ),
+                payload_type=ImageNotifyCommand.PayloadType.QueryJitter,
                 query_jitter=100,
             )
         except Exception as ex:  # noqa: BLE001
