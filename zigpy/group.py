@@ -21,20 +21,19 @@ class Group(ListenableMixin, dict):
         self,
         group_id: int,
         name: str | None = None,
-        groups: Groups | None = None,
         *args: Any,
+        groups: Groups,
         **kwargs: Any,
     ):
         super().__init__(*args, **kwargs)
 
         self._groups: Groups = groups
         self._group_id: t.Group = t.Group(group_id)
-        self._name: str = name
+        self._name: str | None = name
         self._endpoint: GroupEndpoint = GroupEndpoint(self)
         self._send_sequence = 0
 
-        if groups is not None:
-            self.add_listener(groups)
+        self.add_listener(groups)
 
     def get_sequence(self) -> int:
         self._send_sequence = (self._send_sequence + 1) % 256
@@ -127,7 +126,7 @@ class Groups(ListenableMixin, dict):
         if group_id in self:
             return self[group_id]
         LOGGER.debug("Adding group: %s, %s", group_id, name)
-        group = Group(group_id, name, self)
+        group = Group(group_id, name, groups=self)
         self[group_id] = group
         if not suppress_event:
             self.listener_event("group_added", group)

@@ -31,7 +31,7 @@ def groups(app_mock):
 def group():
     groups_mock = MagicMock(spec_set=zigpy.group.Groups)
     groups_mock.application.mrequest = AsyncMock()
-    return zigpy.group.Group(FIXTURE_GRP_ID, FIXTURE_GRP_NAME, groups_mock)
+    return zigpy.group.Group(FIXTURE_GRP_ID, FIXTURE_GRP_NAME, groups=groups_mock)
 
 
 @pytest.fixture
@@ -152,7 +152,8 @@ def test_group_add_member_no_evt(group, endpoint):
 
 
 def test_noname_group():
-    group = zigpy.group.Group(FIXTURE_GRP_ID)
+    groups_mock = MagicMock(spec_set=zigpy.group.Groups)
+    group = zigpy.group.Group(FIXTURE_GRP_ID, groups=groups_mock)
     assert group.name.startswith("No name group ")
 
 
