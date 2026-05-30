@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from asyncio import timeout as asyncio_timeout
-from collections.abc import Callable, Coroutine
+from collections.abc import AsyncGenerator, Callable, Coroutine
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -474,7 +474,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     @contextlib.asynccontextmanager
     async def fast_poll_mode(
         self, initial_timeout: float = DEFAULT_FAST_POLL_TIMEOUT
-    ) -> None:
+    ) -> AsyncGenerator[None]:
         """Ask the device to enter fast polling mode."""
         await self.begin_fast_polling(timeout=initial_timeout, reset_after=False)
 

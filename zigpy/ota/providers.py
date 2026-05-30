@@ -242,7 +242,7 @@ class BaseOtaProvider:
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
         if typing.TYPE_CHECKING:
-            yield
+            yield  # type: ignore[misc]  # pragma: no cover
 
         raise NotImplementedError
 
@@ -381,7 +381,7 @@ class StubOtaProvider(BaseOtaProvider):
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
         if typing.TYPE_CHECKING:
-            yield  # pragma: no cover
+            yield  # type: ignore[misc]  # pragma: no cover
 
 
 @register_provider

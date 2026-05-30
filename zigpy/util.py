@@ -135,7 +135,7 @@ class LocalLogMixin:
 
 async def retry(
     func: typing.Callable[[], typing.Awaitable[typing.Any]],
-    retry_exceptions: typing.Iterable[BaseException],
+    retry_exceptions: tuple[type[BaseException], ...],
     tries: int = 3,
     delay: float = 0.1,
 ) -> typing.Any:
@@ -155,7 +155,9 @@ async def retry(
 
 
 def retryable(
-    retry_exceptions: typing.Iterable[BaseException], tries: int = 1, delay: float = 0.1
+    retry_exceptions: tuple[type[BaseException], ...],
+    tries: int = 1,
+    delay: float = 0.1,
 ) -> typing.Callable:
     """Return a decorator which makes a function able to be retried.
     Only exceptions in `retry_exceptions` will be retried.

@@ -280,9 +280,8 @@ disable_error_code = [
 [[tool.mypy.overrides]]
 module = "zigpy.device"
 disable_error_code = [
-    "arg-type",  # 8
+    "arg-type",  # 7
     "assignment",  # 1
-    "misc",  # 1
 ]
 
 [[tool.mypy.overrides]]
@@ -312,7 +311,6 @@ module = "zigpy.ota.providers"
 disable_error_code = [
     "arg-type",  # 6
     "assignment",  # 1
-    "misc",  # 2
 ]
 
 [[tool.mypy.overrides]]
@@ -368,9 +366,7 @@ disable_error_code = [
 [[tool.mypy.overrides]]
 module = "zigpy.util"
 disable_error_code = [
-    "arg-type",  # 1
     "assignment",  # 4
-    "misc",  # 1
 ]
 
 [[tool.mypy.overrides]]
