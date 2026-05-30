@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import collections
 from collections import defaultdict
-from collections.abc import Callable, Generator, Iterable, Sequence
+from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
 import contextlib
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -435,7 +435,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 setattr(cls.ClientCommandDefs, command.name, command)
 
         # Check the old definitions for duplicates
-        for old_defs in [cls.attributes, cls.server_commands, cls.client_commands]:
+        all_old_defs: list[
+            Mapping[int, foundation.ZCLAttributeDef | foundation.ZCLCommandDef]
+        ] = [cls.attributes, cls.server_commands, cls.client_commands]
+        for old_defs in all_old_defs:
             counts = collections.Counter(d.name for d in old_defs.values())
 
             if len(counts) != sum(counts.values()):

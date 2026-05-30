@@ -815,6 +815,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         """Parse packet header and create response key."""
         data = packet.data.serialize()
 
+        hdr: zdo_t.ZDOHeader | foundation.ZCLHeader
         if packet.src_ep == zdo.ZDO_ENDPOINT:
             hdr, _ = zdo_t.ZDOHeader.deserialize(packet.cluster_id, data)
             rsp_key = ResponseKey(
@@ -1041,6 +1042,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         ota = self.find_cluster(
             cluster_id=Ota.cluster_id, cluster_type=ClusterType.Client
         )
+        assert isinstance(ota, Ota)
         ota.update_attribute(Ota.AttributeDefs.current_file_version.id, None)
         ota.last_query_cmd = None
         ota.emit(

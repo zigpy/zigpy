@@ -11,7 +11,7 @@ import inspect
 import logging
 import pathlib
 from types import FrameType
-from typing import TYPE_CHECKING, Any, Self, overload
+from typing import TYPE_CHECKING, Any, Self, cast, overload
 
 import attrs
 from frozendict import frozendict
@@ -204,7 +204,7 @@ class AddsMetadata:
         cluster = add_cluster(cluster_id, cluster)
 
         if self.constant_attributes:
-            cluster._CONSTANT_ATTRIBUTES = {
+            cast(CustomCluster, cluster)._CONSTANT_ATTRIBUTES = {
                 attribute.id: value
                 for attribute, value in self.constant_attributes.items()
             }

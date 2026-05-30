@@ -372,6 +372,19 @@ class _SquawkOrWarningCommand:  # noqa: PLW1641
     def __init__(self, value: int = 0) -> None:
         self.value = t.uint8_t(value)
 
+    # Provided as read/write properties by subclasses (`WarningType`, `Squawk`)
+    @property
+    def mode(self) -> t.enum8:
+        raise NotImplementedError
+
+    @property
+    def strobe(self) -> t.enum8:
+        raise NotImplementedError
+
+    @property
+    def level(self) -> t.enum8:
+        raise NotImplementedError
+
     @classmethod
     def deserialize(cls, data: bytes) -> tuple[_SquawkOrWarningCommand, bytes]:
         val, data = t.uint8_t.deserialize(data)

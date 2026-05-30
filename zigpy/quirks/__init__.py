@@ -142,7 +142,7 @@ class BaseCustomDevice(zigpy.device.Device):
 class CustomDevice(BaseCustomDevice):
     """Implementation of a quirks v1 custom device."""
 
-    signature = None
+    signature: dict[str, typing.Any] | None = None
 
     def __init_subclass__(cls) -> None:
         if getattr(cls, "signature", None) is not None:
@@ -151,6 +151,10 @@ class CustomDevice(BaseCustomDevice):
 
 class CustomEndpoint(zigpy.endpoint.Endpoint):
     """Custom endpoint implementation for quirks."""
+
+    @property
+    def device(self) -> BaseCustomDevice:
+        return typing.cast(BaseCustomDevice, self._device)
 
     def __init__(
         self,

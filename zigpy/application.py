@@ -65,7 +65,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.state: zigpy.state.State = zigpy.state.State()
         self._listeners = {}
         self._config = self.SCHEMA(config)
-        self._dblistener = None
+        self._dblistener: zigpy.appdb.PersistingListener | None = None
         self._groups = zigpy.group.Groups(self)
         self._send_sequence = 0
         self._tasks: set[asyncio.Future[Any]] = set()

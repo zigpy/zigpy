@@ -66,6 +66,7 @@ class DeviceRegistry:
 
     def add_to_registry(self, custom_device: type[CustomDevice]) -> None:
         """Add a device to the registry"""
+        assert custom_device.signature is not None
         models_info = custom_device.signature.get(SIG_MODELS_INFO)
         if models_info:
             for manuf, model in models_info:
@@ -92,6 +93,7 @@ class DeviceRegistry:
             self._registry_v2[key].remove(device.quirk_metadata)
             return
 
+        assert custom_device.signature is not None
         models_info = custom_device.signature.get(SIG_MODELS_INFO)
         if models_info:
             for manuf, model in models_info:
@@ -193,6 +195,7 @@ class DeviceRegistry:
             manufacturer, model = v2_device.manufacturer, v2_device.model
             return v2_device.quirk_metadata in self._registry_v2[(manufacturer, model)]
 
+        assert device.signature is not None
         manufacturer, model = device.signature.get(
             SIG_MODELS_INFO,
             [
