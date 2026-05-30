@@ -1648,7 +1648,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         return self._send_sequence
 
     def get_device(
-        self, ieee: t.EUI64 = None, nwk: t.NWK | int = None
+        self, ieee: t.EUI64 | None = None, nwk: t.NWK | int | None = None
     ) -> zigpy.device.Device:
         """Looks up a device in the `devices` dictionary based either on its NWK or IEEE
         address.

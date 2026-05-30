@@ -116,15 +116,15 @@ class NodeDescriptor(t.Struct):
     @classmethod
     def _old_constructor(
         cls: NodeDescriptor,
-        byte1: t.uint8_t = None,
-        byte2: t.uint8_t = None,
-        mac_capability_flags: MACCapabilityFlags = None,
-        manufacturer_code: t.uint16_t = None,
-        maximum_buffer_size: t.uint8_t = None,
-        maximum_incoming_transfer_size: t.uint16_t = None,
-        server_mask: t.uint16_t = None,
-        maximum_outgoing_transfer_size: t.uint16_t = None,
-        descriptor_capability_field: t.uint8_t = None,
+        byte1: t.uint8_t | None = None,
+        byte2: t.uint8_t | None = None,
+        mac_capability_flags: MACCapabilityFlags | None = None,
+        manufacturer_code: t.uint16_t | None = None,
+        maximum_buffer_size: t.uint8_t | None = None,
+        maximum_incoming_transfer_size: t.uint16_t | None = None,
+        server_mask: t.uint16_t | None = None,
+        maximum_outgoing_transfer_size: t.uint16_t | None = None,
+        descriptor_capability_field: t.uint8_t | None = None,
     ) -> NodeDescriptor:
         logical_type = None
         complex_descriptor_available = None
