@@ -17,7 +17,6 @@ dependencies = [
     "attrs",
     "aiohttp",
     "aiosqlite>=0.20.0,<0.22.0",
-    "crccheck",
     "cryptography",
     "voluptuous",
     "jsonschema",
@@ -357,7 +356,6 @@ module = "zigpy.util"
 disable_error_code = [
     "arg-type",  # 1
     "assignment",  # 4
-    "import-untyped",  # 1
     "misc",  # 2
 ]
 
@@ -366,7 +364,6 @@ module = "zigpy.ota.providers"
 disable_error_code = [
     "arg-type",  # 6
     "assignment",  # 1
-    "import-untyped",  # 1
     "misc",  # 2
 ]
 

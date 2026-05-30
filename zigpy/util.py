@@ -11,7 +11,6 @@ import traceback
 import typing
 import warnings
 
-from crccheck.crc import CrcX25
 from cryptography.hazmat.primitives.ciphers import Cipher
 from cryptography.hazmat.primitives.ciphers.algorithms import AES
 from cryptography.hazmat.primitives.ciphers.modes import ECB
@@ -253,16 +252,27 @@ def aes_mmo_hash(data: bytes) -> t.KeyData:
     return t.KeyData(result)
 
 
+def crc16_x25(data: bytes) -> int:
+    """Compute CRC-16/X-25 over `data`."""
+    crc = 0xFFFF
+
+    for byte in data:
+        crc ^= byte
+        for _ in range(8):
+            crc = (crc >> 1) ^ 0x8408 if crc & 1 else crc >> 1
+
+    return crc ^ 0xFFFF
+
+
 def convert_install_code(code: bytes) -> t.KeyData:
     if len(code) not in (8, 10, 14, 18):
         raise ValueError(
             f"Invalid install code length: {code.hex()} must be 8, 10, 14, or 18 bytes"
         )
 
+    # Install codes are validated with a CRC-16/X-25
     real_crc = bytes(code[-2:])
-    crc = CrcX25()
-    crc.process(code[:-2])
-    if real_crc != crc.finalbytes(byteorder="little"):
+    if real_crc != crc16_x25(code[:-2]).to_bytes(2, "little"):
         raise ValueError(f"Invalid install code CRC: {code.hex()}")
 
     return aes_mmo_hash(code)
