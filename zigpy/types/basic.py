@@ -445,8 +445,8 @@ class _IntEnumMeta(_AlwaysCreateEnumMeta):
                 if base is object:
                     continue
                 elif isinstance(base, enum.EnumType):
-                    if base._member_type_ is not object:
-                        data_types.add(base._member_type_)
+                    if base._member_type_ is not object:  # type: ignore[attr-defined]
+                        data_types.add(base._member_type_)  # type: ignore[attr-defined]
                         break
                 elif (
                     "__new__" in base.__dict__
@@ -1202,7 +1202,7 @@ class CharacterString(str):
 
         if length == cls._invalid_length:
             return (
-                cls("", invalid=True),  # type:ignore[call-arg]
+                cls("", invalid=True),
                 data[cls._prefix_length :],
             )
 
@@ -1234,7 +1234,7 @@ def LimitedCharString(max_len):  # noqa: N802
 
 
 def Optional(optional_item_type):
-    class Optional(optional_item_type):
+    class Optional(optional_item_type):  # type: ignore[valid-type, misc]
         optional = True
 
         @classmethod

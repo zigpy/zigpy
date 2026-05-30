@@ -150,7 +150,7 @@ class NodeDescriptor(t.Struct):
 
             assert not bits
 
-        return cls(  # type:ignore[operator]
+        return cls(
             logical_type=logical_type,
             complex_descriptor_available=complex_descriptor_available,
             user_descriptor_available=user_descriptor_available,

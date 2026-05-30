@@ -50,6 +50,7 @@ class _StructField:
         return dataclasses.replace(self, **kwargs)
 
     def _convert_type(self, value):
+        assert self.type is not None
         if value is None or isinstance(value, self.type):
             return value
 

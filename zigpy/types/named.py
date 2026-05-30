@@ -135,7 +135,7 @@ class Channels(basic.bitmap32):
                     f"Invalid channel number {channel}. Must be between 11 and 26."
                 )
 
-            mask |= cls[f"CHANNEL_{channel}"]  # type: ignore[index]
+            mask |= cls[f"CHANNEL_{channel}"]
 
         return mask
 
