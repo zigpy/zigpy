@@ -27,7 +27,7 @@ def ensure_valid_name(name: str | None) -> None:
 class Serializable(Protocol):
     """Serializable type protocol."""
 
-    def __init__(self, value: Any) -> Self: ...
+    def __init__(self, value: Any) -> None: ...
 
     def serialize(self) -> bytes: ...
 
@@ -145,7 +145,7 @@ class TypedCollection(TypeValue):
     def deserialize(cls, data) -> tuple[Self, bytes]:
         data_type, data = DataTypeId.deserialize(data)
         python_type = DataType.from_type_id(data_type).python_type
-        values, data = t.LVList[python_type, t.uint16_t].deserialize(data)
+        values, data = t.LVList[python_type, t.uint16_t].deserialize(data)  # type: ignore[valid-type]
 
         return cls(type=data_type, value=values), data
 
@@ -1373,16 +1373,23 @@ class ZCLAttributeAccess(enum.Flag):
     Report = 8
     Scene = 16
 
-    _names: dict[ZCLAttributeAccess, str]
-
     @classmethod
     @functools.lru_cache(None)
     def from_str(cls, value: str) -> Self:
+        # `*w` must precede `w` so the longer prefix matches first
+        names = {
+            cls.Write_Optional: "*w",
+            cls.Write: "w",
+            cls.Read: "r",
+            cls.Report: "p",
+            cls.Scene: "s",
+        }
+
         orig_value = value
         access = cls.NONE
 
         while value:
-            for mode, prefix in cls._names.items():
+            for mode, prefix in names.items():
                 if value.startswith(prefix):
                     value = value[len(prefix) :]
                     access |= mode
@@ -1391,15 +1398,6 @@ class ZCLAttributeAccess(enum.Flag):
                 raise ValueError(f"Invalid access mode: {orig_value!r}")
 
         return cls(access)
-
-
-ZCLAttributeAccess._names = {
-    ZCLAttributeAccess.Write_Optional: "*w",
-    ZCLAttributeAccess.Write: "w",
-    ZCLAttributeAccess.Read: "r",
-    ZCLAttributeAccess.Report: "p",
-    ZCLAttributeAccess.Scene: "s",
-}
 
 
 class _ZCLAttributeDefBase(t.BaseDataclassMixin):
