@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import collections
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from copy import deepcopy
 import dataclasses
 from enum import Enum
@@ -54,6 +54,20 @@ UNBUILT_QUIRK_BUILDERS: list[QuirkBuilder] = []
 # pylint: disable=too-many-instance-attributes
 # pylint: disable=too-many-arguments
 # pylint: disable=too-few-public-methods
+
+
+def _freeze_dict(value: Mapping[Any, Any]) -> frozendict[Any, Any]:
+    """Convert a mapping to a frozendict, typed for use as an attrs converter."""
+    return frozendict(value)
+
+
+def recursive_freeze(obj: Any) -> Any:
+    """Recursively convert mutable collections to immutable ones."""
+    if isinstance(obj, dict):
+        return frozendict({k: recursive_freeze(v) for k, v in obj.items()})
+    if isinstance(obj, tuple | list | set):
+        return tuple(recursive_freeze(v) for v in obj)
+    return obj
 
 
 @dataclasses.dataclass(frozen=True)
@@ -169,7 +183,7 @@ class AddsMetadata:
     endpoint_id: int = attrs.field(default=1)
     cluster_type: ClusterType = attrs.field(default=ClusterType.Server)
     constant_attributes: frozendict[ZCLAttributeDef, Any] = attrs.field(
-        factory=frozendict, converter=frozendict
+        factory=frozendict, converter=_freeze_dict
     )
 
     def __call__(self, device: CustomDeviceV2) -> None:
@@ -230,7 +244,7 @@ class ReplacesMetadata:
 class ReplaceClusterOccurrencesMetadata:
     """Replaces metadata for replacing all occurrences of a cluster on a device."""
 
-    cluster_types: tuple[ClusterType] = attrs.field()
+    cluster_types: tuple[ClusterType, ...] = attrs.field()
     cluster: type[Cluster | CustomCluster] = attrs.field()
 
     def __call__(self, device: CustomDeviceV2) -> None:
@@ -315,7 +329,7 @@ class EntityMetadata:
     unique_id_suffix: str | None = attrs.field(default=None)
     translation_key: str | None = attrs.field(default=None)
     translation_placeholders: frozendict[str, str] = attrs.field(
-        factory=frozendict, converter=frozendict
+        factory=frozendict, converter=_freeze_dict
     )
     fallback_name: str = attrs.field(validator=attrs.validators.instance_of(str))
     primary: bool | None = attrs.field(default=None)
@@ -415,7 +429,20 @@ class ZCLCommandButtonMetadata(EntityMetadata):
 
     command_name: str = attrs.field()
     args: tuple = attrs.field(default=tuple)
-    kwargs: frozendict[str, Any] = attrs.field(factory=frozendict, converter=frozendict)
+    kwargs: frozendict[str, Any] = attrs.field(
+        factory=frozendict, converter=_freeze_dict
+    )
+
+
+ExposedEntityMetadata = (
+    ZCLEnumMetadata
+    | ZCLSensorMetadata
+    | SwitchMetadata
+    | NumberMetadata
+    | BinarySensorMetadata
+    | WriteAttributeButtonMetadata
+    | ZCLCommandButtonMetadata
+)
 
 
 @attrs.define(frozen=True, kw_only=True, repr=True)
@@ -439,7 +466,9 @@ class ExposesFeatureMetadata:
     """Metadata for an exposed feature to match against in ZHA."""
 
     feature: str = attrs.field()
-    config: frozendict[str, Any] = attrs.field(factory=frozendict, converter=frozendict)
+    config: frozendict[str, Any] = attrs.field(
+        factory=frozendict, converter=_freeze_dict
+    )
 
 
 class DeviceAlertLevel(Enum):
@@ -503,28 +532,19 @@ class FirmwareVersionFilterMetadata:
     allow_missing: bool = attrs.field(default=True)
 
 
-def recursive_freeze(obj: Any) -> Any:
-    """Recursively convert mutable collections to immutable ones."""
-    if isinstance(obj, dict):
-        return frozendict({k: recursive_freeze(v) for k, v in obj.items()})
-    if isinstance(obj, tuple | list | set):
-        return tuple(recursive_freeze(v) for v in obj)
-    return obj
-
-
 @attrs.define(frozen=True, kw_only=True, repr=True)
 class QuirksV2RegistryEntry:
     """Quirks V2 registry entry."""
 
-    quirk_file: str = attrs.field(default=None, eq=False)
+    quirk_file: pathlib.Path = attrs.field(default=None, eq=False)
     quirk_file_line: int = attrs.field(default=None, eq=False)
-    manufacturer_model_metadata: tuple[ManufacturerModelMetadata] = attrs.field(
+    manufacturer_model_metadata: tuple[ManufacturerModelMetadata, ...] = attrs.field(
         factory=tuple
     )
     friendly_name: FriendlyNameMetadata | None = attrs.field(default=None)
-    exposes_features: tuple[ExposesFeatureMetadata] = attrs.field(factory=tuple)
-    device_alerts: tuple[DeviceAlertMetadata] = attrs.field(factory=tuple)
-    disabled_default_entities: tuple[PreventDefaultEntityCreationMetadata] = (
+    exposes_features: tuple[ExposesFeatureMetadata, ...] = attrs.field(factory=tuple)
+    device_alerts: tuple[DeviceAlertMetadata, ...] = attrs.field(factory=tuple)
+    disabled_default_entities: tuple[PreventDefaultEntityCreationMetadata, ...] = (
         attrs.field(factory=tuple)
     )
     changed_entity_metadata: tuple[ChangedEntityMetadata, ...] = attrs.field(
@@ -550,15 +570,7 @@ class QuirksV2RegistryEntry:
     replaces_endpoint_metadata: tuple[ReplacesEndpointMetadata, ...] = attrs.field(
         factory=tuple
     )
-    entity_metadata: tuple[
-        ZCLEnumMetadata
-        | SwitchMetadata
-        | NumberMetadata
-        | BinarySensorMetadata
-        | WriteAttributeButtonMetadata
-        | ZCLCommandButtonMetadata,
-        ...,
-    ] = attrs.field(factory=tuple)
+    entity_metadata: tuple[ExposedEntityMetadata, ...] = attrs.field(factory=tuple)
     device_automation_triggers_metadata: frozendict[
         tuple[str, str], frozendict[str, str]
     ] = attrs.field(
@@ -638,15 +650,7 @@ class QuirkBuilder:
         self.adds_endpoint_metadata: list[AddsEndpointMetadata] = []
         self.removes_endpoint_metadata: list[RemovesEndpointMetadata] = []
         self.replaces_endpoint_metadata: list[ReplacesEndpointMetadata] = []
-        self.entity_metadata: list[
-            ZCLEnumMetadata
-            | ZCLSensorMetadata
-            | SwitchMetadata
-            | NumberMetadata
-            | BinarySensorMetadata
-            | WriteAttributeButtonMetadata
-            | ZCLCommandButtonMetadata
-        ] = []
+        self.entity_metadata: list[ExposedEntityMetadata] = []
         self.device_automation_triggers_metadata: dict[
             tuple[str, str], dict[str, str]
         ] = {}
@@ -657,14 +661,21 @@ class QuirkBuilder:
         self.quirk_file_line = caller.f_lineno
 
         if manufacturer is not UNDEFINED or model is not UNDEFINED:
-            self.applies_to(
-                manufacturer=manufacturer if manufacturer is not UNDEFINED else None,
-                model=model if model is not UNDEFINED else None,
-            )
+            manufacturer = manufacturer if manufacturer is not UNDEFINED else None
+            model = model if model is not UNDEFINED else None
+
+            if manufacturer is None and model is None:
+                raise ValueError(
+                    "A manufacturer and/or model must be specified for a v2 quirk."
+                )
+
+            # mypy can't prove the pair isn't `(None, None)`, which the overloads
+            # forbid, despite the guard above ruling it out
+            self.applies_to(manufacturer=manufacturer, model=model)  # type: ignore[arg-type]
 
         UNBUILT_QUIRK_BUILDERS.append(self)
 
-    def _add_entity_metadata(self, entity_metadata: EntityMetadata) -> Self:
+    def _add_entity_metadata(self, entity_metadata: ExposedEntityMetadata) -> Self:
         """Register new entity metadata and validate config."""
         if entity_metadata.primary and any(
             entity.primary for entity in self.entity_metadata

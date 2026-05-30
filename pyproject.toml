@@ -359,6 +359,13 @@ disable_error_code = [
 ]
 
 [[tool.mypy.overrides]]
+module = "zigpy.quirks.v2"
+disable_error_code = [
+    "assignment",  # 6
+    "attr-defined",  # 1
+]
+
+[[tool.mypy.overrides]]
 module = "zigpy.util"
 disable_error_code = [
     "arg-type",  # 1
@@ -391,20 +398,20 @@ disable_error_code = [
 ]
 
 [[tool.mypy.overrides]]
+module = "zigpy.quirks.registry"
+disable_error_code = [
+    "arg-type",  # 3
+    "assignment",  # 1
+    "attr-defined",  # 9
+]
+
+[[tool.mypy.overrides]]
 module = "zigpy.device"
 disable_error_code = [
     "arg-type",  # 9
     "assignment",  # 2
     "attr-defined",  # 2
     "misc",  # 1
-]
-
-[[tool.mypy.overrides]]
-module = "zigpy.quirks.registry"
-disable_error_code = [
-    "arg-type",  # 3
-    "assignment",  # 1
-    "attr-defined",  # 10
 ]
 
 [[tool.mypy.overrides]]
@@ -439,14 +446,6 @@ disable_error_code = [
     "assignment",  # 4
     "attr-defined",  # 2
     "misc",  # 3
-]
-
-[[tool.mypy.overrides]]
-module = "zigpy.quirks.v2"
-disable_error_code = [
-    "arg-type",  # 20
-    "assignment",  # 10
-    "attr-defined",  # 1
 ]
 
 [[tool.mypy.overrides]]
