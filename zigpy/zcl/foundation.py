@@ -6,7 +6,7 @@ import functools
 import keyword
 import logging
 import typing
-from typing import Final, Self
+from typing import TYPE_CHECKING, Final, Self
 
 import zigpy.types as t
 from zigpy.typing import UNDEFINED, UndefinedType
@@ -1177,6 +1177,18 @@ class ZCLCommandDef(t.BaseDataclassMixin):
     name: str = None
     manufacturer_code: t.uint16_t | UndefinedType | None = UNDEFINED
 
+    if TYPE_CHECKING:
+        # Help mypy understand the type conversions that happen in __post_init__
+        def __init__(
+            self,
+            id: int | str | None = ...,
+            schema: type[CommandSchema] | dict[str, type] | None = ...,
+            direction: Direction | bool | None = ...,
+            is_manufacturer_specific: bool | None = ...,
+            name: str | None = ...,
+            manufacturer_code: t.uint16_t | int | UndefinedType | None = ...,
+        ) -> None: ...
+
     def __post_init__(self) -> None:
         # Backwards compatibility with positional syntax where the name was first
         if isinstance(self.id, str):
@@ -1341,6 +1353,20 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
     # These are (optionally) computed later in the ZCL cluster subclass hook
     name: str = None
     manufacturer_code: t.uint16_t | UndefinedType | None = UNDEFINED
+
+    if TYPE_CHECKING:
+        # Help mypy understand the type conversions that happen in __post_init__
+        def __init__(
+            self,
+            id: int | str | None = ...,
+            type: typing.Any = ...,
+            zcl_type: DataTypeId | None = ...,
+            access: ZCLAttributeAccess | str = ...,
+            mandatory: bool = ...,
+            is_manufacturer_specific: bool | None = ...,
+            name: str | None = ...,
+            manufacturer_code: t.uint16_t | int | UndefinedType | None = ...,
+        ) -> None: ...
 
     def __post_init__(self) -> None:
         # Backwards compatibility with positional syntax where the name was first
