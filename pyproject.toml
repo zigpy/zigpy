@@ -281,12 +281,6 @@ disable_error_code = [
 ]
 
 [[tool.mypy.overrides]]
-module = "zigpy.state"
-disable_error_code = [
-    "arg-type",  # 1
-]
-
-[[tool.mypy.overrides]]
 module = "zigpy.types.basic"
 disable_error_code = [
     "arg-type",  # 5
@@ -294,12 +288,6 @@ disable_error_code = [
     "attr-defined",  # 7
     "method-assign",  # 5
     "misc",  # 10
-]
-
-[[tool.mypy.overrides]]
-module = "zigpy.types.named"
-disable_error_code = [
-    "misc",  # 1
 ]
 
 [[tool.mypy.overrides]]

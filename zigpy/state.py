@@ -272,7 +272,7 @@ class CounterGroup(dict):
         """Return an iterable of the counter groups"""
         return (group for group in self.values() if isinstance(group, CounterGroup))
 
-    def tags(self) -> Iterable[int | str]:
+    def tags(self) -> Iterable[str]:
         """Return an iterable if tags"""
         return (group.name for group in self.groups())
 
@@ -301,7 +301,7 @@ class CounterGroup(dict):
         """Return counter collection name."""
         return self._name if self._name is not None else "No Name"
 
-    def increment(self, name: int | str, *tags: int | str) -> None:
+    def increment(self, name: str, *tags: str) -> None:
         """Create and Update all counters recursively."""
 
         if tags:

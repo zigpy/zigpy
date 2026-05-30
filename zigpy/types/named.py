@@ -32,7 +32,7 @@ class BaseDataclassMixin:
             assert not isinstance(self, type)  # `is_dataclass` works on types as well
             return dataclasses.replace(self, **kwargs)
         else:
-            return attrs.evolve(self, **kwargs)
+            return attrs.evolve(self, **kwargs)  # type: ignore[misc]
 
 
 def _hex_string_to_bytes(hex_string: str) -> bytes:
