@@ -33,11 +33,11 @@ class _StructField:
     name: str | None = None
     type: type[Any] | None = None
 
-    requires: typing.Callable[[Struct], bool] | None = dataclasses.field(
+    requires: typing.Callable[[Any], bool] | None = dataclasses.field(
         default=None, repr=False
     )
     optional: bool | None = False
-    length: typing.Callable[[Struct], int] | None = dataclasses.field(
+    length: typing.Callable[[Any], int] | None = dataclasses.field(
         default=None, repr=False
     )
     default: Any = dataclasses.field(default=None, repr=False)
@@ -70,9 +70,9 @@ if TYPE_CHECKING:
         *,
         name: str | None = ...,
         type: type[Any] | None = ...,
-        requires: typing.Callable[[Struct], bool] | None = ...,
+        requires: typing.Callable[[Any], bool] | None = ...,
         optional: bool | None = ...,
-        length: typing.Callable[[Struct], int] | None = ...,
+        length: typing.Callable[[Any], int] | None = ...,
         default: Any = ...,
         repr: typing.Callable[[typing.Any], str] | None = ...,
     ) -> Any: ...
@@ -87,7 +87,7 @@ if TYPE_CHECKING:
         """`StructField` instance with name, type, and length resolved."""
 
         type: type[t.List[Any]]
-        length: typing.Callable[[Struct], int]
+        length: typing.Callable[[Any], int]
 else:
     StructField = _StructField
     ResolvedStructField = _StructField
