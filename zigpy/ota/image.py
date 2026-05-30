@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from typing import Self
+from typing import Any, Self
 
 import attrs
 
@@ -176,6 +176,9 @@ class BaseOTAImage:
         raise NotImplementedError  # pragma: no cover
 
     def serialize(self):
+        raise NotImplementedError  # pragma: no cover
+
+    def replace(self, **kwargs: Any) -> Self:
         raise NotImplementedError  # pragma: no cover
 
 

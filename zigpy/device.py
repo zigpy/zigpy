@@ -45,7 +45,7 @@ if typing.TYPE_CHECKING:
     _R = TypeVar("_R")
 
     from zigpy.application import ControllerApplication
-    from zigpy.ota.providers import OtaImageWithMetadata
+    from zigpy.ota import OtaImageWithMetadata
 
 
 LOGGER = logging.getLogger(__name__)
