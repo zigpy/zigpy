@@ -311,6 +311,13 @@ disable_error_code = [
 ]
 
 [[tool.mypy.overrides]]
+module = "zigpy.ota"
+disable_error_code = [
+    "arg-type",  # 1
+    "assignment",  # 1
+]
+
+[[tool.mypy.overrides]]
 module = "zigpy.quirks"
 disable_error_code = [
     "arg-type",  # 2
@@ -322,6 +329,22 @@ module = "zigpy.endpoint"
 disable_error_code = [
     "arg-type",  # 1
     "assignment",  # 5
+]
+
+[[tool.mypy.overrides]]
+module = "zigpy.types.named"
+disable_error_code = [
+    "assignment",  # 2
+    "attr-defined",  # 2
+    "misc",  # 2
+]
+
+[[tool.mypy.overrides]]
+module = "zigpy.backups"
+disable_error_code = [
+    "assignment",  # 3
+    "attr-defined",  # 3
+    "misc",  # 1
 ]
 
 [[tool.mypy.overrides]]
@@ -341,21 +364,6 @@ disable_error_code = [
 ]
 
 [[tool.mypy.overrides]]
-module = "zigpy.backups"
-disable_error_code = [
-    "assignment",  # 4
-    "attr-defined",  # 3
-    "misc",  # 1
-]
-
-[[tool.mypy.overrides]]
-module = "zigpy.ota"
-disable_error_code = [
-    "arg-type",  # 7
-    "assignment",  # 1
-]
-
-[[tool.mypy.overrides]]
 module = "zigpy.ota.providers"
 disable_error_code = [
     "arg-type",  # 6
@@ -372,19 +380,29 @@ disable_error_code = [
 ]
 
 [[tool.mypy.overrides]]
-module = "zigpy.types.named"
-disable_error_code = [
-    "assignment",  # 7
-    "attr-defined",  # 2
-    "misc",  # 2
-]
-
-[[tool.mypy.overrides]]
 module = "zigpy.quirks.registry"
 disable_error_code = [
     "arg-type",  # 3
     "assignment",  # 1
     "attr-defined",  # 10
+]
+
+[[tool.mypy.overrides]]
+module = "zigpy.state"
+disable_error_code = [
+    "arg-type",  # 3
+    "assignment",  # 5
+    "attr-defined",  # 5
+    "misc",  # 1
+]
+
+[[tool.mypy.overrides]]
+module = "zigpy.device"
+disable_error_code = [
+    "arg-type",  # 9
+    "assignment",  # 2
+    "attr-defined",  # 3
+    "misc",  # 1
 ]
 
 [[tool.mypy.overrides]]
@@ -396,15 +414,6 @@ disable_error_code = [
 ]
 
 [[tool.mypy.overrides]]
-module = "zigpy.device"
-disable_error_code = [
-    "arg-type",  # 12
-    "assignment",  # 2
-    "attr-defined",  # 3
-    "misc",  # 1
-]
-
-[[tool.mypy.overrides]]
 module = "zigpy.types.struct"
 disable_error_code = [
     "arg-type",  # 3
@@ -413,20 +422,20 @@ disable_error_code = [
 ]
 
 [[tool.mypy.overrides]]
-module = "zigpy.state"
-disable_error_code = [
-    "arg-type",  # 6
-    "assignment",  # 10
-    "attr-defined",  # 5
-    "misc",  # 1
-]
-
-[[tool.mypy.overrides]]
 module = "zigpy.zcl.foundation"
 disable_error_code = [
     "arg-type",  # 5
     "assignment",  # 13
     "attr-defined",  # 9
+]
+
+[[tool.mypy.overrides]]
+module = "zigpy.application"
+disable_error_code = [
+    "arg-type",  # 17
+    "assignment",  # 4
+    "attr-defined",  # 4
+    "misc",  # 3
 ]
 
 [[tool.mypy.overrides]]
@@ -455,15 +464,6 @@ disable_error_code = [
     "attr-defined",  # 7
     "method-assign",  # 5
     "misc",  # 10
-]
-
-[[tool.mypy.overrides]]
-module = "zigpy.application"
-disable_error_code = [
-    "arg-type",  # 31
-    "assignment",  # 4
-    "attr-defined",  # 4
-    "misc",  # 3
 ]
 
 [[tool.mypy.overrides]]

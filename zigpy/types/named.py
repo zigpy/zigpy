@@ -606,19 +606,19 @@ class ZigbeePacket(BaseDataclassMixin):
 
     # Set to `None` when the packet is outgoing
     src: AddrModeAddress | None = dataclasses.field(default=None)
-    src_ep: basic.uint8_t | None = dataclasses.field(default=None)
+    src_ep: int | None = dataclasses.field(default=None)
 
     # Set to `None` when the packet is incoming
     dst: AddrModeAddress | None = dataclasses.field(default=None)
-    dst_ep: basic.uint8_t | None = dataclasses.field(default=None)
+    dst_ep: int | None = dataclasses.field(default=None)
 
     # If the radio supports it, a source route for the packet
     source_route: list[NWK] | None = dataclasses.field(default=None)
     extended_timeout: bool = dataclasses.field(default=False)
 
-    tsn: basic.uint8_t = dataclasses.field(default=0x00)
-    profile_id: basic.uint16_t = dataclasses.field(default=0x0000)
-    cluster_id: basic.uint16_t = dataclasses.field(default=0x0000)
+    tsn: int = dataclasses.field(default=0x00)
+    profile_id: int = dataclasses.field(default=0x0000)
+    cluster_id: int = dataclasses.field(default=0x0000)
 
     # Any serializable object
     data: basic.SerializableBytes = dataclasses.field(
@@ -627,12 +627,12 @@ class ZigbeePacket(BaseDataclassMixin):
 
     # Options for outgoing packets
     tx_options: TransmitOptions = dataclasses.field(default=TransmitOptions.NONE)
-    radius: basic.uint8_t = dataclasses.field(default=0)
-    non_member_radius: basic.uint8_t = dataclasses.field(default=0)
+    radius: int = dataclasses.field(default=0)
+    non_member_radius: int = dataclasses.field(default=0)
 
     # Options for incoming packets
-    lqi: basic.uint8_t | None = dataclasses.field(default=None)
-    rssi: basic.int8s | None = dataclasses.field(default=None)
+    lqi: int | None = dataclasses.field(default=None)
+    rssi: int | None = dataclasses.field(default=None)
 
     def __hash__(self) -> int:
         return hash(

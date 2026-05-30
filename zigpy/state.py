@@ -28,9 +28,9 @@ class Key(t.BaseDataclassMixin):
     """APS/TC Link key."""
 
     key: t.KeyData = dataclasses.field(default_factory=lambda: t.KeyData.UNKNOWN)
-    tx_counter: t.uint32_t = 0
-    rx_counter: t.uint32_t = 0
-    seq: t.uint8_t = 0
+    tx_counter: int = 0
+    rx_counter: int = 0
+    seq: int = 0
     partner_ieee: t.EUI64 = dataclasses.field(default_factory=lambda: t.EUI64.UNKNOWN)
 
     def as_dict(self) -> dict[str, Any]:
@@ -96,11 +96,11 @@ class NetworkInfo(t.BaseDataclassMixin):
         default_factory=lambda: t.ExtendedPanId.UNKNOWN
     )
     pan_id: t.PanId = t.PanId(0xFFFE)
-    nwk_update_id: t.uint8_t = t.uint8_t(0x00)
+    nwk_update_id: int = t.uint8_t(0x00)
     nwk_manager_id: t.NWK = t.NWK(0x0000)
-    channel: t.uint8_t = 0
+    channel: int = 0
     channel_mask: t.Channels = t.Channels.NO_CHANNELS
-    security_level: t.uint8_t = 0
+    security_level: int = 0
     network_key: Key = dataclasses.field(default_factory=Key)
     tc_link_key: Key = dataclasses.field(
         default_factory=lambda: Key(
