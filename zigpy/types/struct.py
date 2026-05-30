@@ -42,7 +42,7 @@ class _StructField:
     )
     default: Any = dataclasses.field(default=None, repr=False)
 
-    repr: typing.Callable[[typing.Any], str] | None = dataclasses.field(
+    repr: typing.Callable[[typing.Any], str] = dataclasses.field(
         default=repr, repr=False
     )
 
@@ -74,7 +74,7 @@ if TYPE_CHECKING:
         optional: bool | None = ...,
         length: typing.Callable[[Any], int] | None = ...,
         default: Any = ...,
-        repr: typing.Callable[[typing.Any], str] | None = ...,
+        repr: typing.Callable[[typing.Any], str] = ...,
     ) -> Any: ...
 
     class ResolvedStructField(_StructField):
@@ -213,7 +213,7 @@ class Struct:
                 )
 
             fields.append(resolved_field)
-            setattr(fields, field.name, resolved_field)
+            setattr(fields, resolved_field.name, resolved_field)
 
         return fields
 
