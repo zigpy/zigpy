@@ -316,6 +316,13 @@ disable_error_code = [
 ]
 
 [[tool.mypy.overrides]]
+module = "zigpy.types.struct"
+disable_error_code = [
+    "arg-type",  # 1
+    "misc",  # 1
+]
+
+[[tool.mypy.overrides]]
 module = "zigpy.backups"
 disable_error_code = [
     "assignment",  # 3
@@ -420,14 +427,6 @@ disable_error_code = [
     "assignment",  # 2
     "attr-defined",  # 2
     "misc",  # 1
-]
-
-[[tool.mypy.overrides]]
-module = "zigpy.types.struct"
-disable_error_code = [
-    "arg-type",  # 1
-    "attr-defined",  # 15
-    "misc",  # 2
 ]
 
 [[tool.mypy.overrides]]

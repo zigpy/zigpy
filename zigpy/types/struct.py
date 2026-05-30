@@ -97,9 +97,11 @@ else:
 class Struct:
     fields: ClassVar[list[ResolvedStructField]]
     _signature: ClassVar[inspect.Signature]
+    _hash: int = -1
+    _frozen: bool = False
 
     @classmethod
-    def _real_cls(cls) -> type:
+    def _real_cls(cls) -> type[Self]:
         # The "Optional" subclass is dynamically created and breaks types.
         # We have to use a little introspection to find our real class.
         return next(c for c in cls.__mro__ if c.__name__ != "Optional")
@@ -131,9 +133,6 @@ class Struct:
             None,
         ) is not None and not issubclass(cls, IntStruct):
             raise TypeError("Integer structs must be subclasses of `IntStruct`")
-
-        cls._hash = -1
-        cls._frozen = False
 
     def __new__(cls: type[Self], *args, **kwargs) -> Self:
         cls = cls._real_cls()  # noqa: PLW0642
@@ -418,7 +417,7 @@ class Struct:
         fields, data = cls._deserialize_internal(cls.fields, data)
         return cls(**fields), data
 
-    def replace(self, **kwargs: dict[str, typing.Any]) -> Struct:
+    def replace(self, **kwargs: dict[str, typing.Any]) -> Self:
         d = self.as_dict().copy()
         d.update(kwargs)
 
@@ -433,7 +432,7 @@ class Struct:
         if not isinstance(self, type(other)) and not isinstance(other, type(self)):
             return NotImplemented
 
-        return self.as_dict() == other.as_dict()
+        return self.as_dict() == cast(Struct, other).as_dict()
 
     def _repr_extra_parts(self) -> list[str]:
         extra_parts = []
@@ -538,11 +537,13 @@ class Struct:
 
 
 class IntStruct(Struct, IntMixin):
+    _int_type: ClassVar[type[t.FixedIntType]]
+
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
 
         try:
-            cls._int_type: type[t.FixedIntType] = next(
+            cls._int_type = next(
                 c
                 for c in cls.__mro__[1:]
                 if issubclass(c, t.FixedIntType) and not issubclass(c, Struct)
