@@ -581,26 +581,13 @@ def enum_factory(base_type: type[FixedIntType]) -> type[enum.Enum]:
 if TYPE_CHECKING:
     # mypy needs help understanding that the bitwise operations return int subclasses
     class _BitmapMixin:
-        def __or__(self, other: object) -> Self:
-            return super().__or__(other)
-
-        def __ror__(self, other: object) -> Self:
-            return super().__ror__(other)
-
-        def __and__(self, other: object) -> Self:
-            return super().__and__(other)
-
-        def __rand__(self, other: object) -> Self:
-            return super().__rand__(other)
-
-        def __xor__(self, other: object) -> Self:
-            return super().__xor__(other)
-
-        def __rxor__(self, other: object) -> Self:
-            return super().__rxor__(other)
-
-        def __invert__(self) -> Self:
-            return super().__invert__()
+        def __or__(self, other: object) -> Self: ...
+        def __ror__(self, other: object) -> Self: ...
+        def __and__(self, other: object) -> Self: ...
+        def __rand__(self, other: object) -> Self: ...
+        def __xor__(self, other: object) -> Self: ...
+        def __rxor__(self, other: object) -> Self: ...
+        def __invert__(self) -> Self: ...
 else:
     # Empty class at runtime to avoid MRO conflicts
     class _BitmapMixin:
@@ -983,7 +970,7 @@ class KwargTypeMeta(type):
     # So things like `LVList[NWK, t.uint8_t]` are singletons
     _anonymous_classes: dict[tuple[type, tuple[type, ...]], type] = {}
 
-    def __getitem__(cls, key: type | int | tuple[type | int, ...]) -> type[Self]:
+    def __getitem__(cls, key: type | int | tuple[type | int, ...]) -> type[Self]:  # type: ignore[misc]
         # Make sure Foo[a] is the same as Foo[a,]
         if not isinstance(key, tuple):
             key = (key,)
@@ -1008,7 +995,7 @@ class KwargTypeMeta(type):
         if (cls, expanded_key) in cls._anonymous_classes:
             return cls._anonymous_classes[cls, expanded_key]
 
-        class AnonSubclass(cls, **bound.arguments):  # type: ignore[valid-type]
+        class AnonSubclass(cls, **bound.arguments):  # type: ignore[misc, valid-type]
             pass
 
         AnonSubclass.__name__ = AnonSubclass.__qualname__ = f"Anonymous{cls.__name__}"
@@ -1143,6 +1130,7 @@ class FixedList(list, Generic[_T], metaclass=KwargTypeMeta):
 
     def serialize(self) -> bytes:
         assert self._length is not None
+        assert self._item_type is not None
 
         if len(self) != self._length:
             raise ValueError(

@@ -210,7 +210,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     async def request(
         self,
-        cluster: t.ClusterId,
+        cluster: int,
         sequence: t.uint8_t,
         data: bytes,
         command_id: GeneralCommand | int,
@@ -248,7 +248,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     async def reply(
         self,
-        cluster: t.ClusterId,
+        cluster: int,
         sequence: t.uint8_t,
         data: bytes,
         command_id: GeneralCommand | int,

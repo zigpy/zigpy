@@ -287,7 +287,7 @@ class OtaQueryCacheClearedEvent:
 
 def convert_list_schema(
     schema: Sequence[type], command_id: int, direction: foundation.Direction
-) -> type[t.Struct]:
+) -> type[foundation.CommandSchema]:
     schema_dict = {}
 
     for i, param_type in enumerate(schema, start=1):
@@ -551,7 +551,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         return self._attr_cache_internal
 
     @_attr_cache.setter
-    def _attr_cache(self, new_value: dict[str, Any]) -> None:
+    def _attr_cache(self, new_value: dict[int, Any]) -> None:
         """Deprecated accessor to update the attribute cache directly."""
         LOGGER.warning(
             "Updating the attribute cache directly is deprecated and will stop working"
@@ -793,7 +793,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         self,
         general: bool,
         command_id: foundation.GeneralCommand | int | t.uint8_t,
-        schema: type[t.Struct],
+        schema: type[foundation.CommandSchema],
         *args,
         manufacturer: int | t.uint16_t | None = None,
         expect_reply: bool = True,
@@ -851,7 +851,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         self,
         general: bool,
         command_id: foundation.GeneralCommand | int | t.uint8_t,
-        schema: type[t.Struct],
+        schema: type[foundation.CommandSchema],
         *args,
         manufacturer: int | t.uint16_t | None = None,
         tsn: int | t.uint8_t | None = None,
@@ -1292,6 +1292,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 attr_def = self.find_attribute(attrid)
         except KeyError:
             if value is not None:
+                # The attribute is unknown, so it can only be a raw integer ID: a
+                # `ZCLAttributeDef` would have resolved (or be foreign to this cluster).
+                assert not isinstance(attrid, foundation.ZCLAttributeDef)
                 self._attr_cache.set_legacy_value(attrid, value)
 
                 if not suppressed:

@@ -286,7 +286,6 @@ disable_error_code = [
     "arg-type",  # 5
     "attr-defined",  # 7
     "method-assign",  # 3
-    "misc",  # 10
 ]
 
 [[tool.mypy.overrides]]
@@ -299,7 +298,6 @@ disable_error_code = [
 [[tool.mypy.overrides]]
 module = "zigpy.zcl"
 disable_error_code = [
-    "arg-type",  # 9
     "assignment",  # 5
     "attr-defined",  # 2
     "misc",  # 3
@@ -315,7 +313,6 @@ disable_error_code = [
 [[tool.mypy.overrides]]
 module = "zigpy.zcl.foundation"
 disable_error_code = [
-    "arg-type",  # 2
     "attr-defined",  # 1
     "misc",  # 1
     "valid-type",  # 1

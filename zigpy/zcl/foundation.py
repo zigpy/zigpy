@@ -1118,8 +1118,8 @@ class ZCLHeader(t.Struct):
     def __new__(
         cls: type[Self],
         frame_control: FrameControl | None = None,
-        manufacturer: t.uint16_t | None = None,
-        tsn: int | t.uint8_t | None = None,
+        manufacturer: int | None = None,
+        tsn: int | None = None,
         command_id: int | GeneralCommand | None = None,
     ) -> Self:
         if frame_control is not None and manufacturer is not None:
