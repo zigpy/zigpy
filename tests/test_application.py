@@ -2013,3 +2013,54 @@ async def test_device_reinterviewed_persists_relays(app):
     db_listener.device_relays_updated.assert_called_once_with(
         new_dev, t.Relays([t.NWK(0xAAAA)])
     )
+
+
+async def test_device_resolver_registration(app, ieee):
+    """A registered device resolver replaces zigpy.quirks.get_device."""
+    resolved = []
+
+    def resolver(device: zigpy.device.Device) -> zigpy.device.Device:
+        resolved.append(device)
+        replacement = zigpy.device.Device(app, device.ieee, device.nwk)
+        replacement.node_desc = device.node_desc
+        replacement.status = device.status
+        return replacement
+
+    app.register_device_resolver(resolver)
+
+    dev = app.add_device(ieee, 0x1234)
+    dev.node_desc = make_node_desc()
+    dev.status = zigpy.device.Status.ENDPOINTS_INIT
+
+    app.device_initialized(dev)
+
+    assert resolved == [dev]
+    assert app.devices[ieee] is not dev
+
+
+async def test_device_resolver_new_kwarg():
+    """The device resolver can be provided when creating the application."""
+
+    def resolver(device: zigpy.device.Device) -> zigpy.device.Device:
+        return device
+
+    app = await App.new(
+        {
+            conf.CONF_DATABASE: None,
+            conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
+        },
+        auto_form=False,
+        start_radio=False,
+        device_resolver=resolver,
+    )
+    assert app._device_resolver is resolver
+
+    app_default = await App.new(
+        {
+            conf.CONF_DATABASE: None,
+            conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"},
+        },
+        auto_form=False,
+        start_radio=False,
+    )
+    assert app_default._device_resolver is None
