@@ -995,6 +995,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                     zigpy.zcl.clusters.general.OnOff.cluster_id,
                     zigpy.zcl.clusters.general.Time.cluster_id,
                     zigpy.zcl.clusters.general.Ota.cluster_id,
+                    zigpy.zcl.clusters.general.KeepAlive.cluster_id,
                     zigpy.zcl.clusters.security.IasAce.cluster_id,
                 ],
                 output_clusters=[

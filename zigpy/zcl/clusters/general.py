@@ -2443,3 +2443,9 @@ class KeepAlive(Cluster):
         tc_keep_alive_jitter: Final = ZCLAttributeDef(
             id=0x0001, type=t.uint16_t, access="r", mandatory=True
         )
+
+    def handle_read_attribute_tc_keep_alive_base(self) -> t.uint8_t:
+        return t.uint8_t(10)
+
+    def handle_read_attribute_tc_keep_alive_jitter(self) -> t.uint16_t:
+        return t.uint16_t(300)
