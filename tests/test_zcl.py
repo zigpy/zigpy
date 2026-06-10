@@ -1481,7 +1481,10 @@ def test_zcl_cluster_subclass_keeps_same_id_commands():
     class TestClusterSubclass(TestCluster):
         pass
 
-    for cls in (TestCluster, TestClusterSubclass):
+    class TestClusterSubSubclass(TestClusterSubclass):
+        pass
+
+    for cls in (TestCluster, TestClusterSubclass, TestClusterSubSubclass):
         assert set(cls.commands_by_name) == {
             "command",
             "command_mfg",
@@ -1533,10 +1536,16 @@ def test_zcl_cluster_subclass_old_style_definitions():
     # An explicit empty old-style dict does not wipe the inherited definitions
     class TestClusterEmptyOverride(TestCluster):
         attributes = {}
+        server_commands = {}
+        client_commands = {}
 
     assert set(TestClusterEmptyOverride.attributes_by_name) == {
         "attribute",
         "attribute2",
+    }
+    assert set(TestClusterEmptyOverride.commands_by_name) == {
+        "server_command",
+        "client_command",
     }
 
 
