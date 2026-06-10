@@ -62,7 +62,7 @@ def test_attribute_reporting_config_0():
     arc = foundation.AttributeReportingConfig()
     arc.direction = foundation.ReportingDirection.SendReports
     arc.attrid = 99
-    arc.datatype = 0x20
+    arc.datatype = foundation.DataTypeId.uint8
     arc.min_interval = 10
     arc.max_interval = 20
     arc.reportable_change = 30

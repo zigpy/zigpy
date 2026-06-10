@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from typing import Self
+from typing import Any, Self
 
 import attrs
 
@@ -178,6 +178,9 @@ class BaseOTAImage:
     def serialize(self):
         raise NotImplementedError  # pragma: no cover
 
+    def replace(self, **kwargs: Any) -> Self:
+        raise NotImplementedError  # pragma: no cover
+
 
 class OTAImage(t.Struct, BaseOTAImage):
     """Zigbee OTA image according to 11.4 of the ZCL specification."""
@@ -225,8 +228,8 @@ class HueSBLOTAImage(BaseOTAImage, t.BaseDataclassMixin):
 
     SUBELEMENTS_MAGIC = b"\x2a\x00\x01"
 
-    header: OTAImageHeader = None
-    data: bytes = None
+    header: OTAImageHeader
+    data: bytes
 
     def serialize(self) -> bytes:
         return self.header.serialize() + self.data
@@ -258,9 +261,9 @@ class HueSBLOTAImage(BaseOTAImage, t.BaseDataclassMixin):
 class TelinkEncryptedSubElement(t.BaseDataclassMixin):
     TELINK_ENCRYPTED_TAG_ID = ElementTagId(0xF000)
 
-    tag_id: ElementTagId = attrs.field(default=None, converter=ElementTagId)
-    tag_info: t.uint16_t = None
-    data: bytes = None
+    tag_id: ElementTagId = attrs.field(converter=ElementTagId)
+    tag_info: t.uint16_t
+    data: bytes
 
     def __repr__(self) -> str:
         return (
@@ -306,8 +309,8 @@ class TelinkEncryptedSubElement(t.BaseDataclassMixin):
 class TelinkOTAImage(BaseOTAImage, t.BaseDataclassMixin):
     """Telink OTA image. Includes a proprietary "tag info" after the tag length."""
 
-    header: OTAImageHeader = None
-    subelements: t.List[SubElement | TelinkEncryptedSubElement] = None
+    header: OTAImageHeader
+    subelements: list[SubElement | TelinkEncryptedSubElement]
 
     @classmethod
     def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
@@ -325,6 +328,7 @@ class TelinkOTAImage(BaseOTAImage, t.BaseDataclassMixin):
 
         while element_data:
             tag_id, _ = ElementTagId.deserialize(element_data)
+            element: SubElement | TelinkEncryptedSubElement
 
             if tag_id == TelinkEncryptedSubElement.TELINK_ENCRYPTED_TAG_ID:
                 element, element_data = TelinkEncryptedSubElement.deserialize(
@@ -389,7 +393,7 @@ def parse_ota_image(data: bytes) -> tuple[BaseOTAImage, bytes]:
                 "Fixing IKEA OTA image with trailing data (%s bytes)",
                 size - image.header.image_size,
             )
-            image.header.image_size += len(rest)
+            image.header.image_size = t.uint32_t(image.header.image_size + len(rest))
 
             # No other structure has been observed
             assert len(image.subelements) == 1

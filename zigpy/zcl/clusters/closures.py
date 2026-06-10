@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Final
+from typing import Final, TypeAlias
 
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
@@ -30,12 +30,12 @@ class ShadeMode(t.enum8):
 class Shade(Cluster):
     """Attributes and commands for configuring a shade"""
 
-    ShadeStatus: Final = ShadeStatus
-    ShadeMode: Final = ShadeMode
+    ShadeStatus: TypeAlias = ShadeStatus
+    ShadeMode: TypeAlias = ShadeMode
 
-    cluster_id: Final[t.uint16_t] = 0x0100
-    name: Final = "Shade Configuration"
-    ep_attribute: Final = "shade"
+    cluster_id = 0x0100
+    name = "Shade Configuration"
+    ep_attribute = "shade"
 
     class AttributeDefs(BaseAttributeDefs):
         # Shade Information
@@ -265,32 +265,32 @@ class EventType(t.enum8):
 class DoorLock(Cluster):
     """The door lock cluster provides an interface to a generic way to secure a door."""
 
-    LockState: Final = LockState
-    LockType: Final = LockType
-    DoorState: Final = DoorState
-    OperatingMode: Final = OperatingMode
-    SupportedOperatingModes: Final = SupportedOperatingModes
-    DefaultConfigurationRegister: Final = DefaultConfigurationRegister
-    ZigbeeSecurityLevel: Final = ZigbeeSecurityLevel
-    AlarmMask: Final = AlarmMask
-    KeypadOperationEventMask: Final = KeypadOperationEventMask
-    RFOperationEventMask: Final = RFOperationEventMask
-    ManualOperatitonEventMask: Final = ManualOperatitonEventMask
-    RFIDOperationEventMask: Final = RFIDOperationEventMask
-    KeypadProgrammingEventMask: Final = KeypadProgrammingEventMask
-    RFProgrammingEventMask: Final = RFProgrammingEventMask
-    RFIDProgrammingEventMask: Final = RFIDProgrammingEventMask
-    OperationEventSource: Final = OperationEventSource
-    OperationEvent: Final = OperationEvent
-    ProgrammingEvent: Final = ProgrammingEvent
-    UserStatus: Final = UserStatus
-    UserType: Final = UserType
-    DayMask: Final = DayMask
-    EventType: Final = EventType
+    LockState: TypeAlias = LockState
+    LockType: TypeAlias = LockType
+    DoorState: TypeAlias = DoorState
+    OperatingMode: TypeAlias = OperatingMode
+    SupportedOperatingModes: TypeAlias = SupportedOperatingModes
+    DefaultConfigurationRegister: TypeAlias = DefaultConfigurationRegister
+    ZigbeeSecurityLevel: TypeAlias = ZigbeeSecurityLevel
+    AlarmMask: TypeAlias = AlarmMask
+    KeypadOperationEventMask: TypeAlias = KeypadOperationEventMask
+    RFOperationEventMask: TypeAlias = RFOperationEventMask
+    ManualOperatitonEventMask: TypeAlias = ManualOperatitonEventMask
+    RFIDOperationEventMask: TypeAlias = RFIDOperationEventMask
+    KeypadProgrammingEventMask: TypeAlias = KeypadProgrammingEventMask
+    RFProgrammingEventMask: TypeAlias = RFProgrammingEventMask
+    RFIDProgrammingEventMask: TypeAlias = RFIDProgrammingEventMask
+    OperationEventSource: TypeAlias = OperationEventSource
+    OperationEvent: TypeAlias = OperationEvent
+    ProgrammingEvent: TypeAlias = ProgrammingEvent
+    UserStatus: TypeAlias = UserStatus
+    UserType: TypeAlias = UserType
+    DayMask: TypeAlias = DayMask
+    EventType: TypeAlias = EventType
 
-    cluster_id: Final[t.uint16_t] = 0x0101
-    name: Final = "Door Lock"
-    ep_attribute: Final = "door_lock"
+    cluster_id = 0x0101
+    name = "Door Lock"
+    ep_attribute = "door_lock"
 
     class AttributeDefs(BaseAttributeDefs):
         lock_state: Final = ZCLAttributeDef(
@@ -734,13 +734,13 @@ class WindowCoveringMode(t.bitmap8):
 
 
 class WindowCovering(Cluster):
-    WindowCoveringType: Final = WindowCoveringType
-    ConfigStatus: Final = ConfigStatus
-    WindowCoveringMode: Final = WindowCoveringMode
+    WindowCoveringType: TypeAlias = WindowCoveringType
+    ConfigStatus: TypeAlias = ConfigStatus
+    WindowCoveringMode: TypeAlias = WindowCoveringMode
 
-    cluster_id: Final[t.uint16_t] = 0x0102
-    name: Final = "Window Covering"
-    ep_attribute: Final = "window_covering"
+    cluster_id = 0x0102
+    name = "Window Covering"
+    ep_attribute = "window_covering"
 
     class AttributeDefs(BaseAttributeDefs):
         # Window Covering Information
@@ -845,9 +845,9 @@ class Capabilities(t.bitmap8):
 
 
 class BarrierControl(Cluster):
-    cluster_id: Final = 0x0103
-    name: Final = "Barrier Control"
-    ep_attribute: Final = "barrier_control"
+    cluster_id = 0x0103
+    name = "Barrier Control"
+    ep_attribute = "barrier_control"
 
     class AttributeDefs(BaseAttributeDefs):
         moving_state: Final = ZCLAttributeDef(

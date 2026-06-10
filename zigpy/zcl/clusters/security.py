@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Final
+from typing import Final, TypeAlias
 
 import zigpy.types as t
 from zigpy.zcl import Cluster, foundation
@@ -76,9 +76,9 @@ class IasZone(Cluster):
     reports and supervision of the IAS network.
     """
 
-    cluster_id: Final[t.uint16_t] = 0x0500
-    name: Final = "IAS Zone"
-    ep_attribute: Final = "ias_zone"
+    cluster_id = 0x0500
+    name = "IAS Zone"
+    ep_attribute = "ias_zone"
 
     class AttributeDefs(BaseAttributeDefs):
         # Zone Information
@@ -139,10 +139,10 @@ class IasZone(Cluster):
         )
 
     # For backwards compatibility
-    ZoneState: Final = ZoneState
-    ZoneType: Final = ZoneType
-    ZoneStatus: Final = ZoneStatus
-    EnrollResponse: Final = EnrollResponse
+    ZoneState: TypeAlias = ZoneState
+    ZoneType: TypeAlias = ZoneType
+    ZoneStatus: TypeAlias = ZoneStatus
+    EnrollResponse: TypeAlias = EnrollResponse
 
 
 class AlarmStatus(t.enum8):
@@ -229,19 +229,19 @@ class ZoneStatusRsp(t.Struct):
 class IasAce(Cluster):
     """IAS Ancillary Control Equipment cluster."""
 
-    AlarmStatus: Final = AlarmStatus
-    ArmMode: Final = ArmMode
-    ArmNotification: Final = ArmNotification
-    AudibleNotification: Final = AudibleNotification
-    BypassResponse: Final = BypassResponse
-    PanelStatus: Final = PanelStatus
+    AlarmStatus: TypeAlias = AlarmStatus
+    ArmMode: TypeAlias = ArmMode
+    ArmNotification: TypeAlias = ArmNotification
+    AudibleNotification: TypeAlias = AudibleNotification
+    BypassResponse: TypeAlias = BypassResponse
+    PanelStatus: TypeAlias = PanelStatus
     ZoneType: Final = IasZone.ZoneType
     ZoneStatus: Final = IasZone.ZoneStatus
-    ZoneStatusRsp: Final = ZoneStatusRsp
+    ZoneStatusRsp: TypeAlias = ZoneStatusRsp
 
-    cluster_id: Final[t.uint16_t] = 0x0501
-    name: Final = "IAS Ancillary Control Equipment"
-    ep_attribute: Final = "ias_ace"
+    cluster_id = 0x0501
+    name = "IAS Ancillary Control Equipment"
+    ep_attribute = "ias_ace"
 
     class AttributeDefs(BaseAttributeDefs):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
@@ -363,33 +363,9 @@ class IasAce(Cluster):
         )
 
 
-class Strobe(t.enum8):
+class Strobe(t.enum1):
     No_strobe = 0x00
     Strobe = 0x01
-
-
-class _SquawkOrWarningCommand:  # noqa: PLW1641
-    def __init__(self, value: int = 0) -> None:
-        self.value = t.uint8_t(value)
-
-    @classmethod
-    def deserialize(cls, data: bytes) -> tuple[_SquawkOrWarningCommand, bytes]:
-        val, data = t.uint8_t.deserialize(data)
-        return cls(val), data
-
-    def serialize(self) -> bytes:
-        return t.uint8_t(self.value).serialize()
-
-    def __repr__(self) -> str:
-        return (
-            f"<{self.__class__.__name__}.mode={self.mode.name} "
-            f"strobe={self.strobe.name} level={self.level.name}: "
-            f"{self.value}>"
-        )
-
-    def __eq__(self, other):
-        """Compare to int."""
-        return self.value == other
 
 
 class StrobeLevel(t.enum8):
@@ -399,14 +375,14 @@ class StrobeLevel(t.enum8):
     Very_high_level_strobe = 0x03
 
 
-class SirenLevel(t.enum8):
+class SirenLevel(t.enum2):
     Low_level_sound = 0x00
     Medium_level_sound = 0x01
     High_level_sound = 0x02
     Very_high_level_sound = 0x03
 
 
-class WarningMode(t.enum8):
+class WarningMode(t.enum4):
     Stop = 0x00
     Burglar = 0x01
     Fire = 0x02
@@ -416,80 +392,40 @@ class WarningMode(t.enum8):
     Emergency_Panic = 0x06
 
 
-class WarningType(_SquawkOrWarningCommand):
-    @property
-    def mode(self) -> WarningMode:
-        return WarningMode((self.value >> 4) & 0x0F)
-
-    @mode.setter
-    def mode(self, mode: WarningMode) -> None:
-        self.value = (self.value & 0xF) | (mode << 4)
-
-    @property
-    def strobe(self) -> Strobe:
-        return Strobe((self.value >> 2) & 0x01)
-
-    @strobe.setter
-    def strobe(self, strobe: Strobe) -> None:
-        self.value = (self.value & 0xF7) | (
-            (strobe & 0x01) << 2  # type:ignore[operator]
-        )
-
-    @property
-    def level(self) -> SirenLevel:
-        return SirenLevel(self.value & 0x03)
-
-    @level.setter
-    def level(self, level: SirenLevel) -> None:
-        self.value = (self.value & 0xFC) | (level & 0x03)
+class WarningType(t.IntStruct, t.uint8_t):
+    level: SirenLevel  # Bits 0-1
+    strobe: Strobe  # Bit 2
+    reserved: t.uint1_t = t.StructField(default=0b0)  # Bit 3
+    mode: WarningMode  # Bits 4-7
 
     # For backwards compatibility
-    Strobe: Final = Strobe
-    WarningMode: Final = WarningMode
-    SirenLevel: Final = SirenLevel
+    Strobe: TypeAlias = Strobe
+    WarningMode: TypeAlias = WarningMode
+    SirenLevel: TypeAlias = SirenLevel
 
 
-class SquawkLevel(t.enum8):
+class SquawkLevel(t.enum2):
     Low_level_sound = 0x00
     Medium_level_sound = 0x01
     High_level_sound = 0x02
     Very_high_level_sound = 0x03
 
 
-class SquawkMode(t.enum8):
+class SquawkMode(t.enum4):
     Armed = 0x00
     Disarmed = 0x01
 
 
-class Squawk(_SquawkOrWarningCommand):
-    @property
-    def mode(self) -> SquawkMode:
-        return SquawkMode((self.value >> 4) & 0x0F)
-
-    @mode.setter
-    def mode(self, mode: SquawkMode) -> None:
-        self.value = (self.value & 0xF) | ((mode & 0x0F) << 4)
-
-    @property
-    def strobe(self) -> Strobe:
-        return Strobe((self.value >> 3) & 0x01)
-
-    @strobe.setter
-    def strobe(self, strobe: Strobe) -> None:
-        self.value = (self.value & 0xF7) | (strobe << 3)  # type:ignore[operator]
-
-    @property
-    def level(self) -> SquawkLevel:
-        return SquawkLevel(self.value & 0x03)
-
-    @level.setter
-    def level(self, level: SquawkLevel) -> None:
-        self.value = (self.value & 0xFC) | (level & 0x03)
+class Squawk(t.IntStruct, t.uint8_t):
+    level: SquawkLevel  # Bits 0-1
+    reserved: t.uint1_t = t.StructField(default=0b0)  # Bit 2
+    strobe: Strobe  # Bit 3
+    mode: SquawkMode  # Bits 4-7
 
     # For backwards compatibility
-    Strobe: Final = Strobe
-    SquawkLevel: Final = SquawkLevel
-    SquawkMode: Final = SquawkMode
+    Strobe: TypeAlias = Strobe
+    SquawkLevel: TypeAlias = SquawkLevel
+    SquawkMode: TypeAlias = SquawkMode
 
 
 class IasWd(Cluster):
@@ -499,13 +435,13 @@ class IasWd(Cluster):
     (siren, strobe lighting, etc.) when a system alarm condition is detected
     """
 
-    StrobeLevel: Final = StrobeLevel
+    StrobeLevel: TypeAlias = StrobeLevel
     Warning: Final = WarningType
-    Squawk: Final = Squawk
+    Squawk: TypeAlias = Squawk
 
-    cluster_id: Final[t.uint16_t] = 0x0502
-    name: Final = "IAS Warning Device"
-    ep_attribute: Final = "ias_wd"
+    cluster_id = 0x0502
+    name = "IAS Warning Device"
+    ep_attribute = "ias_wd"
 
     class AttributeDefs(BaseAttributeDefs):
         max_duration: Final = ZCLAttributeDef(

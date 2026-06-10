@@ -4,6 +4,7 @@ import dataclasses
 from datetime import UTC, datetime
 import enum
 import typing
+from typing import ClassVar
 
 import attrs
 
@@ -31,7 +32,7 @@ class BaseDataclassMixin:
             assert not isinstance(self, type)  # `is_dataclass` works on types as well
             return dataclasses.replace(self, **kwargs)
         else:
-            return attrs.evolve(self, **kwargs)
+            return attrs.evolve(self, **kwargs)  # type: ignore[misc]
 
 
 def _hex_string_to_bytes(hex_string: str) -> bytes:
@@ -55,6 +56,8 @@ class BroadcastAddress(basic.enum16):
 
 class EUI64(basic.FixedList, item_type=basic.uint8_t, length=8):
     # EUI 64-bit ID (an IEEE address).
+    UNKNOWN: ClassVar[EUI64]
+
     def __repr__(self) -> str:
         return ":".join(f"{i:02x}" for i in self[::-1])
 
@@ -62,26 +65,26 @@ class EUI64(basic.FixedList, item_type=basic.uint8_t, length=8):
         return hash(repr(self))
 
     @classmethod
-    def convert(cls, ieee: str) -> EUI64:
-        if ieee is None:
-            return None
-        ieee = [basic.uint8_t(p) for p in _hex_string_to_bytes(ieee)[::-1]]
-        assert len(ieee) == cls._length
-        return cls(ieee)
+    def convert(cls, ieee: str) -> Self:
+        octets = [basic.uint8_t(p) for p in _hex_string_to_bytes(ieee)[::-1]]
+        assert len(octets) == cls._length
+        return cls(octets)
 
 
 EUI64.UNKNOWN = EUI64.convert("FF:FF:FF:FF:FF:FF:FF:FF")
 
 
 class KeyData(basic.FixedList, item_type=basic.uint8_t, length=16):
+    UNKNOWN: ClassVar[KeyData]
+
     def __repr__(self) -> str:
         return ":".join(f"{i:02x}" for i in self)
 
     @classmethod
-    def convert(cls, key: str) -> KeyData:
-        key = [basic.uint8_t(p) for p in _hex_string_to_bytes(key)]
-        assert len(key) == cls._length
-        return cls(key)
+    def convert(cls, key: str) -> Self:
+        octets = [basic.uint8_t(p) for p in _hex_string_to_bytes(key)]
+        assert len(octets) == cls._length
+        return cls(octets)
 
 
 KeyData.UNKNOWN = KeyData.convert("FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF")
@@ -123,7 +126,7 @@ class Channels(basic.bitmap32):
     CHANNEL_26 = 0x04000000
 
     @classmethod
-    def from_channel_list(cls: Channels, channels: typing.Iterable[int]) -> Channels:
+    def from_channel_list(cls, channels: typing.Iterable[int]) -> Channels:
         mask = cls.NO_CHANNELS
 
         for channel in channels:
@@ -132,7 +135,7 @@ class Channels(basic.bitmap32):
                     f"Invalid channel number {channel}. Must be between 11 and 26."
                 )
 
-            mask |= cls[f"CHANNEL_{channel}"]  # type: ignore[index]
+            mask |= cls[f"CHANNEL_{channel}"]
 
         return mask
 
@@ -172,7 +175,7 @@ class Date(Struct):
 
 class NWK(basic.uint16_t, repr="hex"):
     @classmethod
-    def convert(cls, data: str) -> NWK:
+    def convert(cls, data: str) -> Self:
         assert 4 * len(data) == cls._bits
         return cls.deserialize(bytes.fromhex(data)[::-1])[0]
 
@@ -182,7 +185,10 @@ class PanId(NWK):
 
 
 class ExtendedPanId(EUI64):
-    pass
+    UNKNOWN: ClassVar[ExtendedPanId]
+
+
+ExtendedPanId.UNKNOWN = ExtendedPanId.convert("FF:FF:FF:FF:FF:FF:FF:FF")
 
 
 class Group(basic.uint16_t, repr="hex"):
@@ -606,19 +612,19 @@ class ZigbeePacket(BaseDataclassMixin):
 
     # Set to `None` when the packet is outgoing
     src: AddrModeAddress | None = dataclasses.field(default=None)
-    src_ep: basic.uint8_t | None = dataclasses.field(default=None)
+    src_ep: int | None = dataclasses.field(default=None)
 
     # Set to `None` when the packet is incoming
     dst: AddrModeAddress | None = dataclasses.field(default=None)
-    dst_ep: basic.uint8_t | None = dataclasses.field(default=None)
+    dst_ep: int | None = dataclasses.field(default=None)
 
     # If the radio supports it, a source route for the packet
     source_route: list[NWK] | None = dataclasses.field(default=None)
     extended_timeout: bool = dataclasses.field(default=False)
 
-    tsn: basic.uint8_t = dataclasses.field(default=0x00)
-    profile_id: basic.uint16_t = dataclasses.field(default=0x0000)
-    cluster_id: basic.uint16_t = dataclasses.field(default=0x0000)
+    tsn: int = dataclasses.field(default=0x00)
+    profile_id: int = dataclasses.field(default=0x0000)
+    cluster_id: int = dataclasses.field(default=0x0000)
 
     # Any serializable object
     data: basic.SerializableBytes = dataclasses.field(
@@ -627,12 +633,12 @@ class ZigbeePacket(BaseDataclassMixin):
 
     # Options for outgoing packets
     tx_options: TransmitOptions = dataclasses.field(default=TransmitOptions.NONE)
-    radius: basic.uint8_t = dataclasses.field(default=0)
-    non_member_radius: basic.uint8_t = dataclasses.field(default=0)
+    radius: int = dataclasses.field(default=0)
+    non_member_radius: int = dataclasses.field(default=0)
 
     # Options for incoming packets
-    lqi: basic.uint8_t | None = dataclasses.field(default=None)
-    rssi: basic.int8s | None = dataclasses.field(default=None)
+    lqi: int | None = dataclasses.field(default=None)
+    rssi: int | None = dataclasses.field(default=None)
 
     def __hash__(self) -> int:
         return hash(

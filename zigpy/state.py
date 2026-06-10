@@ -28,9 +28,9 @@ class Key(t.BaseDataclassMixin):
     """APS/TC Link key."""
 
     key: t.KeyData = dataclasses.field(default_factory=lambda: t.KeyData.UNKNOWN)
-    tx_counter: t.uint32_t = 0
-    rx_counter: t.uint32_t = 0
-    seq: t.uint8_t = 0
+    tx_counter: int = 0
+    rx_counter: int = 0
+    seq: int = 0
     partner_ieee: t.EUI64 = dataclasses.field(default_factory=lambda: t.EUI64.UNKNOWN)
 
     def as_dict(self) -> dict[str, Any]:
@@ -96,11 +96,11 @@ class NetworkInfo(t.BaseDataclassMixin):
         default_factory=lambda: t.ExtendedPanId.UNKNOWN
     )
     pan_id: t.PanId = t.PanId(0xFFFE)
-    nwk_update_id: t.uint8_t = t.uint8_t(0x00)
+    nwk_update_id: int = t.uint8_t(0x00)
     nwk_manager_id: t.NWK = t.NWK(0x0000)
-    channel: t.uint8_t = 0
+    channel: int = 0
     channel_mask: t.Channels = t.Channels.NO_CHANNELS
-    security_level: t.uint8_t = 0
+    security_level: int = 0
     network_key: Key = dataclasses.field(default_factory=Key)
     tc_link_key: Key = dataclasses.field(
         default_factory=lambda: Key(
@@ -114,7 +114,7 @@ class NetworkInfo(t.BaseDataclassMixin):
     key_table: list[Key] = dataclasses.field(default_factory=list)
     children: list[t.EUI64] = dataclasses.field(default_factory=list)
     route_table: dict[t.NWK, t.NWK] = dataclasses.field(default_factory=dict)
-    tx_power: int | None = None
+    tx_power: float | None = None
 
     # If exposed by the stack, NWK addresses of other connected devices on the network
     nwk_addresses: dict[t.EUI64, t.NWK] = dataclasses.field(default_factory=dict)
@@ -272,7 +272,7 @@ class CounterGroup(dict):
         """Return an iterable of the counter groups"""
         return (group for group in self.values() if isinstance(group, CounterGroup))
 
-    def tags(self) -> Iterable[int | str]:
+    def tags(self) -> Iterable[str]:
         """Return an iterable if tags"""
         return (group.name for group in self.groups())
 
@@ -285,11 +285,10 @@ class CounterGroup(dict):
 
     def __repr__(self) -> str:
         """Representation magic method."""
-        counters = (
+        counters = ", ".join(
             f"{counter.__class__.__name__}('{counter.name}', {int(counter)})"
             for counter in self.counters()
         )
-        counters = ", ".join(counters)
         return f"{self.__class__.__name__}('{self.name}', {{{counters}}})"
 
     def __str__(self) -> str:
@@ -302,7 +301,7 @@ class CounterGroup(dict):
         """Return counter collection name."""
         return self._name if self._name is not None else "No Name"
 
-    def increment(self, name: int | str, *tags: int | str) -> None:
+    def increment(self, name: str, *tags: str) -> None:
         """Create and Update all counters recursively."""
 
         if tags:
@@ -338,15 +337,18 @@ class CounterGroups(dict):
 class State:
     node_info: NodeInfo = dataclasses.field(default_factory=NodeInfo)
     network_info: NetworkInfo = dataclasses.field(default_factory=NetworkInfo)
-    counters: CounterGroups = dataclasses.field(init=False, default=None)
-    broadcast_counters: CounterGroups = dataclasses.field(init=False, default=None)
-    device_counters: CounterGroups = dataclasses.field(init=False, default=None)
-    group_counters: CounterGroups = dataclasses.field(init=False, default=None)
-
-    def __post_init__(self) -> None:
-        """Initialize default counters."""
-        for col_name in ("", "broadcast_", "device_", "group_"):
-            setattr(self, f"{col_name}counters", CounterGroups())
+    counters: CounterGroups = dataclasses.field(
+        init=False, default_factory=CounterGroups
+    )
+    broadcast_counters: CounterGroups = dataclasses.field(
+        init=False, default_factory=CounterGroups
+    )
+    device_counters: CounterGroups = dataclasses.field(
+        init=False, default_factory=CounterGroups
+    )
+    group_counters: CounterGroups = dataclasses.field(
+        init=False, default_factory=CounterGroups
+    )
 
     @property
     @zigpy.util.deprecated("`network_information` has been renamed to `network_info`")

@@ -14,16 +14,18 @@ import zigpy.types as t
 from zigpy.zcl import ClusterType, foundation
 from zigpy.zcl.clusters.general import (
     ImageBlockCommand,
+    ImageNotifyCommand,
     ImagePageCommand,
     Ota,
     QueryNextImageCommand,
+    UpgradeEndCommand,
 )
 
 if TYPE_CHECKING:
     from typing import Self
 
     from zigpy.device import Device
-    from zigpy.ota.providers import OtaImageWithMetadata
+    from zigpy.ota import OtaImageWithMetadata
 
 
 MAX_TIME_WITHOUT_PROGRESS = 30
@@ -61,7 +63,10 @@ class OTAManager:
         )
 
         self.image = image
-        self._image_data = image.firmware.serialize()
+        # The manager is only ever created for an image whose firmware is loaded
+        assert image.firmware is not None
+        self._firmware = image.firmware
+        self._image_data = self._firmware.serialize()
         self.progress_callback = progress_callback
         self.force = force
 
@@ -146,10 +151,10 @@ class OTAManager:
         try:
             await self.ota_cluster.query_next_image_response(
                 status=status,
-                manufacturer_code=self.image.firmware.header.manufacturer_id,
-                image_type=self.image.firmware.header.image_type,
-                file_version=self.image.firmware.header.file_version,
-                image_size=self.image.firmware.header.image_size,
+                manufacturer_code=self._firmware.header.manufacturer_id,
+                image_type=self._firmware.header.image_type,
+                file_version=self._firmware.header.file_version,
+                image_size=self._firmware.header.image_size,
                 tsn=hdr.tsn,
             )
         except Exception as ex:  # noqa: BLE001
@@ -192,9 +197,9 @@ class OTAManager:
         try:
             await self.ota_cluster.image_block_response(
                 status=foundation.Status.SUCCESS,
-                manufacturer_code=self.image.firmware.header.manufacturer_id,
-                image_type=self.image.firmware.header.image_type,
-                file_version=self.image.firmware.header.file_version,
+                manufacturer_code=self._firmware.header.manufacturer_id,
+                image_type=self._firmware.header.image_type,
+                file_version=self._firmware.header.file_version,
                 file_offset=command.file_offset,
                 image_data=block,
                 tsn=hdr.tsn,
@@ -218,7 +223,7 @@ class OTAManager:
         self, hdr: foundation.ZCLHeader, command: ImagePageCommand
     ) -> None:
         """Handle image page request."""
-        offset = command.file_offset
+        offset: int = command.file_offset
         max_block_size = _image_block_size_for_manufacturer(
             command.manufacturer_code, command.maximum_data_size
         )
@@ -254,9 +259,9 @@ class OTAManager:
                         expect_reply=False,
                         # kwargs
                         status=foundation.Status.SUCCESS,
-                        manufacturer_code=self.image.firmware.header.manufacturer_id,
-                        image_type=self.image.firmware.header.image_type,
-                        file_version=self.image.firmware.header.file_version,
+                        manufacturer_code=self._firmware.header.manufacturer_id,
+                        image_type=self._firmware.header.image_type,
+                        file_version=self._firmware.header.file_version,
                         file_offset=offset - block_size,
                         image_data=block,
                     )
@@ -278,14 +283,14 @@ class OTAManager:
             await asyncio.sleep(command.response_spacing / 1000)
 
     async def _upgrade_end(
-        self, hdr: foundation.ZCLHeader, command: foundation.CommandSchema
+        self, hdr: foundation.ZCLHeader, command: UpgradeEndCommand
     ) -> None:
         """Handle upgrade end request."""
         try:
             await self.ota_cluster.upgrade_end_response(
-                manufacturer_code=self.image.firmware.header.manufacturer_id,
-                image_type=self.image.firmware.header.image_type,
-                file_version=self.image.firmware.header.file_version,
+                manufacturer_code=self._firmware.header.manufacturer_id,
+                image_type=self._firmware.header.image_type,
+                file_version=self._firmware.header.file_version,
                 current_time=0x00000000,
                 upgrade_time=0x00000000,
                 tsn=hdr.tsn,
@@ -300,9 +305,7 @@ class OTAManager:
         """Notify device of new image."""
         try:
             await self.ota_cluster.image_notify(
-                payload_type=(
-                    self.ota_cluster.ImageNotifyCommand.PayloadType.QueryJitter
-                ),
+                payload_type=ImageNotifyCommand.PayloadType.QueryJitter,
                 query_jitter=100,
             )
         except Exception as ex:  # noqa: BLE001
@@ -327,6 +330,9 @@ async def update_firmware(
     if image.firmware is None:
         async with asyncio_timeout(OTA_FETCH_TIMEOUT):
             image = await image.fetch()
+
+    # Firmware is guaranteed to be loaded at this point
+    assert image.firmware is not None
 
     if force:
         # Force it to send the image even if it's the same version

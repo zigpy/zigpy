@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import typing
+from typing import ClassVar
 
 from zigpy.const import (  # noqa: F401
     SIG_ENDPOINTS,
@@ -142,7 +143,7 @@ class BaseCustomDevice(zigpy.device.Device):
 class CustomDevice(BaseCustomDevice):
     """Implementation of a quirks v1 custom device."""
 
-    signature = None
+    signature: ClassVar[dict[str, typing.Any]]
 
     def __init_subclass__(cls) -> None:
         if getattr(cls, "signature", None) is not None:
@@ -151,6 +152,10 @@ class CustomDevice(BaseCustomDevice):
 
 class CustomEndpoint(zigpy.endpoint.Endpoint):
     """Custom endpoint implementation for quirks."""
+
+    @property
+    def device(self) -> BaseCustomDevice:
+        return typing.cast(BaseCustomDevice, self._device)
 
     def __init__(
         self,
@@ -226,7 +231,7 @@ class CustomCluster(zigpy.zcl.Cluster):
 
         succeeded = [
             foundation.ReadAttributeRecord(
-                attrid=attr,
+                attrid=t.uint16_t(attr),
                 status=foundation.Status.SUCCESS,
                 value=foundation.TypeValue(
                     type=None,
@@ -251,9 +256,9 @@ class CustomCluster(zigpy.zcl.Cluster):
             for attrid in attrs_to_read:
                 succeeded.append(  # noqa: PERF401
                     foundation.ReadAttributeRecord(
-                        attrid,
-                        results[0],
-                        foundation.TypeValue(),
+                        attrid=t.uint16_t(attrid),
+                        status=results[0],
+                        value=foundation.TypeValue(),
                     )
                 )
         else:

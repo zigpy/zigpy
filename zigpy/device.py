@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from asyncio import timeout as asyncio_timeout
-from collections.abc import Callable, Coroutine
+from collections.abc import AsyncGenerator, Callable, Coroutine
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -45,7 +45,7 @@ if typing.TYPE_CHECKING:
     _R = TypeVar("_R")
 
     from zigpy.application import ControllerApplication
-    from zigpy.ota.providers import OtaImageWithMetadata
+    from zigpy.ota import OtaImageWithMetadata
 
 
 LOGGER = logging.getLogger(__name__)
@@ -474,7 +474,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     @contextlib.asynccontextmanager
     async def fast_poll_mode(
         self, initial_timeout: float = DEFAULT_FAST_POLL_TIMEOUT
-    ) -> None:
+    ) -> AsyncGenerator[None]:
         """Ask the device to enter fast polling mode."""
         await self.begin_fast_polling(timeout=initial_timeout, reset_after=False)
 
@@ -814,9 +814,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     ) -> tuple[zdo_t.ZDOHeader | foundation.ZCLHeader, ResponseKey] | tuple[None, None]:
         """Parse packet header and create response key."""
         data = packet.data.serialize()
+        assert packet.src_ep is not None
 
+        hdr: zdo_t.ZDOHeader | foundation.ZCLHeader
         if packet.src_ep == zdo.ZDO_ENDPOINT:
-            hdr, _ = zdo_t.ZDOHeader.deserialize(packet.cluster_id, data)
+            hdr, _ = zdo_t.ZDOHeader.deserialize(t.uint16_t(packet.cluster_id), data)
             rsp_key = ResponseKey(
                 endpoint_id=packet.src_ep,
                 cluster_id=packet.cluster_id,
@@ -859,6 +861,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             return endpoint, None
         else:
             assert isinstance(endpoint, zigpy.endpoint.Endpoint)
+            assert isinstance(hdr, foundation.ZCLHeader)
             try:
                 zcl_cluster = self._find_zcl_cluster(hdr, packet)
             except KeyError:
@@ -935,6 +938,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         if hdr is None:
             self.custom_profile_packet_received(packet)
             return
+        assert rsp_key is not None
 
         # Validate packet routing and find target endpoint/cluster
         endpoint, zcl_cluster = self._match_packet_endpoint_cluster(packet, hdr)
@@ -942,6 +946,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             return
 
         # Deserialize packet data
+        error: zigpy.exceptions.ParsingError | None
         try:
             cmd = self._parse_packet_command(packet, endpoint, zcl_cluster)
         except Exception as exc:  # noqa: BLE001
@@ -973,9 +978,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         # Finally, pass it off to the cluster message handler. This will be removed.
         if zcl_cluster is not None:
+            assert isinstance(hdr, foundation.ZCLHeader)
             zcl_cluster.handle_message(hdr, cmd)
         else:
             assert isinstance(endpoint, zdo.ZDO)
+            assert isinstance(hdr, zdo_t.ZDOHeader)
             endpoint.handle_message(packet.profile_id, packet.cluster_id, hdr, cmd)
 
     async def reply(
@@ -1041,6 +1048,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         ota = self.find_cluster(
             cluster_id=Ota.cluster_id, cluster_type=ClusterType.Client
         )
+        assert isinstance(ota, Ota)
         ota.update_attribute(Ota.AttributeDefs.current_file_version.id, None)
         ota.last_query_cmd = None
         ota.emit(
@@ -1160,7 +1168,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return self._relays
 
     @relays.setter
-    def relays(self, relays: t.Relays | None) -> None:
+    def relays(self, relays: list[t.NWK] | None) -> None:
         if relays is None:
             pass
         elif not isinstance(relays, t.Relays):

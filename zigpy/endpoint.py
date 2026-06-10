@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import enum
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from zigpy.const import APS_REPLY_TIMEOUT
 import zigpy.exceptions
@@ -40,7 +40,9 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self.status: Status = Status.NEW
         self.profile_id: int | None = None
-        self.device_type: zigpy.profiles.zha.DeviceType | None = None
+        self.device_type: (
+            zigpy.profiles.zha.DeviceType | zigpy.profiles.zll.DeviceType | int | None
+        ) = None
         self.in_clusters: dict = {}
         self.out_clusters: dict = {}
         self._cluster_attr: dict = {}
@@ -208,10 +210,10 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     async def request(
         self,
-        cluster: t.ClusterId,
+        cluster: int,
         sequence: t.uint8_t,
         data: bytes,
-        command_id: GeneralCommand | t.uint8_t = 0x00,
+        command_id: GeneralCommand | int,
         timeout=APS_REPLY_TIMEOUT,
         expect_reply: bool = True,
         use_ieee: bool = False,
@@ -226,7 +228,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         ):
             profile_id = zigpy.profiles.zha.PROFILE_ID
         else:
-            profile_id = self.profile_id
+            profile_id = cast(int, self.profile_id)
 
         return await self.device.request(
             profile=profile_id,
@@ -246,10 +248,10 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
     async def reply(
         self,
-        cluster: t.ClusterId,
+        cluster: int,
         sequence: t.uint8_t,
         data: bytes,
-        command_id: GeneralCommand | t.uint8_t = 0x00,
+        command_id: GeneralCommand | int,
         timeout=APS_REPLY_TIMEOUT,
         expect_reply: bool = False,
         use_ieee: bool = False,
@@ -264,7 +266,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         ):
             profile_id = zigpy.profiles.zha.PROFILE_ID
         else:
-            profile_id = self.profile_id
+            profile_id = cast(int, self.profile_id)
 
         return await self.device.reply(
             profile=profile_id,

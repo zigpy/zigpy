@@ -20,8 +20,8 @@ from . import (
     wwah,
 )
 
-CLUSTERS_BY_ID: dict[int, Cluster] = {}
-CLUSTERS_BY_NAME: dict[str, Cluster] = {}
+CLUSTERS_BY_ID: dict[int, type[Cluster]] = {}
+CLUSTERS_BY_NAME: dict[str, type[Cluster]] = {}
 
 for cls in (
     closures,
@@ -45,7 +45,8 @@ for cls in (
         if (
             not inspect.isclass(obj)
             or not issubclass(obj, Cluster)
-            or obj.cluster_id is None
+            or getattr(obj, "cluster_id", None) is None
+            or obj.ep_attribute is None
         ):
             continue
 

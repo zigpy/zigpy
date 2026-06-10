@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 import enum
 import inspect
 import logging
 import struct
-from typing import TYPE_CHECKING, Generic, Literal, Protocol, Self, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, Literal, Protocol, Self, TypeVar
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ class Bits:  # noqa: PLW1641
     def __iter__(self) -> Iterator[int]:
         return iter(self._bits)
 
-    def extend(self, bits: list[int]) -> None:
+    def extend(self, bits: Iterable[int]) -> None:
         self._bits.extend(bits)
 
     def __repr__(self) -> str:
@@ -115,10 +115,20 @@ NOT_SET = object()
 
 
 class FixedIntType(int):
-    _signed: bool = None
-    _bits: int = None
-    _size: int = None  # Only for backwards compatibility, not set for smaller ints
-    _byteorder: Literal["big", "little"] = None
+    # `None` on the abstract base; `__init_subclass__` fills these in on every concrete
+    # subclass (and `__new__` refuses to construct a class where they are still `None`),
+    # so the checker treats them as their resolved types.
+    if TYPE_CHECKING:
+        _signed: bool
+        _bits: int
+        # Only for backwards compatibility, not set for sub-byte ints
+        _size: int | None
+        _byteorder: Literal["big", "little"]
+    else:
+        _signed = None
+        _bits = None
+        _size = None
+        _byteorder = None
 
     min_value: int
     max_value: int
@@ -169,14 +179,19 @@ class FixedIntType(int):
                 cls.min_value = 0
                 cls.max_value = 2**cls._bits - 1
 
+        # The repr is swapped per-subclass instead of via a dispatching method on the
+        # base: such a method would precede `enum.Enum` in the MRO of the enum int types
+        # and clobber their member repr. `setattr` expresses this dynamic assignment.
         if repr == "hex":
             assert cls._bits % 4 == 0
-            cls.__str__ = cls.__repr__ = cls._hex_repr
+            setattr(cls, "__str__", cls._hex_repr)
+            setattr(cls, "__repr__", cls._hex_repr)
         elif repr == "bin":
-            cls.__str__ = cls.__repr__ = cls._bin_repr
+            setattr(cls, "__str__", cls._bin_repr)
+            setattr(cls, "__repr__", cls._bin_repr)
         elif not repr:
-            cls.__str__ = super().__str__
-            cls.__repr__ = super().__repr__
+            setattr(cls, "__str__", super().__str__)
+            setattr(cls, "__repr__", super().__repr__)
         elif repr is not NOT_SET:
             raise ValueError(f"Invalid repr value {repr!r}. Must be either hex or bin")
 
@@ -187,7 +202,7 @@ class FixedIntType(int):
 
         # XXX: The enum module sabotages pickling using the same logic.
         if "__reduce_ex__" not in cls.__dict__:
-            cls.__reduce_ex__ = cls.__reduce_ex__
+            setattr(cls, "__reduce_ex__", cls.__reduce_ex__)
 
     def bits(self) -> Bits:
         return Bits([(self >> n) & 0b1 for n in range(self._bits - 1, -1, -1)])
@@ -399,7 +414,7 @@ class _AlwaysCreateEnumMeta(enum.EnumMeta):
     def __call__(cls, value, *args, **kwargs) -> type[enum.Enum]:  # type: ignore[override]
         # Until zigpy stops using constructs like `t.enum8(0xFF)`, we need this check
         if not cls._member_map_:
-            return cls._missing_(value)
+            return cls._missing_(value)  # type: ignore[attr-defined]
 
         return super().__call__(value, *args, **kwargs)
 
@@ -430,8 +445,8 @@ class _IntEnumMeta(_AlwaysCreateEnumMeta):
                 if base is object:
                     continue
                 elif isinstance(base, enum.EnumType):
-                    if base._member_type_ is not object:
-                        data_types.add(base._member_type_)
+                    if base._member_type_ is not object:  # type: ignore[attr-defined]
+                        data_types.add(base._member_type_)  # type: ignore[attr-defined]
                         break
                 elif (
                     "__new__" in base.__dict__
@@ -460,6 +475,11 @@ class _IntEnumMeta(_AlwaysCreateEnumMeta):
 
 
 class _EnumMixin:
+    # Provided by the enum machinery / the mixed-in integer type. `_member_type_` is
+    # the dynamic underlying type used for unbound `__new__`/`__format__` dispatch.
+    _member_type_: Any
+    _bits: int
+
     @classmethod
     def _missing_(cls, value):
         new = cls._member_type_.__new__(cls, value)
@@ -571,26 +591,13 @@ def enum_factory(base_type: type[FixedIntType]) -> type[enum.Enum]:
 if TYPE_CHECKING:
     # mypy needs help understanding that the bitwise operations return int subclasses
     class _BitmapMixin:
-        def __or__(self, other: object) -> Self:
-            return super().__or__(other)
-
-        def __ror__(self, other: object) -> Self:
-            return super().__ror__(other)
-
-        def __and__(self, other: object) -> Self:
-            return super().__and__(other)
-
-        def __rand__(self, other: object) -> Self:
-            return super().__rand__(other)
-
-        def __xor__(self, other: object) -> Self:
-            return super().__xor__(other)
-
-        def __rxor__(self, other: object) -> Self:
-            return super().__rxor__(other)
-
-        def __invert__(self) -> Self:
-            return super().__invert__()
+        def __or__(self, other: object) -> Self: ...
+        def __ror__(self, other: object) -> Self: ...
+        def __and__(self, other: object) -> Self: ...
+        def __rand__(self, other: object) -> Self: ...
+        def __xor__(self, other: object) -> Self: ...
+        def __rxor__(self, other: object) -> Self: ...
+        def __invert__(self) -> Self: ...
 else:
     # Empty class at runtime to avoid MRO conflicts
     class _BitmapMixin:
@@ -829,9 +836,16 @@ class bitmap64_be(
 
 
 class BaseFloat(float):
-    _exponent_bits: int = None
-    _fraction_bits: int = None
-    _size: int = None
+    # `None` on the abstract base; `__init_subclass__` fills these in on every concrete
+    # subclass, so the checker treats them as their resolved types.
+    if TYPE_CHECKING:
+        _exponent_bits: int
+        _fraction_bits: int
+        _size: int
+    else:
+        _exponent_bits = None
+        _fraction_bits = None
+        _size = None
 
     def __init_subclass__(cls, exponent_bits, fraction_bits):
         size_bits = 1 + exponent_bits + fraction_bits
@@ -842,7 +856,7 @@ class BaseFloat(float):
         cls._size = size_bits // 8
 
     @staticmethod
-    def _convert_format(*, src: BaseFloat, dst: BaseFloat, n: int) -> int:
+    def _convert_format(*, src: type[BaseFloat], dst: type[BaseFloat], n: int) -> int:
         """Converts an integer representing a float from one format into another. Note:
 
         1. Format is assumed to be little endian: 0b[sign bit] [exponent] [fraction]
@@ -881,7 +895,9 @@ class BaseFloat(float):
 
     def serialize(self) -> bytes:
         return self._convert_format(
-            src=Double, dst=self, n=int.from_bytes(struct.pack("<d", self), "little")
+            src=Double,
+            dst=type(self),
+            n=int.from_bytes(struct.pack("<d", self), "little"),
         ).to_bytes(self._size, "little")
 
     @classmethod
@@ -963,10 +979,13 @@ class LongOctetString(LVBytes):
 
 
 class KwargTypeMeta(type):
+    # Provided by the classes using this metaclass (e.g. `LVList`, `FixedList`)
+    _getitem_kwargs: dict[str, type | None]
+
     # So things like `LVList[NWK, t.uint8_t]` are singletons
     _anonymous_classes: dict[tuple[type, tuple[type, ...]], type] = {}
 
-    def __getitem__(cls, key: type | int | tuple[type | int, ...]) -> type[Self]:
+    def __getitem__(cls, key: type | int | tuple[type | int, ...]) -> type[Self]:  # type: ignore[misc]
         # Make sure Foo[a] is the same as Foo[a,]
         if not isinstance(key, tuple):
             key = (key,)
@@ -991,7 +1010,7 @@ class KwargTypeMeta(type):
         if (cls, expanded_key) in cls._anonymous_classes:
             return cls._anonymous_classes[cls, expanded_key]
 
-        class AnonSubclass(cls, **bound.arguments):  # type: ignore[valid-type]
+        class AnonSubclass(cls, **bound.arguments):  # type: ignore[misc, valid-type]
             pass
 
         AnonSubclass.__name__ = AnonSubclass.__qualname__ = f"Anonymous{cls.__name__}"
@@ -1068,7 +1087,12 @@ class List(list, Generic[_T], metaclass=KwargTypeMeta):
 
 class LVList(list, Generic[_T, _V], metaclass=KwargTypeMeta):
     _item_type: type[_T] | None
-    _length_type: type[_V] = uint8_t
+
+    # Defaults to `uint8_t` at runtime; the concrete length type is supplied per subclass
+    if TYPE_CHECKING:
+        _length_type: type[_V]
+    else:
+        _length_type = uint8_t
 
     _getitem_kwargs = {"item_type": None, "length_type": uint8_t}
 
@@ -1121,6 +1145,7 @@ class FixedList(list, Generic[_T], metaclass=KwargTypeMeta):
 
     def serialize(self) -> bytes:
         assert self._length is not None
+        assert self._item_type is not None
 
         if len(self) != self._length:
             raise ValueError(
@@ -1132,6 +1157,8 @@ class FixedList(list, Generic[_T], metaclass=KwargTypeMeta):
     @classmethod
     def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         assert cls._item_type is not None
+        assert cls._length is not None
+
         r = cls()
         for _i in range(cls._length):
             item, data = cls._item_type.deserialize(data)
@@ -1141,6 +1168,9 @@ class FixedList(list, Generic[_T], metaclass=KwargTypeMeta):
 
 class CharacterString(str):
     __slots__ = ("invalid", "raw")
+
+    invalid: bool
+    raw: str | bytes
 
     _prefix_length = 1
     _invalid_length = (1 << (8 * _prefix_length)) - 1
@@ -1172,7 +1202,7 @@ class CharacterString(str):
 
         if length == cls._invalid_length:
             return (
-                cls("", invalid=True),  # type:ignore[call-arg]
+                cls("", invalid=True),
                 data[cls._prefix_length :],
             )
 
@@ -1204,7 +1234,7 @@ def LimitedCharString(max_len):  # noqa: N802
 
 
 def Optional(optional_item_type):
-    class Optional(optional_item_type):
+    class Optional(optional_item_type):  # type: ignore[valid-type, misc]
         optional = True
 
         @classmethod

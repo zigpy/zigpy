@@ -208,7 +208,11 @@ class PriorityLock(PriorityDynamicBoundedSemaphore):
     def __init__(self) -> None:
         super().__init__(value=1)
 
-    @PriorityDynamicBoundedSemaphore.max_value.setter
+    @property
+    def max_value(self) -> int:
+        return self._max_value
+
+    @max_value.setter
     def max_value(self, new_value: int) -> None:
         """Update the locks's max value."""
         raise ValueError("Max value of lock cannot be updated")
@@ -268,7 +272,7 @@ class Debouncer:
         self._times: dict[typing.Any, float] = {}
         self._queue: list[tuple[float, int, typing.Any]] = []
 
-        self._last_time: int = 0
+        self._last_time: float = 0
         self._dedup_counter: int = 0
 
     @functools.cached_property

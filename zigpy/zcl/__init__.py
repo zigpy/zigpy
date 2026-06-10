@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import collections
 from collections import defaultdict
-from collections.abc import Callable, Generator, Iterable, Sequence
+from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
 import contextlib
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -12,7 +12,7 @@ import functools
 import itertools
 import logging
 import types
-from typing import TYPE_CHECKING, Any, Final, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Final, TypeVar
 import warnings
 
 from zigpy import util
@@ -287,7 +287,7 @@ class OtaQueryCacheClearedEvent:
 
 def convert_list_schema(
     schema: Sequence[type], command_id: int, direction: foundation.Direction
-) -> type[t.Struct]:
+) -> type[foundation.CommandSchema]:
     schema_dict = {}
 
     for i, param_type in enumerate(schema, start=1):
@@ -325,19 +325,24 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     # registries, since they're device-specific and collide with existing clusters.
     _skip_registry: bool = False
 
-    # Most clusters are identified by a single cluster ID
-    cluster_id: t.uint16_t = None
+    # Most clusters are identified by a single cluster ID. Concrete clusters set it;
+    # abstract base clusters (and range-based clusters) leave it unset.
+    cluster_id: int
 
     # If set, this manufacturer code will be used for all manufacturer-specific
     # attributes and commands in this cluster.
     manufacturer_id_override: t.uint16_t | UndefinedType | None = UNDEFINED
 
     # Clusters are accessible by name from their endpoint as an attribute
-    ep_attribute: str = None
+    ep_attribute: ClassVar[str | None] = None
+
+    # Human-readable cluster name. Defaults to the class name in `__init_subclass__`
+    # but may be overridden by a subclass.
+    name: ClassVar[str]
 
     # Manufacturer specific clusters exist between 0xFC00 and 0xFFFF. This exists solely
     # to remove the need to create 1024 "ManufacturerSpecificCluster" instances.
-    cluster_id_range: tuple[t.uint16_t, t.uint16_t] = None
+    cluster_id_range: tuple[int, int] | None = None
 
     # Internal cache to speed up attribute finding. Nested layering, keyed by:
     # attr_id, is_manufacturer_specific, manufacturer_code
@@ -361,8 +366,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     _registry_range: dict = {}
 
     def __init_subclass__(cls) -> None:
-        if cls.cluster_id is not None:
-            cls.cluster_id = t.ClusterId(cls.cluster_id)
+        # Default the human-readable name to the class name unless explicitly set
+        if "name" not in cls.__dict__:
+            cls.name = cls.__name__
 
         # Compile the old command definitions
         for commands in [cls.server_commands, cls.client_commands]:
@@ -402,34 +408,40 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         # Create new definitions from the old-style definitions
         if cls.attributes and "AttributeDefs" not in cls.__dict__:
-            cls.AttributeDefs = types.new_class(
-                name="AttributeDefs",
-                bases=(BaseAttributeDefs,),
+            setattr(
+                cls,
+                "AttributeDefs",
+                types.new_class(name="AttributeDefs", bases=(BaseAttributeDefs,)),
             )
 
             for attr in cls.attributes.values():
                 setattr(cls.AttributeDefs, attr.name, attr)
 
         if cls.server_commands and "ServerCommandDefs" not in cls.__dict__:
-            cls.ServerCommandDefs = types.new_class(
-                name="ServerCommandDefs",
-                bases=(BaseCommandDefs,),
+            setattr(
+                cls,
+                "ServerCommandDefs",
+                types.new_class(name="ServerCommandDefs", bases=(BaseCommandDefs,)),
             )
 
             for command in cls.server_commands.values():
                 setattr(cls.ServerCommandDefs, command.name, command)
 
         if cls.client_commands and "ClientCommandDefs" not in cls.__dict__:
-            cls.ClientCommandDefs = types.new_class(
-                name="ClientCommandDefs",
-                bases=(BaseCommandDefs,),
+            setattr(
+                cls,
+                "ClientCommandDefs",
+                types.new_class(name="ClientCommandDefs", bases=(BaseCommandDefs,)),
             )
 
             for command in cls.client_commands.values():
                 setattr(cls.ClientCommandDefs, command.name, command)
 
         # Check the old definitions for duplicates
-        for old_defs in [cls.attributes, cls.server_commands, cls.client_commands]:
+        all_old_defs: list[
+            Mapping[int, foundation.ZCLAttributeDef | foundation.ZCLCommandDef]
+        ] = [cls.attributes, cls.server_commands, cls.client_commands]
+        for old_defs in all_old_defs:
             counts = collections.Counter(d.name for d in old_defs.values())
 
             if len(counts) != sum(counts.values()):
@@ -514,7 +526,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         if cls._skip_registry:
             return
 
-        if cls.cluster_id is not None:
+        if getattr(cls, "cluster_id", None) is not None:
             cls._registry[cls.cluster_id] = cls
 
         if cls.cluster_id_range is not None:
@@ -542,7 +554,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         return self._attr_cache_internal
 
     @_attr_cache.setter
-    def _attr_cache(self, new_value: dict[str, Any]) -> None:
+    def _attr_cache(self, new_value: dict[int, Any]) -> None:
         """Deprecated accessor to update the attribute cache directly."""
         LOGGER.warning(
             "Updating the attribute cache directly is deprecated and will stop working"
@@ -742,14 +754,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         return hdr, response
 
+    @staticmethod
     def _create_request(
-        self,
         *,
         general: bool,
         command_id: foundation.GeneralCommand | int,
         schema: type[CommandSchema],
         manufacturer: int | None = None,
-        tsn: int | None = None,
+        tsn: int,
         disable_default_response: bool,
         direction: foundation.Direction,
         # Schema args and kwargs
@@ -758,9 +770,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     ) -> tuple[foundation.ZCLHeader, CommandSchema]:
         request = schema(*args, **kwargs)
         request.serialize()  # Throw an error before generating a new TSN
-
-        if tsn is None:
-            tsn = self._endpoint.device.get_sequence()
 
         frame_control = foundation.FrameControl(
             frame_type=(
@@ -787,7 +796,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         self,
         general: bool,
         command_id: foundation.GeneralCommand | int | t.uint8_t,
-        schema: type[t.Struct],
+        schema: type[foundation.CommandSchema],
         *args,
         manufacturer: int | t.uint16_t | None = None,
         expect_reply: bool = True,
@@ -803,6 +812,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     ):
         if disable_default_response is None:
             disable_default_response = self.is_client
+
+        if tsn is None:
+            tsn = self._endpoint.device.get_sequence()
 
         hdr, request = self._create_request(
             general=general,
@@ -842,7 +854,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         self,
         general: bool,
         command_id: foundation.GeneralCommand | int | t.uint8_t,
-        schema: type[t.Struct],
+        schema: type[foundation.CommandSchema],
         *args,
         manufacturer: int | t.uint16_t | None = None,
         tsn: int | t.uint8_t | None = None,
@@ -858,6 +870,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     ) -> None:
         if disable_default_response is None:
             disable_default_response = True
+
+        if tsn is None:
+            tsn = self._endpoint.device.get_sequence()
 
         hdr, request = self._create_request(
             general=general,
@@ -931,7 +946,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     def handle_cluster_general_request(
         self,
         hdr: foundation.ZCLHeader,
-        args: list,
+        args: Any,
         *,
         # This parameter is unused and kept only for backwards compatibility
         dst_addressing: t.AddrMode | None = None,
@@ -944,13 +959,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 records.append(record)
 
                 try:
-                    attr_def = self.find_attribute(attrid)
+                    read_attr_def = self.find_attribute(attrid)
                 except KeyError:
                     record.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
                     continue
 
                 attr_read_func = getattr(
-                    self, f"handle_read_attribute_{attr_def.name}", None
+                    self, f"handle_read_attribute_{read_attr_def.name}", None
                 )
 
                 if attr_read_func is None:
@@ -959,7 +974,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
                 record.status = foundation.Status.SUCCESS
                 record.value = foundation.TypeValue(
-                    type=attr_def.zcl_type,
+                    type=read_attr_def.zcl_type,
                     value=attr_read_func(),
                 )
 
@@ -970,6 +985,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         if hdr.command_id == foundation.GeneralCommand.Report_Attributes:
             for attr in args.attribute_reports:
+                attr_def: foundation.ZCLAttributeDef | None
+
                 try:
                     attr_def = self.find_attribute(
                         attr.attrid, manufacturer_code=hdr.manufacturer
@@ -1095,7 +1112,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
     async def read_attributes(
         self,
-        attributes: list[int | str | foundation.ZCLAttributeDef],
+        attributes: Sequence[int | str | foundation.ZCLAttributeDef],
         allow_cache: bool = False,
         only_cache: bool = False,
         manufacturer: int | UndefinedType | None = UNDEFINED,
@@ -1280,6 +1297,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 attr_def = self.find_attribute(attrid)
         except KeyError:
             if value is not None:
+                # The attribute is unknown, so it can only be a raw integer ID: a
+                # `ZCLAttributeDef` would have resolved (or be foreign to this cluster).
+                assert not isinstance(attrid, foundation.ZCLAttributeDef)
                 self._attr_cache.set_legacy_value(attrid, value)
 
                 if not suppressed:
@@ -1698,10 +1718,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     def is_server(self) -> bool:
         """Return True if this is a server cluster."""
         return self._type == ClusterType.Server
-
-    @property
-    def name(self) -> str:
-        return self.__class__.__name__
 
     @property
     def endpoint(self) -> Endpoint:

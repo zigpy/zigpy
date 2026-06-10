@@ -38,29 +38,30 @@ class DeviceRegistry:
         # If zhaquirks aren't being used, we can't tell if a quirk is custom or not
         for model_registry in self._registry_v1.values():
             for quirks in model_registry.values():
-                to_remove = []
+                to_remove_v1 = []
 
                 for quirk in quirks:
                     module = inspect.getmodule(quirk)
                     assert module is not None  # All quirks should have modules
+                    assert module.__file__ is not None
 
                     quirk_module = pathlib.Path(module.__file__)
 
                     if quirk_module.is_relative_to(custom_quirks_root):
-                        to_remove.append(quirk)
+                        to_remove_v1.append(quirk)
 
-                for quirk in to_remove:
+                for quirk in to_remove_v1:
                     _LOGGER.debug("Removing stale custom v1 quirk: %s", quirk)
                     quirks.remove(quirk)
 
         for registry in self._registry_v2.values():
-            to_remove = []
+            to_remove_v2 = [
+                entry
+                for entry in registry
+                if entry.quirk_file.is_relative_to(custom_quirks_root)
+            ]
 
-            for entry in registry:
-                if entry.quirk_file.is_relative_to(custom_quirks_root):
-                    to_remove.append(entry)
-
-            for entry in to_remove:
+            for entry in to_remove_v2:
                 _LOGGER.debug("Removing stale custom v2 quirk: %s", entry)
                 registry.remove(entry)
 

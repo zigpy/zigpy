@@ -29,20 +29,20 @@ class EmptyObject:
 
 
 @dataclasses.dataclass(frozen=True)
-class StructField:
+class _StructField:
     name: str | None = None
     type: type[Any] | None = None
 
-    requires: typing.Callable[[Struct], bool] | None = dataclasses.field(
+    requires: typing.Callable[[Any], bool] | None = dataclasses.field(
         default=None, repr=False
     )
     optional: bool | None = False
-    length: typing.Callable[[Struct], int] | None = dataclasses.field(
+    length: typing.Callable[[Any], int] | None = dataclasses.field(
         default=None, repr=False
     )
     default: Any = dataclasses.field(default=None, repr=False)
 
-    repr: typing.Callable[[typing.Any], str] | None = dataclasses.field(
+    repr: typing.Callable[[typing.Any], str] = dataclasses.field(
         default=repr, repr=False
     )
 
@@ -50,6 +50,7 @@ class StructField:
         return dataclasses.replace(self, **kwargs)
 
     def _convert_type(self, value):
+        assert self.type is not None
         if value is None or isinstance(value, self.type):
             return value
 
@@ -63,8 +64,21 @@ class StructField:
 
 
 if TYPE_CHECKING:
+    # `StructField(...)` is typed to return `Any` so the dataclass-style declaration
+    # `field: SomeType = StructField(...)` type-checks without widening the field type,
+    # exactly like `dataclasses.field()`. At runtime `StructField` is `_StructField`.
+    def StructField(
+        *,
+        name: str | None = ...,
+        type: type[Any] | None = ...,
+        requires: typing.Callable[[Any], bool] | None = ...,
+        optional: bool | None = ...,
+        length: typing.Callable[[Any], int] | None = ...,
+        default: Any = ...,
+        repr: typing.Callable[[typing.Any], str] = ...,
+    ) -> Any: ...
 
-    class ResolvedStructField(StructField):
+    class ResolvedStructField(_StructField):
         """`StructField` instance with name and type resolved."""
 
         name: str
@@ -74,17 +88,21 @@ if TYPE_CHECKING:
         """`StructField` instance with name, type, and length resolved."""
 
         type: type[t.List[Any]]
-        length: typing.Callable[[Struct], int]
+        length: typing.Callable[[Any], int]
 else:
-    ResolvedStructField = StructField
-    ResolvedArrayStructField = StructField
+    StructField = _StructField
+    ResolvedStructField = _StructField
+    ResolvedArrayStructField = _StructField
 
 
 class Struct:
     fields: ClassVar[list[ResolvedStructField]]
+    _signature: ClassVar[inspect.Signature]
+    _hash: int = -1
+    _frozen: bool = False
 
     @classmethod
-    def _real_cls(cls) -> type:
+    def _real_cls(cls) -> type[Self]:
         # The "Optional" subclass is dynamically created and breaks types.
         # We have to use a little introspection to find our real class.
         return next(c for c in cls.__mro__ if c.__name__ != "Optional")
@@ -117,10 +135,7 @@ class Struct:
         ) is not None and not issubclass(cls, IntStruct):
             raise TypeError("Integer structs must be subclasses of `IntStruct`")
 
-        cls._hash = -1
-        cls._frozen = False
-
-    def __new__(cls: type[Self], *args, **kwargs) -> Self:
+    def __new__(cls, *args, **kwargs) -> Self:
         cls = cls._real_cls()  # noqa: PLW0642
 
         if len(args) == 1 and isinstance(args[0], cls):
@@ -155,7 +170,7 @@ class Struct:
         for name in vars(cls._real_cls()):
             value = getattr(cls, name)
 
-            if isinstance(value, StructField) and name not in annotations:
+            if isinstance(value, _StructField) and name not in annotations:
                 raise TypeError(
                     f"Field {name!r}={value} must have some annotation."
                     f" Use `None` if it is specified in the `StructField`."
@@ -169,9 +184,9 @@ class Struct:
             if typing.get_origin(annotation) is ClassVar:
                 continue
 
-            field = getattr(cls, name, StructField())
+            field = getattr(cls, name, _StructField())
 
-            if not isinstance(field, StructField):
+            if not isinstance(field, _StructField):
                 continue
 
             field = field.replace(name=name)
@@ -199,7 +214,7 @@ class Struct:
                 )
 
             fields.append(resolved_field)
-            setattr(fields, field.name, resolved_field)
+            setattr(fields, resolved_field.name, resolved_field)
 
         return fields
 
@@ -231,7 +246,7 @@ class Struct:
         return assigned_fields
 
     @classmethod
-    def from_dict(cls: type[Self], obj: dict[str, typing.Any]) -> Self:
+    def from_dict(cls, obj: dict[str, typing.Any]) -> Self:
         instance = cls()
 
         for key, value in obj.items():
@@ -399,11 +414,11 @@ class Struct:
         return result, data
 
     @classmethod
-    def deserialize(cls: type[Self], data: bytes) -> tuple[Self, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         fields, data = cls._deserialize_internal(cls.fields, data)
         return cls(**fields), data
 
-    def replace(self, **kwargs: dict[str, typing.Any]) -> Struct:
+    def replace(self, **kwargs: Any) -> Self:
         d = self.as_dict().copy()
         d.update(kwargs)
 
@@ -418,7 +433,7 @@ class Struct:
         if not isinstance(self, type(other)) and not isinstance(other, type(self)):
             return NotImplemented
 
-        return self.as_dict() == other.as_dict()
+        return self.as_dict() == cast(Struct, other).as_dict()
 
     def _repr_extra_parts(self) -> list[str]:
         extra_parts = []
@@ -523,11 +538,13 @@ class Struct:
 
 
 class IntStruct(Struct, IntMixin):
+    _int_type: ClassVar[type[t.FixedIntType]]
+
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
 
         try:
-            cls._int_type: type[t.FixedIntType] = next(
+            cls._int_type = next(
                 c
                 for c in cls.__mro__[1:]
                 if issubclass(c, t.FixedIntType) and not issubclass(c, Struct)
@@ -535,9 +552,7 @@ class IntStruct(Struct, IntMixin):
         except StopIteration:
             raise TypeError("Integer structs must be an integer subclasses") from None
 
-    def __new__(
-        cls: type[Self], *args, _underlying_int: int | None = None, **kwargs
-    ) -> Self:
+    def __new__(cls, *args, _underlying_int: int | None = None, **kwargs) -> Self:
         # Integers are immutable in Python so we need to know, at creation time, what
         # the integer value of this object will be. This means that these structs *must*
         # also be immutable.
@@ -609,7 +624,7 @@ class IntStruct(Struct, IntMixin):
         return int(self) == int(other)
 
     @classmethod
-    def deserialize(cls: type[Self], data: bytes) -> tuple[Self, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         fields, remaining = cls._deserialize_internal(cls.fields, data)
         underlying_int, _ = cls._int_type.deserialize(
             data[: len(data) - len(remaining)]

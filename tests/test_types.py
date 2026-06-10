@@ -628,8 +628,6 @@ def test_eui64_convert():
     assert ieee[6] == 7
     assert ieee[7] == 8
 
-    assert t.EUI64.convert(None) is None
-
 
 def test_keydata():
     data = b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"

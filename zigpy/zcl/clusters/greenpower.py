@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Final
+from typing import Final, TypeAlias
 
 import zigpy.types as t
 from zigpy.types.struct import StructField
@@ -193,17 +193,17 @@ class ProxyCommissioningModeSchema(foundation.CommandSchema):
 
 
 class GreenPowerProxy(Cluster):
-    cluster_id: Final[t.uint16_t] = 0x0021
-    name: Final = "Green Power"
-    ep_attribute: Final = "green_power"
+    cluster_id = 0x0021
+    name = "Green Power"
+    ep_attribute = "green_power"
 
-    NotificationSchema: Final = NotificationSchema
-    PairingSearchSchema: Final = PairingSearchSchema
-    PairingSchema: Final = PairingSchema
-    ResponseSchema: Final = ResponseSchema
-    CommissioningNotificationSchema: Final = CommissioningNotificationSchema
-    NotificationResponseSchema: Final = NotificationResponseSchema
-    ProxyCommissioningModeSchema: Final = ProxyCommissioningModeSchema
+    NotificationSchema: TypeAlias = NotificationSchema
+    PairingSearchSchema: TypeAlias = PairingSearchSchema
+    PairingSchema: TypeAlias = PairingSchema
+    ResponseSchema: TypeAlias = ResponseSchema
+    CommissioningNotificationSchema: TypeAlias = CommissioningNotificationSchema
+    NotificationResponseSchema: TypeAlias = NotificationResponseSchema
+    ProxyCommissioningModeSchema: TypeAlias = ProxyCommissioningModeSchema
 
     class AttributeDefs(BaseAttributeDefs):
         max_sink_table_entries: Final = ZCLAttributeDef(

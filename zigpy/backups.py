@@ -377,8 +377,8 @@ def _open_coordinator_backup_to_network_backup(obj: dict[str, Any]) -> NetworkBa
             "tx_power",
         )
     }
-    network_info.pan_id, _ = t.NWK.deserialize(bytes.fromhex(obj["pan_id"])[::-1])
-    network_info.extended_pan_id, _ = t.EUI64.deserialize(
+    network_info.pan_id, _ = t.PanId.deserialize(bytes.fromhex(obj["pan_id"])[::-1])
+    network_info.extended_pan_id, _ = t.ExtendedPanId.deserialize(
         bytes.fromhex(obj["extended_pan_id"])[::-1]
     )
     network_info.nwk_update_id = obj["nwk_update_id"]
@@ -397,7 +397,7 @@ def _open_coordinator_backup_to_network_backup(obj: dict[str, Any]) -> NetworkBa
     network_info.security_level = obj["security_level"]
 
     if obj.get("stack_specific"):
-        network_info.stack_specific = obj.get("stack_specific")
+        network_info.stack_specific = obj["stack_specific"]
 
     network_info.tc_link_key = zigpy.state.Key()
 

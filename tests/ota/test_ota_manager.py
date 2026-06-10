@@ -76,6 +76,7 @@ def make_packet(dev: zigpy.device.Device, cluster: Cluster, cmd_name: str, **kwa
         general=False,
         command_id=cluster.commands_by_name[cmd_name].id,
         schema=cluster.commands_by_name[cmd_name].schema,
+        tsn=dev.get_sequence(),
         disable_default_response=False,
         direction=foundation.Direction.Client_to_Server,
         args=(),

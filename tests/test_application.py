@@ -224,12 +224,6 @@ def test_config(app):
     assert app.config == app._config
 
 
-def test_deserialize(app, ieee):
-    dev = MagicMock()
-    app.deserialize(dev, 1, 1, b"")
-    assert dev.deserialize.call_count == 1
-
-
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
 async def test_handle_message_shim(app):
     dev = MagicMock()
@@ -1267,6 +1261,7 @@ async def test_request_future_matching(app, make_initialized_device):
         general=False,
         command_id=ota.commands_by_name["query_next_image"].id,
         schema=ota.commands_by_name["query_next_image"].schema,
+        tsn=device.get_sequence(),
         disable_default_response=False,
         direction=foundation.Direction.Client_to_Server,
         args=(),
@@ -1333,6 +1328,7 @@ async def test_request_callback_matching(app, make_initialized_device):
         general=False,
         command_id=ota.commands_by_name["query_next_image"].id,
         schema=ota.commands_by_name["query_next_image"].schema,
+        tsn=device.get_sequence(),
         disable_default_response=False,
         direction=foundation.Direction.Client_to_Server,
         args=(),
