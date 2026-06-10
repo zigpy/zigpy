@@ -1436,7 +1436,6 @@ def test_zcl_cluster_subclass_keeps_same_id_attributes():
             attribute_mfg = foundation.ZCLAttributeDef(
                 id=0x0001,
                 type=t.uint48_t,
-                is_manufacturer_specific=True,
                 manufacturer_code=0x1234,
             )
 

@@ -974,7 +974,6 @@ def test_custom_cluster_subclass_keeps_same_id_attributes() -> None:
             current_summ_delivered_mfg = zcl.foundation.ZCLAttributeDef(
                 id=0x0000,
                 type=t.uint48_t,
-                is_manufacturer_specific=True,
                 manufacturer_code=0x1166,
             )
 
