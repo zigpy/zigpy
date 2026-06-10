@@ -1423,6 +1423,124 @@ async def test_zcl_cluster_definition_backwards_compatibility():
     )
 
 
+def test_zcl_cluster_subclass_keeps_same_id_attributes():
+    """Subclassing a cluster keeps two attribute definitions sharing an ID."""
+
+    class TestCluster(zcl.Cluster):
+        cluster_id = 0xABCD
+        ep_attribute = "test_cluster"
+        _skip_registry = True
+
+        class AttributeDefs(zcl.BaseAttributeDefs):
+            attribute = foundation.ZCLAttributeDef(id=0x0001, type=t.uint8_t)
+            attribute_mfg = foundation.ZCLAttributeDef(
+                id=0x0001,
+                type=t.uint48_t,
+                is_manufacturer_specific=True,
+                manufacturer_code=0x1234,
+            )
+
+    class TestClusterSubclass(TestCluster):
+        pass
+
+    class TestClusterSubSubclass(TestClusterSubclass):
+        pass
+
+    for cls in (TestCluster, TestClusterSubclass, TestClusterSubSubclass):
+        assert set(cls.attributes_by_name) == {"attribute", "attribute_mfg"}
+        assert cls.find_attribute("attribute") is cls.AttributeDefs.attribute
+        assert (
+            cls.find_attribute(0x0001, manufacturer_code=0x1234)
+            is cls.AttributeDefs.attribute_mfg
+        )
+
+
+def test_zcl_cluster_subclass_keeps_same_id_commands():
+    """Subclassing a cluster keeps two command definitions sharing an ID."""
+
+    class TestCluster(zcl.Cluster):
+        cluster_id = 0xABCD
+        ep_attribute = "test_cluster"
+        _skip_registry = True
+
+        class ServerCommandDefs(zcl.BaseCommandDefs):
+            command = foundation.ZCLCommandDef(id=0x00, schema={"param1": t.uint8_t})
+            command_mfg = foundation.ZCLCommandDef(
+                id=0x00,
+                schema={"param1": t.uint8_t},
+                manufacturer_code=0x1234,
+            )
+
+        class ClientCommandDefs(zcl.BaseCommandDefs):
+            response = foundation.ZCLCommandDef(id=0x01, schema={})
+            response_mfg = foundation.ZCLCommandDef(
+                id=0x01,
+                schema={},
+                manufacturer_code=0x1234,
+            )
+
+    class TestClusterSubclass(TestCluster):
+        pass
+
+    for cls in (TestCluster, TestClusterSubclass):
+        assert set(cls.commands_by_name) == {
+            "command",
+            "command_mfg",
+            "response",
+            "response_mfg",
+        }
+        assert {cmd.name for cmd in cls.ServerCommandDefs} == {
+            "command",
+            "command_mfg",
+        }
+        assert {cmd.name for cmd in cls.ClientCommandDefs} == {
+            "response",
+            "response_mfg",
+        }
+
+
+def test_zcl_cluster_subclass_old_style_definitions():
+    """Subclasses of clusters with old-style definitions inherit the rebuilt defs."""
+
+    class TestCluster(zcl.Cluster):
+        cluster_id = 0xABCD
+        ep_attribute = "test_cluster"
+        _skip_registry = True
+
+        attributes = {
+            0x1234: ("attribute", t.uint8_t),
+            0x1235: ("attribute2", t.uint32_t, True),
+        }
+
+        server_commands = {
+            0x00: ("server_command", (t.uint8_t,), True),
+        }
+
+        client_commands = {
+            0x01: ("client_command", (t.uint8_t,), False),
+        }
+
+    class TestClusterSubclass(TestCluster):
+        pass
+
+    assert set(TestClusterSubclass.attributes_by_name) == {"attribute", "attribute2"}
+    assert TestClusterSubclass.AttributeDefs.attribute.id == 0x1234
+    assert TestClusterSubclass.AttributeDefs.attribute2.is_manufacturer_specific
+    assert set(TestClusterSubclass.commands_by_name) == {
+        "server_command",
+        "client_command",
+    }
+
+    # An explicit empty old-style dict does not wipe the inherited definitions
+    class TestClusterEmptyOverride(TestCluster):
+        attributes = {}
+
+    assert set(TestClusterEmptyOverride.attributes_by_name) == {
+        "attribute",
+        "attribute2",
+    }
+
+
 async def test_zcl_cluster_definition_invalid_name():
     # This is fine
     class TestCluster(zcl.Cluster):
