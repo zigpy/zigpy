@@ -291,9 +291,9 @@ class OTA:
     def invalidate_provider_caches(self) -> None:
         """Invalidate all provider index caches, forcing a refresh on next check.
 
-        The refresh revokes images withdrawn from the new indexes and carries
-        over already-downloaded firmware for images still being served, so no
-        firmware is re-downloaded.
+        The refresh revokes images withdrawn from the new indexes.
+        Already-downloaded firmware is carried over for images whose metadata
+        is unchanged and is otherwise re-downloaded.
         """
         for provider in self._providers:
             provider._index_last_updated = datetime.datetime.fromtimestamp(
