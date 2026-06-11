@@ -247,8 +247,12 @@ class BaseOtaProvider:
         raise NotImplementedError
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, BaseOtaProvider) or type(self) is not type(other):
+        if not isinstance(other, BaseOtaProvider):
             return NotImplemented
+
+        # Providers of a different concrete type are never equal
+        if type(self) is not type(other):
+            return False
 
         return self.url == other.url and self.manufacturer_ids == other.manufacturer_ids
 
