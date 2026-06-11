@@ -790,3 +790,21 @@ async def test_ota_provider_hash_includes_type(tmp_path) -> None:
     assert LocalZigpyProvider(index_file=other_index_file) not in buckets
     assert LocalZ2MProvider(index_file=other_index_file) not in buckets
     assert AdvancedFileProvider(path=tmp_path / "other") not in buckets
+
+
+async def test_register_provider_skips_duplicates(caplog) -> None:
+    """Registering a provider equal to an already-registered one is a no-op."""
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+
+    provider = SelfContainedProvider([])
+    ota.register_provider(provider)
+    ota.register_provider(SelfContainedProvider([]))
+
+    assert ota._providers == [provider]
+    assert "Ignoring duplicate OTA provider" in caplog.text
+
+    # A provider of a different type with the same fields is not a duplicate
+    trusted = TrustedSelfContainedProvider([])
+    ota.register_provider(trusted)
+
+    assert ota._providers == [provider, trusted]
