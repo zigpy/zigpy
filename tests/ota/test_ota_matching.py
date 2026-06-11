@@ -750,3 +750,9 @@ async def test_ota_provider_equality_requires_exact_type() -> None:
     assert untrusted == SelfContainedProvider([])
     assert untrusted != trusted
     assert trusted != untrusted
+
+    # Distinct provider types occupy distinct dict keys, equal providers share one
+    buckets = {untrusted: 1, trusted: 2}
+    assert len(buckets) == 2
+    assert buckets[SelfContainedProvider([])] == 1
+    assert buckets[TrustedSelfContainedProvider([])] == 2
