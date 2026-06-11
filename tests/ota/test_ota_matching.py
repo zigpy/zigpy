@@ -4,7 +4,7 @@ import asyncio
 import datetime
 import hashlib
 import typing
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 import aiohttp
 import attrs
@@ -759,6 +759,10 @@ async def test_ota_provider_equality_requires_exact_type() -> None:
 
     # Comparing against a non-provider falls back to the reflected comparison
     assert untrusted != "not a provider"
+
+    # Only true if __eq__ returns NotImplemented for non-providers, so Python
+    # falls back to ANY's own __eq__
+    assert untrusted == ANY
 
     # Distinct provider types occupy distinct dict keys, equal providers share one
     buckets = {untrusted: 1, trusted: 2}
