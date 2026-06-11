@@ -400,8 +400,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
             cls.attributes[attr.id] = attr.replace(id=attr_id)
 
-        # Create new definitions from the old-style definitions
-        if cls.attributes and "AttributeDefs" not in cls.__dict__:
+        # Create new definitions from old-style definitions authored by this class
+        # itself: an MRO-inherited `attributes` dict is keyed purely by attribute ID
+        # and cannot represent two same-ID attributes (e.g. a standard and a
+        # manufacturer-specific one), so rebuilding from it would drop one of them
+        if cls.__dict__.get("attributes") and "AttributeDefs" not in cls.__dict__:
             cls.AttributeDefs = types.new_class(
                 name="AttributeDefs",
                 bases=(BaseAttributeDefs,),
@@ -410,7 +413,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             for attr in cls.attributes.values():
                 setattr(cls.AttributeDefs, attr.name, attr)
 
-        if cls.server_commands and "ServerCommandDefs" not in cls.__dict__:
+        if (
+            cls.__dict__.get("server_commands")
+            and "ServerCommandDefs" not in cls.__dict__
+        ):
             cls.ServerCommandDefs = types.new_class(
                 name="ServerCommandDefs",
                 bases=(BaseCommandDefs,),
@@ -419,7 +425,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             for command in cls.server_commands.values():
                 setattr(cls.ServerCommandDefs, command.name, command)
 
-        if cls.client_commands and "ClientCommandDefs" not in cls.__dict__:
+        if (
+            cls.__dict__.get("client_commands")
+            and "ClientCommandDefs" not in cls.__dict__
+        ):
             cls.ClientCommandDefs = types.new_class(
                 name="ClientCommandDefs",
                 bases=(BaseCommandDefs,),

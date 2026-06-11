@@ -965,6 +965,34 @@ async def test_request_with_kwargs(real_device):
         assert all(c == request_mock.mock_calls[0] for c in request_mock.mock_calls)
 
 
+def test_custom_cluster_subclass_keeps_same_id_attributes() -> None:
+    """Subclassing a custom cluster with two same-ID attributes keeps both."""
+
+    class MeteringBase(zigpy.quirks.CustomCluster, zcl.clusters.smartenergy.Metering):
+        class AttributeDefs(zcl.clusters.smartenergy.Metering.AttributeDefs):
+            # Shares its ID with the standard `current_summ_delivered` attribute
+            current_summ_delivered_mfg = zcl.foundation.ZCLAttributeDef(
+                id=0x0000,
+                type=t.uint48_t,
+                manufacturer_code=0x1166,
+            )
+
+    class MeteringVariant1(MeteringBase):
+        pass
+
+    class MeteringVariant2(MeteringBase):
+        pass
+
+    for cls in (MeteringBase, MeteringVariant1, MeteringVariant2):
+        assert "current_summ_delivered" in cls.attributes_by_name
+        assert "current_summ_delivered_mfg" in cls.attributes_by_name
+        assert cls.find_attribute("current_summ_delivered").id == 0x0000
+        assert (
+            cls.find_attribute(0x0000, manufacturer_code=0x1166)
+            is cls.AttributeDefs.current_summ_delivered_mfg
+        )
+
+
 def test_purge_custom_quirks(tmp_path: pathlib.Path, app_mock) -> None:
     def load_quirks():
         for importer, modname, _ in pkgutil.walk_packages(path=[str(tmp_path)]):
