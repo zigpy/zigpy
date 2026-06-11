@@ -1820,3 +1820,86 @@ async def test_get_last_ota_query_cmd_returns_none(tmp_path):
     assert dev.get_last_ota_query_cmd() is None
 
     await app.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_database_commit_interval(tmp_path):
+    """Test that configured database_commit_interval defers writes."""
+    db = tmp_path / "test.db"
+    app = make_app({conf.CONF_DATABASE: str(db), "database_commit_interval": 0.1})
+    await app._load_db()
+
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0)
+    app.device_initialized(dev)
+
+    # Update an attribute. This schedules a commit.
+    clus.update_attribute(0, 42)
+
+    # Wait slightly (less than the 0.1s interval).
+    # A separate reader should not see the update yet.
+    async with aiosqlite.connect(db) as conn:
+        cursor = await conn.execute(
+            f"SELECT value FROM attributes_cache{zigpy.appdb.DB_V} WHERE attr_id = 0"
+        )
+        row = await cursor.fetchone()
+        assert row is None or row[0] != 42
+
+    # Wait longer than 0.1s to allow the delayed commit to execute
+    await asyncio.sleep(0.15)
+
+    # A separate reader should now see the committed update
+    async with aiosqlite.connect(db) as conn:
+        cursor = await conn.execute(
+            f"SELECT value FROM attributes_cache{zigpy.appdb.DB_V} WHERE attr_id = 0"
+        )
+        row = await cursor.fetchone()
+        assert row is not None and row[0] == 42
+
+    await app.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_database_commit_interval_shutdown_forces_commit(tmp_path):
+    """Test that shutting down the application forces pending commits immediately."""
+    db = tmp_path / "test.db"
+    # Set a very long commit interval so it does not auto-commit during the test
+    app = make_app({conf.CONF_DATABASE: str(db), "database_commit_interval": 10.0})
+    await app._load_db()
+
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0)
+    app.device_initialized(dev)
+
+    clus.update_attribute(0, 99)
+
+    # Verify it has not yet committed
+    async with aiosqlite.connect(db) as conn:
+        cursor = await conn.execute(
+            f"SELECT value FROM attributes_cache{zigpy.appdb.DB_V} WHERE attr_id = 0"
+        )
+        row = await cursor.fetchone()
+        assert row is None
+
+    # Shutdown should force-commit
+    await app.shutdown()
+
+    # Verify it is now committed
+    async with aiosqlite.connect(db) as conn:
+        cursor = await conn.execute(
+            f"SELECT value FROM attributes_cache{zigpy.appdb.DB_V} WHERE attr_id = 0"
+        )
+        row = await cursor.fetchone()
+        assert row is not None and row[0] == 99
