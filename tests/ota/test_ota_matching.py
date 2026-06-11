@@ -780,3 +780,9 @@ async def test_ota_provider_hash_includes_type(tmp_path) -> None:
     assert buckets[LocalZigpyProvider(index_file=index_file)] == 1
     assert buckets[LocalZ2MProvider(index_file=index_file)] == 2
     assert buckets[AdvancedFileProvider(path=tmp_path)] == 3
+
+    # Same type but different fields is not equal
+    other_index_file = tmp_path / "other_index.json"
+    assert LocalZigpyProvider(index_file=other_index_file) not in buckets
+    assert LocalZ2MProvider(index_file=other_index_file) not in buckets
+    assert AdvancedFileProvider(path=tmp_path / "other") not in buckets
