@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import hashlib
+import logging
 import typing
 from unittest.mock import ANY, AsyncMock, patch
 
@@ -746,6 +747,108 @@ async def test_invalidate_provider_caches_clears_image_cache(
     # Second check should find no upgrades
     result2 = await ota.get_ota_images(device, query_cmd)
     assert len(result2.upgrades) == 0
+
+
+async def test_ota_index_refresh_revokes_withdrawn_images(
+    query_cmd, ota_hdr, ota_subelements
+) -> None:
+    """Images withdrawn from a refreshed index are no longer offered."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    meta_kept = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 1,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=zigpy.ota.image.OTAImage(
+            header=ota_hdr,
+            subelements=ota_subelements,
+        ).serialize(),
+    )
+    meta_withdrawn = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 2,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=zigpy.ota.image.OTAImage(
+            header=ota_hdr.replace(file_version=query_cmd.current_file_version + 2),
+            subelements=ota_subelements,
+        ).serialize(),
+    )
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    provider = SelfContainedProvider([meta_kept, meta_withdrawn])
+    ota.register_provider(provider)
+
+    images1 = await ota.get_ota_images(device, query_cmd)
+    assert len(images1.upgrades) == 2
+
+    cached_kept = ota._image_cache[provider][meta_kept]
+    assert cached_kept.firmware is not None
+
+    # The newest image is pulled from the index, which then expires
+    provider._index = [meta_kept]
+    provider._index_last_updated = datetime.datetime.fromtimestamp(0, tz=datetime.UTC)
+
+    images2 = await ota.get_ota_images(device, query_cmd)
+    assert len(images2.upgrades) == 1
+    assert images2.upgrades[0].metadata == meta_kept
+
+    # The already-downloaded firmware was carried over, not re-downloaded
+    assert ota._image_cache[provider][meta_kept] is cached_kept
+
+
+async def test_ota_index_refresh_failure_keeps_cached_images(
+    query_cmd, ota_image
+) -> None:
+    """A provider outage during an index refresh does not withdraw its images."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    meta = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 1,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=ota_image.serialize(),
+    )
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    provider = SelfContainedProvider([meta])
+    ota.register_provider(provider)
+
+    images1 = await ota.get_ota_images(device, query_cmd)
+    assert len(images1.upgrades) == 1
+
+    # The provider goes down and the index expires
+    provider._index_last_updated = datetime.datetime.fromtimestamp(0, tz=datetime.UTC)
+
+    with patch.object(provider, "_load_index", side_effect=RuntimeError("offline")):
+        images2 = await ota.get_ota_images(device, query_cmd)
+
+    assert images2 == images1
+
+
+async def test_ota_concurrent_checks_load_and_log_index_once(
+    query_cmd, ota_image, caplog
+) -> None:
+    """A burst of concurrent device checks loads and logs each index only once."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    meta = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 1,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=ota_image.serialize(),
+    )
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    provider = SelfContainedProvider([meta], load_index_delay=0.1)
+    ota.register_provider(provider)
+
+    with (
+        patch.object(provider, "_load_index", wraps=provider._load_index) as load_index,
+        caplog.at_level(logging.DEBUG, logger="zigpy.ota"),
+    ):
+        results = await asyncio.gather(
+            *(ota.get_ota_images(device, query_cmd) for _ in range(5))
+        )
+
+    assert all(result == results[0] for result in results)
+    assert len(load_index.mock_calls) == 1
+    assert caplog.text.count("Loaded 1 images from provider") == 1
 
 
 async def test_ota_provider_equality_requires_exact_type() -> None:
