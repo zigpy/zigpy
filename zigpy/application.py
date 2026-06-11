@@ -15,7 +15,7 @@ import os
 import random
 import time
 import typing
-from typing import Any, ParamSpec, TypeVar
+from typing import Any, ClassVar, ParamSpec, TypeVar
 import warnings
 
 import zigpy.appdb
@@ -63,8 +63,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     # User-facing metadata, set by radio libraries advertising themselves via the
     # `zigpy.radio` entry point group
-    DISPLAY_NAME: str
-    DESCRIPTION: str
+    DISPLAY_NAME: ClassVar[str | None] = None
+    DESCRIPTION: ClassVar[str | None] = None
 
     _watchdog_period: int = 30
     _probe_configs: list[dict[str, Any]] = []
