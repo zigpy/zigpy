@@ -247,13 +247,17 @@ class BaseOtaProvider:
         raise NotImplementedError
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, self.__class__):
+        if not isinstance(other, BaseOtaProvider):
             return NotImplemented
+
+        # Providers of a different concrete type are never equal
+        if type(self) is not type(other):
+            return False
 
         return self.url == other.url and self.manufacturer_ids == other.manufacturer_ids
 
     def __hash__(self) -> int:
-        return hash((self.url, self.manufacturer_ids))
+        return hash((type(self), self.url, self.manufacturer_ids))
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(url={self.url!r}, manufacturer_ids={self.manufacturer_ids!r})"
@@ -505,7 +509,7 @@ class LocalZigpyProvider(BaseZigpyProvider):
         return super().__eq__(other) and self.index_file == other.index_file
 
     def __hash__(self) -> int:
-        return hash((self.index_file, self.manufacturer_ids))
+        return hash((type(self), self.index_file, self.manufacturer_ids))
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(index_file={self.index_file!r}, manufacturer_ids={self.manufacturer_ids!r})"
@@ -598,7 +602,7 @@ class LocalZ2MProvider(BaseZ2MProvider):
         return super().__eq__(other) and self.index_file == other.index_file
 
     def __hash__(self) -> int:
-        return hash((self.index_file, self.manufacturer_ids))
+        return hash((type(self), self.index_file, self.manufacturer_ids))
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(index_file={self.index_file!r}, manufacturer_ids={self.manufacturer_ids!r})"
@@ -703,7 +707,7 @@ class ZigpyOtaProvider(BaseZigpyProvider):
         return super().__eq__(other) and self.channel == other.channel
 
     def __hash__(self) -> int:
-        return hash((self.url, self.channel, self.manufacturer_ids))
+        return hash((type(self), self.url, self.channel, self.manufacturer_ids))
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(url={self.url!r}, channel={self.channel!r}, manufacturer_ids={self.manufacturer_ids!r})"
@@ -766,7 +770,7 @@ class AdvancedFileProvider(BaseOtaProvider):
         return super().__eq__(other) and self.path == other.path
 
     def __hash__(self) -> int:
-        return hash((self.path, self.manufacturer_ids))
+        return hash((type(self), self.path, self.manufacturer_ids))
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(path={self.path!r}, manufacturer_ids={self.manufacturer_ids!r})"
