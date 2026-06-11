@@ -740,3 +740,13 @@ async def test_invalidate_provider_caches_clears_image_cache(
     # Second check should find no upgrades
     result2 = await ota.get_ota_images(device, query_cmd)
     assert len(result2.upgrades) == 0
+
+
+async def test_ota_provider_equality_requires_exact_type() -> None:
+    """Providers of different types with the same URL do not compare equal."""
+    untrusted = SelfContainedProvider([])
+    trusted = TrustedSelfContainedProvider([])
+
+    assert untrusted == SelfContainedProvider([])
+    assert untrusted != trusted
+    assert trusted != untrusted
