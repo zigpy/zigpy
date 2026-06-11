@@ -5,7 +5,7 @@ import datetime
 import hashlib
 import logging
 import typing
-from unittest.mock import ANY, AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import aiohttp
 import attrs
@@ -687,6 +687,34 @@ async def test_check_all_devices_for_ota_tolerates_failure(query_cmd) -> None:
 
     # device2 should still get checked even though device1 failed
     assert len(events2) == 1
+
+
+async def test_check_for_updates_rate_limits_invalidation() -> None:
+    """check_for_updates invalidates indexes at most once per rate limit."""
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    ota.invalidate_provider_caches = MagicMock(wraps=ota.invalidate_provider_caches)
+    ota.check_all_devices_for_ota = AsyncMock()
+
+    # The first check invalidates the caches
+    await ota.check_for_updates()
+    assert len(ota.invalidate_provider_caches.mock_calls) == 1
+    assert len(ota.check_all_devices_for_ota.mock_calls) == 1
+
+    # A second check within the rate limit does not, but still checks devices
+    await ota.check_for_updates()
+    assert len(ota.invalidate_provider_caches.mock_calls) == 1
+    assert len(ota.check_all_devices_for_ota.mock_calls) == 2
+
+    # Unless it is forced
+    await ota.check_for_updates(force=True)
+    assert len(ota.invalidate_provider_caches.mock_calls) == 2
+    assert len(ota.check_all_devices_for_ota.mock_calls) == 3
+
+    # After the rate limit has passed, the caches are invalidated again
+    ota._last_user_refresh -= 2 * zigpy.ota.USER_REFRESH_RATE_LIMIT
+    await ota.check_for_updates()
+    assert len(ota.invalidate_provider_caches.mock_calls) == 3
+    assert len(ota.check_all_devices_for_ota.mock_calls) == 4
 
 
 async def test_invalidate_provider_caches(query_cmd) -> None:
