@@ -717,36 +717,51 @@ async def test_invalidate_provider_caches(query_cmd) -> None:
         assert result is not None  # Empty list, not None (which means "cached")
 
 
-async def test_invalidate_provider_caches_clears_image_cache(
-    query_cmd, ota_image
+async def test_invalidate_provider_caches_revokes_withdrawn_images(
+    query_cmd, ota_hdr, ota_subelements
 ) -> None:
-    """invalidate_provider_caches clears the image cache so withdrawn images disappear."""
+    """invalidate_provider_caches refreshes the indexes so withdrawn images disappear."""
     device = make_device(model="device model", manufacturer_id=0x1234)
 
-    index_with_image = [
-        SelfContainedOtaImageMetadata(
-            file_version=query_cmd.current_file_version + 1,
-            manufacturer_id=query_cmd.manufacturer_code,
-            image_type=query_cmd.image_type,
-            test_data=ota_image.serialize(),
-        ),
-    ]
+    meta_kept = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 1,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=zigpy.ota.image.OTAImage(
+            header=ota_hdr,
+            subelements=ota_subelements,
+        ).serialize(),
+    )
+    meta_withdrawn = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 2,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=zigpy.ota.image.OTAImage(
+            header=ota_hdr.replace(file_version=query_cmd.current_file_version + 2),
+            subelements=ota_subelements,
+        ).serialize(),
+    )
 
     ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
-    provider = SelfContainedProvider(index_with_image)
+    provider = SelfContainedProvider([meta_kept, meta_withdrawn])
     ota.register_provider(provider)
 
-    # First check finds the upgrade
+    # First check finds both upgrades
     result1 = await ota.get_ota_images(device, query_cmd)
-    assert len(result1.upgrades) == 1
+    assert len(result1.upgrades) == 2
 
-    # Provider now returns an empty index (image was withdrawn)
-    provider._index = []
+    cached_kept = ota._image_cache[provider][meta_kept]
+    assert cached_kept.firmware is not None
+
+    # Provider now only serves the first image (the other was withdrawn)
+    provider._index = [meta_kept]
     ota.invalidate_provider_caches()
 
-    # Second check should find no upgrades
+    # Second check should only find the remaining upgrade
     result2 = await ota.get_ota_images(device, query_cmd)
-    assert len(result2.upgrades) == 0
+    assert len(result2.upgrades) == 1
+    assert result2.upgrades[0].metadata == meta_kept
+
+    # The already-downloaded firmware was carried over, not re-downloaded
+    assert ota._image_cache[provider][meta_kept] is cached_kept
 
 
 async def test_ota_index_refresh_revokes_withdrawn_images(

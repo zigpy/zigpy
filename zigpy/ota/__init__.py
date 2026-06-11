@@ -291,16 +291,14 @@ class OTA:
     def invalidate_provider_caches(self) -> None:
         """Invalidate all provider index caches, forcing a refresh on next check.
 
-        Also clears the image cache so withdrawn images are not returned.
-        Downloaded firmware will be re-fetched from untrusted providers on
-        the next check, but this is acceptable for a user-initiated action.
+        The refresh revokes images withdrawn from the new indexes and carries
+        over already-downloaded firmware for images still being served, so no
+        firmware is re-downloaded.
         """
         for provider in self._providers:
             provider._index_last_updated = datetime.datetime.fromtimestamp(
                 0, tz=datetime.UTC
             )
-
-        self._image_cache.clear()
 
     async def check_cluster_for_ota(self, cluster: Ota) -> None:
         """Check OTA image availability for a single OTA cluster.
