@@ -53,9 +53,18 @@ _P = ParamSpec("_P")
 CHANNEL_CHANGE_BROADCAST_DELAY_S = 1.0
 CHANNEL_CHANGE_SETTINGS_RELOAD_DELAY_S = 1.0
 
+# Entry point group used by radio libraries to advertise their controller class:
+# the entry point name is the radio type and its value is the controller class
+RADIO_ENTRY_POINT_GROUP = "zigpy.radio"
+
 
 class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     SCHEMA = conf.CONFIG_SCHEMA
+
+    # User-facing metadata, set by radio libraries advertising themselves via the
+    # `zigpy.radio` entry point group
+    DISPLAY_NAME: str
+    DESCRIPTION: str
 
     _watchdog_period: int = 30
     _probe_configs: list[dict[str, Any]] = []
