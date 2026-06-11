@@ -462,7 +462,7 @@ class OTA:
     def register_provider(self, provider: zigpy.ota.providers.BaseOtaProvider) -> None:
         """Register a new OTA provider."""
         if provider in self._providers:
-            _LOGGER.debug("Ignoring duplicate OTA provider: %s", provider)
+            _LOGGER.warning("Ignoring duplicate OTA provider: %s", provider)
             return
 
         _LOGGER.debug("Registering new OTA provider: %s", provider)
