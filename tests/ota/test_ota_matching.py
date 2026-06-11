@@ -16,7 +16,13 @@ from zigpy import config
 import zigpy.device
 import zigpy.ota
 from zigpy.ota.image import FieldControl
-from zigpy.ota.providers import BaseOtaImageMetadata, BaseOtaProvider
+from zigpy.ota.providers import (
+    AdvancedFileProvider,
+    BaseOtaImageMetadata,
+    BaseOtaProvider,
+    LocalZ2MProvider,
+    LocalZigpyProvider,
+)
 import zigpy.types
 from zigpy.zcl import ClusterType, OtaImageAvailableEvent
 from zigpy.zcl.clusters.general import Ota
@@ -751,8 +757,26 @@ async def test_ota_provider_equality_requires_exact_type() -> None:
     assert untrusted != trusted
     assert trusted != untrusted
 
+    # Comparing against a non-provider falls back to the reflected comparison
+    assert untrusted != "not a provider"
+
     # Distinct provider types occupy distinct dict keys, equal providers share one
     buckets = {untrusted: 1, trusted: 2}
     assert len(buckets) == 2
     assert buckets[SelfContainedProvider([])] == 1
     assert buckets[TrustedSelfContainedProvider([])] == 2
+
+
+async def test_ota_provider_hash_includes_type(tmp_path) -> None:
+    """Distinct provider types hashing over the same fields do not collide."""
+    index_file = tmp_path / "index.json"
+
+    local_zigpy = LocalZigpyProvider(index_file=index_file)
+    local_z2m = LocalZ2MProvider(index_file=index_file)
+    advanced = AdvancedFileProvider(path=tmp_path)
+
+    buckets = {local_zigpy: 1, local_z2m: 2, advanced: 3}
+    assert len(buckets) == 3
+    assert buckets[LocalZigpyProvider(index_file=index_file)] == 1
+    assert buckets[LocalZ2MProvider(index_file=index_file)] == 2
+    assert buckets[AdvancedFileProvider(path=tmp_path)] == 3
