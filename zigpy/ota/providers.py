@@ -247,13 +247,13 @@ class BaseOtaProvider:
         raise NotImplementedError
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, self.__class__):
+        if not isinstance(other, BaseOtaProvider) or type(self) is not type(other):
             return NotImplemented
 
         return self.url == other.url and self.manufacturer_ids == other.manufacturer_ids
 
     def __hash__(self) -> int:
-        return hash((self.url, self.manufacturer_ids))
+        return hash((type(self), self.url, self.manufacturer_ids))
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(url={self.url!r}, manufacturer_ids={self.manufacturer_ids!r})"
