@@ -170,11 +170,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.groups.add_listener(self._dblistener)
         self.backups.add_listener(self._dblistener)
         self.topology.add_listener(self._dblistener)
+        if hasattr(self, "green_power"):
+            self._dblistener.subscribe_to_green_power(self.green_power)
 
     def _remove_db_listeners(self):
         if self._dblistener is None:
             return
 
+        self._dblistener.unsubscribe_from_green_power()
         self.topology.remove_listener(self._dblistener)
         self.backups.remove_listener(self._dblistener)
         self.groups.remove_listener(self._dblistener)
