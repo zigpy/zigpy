@@ -689,6 +689,48 @@ async def test_check_all_devices_for_ota_tolerates_failure(query_cmd) -> None:
     assert len(events2) == 1
 
 
+async def test_ota_provider_indexes_refreshed_concurrently(
+    query_cmd, ota_image
+) -> None:
+    """Provider indexes are refreshed concurrently, not sequentially."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    meta = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 1,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=ota_image.serialize(),
+    )
+
+    second_provider_started = asyncio.get_running_loop().create_future()
+
+    class WaitingProvider(SelfContainedProvider):
+        """Provider that blocks until the second provider's refresh starts."""
+
+        async def _load_index(self, session):
+            await second_provider_started
+
+            for meta in self._index:
+                yield meta
+
+    class SignallingProvider(SelfContainedProvider):
+        """Provider that unblocks the first provider."""
+
+        async def _load_index(self, session):
+            second_provider_started.set_result(None)
+
+            for meta in self._index:
+                yield meta
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    # The waiting provider is registered (and so refreshed) first: a sequential
+    # refresh would stall here until the fetch timeout expires
+    ota.register_provider(WaitingProvider([meta]))
+    ota.register_provider(SignallingProvider([meta]))
+
+    images = await ota.get_ota_images(device, query_cmd)
+    assert len(images.upgrades) == 1
+
+
 async def test_invalidate_provider_caches(query_cmd) -> None:
     """invalidate_provider_caches resets all provider index timestamps."""
     ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)

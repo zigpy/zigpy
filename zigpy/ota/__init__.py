@@ -533,9 +533,11 @@ class OTA:
             p for p in self._providers if p.compatible_with_device(device)
         ]
 
-        # Refresh the index of every provider whose cache expired
-        for provider in compatible_providers:
-            await self._refresh_provider_index(provider)
+        # Refresh the index of every provider whose cache expired, concurrently:
+        # one slow or unreachable provider should not delay the others
+        await asyncio.gather(
+            *(self._refresh_provider_index(p) for p in compatible_providers)
+        )
 
         # Merge the cached images of all compatible providers. The same metadata can
         # be served by multiple providers so prefer entries with downloaded firmware.
