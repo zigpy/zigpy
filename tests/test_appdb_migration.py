@@ -778,3 +778,43 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
             (str(dev.ieee), 0xFC02, 0x0020),
         ).fetchall()
         assert rows == [(-1,)]
+
+
+async def test_gp_device_tables_fresh_db(tmp_path):
+    """A fresh DB at the current schema version has the gp_devices table."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    await app.shutdown()
+
+    with sqlite3.connect(str(db)) as conn:
+        cur = conn.cursor()
+        tables = {
+            row[0]
+            for row in cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+
+    assert "gp_devices_v16" in tables
+
+
+async def test_v15_to_v16_migration(test_db):
+    """Migration from v15 adds the GP devices table (empty) and preserves device rows."""
+    test_db_v15 = test_db("simple_v15.sql")
+
+    app = await make_app_with_db(test_db_v15)
+    assert app.get_device(nwk=0x0001) is not None
+    await app.shutdown()
+
+    with sqlite3.connect(test_db_v15) as conn:
+        cur = conn.cursor()
+
+        cur.execute("PRAGMA user_version")
+        assert cur.fetchone()[0] == 16
+
+        tables = {
+            row[0]
+            for row in cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        assert "gp_devices_v16" in tables
+
+        cur.execute("SELECT COUNT(*) FROM gp_devices_v16")
+        assert cur.fetchone()[0] == 0
