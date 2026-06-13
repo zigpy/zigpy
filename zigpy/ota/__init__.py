@@ -7,6 +7,7 @@ from asyncio import timeout as asyncio_timeout
 from collections import defaultdict
 import contextlib
 import dataclasses
+import datetime
 import hashlib
 import logging
 import typing
@@ -477,10 +478,11 @@ class OTA:
             async with asyncio_timeout(OTA_FETCH_TIMEOUT):
                 index = await provider.load_index()
         except Exception as exc:  # noqa: BLE001
-            # Keep the previously-cached images: a provider outage should not
-            # withdraw its images
+            # Keep the previously-cached images: a brief provider outage should
+            # not withdraw its images
             _LOGGER.debug("Failed to load provider %s", provider, exc_info=exc)
             provider.record_index_failure()
+            self._expire_stale_provider_images(provider)
             return
 
         # The cached index is still fresh
@@ -512,6 +514,33 @@ class OTA:
         # Replace the provider's images wholesale so images withdrawn from the
         # index are revoked
         self._image_cache[provider] = new_images
+
+    def _expire_stale_provider_images(
+        self, provider: zigpy.ota.providers.BaseOtaProvider
+    ) -> None:
+        """Drop a provider's cached images after a prolonged outage.
+
+        A provider that cannot be reached cannot withdraw images either, so
+        images from a provider whose index has not been successfully refreshed
+        for a long time are revoked instead of being offered indefinitely.
+        """
+        images = self._image_cache.get(provider)
+        if not images:
+            return
+
+        now = datetime.datetime.now(datetime.UTC)
+
+        if now - provider._index_last_success <= provider.STALE_INDEX_EXPIRATION_TIME:
+            return
+
+        _LOGGER.warning(
+            "Provider %s has been unreachable for over %s, dropping its"
+            " %d cached images",
+            provider,
+            provider.STALE_INDEX_EXPIRATION_TIME,
+            len(images),
+        )
+        del self._image_cache[provider]
 
     @zigpy.util.combine_concurrent_calls
     async def _fetch_image(self, image: OtaImageWithMetadata) -> OtaImageWithMetadata:

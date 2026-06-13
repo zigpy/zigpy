@@ -200,6 +200,9 @@ class BaseOtaProvider:
     # Base delay for retrying after a failed index download, doubled with every
     # consecutive failure and capped at INDEX_EXPIRATION_TIME
     INDEX_RETRY_DELAY = datetime.timedelta(minutes=30)
+    # How long a provider's index may fail to refresh before its cached images
+    # are dropped: an unreachable provider cannot withdraw images either
+    STALE_INDEX_EXPIRATION_TIME = datetime.timedelta(days=3)
     TRUSTED: bool = False
 
     def __init__(

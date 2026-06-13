@@ -782,6 +782,44 @@ async def test_ota_index_download_failure_backoff(query_cmd, ota_image) -> None:
     assert provider._index_failures == 0
 
 
+async def test_ota_stale_provider_images_expire(query_cmd, ota_image, caplog) -> None:
+    """Images of a provider that is down for a prolonged time are dropped."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    meta = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 1,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=ota_image.serialize(),
+    )
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    provider = SelfContainedProvider([meta])
+    ota.register_provider(provider)
+
+    images1 = await ota.get_ota_images(device, query_cmd)
+    assert len(images1.upgrades) == 1
+
+    # The provider has been down for longer than the stale expiration time
+    stale = 2 * provider.STALE_INDEX_EXPIRATION_TIME
+    provider._index_last_updated -= stale
+    provider._index_last_success -= stale
+
+    with patch.object(provider, "_load_index", side_effect=RuntimeError("offline")):
+        images2 = await ota.get_ota_images(device, query_cmd)
+        assert len(images2.upgrades) == 0
+        assert caplog.text.count("dropping its 1 cached images") == 1
+
+        # The warning is not repeated on subsequent failing checks
+        provider._index_last_failure -= 2 * provider.INDEX_RETRY_DELAY
+        await ota.get_ota_images(device, query_cmd)
+        assert caplog.text.count("dropping its 1 cached images") == 1
+
+    # Once the provider recovers, its images are offered again
+    provider.invalidate_index()
+    images3 = await ota.get_ota_images(device, query_cmd)
+    assert images3 == images1
+
+
 async def test_invalidate_provider_caches(query_cmd) -> None:
     """invalidate_provider_caches resets all provider index timestamps."""
     ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
