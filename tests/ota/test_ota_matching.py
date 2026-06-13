@@ -731,6 +731,57 @@ async def test_ota_provider_indexes_refreshed_concurrently(
     assert len(images.upgrades) == 1
 
 
+async def test_ota_index_download_failure_backoff(query_cmd, ota_image) -> None:
+    """Failed index downloads back off exponentially, capped at the index TTL."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    meta = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 1,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=ota_image.serialize(),
+    )
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    provider = SelfContainedProvider([meta])
+    ota.register_provider(provider)
+
+    with patch.object(
+        provider, "_load_index", side_effect=RuntimeError("offline")
+    ) as load_index:
+        # The first check attempts (and fails) a download
+        await ota.get_ota_images(device, query_cmd)
+        assert len(load_index.mock_calls) == 1
+        assert provider._index_failures == 1
+
+        # An immediate second check is backed off, no new attempt is made
+        await ota.get_ota_images(device, query_cmd)
+        assert len(load_index.mock_calls) == 1
+
+        # After the initial retry delay has passed, a new attempt is made
+        provider._index_last_failure -= 2 * provider.INDEX_RETRY_DELAY
+        await ota.get_ota_images(device, query_cmd)
+        assert len(load_index.mock_calls) == 2
+        assert provider._index_failures == 2
+
+        # The delay grows with each failure: the initial delay is no longer enough
+        provider._index_last_failure -= 1.5 * provider.INDEX_RETRY_DELAY
+        await ota.get_ota_images(device, query_cmd)
+        assert len(load_index.mock_calls) == 2
+
+        # The delay never exceeds the index expiration time
+        provider._index_failures = 100
+        provider._index_last_failure -= 2 * provider.INDEX_EXPIRATION_TIME
+        await ota.get_ota_images(device, query_cmd)
+        assert len(load_index.mock_calls) == 3
+
+    # A successful download resets the failure state
+    provider._index_last_failure = datetime.datetime.now(datetime.UTC)
+    provider.invalidate_index()  # the user can always force a retry
+    images = await ota.get_ota_images(device, query_cmd)
+    assert len(images.upgrades) == 1
+    assert provider._index_failures == 0
+
+
 async def test_invalidate_provider_caches(query_cmd) -> None:
     """invalidate_provider_caches resets all provider index timestamps."""
     ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)

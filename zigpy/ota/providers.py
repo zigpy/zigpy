@@ -197,6 +197,9 @@ class BaseOtaProvider:
     VOL_SCHEMA: vol.Schema
     JSON_SCHEMA: dict | None = None
     INDEX_EXPIRATION_TIME = datetime.timedelta(hours=24)
+    # Base delay for retrying after a failed index download, doubled with every
+    # consecutive failure and capped at INDEX_EXPIRATION_TIME
+    INDEX_RETRY_DELAY = datetime.timedelta(minutes=30)
     TRUSTED: bool = False
 
     def __init__(
@@ -207,7 +210,14 @@ class BaseOtaProvider:
         override_previous: bool = False,
     ) -> None:
         self.url = self.DEFAULT_URL if url in (True, None) else url
-        self._index_last_updated = datetime.datetime.fromtimestamp(0, tz=datetime.UTC)
+
+        epoch = datetime.datetime.fromtimestamp(0, tz=datetime.UTC)
+        self._index_last_updated = epoch
+        # Unlike `_index_last_updated`, this is not reset by `invalidate_index()`
+        # so it tracks how stale the provider's cached images really are
+        self._index_last_success = epoch
+        self._index_failures = 0
+        self._index_last_failure = epoch
 
         if manufacturer_ids is not None:
             self.manufacturer_ids = tuple(manufacturer_ids)
@@ -222,21 +232,55 @@ class BaseOtaProvider:
 
         return device.manufacturer_id in self.manufacturer_ids
 
+    def _should_load_index(self, now: datetime.datetime) -> bool:
+        # Don't hammer the OTA indexes too frequently
+        if now - self._index_last_updated < self.INDEX_EXPIRATION_TIME:
+            return False
+
+        # Back off exponentially after repeated failures. The exponent is capped
+        # to avoid a timedelta overflow; the delay itself caps far earlier.
+        if self._index_failures > 0:
+            retry_delay = min(
+                self.INDEX_RETRY_DELAY * 2 ** min(self._index_failures - 1, 16),
+                self.INDEX_EXPIRATION_TIME,
+            )
+
+            if now - self._index_last_failure < retry_delay:
+                return False
+
+        return True
+
+    def record_index_failure(self) -> None:
+        """Record a failed index download, growing the retry backoff."""
+        self._index_failures += 1
+        self._index_last_failure = datetime.datetime.now(datetime.UTC)
+
+    def invalidate_index(self) -> None:
+        """Allow the next `load_index()` call to download the index immediately."""
+        epoch = datetime.datetime.fromtimestamp(0, tz=datetime.UTC)
+        self._index_last_updated = epoch
+        self._index_failures = 0
+        self._index_last_failure = epoch
+
     async def load_index(self) -> list[BaseOtaImageMetadata] | None:
         now = datetime.datetime.now(datetime.UTC)
 
-        # Don't hammer the OTA indexes too frequently
-        if now - self._index_last_updated < self.INDEX_EXPIRATION_TIME:
+        if not self._should_load_index(now):
             return None
 
-        try:
-            async with aiohttp.ClientSession(
-                headers={"accept": "application/json"},
-                raise_for_status=True,
-            ) as session:
-                return [meta async for meta in self._load_index(session)]
-        finally:
-            self._index_last_updated = now
+        async with aiohttp.ClientSession(
+            headers={"accept": "application/json"},
+            raise_for_status=True,
+        ) as session:
+            index = [meta async for meta in self._load_index(session)]
+
+        # Failures are recorded by the OTA manager via `record_index_failure()`,
+        # since it also enforces the download timeout
+        self._index_last_updated = now
+        self._index_last_success = now
+        self._index_failures = 0
+
+        return index
 
     async def _load_index(
         self, session: aiohttp.ClientSession

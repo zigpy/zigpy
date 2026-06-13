@@ -7,7 +7,6 @@ from asyncio import timeout as asyncio_timeout
 from collections import defaultdict
 import contextlib
 import dataclasses
-import datetime
 import hashlib
 import logging
 import typing
@@ -296,9 +295,7 @@ class OTA:
         is unchanged and is otherwise re-downloaded.
         """
         for provider in self._providers:
-            provider._index_last_updated = datetime.datetime.fromtimestamp(
-                0, tz=datetime.UTC
-            )
+            provider.invalidate_index()
 
     async def check_cluster_for_ota(self, cluster: Ota) -> None:
         """Check OTA image availability for a single OTA cluster.
@@ -483,6 +480,7 @@ class OTA:
             # Keep the previously-cached images: a provider outage should not
             # withdraw its images
             _LOGGER.debug("Failed to load provider %s", provider, exc_info=exc)
+            provider.record_index_failure()
             return
 
         # The cached index is still fresh
