@@ -1013,8 +1013,20 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         image: OtaImageWithMetadata,
         progress_callback: Callable[[int, int, float], None] | None = None,
         force: bool = False,
+        allow_downgrade: bool = False,
     ) -> foundation.Status | None:
-        """Update device firmware."""
+        """Update device firmware.
+
+        :param image: the OTA image to install on the device.
+        :param progress_callback: optional callback invoked with progress updates.
+        :param force: skip both the compatibility and version checks, and rewrite the
+            advertised file version so the device always accepts the image. Use only
+            as a last resort.
+        :param allow_downgrade: skip only the version check so an explicitly selected
+            image that is older than (or equal to) the running firmware can be
+            installed. Compatibility is still enforced. Has no effect when ``force``
+            is set.
+        """
         if self.ota_in_progress:
             self.debug("OTA already in progress")
             return None
@@ -1027,6 +1039,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 image=image,
                 progress_callback=progress_callback,
                 force=force,
+                allow_downgrade=allow_downgrade,
             )
         except Exception as exc:  # noqa: BLE001
             self.debug("OTA failed!", exc_info=exc)
