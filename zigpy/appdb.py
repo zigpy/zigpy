@@ -39,7 +39,7 @@ from zigpy.zcl import (
 from zigpy.zcl.clusters.general import Basic, Ota
 from zigpy.zcl.foundation import Status
 from zigpy.zdo import types as zdo_t
-from zigpy.zgp.events import DeviceJoined, DeviceLeft
+from zigpy.zgp.events import CommandReceived, DeviceJoined, DeviceLeft
 
 if TYPE_CHECKING:
     from zigpy.application import ControllerApplication
@@ -730,6 +730,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self._gp_unsubs = [
             green_power.on_event(DeviceJoined.event_type, self._on_gp_device_joined),
             green_power.on_event(DeviceLeft.event_type, self._on_gp_device_left),
+            green_power.on_event(
+                CommandReceived.event_type, self._on_gp_command_received
+            ),
         ]
 
     def unsubscribe_from_green_power(self) -> None:
@@ -742,6 +745,20 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     def _on_gp_device_left(self, event) -> None:
         self.enqueue("_remove_gp_device", event.device.source_id)
+
+    def _on_gp_command_received(self, event) -> None:
+        # Each operational frame advances the device's frame counter (replay
+        # protection, set in the manager before this event fires).  Persist it
+        # with a lightweight single-row UPDATE so the replay baseline survives a
+        # restart, rather than the full-row rewrite _save_gp_device does - the
+        # join-time row already holds the static fields.
+        device = event.device
+        self.enqueue(
+            "_update_gp_frame_counter",
+            device.source_id,
+            device.frame_counter,
+            device.last_seen.isoformat() if device.last_seen else None,
+        )
 
     async def _save_gp_device(self, device) -> None:
         d = device.as_dict()
@@ -773,6 +790,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "server_clusters": json.dumps(d["server_clusters"]),
                 "client_clusters": json.dumps(d["client_clusters"]),
             },
+        )
+        await self._db.commit()
+
+    async def _update_gp_frame_counter(
+        self, source_id: int, frame_counter: int, last_seen: str | None
+    ) -> None:
+        await self.execute(
+            f"UPDATE gp_devices{DB_V} SET frame_counter=?, last_seen=? "
+            f"WHERE source_id=?",
+            (frame_counter, last_seen, source_id),
         )
         await self._db.commit()
 
