@@ -501,6 +501,17 @@ class OTA:
             if provider.TRUSTED and not meta.trusted:
                 meta = meta.replace(trusted=True)
 
+            # Trusted images are not downloaded before installation, so their
+            # content cannot be verified without a SHA3-256 checksum
+            if meta.trusted and (
+                meta.checksum is None or not meta.checksum.startswith("sha3-256:")
+            ):
+                _LOGGER.warning(
+                    "Trusted image %s does not have SHA3-256 checksum, ignoring",
+                    meta,
+                )
+                continue
+
             if meta in new_images:
                 continue
 
@@ -671,33 +682,16 @@ class OTA:
         self,
         upgrades: dict[zigpy.ota.providers.BaseOtaImageMetadata, OtaImageWithMetadata],
     ) -> None:
-        """Remove images with identical versions and specificity but differing contents.
-
-        Also removes trusted images that lack a SHA3-256 checksum, since their content
-        cannot be verified for collision detection.
-        """
+        """Remove images with identical versions and specificity but differing contents."""
         # Structure: {(version, specificity): {content_hash: [images]}}
         collisions: defaultdict[
             tuple[int, int], defaultdict[str, list[OtaImageWithMetadata]]
         ] = defaultdict(lambda: defaultdict(list))
 
-        images_to_remove: list[zigpy.ota.providers.BaseOtaImageMetadata] = []
-
         for img in upgrades.values():
             # Untrusted images are always downloaded above and ones that failed
             # to download were already removed; this should never happen.
             assert img.firmware is not None or img.metadata.trusted
-
-            # Ignore trusted image without SHA3-256 checksum
-            if img.firmware is None and (
-                img.metadata.checksum is None
-                or not img.metadata.checksum.startswith("sha3-256:")
-            ):
-                _LOGGER.warning(
-                    "Trusted image %s does not have SHA3-256 checksum, ignoring", img
-                )
-                images_to_remove.append(img.metadata)
-                continue
 
             # Calculate content hash from firmware if available, otherwise use metadata
             if img.firmware is not None:
@@ -707,13 +701,12 @@ class OTA:
                 )
                 content_hash = "sha3-256:" + hasher.hexdigest()
             else:
-                assert img.metadata.checksum is not None  # Checked above
+                # Trusted images without a SHA3-256 checksum are dropped when
+                # the provider's index is refreshed
+                assert img.metadata.checksum is not None
                 content_hash = img.metadata.checksum
 
             collisions[img.version, img.specificity][content_hash].append(img)
-
-        for meta in images_to_remove:
-            upgrades.pop(meta)
 
         for (version, specificity), buckets in collisions.items():
             # If there are multiple unique hashes, we have a collision

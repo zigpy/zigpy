@@ -478,7 +478,11 @@ async def test_ota_trusted_provider_missing_sha3_256_checksum(
 
     # Image should be removed due to missing SHA3-256 checksum
     assert len(images.upgrades) == 0
-    assert "does not have SHA3-256 checksum" in caplog.text
+    assert caplog.text.count("does not have SHA3-256 checksum") == 1
+
+    # The warning is emitted once per index refresh, not once per device check
+    await ota.get_ota_images(device, query_cmd)
+    assert caplog.text.count("does not have SHA3-256 checksum") == 1
 
 
 def _make_device_with_ota_cluster(
