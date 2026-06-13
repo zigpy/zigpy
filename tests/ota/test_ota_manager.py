@@ -208,6 +208,210 @@ async def test_ota_manger_device_reject(
     assert status == foundation.Status.NO_IMAGE_AVAILABLE
 
 
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
+async def test_ota_manager_downgrade_rejected_without_flag(
+    image_with_metadata: OtaImageWithMetadata,
+) -> None:
+    """An explicitly selected older image is refused without allow_downgrade."""
+    img = image_with_metadata
+
+    app = make_app({})
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+    dev.model = "model1"
+    dev.manufacturer = "manufacturer1"
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = zigpy.profiles.zha.DeviceType.PUMP
+
+    ota = ep.add_output_cluster(Ota.cluster_id)
+
+    async def send_packet(packet: t.ZigbeePacket):
+        assert img.firmware is not None
+
+        if packet.cluster_id == Ota.cluster_id:
+            hdr, cmd = ota.deserialize(packet.data.serialize())
+            if isinstance(cmd, Ota.ImageNotifyCommand):
+                dev.application.packet_received(
+                    make_packet(
+                        dev,
+                        ota,
+                        "query_next_image",
+                        field_control=Ota.QueryNextImageCommand.FieldControl.HardwareVersion,
+                        manufacturer_code=img.firmware.header.manufacturer_id,
+                        image_type=img.firmware.header.image_type,
+                        # The device is running a newer version than the image
+                        current_file_version=img.firmware.header.file_version + 10,
+                        hardware_version=1,
+                    )
+                )
+
+    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+
+    status = await dev.update_firmware(img, allow_downgrade=False)
+    assert status == foundation.Status.NO_IMAGE_AVAILABLE
+
+
+async def test_ota_manager_allow_downgrade():
+    """An explicitly selected older image installs when allow_downgrade is set."""
+    # The device claims a newer running version than the image we want to install
+    device_file_version = FW_IMAGE.firmware.header.file_version + 10
+
+    app = make_app({})
+    dev = add_initialized_device(
+        app, nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77")
+    )
+    cluster = dev.endpoints[1].add_output_cluster(Ota.cluster_id)
+
+    with mock_attribute_reads(cluster, {"current_file_version": device_file_version}):
+        await dev.initialize()
+
+    # Stop the general cluster handler from interfering
+    dev.ota_in_progress = True
+
+    reconstructed_firmware = bytearray()
+
+    async def send_packet(packet: t.ZigbeePacket):
+        if packet.cluster_id != Ota.cluster_id:
+            return
+
+        hdr, cmd = cluster.deserialize(packet.data.serialize())
+        assert FW_IMAGE.firmware is not None
+
+        if isinstance(cmd, Ota.ImageNotifyCommand):
+            assert cmd.query_jitter == 100
+
+            # Ask for the next image, claiming a newer running version
+            dev.application.packet_received(
+                make_packet(
+                    dev,
+                    cluster,
+                    "query_next_image",
+                    field_control=Ota.QueryNextImageCommand.FieldControl.HardwareVersion,
+                    manufacturer_code=FW_IMAGE.firmware.header.manufacturer_id,
+                    image_type=FW_IMAGE.firmware.header.image_type,
+                    current_file_version=device_file_version,
+                    hardware_version=1,
+                )
+            )
+        elif isinstance(cmd, Ota.ClientCommandDefs.query_next_image_response.schema):
+            # The downgrade is accepted despite the older file version
+            assert cmd.status == foundation.Status.SUCCESS
+            assert cmd.file_version == FW_IMAGE.firmware.header.file_version
+
+            # Ask for the first block to get things started
+            dev.application.packet_received(
+                make_packet(
+                    dev,
+                    cluster,
+                    "image_block",
+                    field_control=Ota.ImageBlockCommand.FieldControl.RequestNodeAddr,
+                    manufacturer_code=FW_IMAGE.firmware.header.manufacturer_id,
+                    image_type=FW_IMAGE.firmware.header.image_type,
+                    file_version=FW_IMAGE.firmware.header.file_version,
+                    file_offset=0,
+                    maximum_data_size=40,
+                    request_node_addr=dev.ieee,
+                )
+            )
+        elif isinstance(cmd, Ota.ClientCommandDefs.image_block_response.schema):
+            assert cmd.status == foundation.Status.SUCCESS
+
+            reconstructed_firmware[
+                cmd.file_offset : cmd.file_offset + len(cmd.image_data)
+            ] = cmd.image_data
+
+            if cmd.file_offset + len(cmd.image_data) == len(
+                FW_IMAGE.firmware.serialize()
+            ):
+                # End the upgrade
+                dev.application.packet_received(
+                    make_packet(
+                        dev,
+                        cluster,
+                        "upgrade_end",
+                        status=foundation.Status.SUCCESS,
+                        manufacturer_code=FW_IMAGE.firmware.header.manufacturer_id,
+                        image_type=FW_IMAGE.firmware.header.image_type,
+                        file_version=FW_IMAGE.firmware.header.file_version,
+                    )
+                )
+            else:
+                # Keep going
+                dev.application.packet_received(
+                    make_packet(
+                        dev,
+                        cluster,
+                        "image_block",
+                        field_control=Ota.ImageBlockCommand.FieldControl.RequestNodeAddr,
+                        manufacturer_code=FW_IMAGE.firmware.header.manufacturer_id,
+                        image_type=FW_IMAGE.firmware.header.image_type,
+                        file_version=FW_IMAGE.firmware.header.file_version,
+                        file_offset=cmd.file_offset + 40,
+                        maximum_data_size=40,
+                        request_node_addr=dev.ieee,
+                    )
+                )
+        elif isinstance(cmd, Ota.ClientCommandDefs.upgrade_end_response.schema):
+            pass
+        elif isinstance(
+            cmd,
+            foundation.GENERAL_COMMANDS[
+                foundation.GeneralCommand.Read_Attributes
+            ].schema,
+        ):
+            assert cmd.attribute_ids == [Ota.AttributeDefs.current_file_version.id]
+
+            req_hdr, req_cmd = cluster._create_request(
+                general=True,
+                command_id=foundation.GeneralCommand.Read_Attributes_rsp,
+                schema=foundation.GENERAL_COMMANDS[
+                    foundation.GeneralCommand.Read_Attributes_rsp
+                ].schema,
+                tsn=hdr.tsn,
+                disable_default_response=True,
+                direction=foundation.Direction.Server_to_Client,
+                args=(),
+                kwargs={
+                    "status_records": [
+                        foundation.ReadAttributeRecord(
+                            attrid=Ota.AttributeDefs.current_file_version.id,
+                            status=foundation.Status.SUCCESS,
+                            value=foundation.TypeValue(
+                                type=foundation.DATA_TYPES.pytype_to_datatype_id(
+                                    t.uint32_t
+                                ),
+                                value=FW_IMAGE.firmware.header.file_version,
+                            ),
+                        )
+                    ]
+                },
+            )
+
+            dev.application.packet_received(
+                t.ZigbeePacket(
+                    src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+                    src_ep=1,
+                    dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+                    dst_ep=1,
+                    tsn=hdr.tsn,
+                    profile_id=260,
+                    cluster_id=cluster.cluster_id,
+                    data=t.SerializableBytes(req_hdr.serialize() + req_cmd.serialize()),
+                    lqi=255,
+                    rssi=-30,
+                )
+            )
+
+    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+    result = await update_firmware(dev, FW_IMAGE, allow_downgrade=True)
+
+    assert result == foundation.Status.SUCCESS
+    assert bytes(reconstructed_firmware) == FW_IMAGE.firmware.serialize()
+
+
 async def test_ota_manager():
     """Test that device firmware updates execute the expected calls."""
 
