@@ -1866,6 +1866,39 @@ async def test_gp_device_round_trip(tmp_path):
     await app2.shutdown()
 
 
+async def test_gp_frame_counter_persists_per_press(tmp_path):
+    """A per-press CommandReceived persists the advanced frame counter.
+
+    Without it, the stored counter is frozen at the join-time value and the
+    replay-protection baseline reverts to stale on every restart.
+    """
+    from zigpy.zgp.device import GPDevice
+    from zigpy.zgp.events import CommandReceived, DeviceJoined
+    from zigpy.zgp.types import GPDCommandID
+
+    SOURCE_ID = 0x0040F4E4
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    device = GPDevice(source_id=SOURCE_ID, device_id=2, frame_counter=99)
+    app.green_power.emit(DeviceJoined.event_type, DeviceJoined(device=device))
+
+    # Simulate a button press: the manager advances the counter (replay
+    # protection) before emitting CommandReceived (manager.py _dispatch_gp_command).
+    assert device.update_frame_counter(150)
+    app.green_power.emit(
+        CommandReceived.event_type,
+        CommandReceived(device=device, command_id=GPDCommandID(0x22), payload=b""),
+    )
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    restored = app2.green_power.devices[SOURCE_ID]
+    assert restored.frame_counter == 150  # not the stale join-time 99
+    await app2.shutdown()
+
+
 async def test_gp_device_decommission(tmp_path):
     """DeviceJoined then DeviceLeft -> device absent after reopen."""
     from zigpy.zgp.device import GPDevice
