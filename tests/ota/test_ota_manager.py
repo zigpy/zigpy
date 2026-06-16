@@ -254,6 +254,129 @@ async def test_ota_manager_downgrade_rejected_without_flag(
     assert status == foundation.Status.NO_IMAGE_AVAILABLE
 
 
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
+async def test_ota_manager_incompatible_image_rejected(
+    image_with_metadata: OtaImageWithMetadata,
+) -> None:
+    """An incompatible image is refused even when the version check would pass.
+
+    allow_downgrade only lifts the version check; compatibility is still enforced.
+    """
+    img = image_with_metadata
+
+    app = make_app({})
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+    dev.model = "model1"
+    dev.manufacturer = "manufacturer1"
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = zigpy.profiles.zha.DeviceType.PUMP
+
+    ota = ep.add_output_cluster(Ota.cluster_id)
+
+    async def send_packet(packet: t.ZigbeePacket):
+        assert img.firmware is not None
+
+        if packet.cluster_id == Ota.cluster_id:
+            hdr, cmd = ota.deserialize(packet.data.serialize())
+            if isinstance(cmd, Ota.ImageNotifyCommand):
+                dev.application.packet_received(
+                    make_packet(
+                        dev,
+                        ota,
+                        "query_next_image",
+                        field_control=Ota.QueryNextImageCommand.FieldControl.HardwareVersion,
+                        manufacturer_code=img.firmware.header.manufacturer_id,
+                        # The image type does not match the image, so it is
+                        # incompatible regardless of the version
+                        image_type=img.firmware.header.image_type + 1,
+                        # A version the image's metadata would otherwise accept
+                        current_file_version=img.firmware.header.file_version - 5,
+                        hardware_version=1,
+                    )
+                )
+
+    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+
+    # Even with allow_downgrade, compatibility is still enforced
+    status = await dev.update_firmware(img, allow_downgrade=True)
+    assert status == foundation.Status.NO_IMAGE_AVAILABLE
+
+
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
+async def test_ota_manager_force_skips_checks(
+    image_with_metadata: OtaImageWithMetadata,
+) -> None:
+    """force=True offers the image even when incompatible and not an upgrade."""
+    img = image_with_metadata
+
+    app = make_app({})
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+    dev.model = "model1"
+    dev.manufacturer = "manufacturer1"
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = zigpy.profiles.zha.DeviceType.PUMP
+
+    ota = ep.add_output_cluster(Ota.cluster_id)
+
+    # Stop the default cluster handler from also replying (NO_IMAGE_AVAILABLE)
+    dev.ota_in_progress = True
+
+    response_status = None
+
+    async def send_packet(packet: t.ZigbeePacket):
+        nonlocal response_status
+        assert img.firmware is not None
+
+        if packet.cluster_id == Ota.cluster_id:
+            hdr, cmd = ota.deserialize(packet.data.serialize())
+            if isinstance(cmd, Ota.ImageNotifyCommand):
+                dev.application.packet_received(
+                    make_packet(
+                        dev,
+                        ota,
+                        "query_next_image",
+                        field_control=Ota.QueryNextImageCommand.FieldControl.HardwareVersion,
+                        # Both incompatible (wrong image type) and a downgrade
+                        manufacturer_code=img.firmware.header.manufacturer_id,
+                        image_type=img.firmware.header.image_type + 1,
+                        current_file_version=img.firmware.header.file_version + 10,
+                        hardware_version=1,
+                    )
+                )
+            elif isinstance(
+                cmd, Ota.ClientCommandDefs.query_next_image_response.schema
+            ):
+                # force makes the image be offered despite both checks failing
+                response_status = cmd.status
+
+                # Finish the update so it doesn't stall
+                dev.application.packet_received(
+                    make_packet(
+                        dev,
+                        ota,
+                        "upgrade_end",
+                        status=foundation.Status.SUCCESS,
+                        manufacturer_code=img.firmware.header.manufacturer_id,
+                        image_type=img.firmware.header.image_type,
+                        file_version=img.firmware.header.file_version,
+                    )
+                )
+
+    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+
+    status = await update_firmware(dev, img, force=True)
+    assert response_status == foundation.Status.SUCCESS
+    assert status == foundation.Status.SUCCESS
+
+
 async def test_ota_manager_allow_downgrade():
     """An explicitly selected older image installs when allow_downgrade is set."""
     # The device claims a newer running version than the image we want to install
