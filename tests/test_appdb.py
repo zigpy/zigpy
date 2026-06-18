@@ -41,7 +41,6 @@ from zigpy.quirks.v2 import QuirkBuilder
 import zigpy.types as t
 import zigpy.zcl
 from zigpy.zcl import (
-    ClusterType,
     OtaQueryCacheClearedEvent,
     OtaQueryCacheUpdatedEvent,
     UnsupportedAttribute,
@@ -1506,16 +1505,17 @@ async def test_attribute_cache_null_manufacturer_code_uniqueness(tmp_path):
 async def test_device_signature_ignores_quirks(tmp_path) -> None:
     """Test that `device.original_signature` is populated before quirks modify the device."""
 
-    (
-        QuirkBuilder(
-            "some manufacturer", "some model", registry=zigpy.quirks.DEVICE_REGISTRY
-        )
-        .adds_endpoint(99)
-        .adds(Basic.cluster_id, endpoint_id=99)
-        .adds(Identify.cluster_id, endpoint_id=1)
-        .removes(OnOff.cluster_id, cluster_type=ClusterType.Client, endpoint_id=1)
-        .add_to_registry()
-    )
+    def quirk_resolver(device):
+        # A resolver that modifies a clone, leaving the bare device intact
+        new = device.clone()
+        ep99 = new.add_endpoint(99)
+        ep99.status = zigpy.endpoint.Status.ZDO_INIT
+        ep99.profile_id = profiles.zha.PROFILE_ID
+        ep99.device_type = 0xFF
+        ep99.add_input_cluster(Basic.cluster_id)
+        new.endpoints[1].add_input_cluster(Identify.cluster_id)
+        new.endpoints[1].out_clusters.pop(OnOff.cluster_id, None)
+        return new
 
     expected_signature = {
         SIG_MANUFACTURER: "some manufacturer",
@@ -1546,7 +1546,7 @@ async def test_device_signature_ignores_quirks(tmp_path) -> None:
     }
 
     db = tmp_path / "test.db"
-    app = await make_app_with_db(db)
+    app = await make_app_with_db(db, device_resolver=quirk_resolver)
 
     dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
     dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
@@ -1580,7 +1580,7 @@ async def test_device_signature_ignores_quirks(tmp_path) -> None:
     await app.shutdown()
 
     # Also verify loading from the database preserves the original signature
-    app2 = await make_app_with_db(db)
+    app2 = await make_app_with_db(db, device_resolver=quirk_resolver)
     dev2 = app2.get_device(t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
 
     # The quirk modified the device object
