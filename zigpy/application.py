@@ -30,7 +30,6 @@ import zigpy.group
 import zigpy.listeners
 import zigpy.ota
 import zigpy.profiles
-import zigpy.quirks
 import zigpy.state
 import zigpy.topology
 import zigpy.types as t
@@ -82,6 +81,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._device_resolver: (
             Callable[[zigpy.device.Device], zigpy.device.Device] | None
         ) = None
+        self._uninitialized_packet_handler: Callable[..., None] | None = None
 
         self._watchdog_task: asyncio.Task | None = None
 
@@ -346,12 +346,16 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         start_radio: bool = True,
         device_resolver: Callable[[zigpy.device.Device], zigpy.device.Device]
         | None = None,
+        uninitialized_packet_handler: Callable[..., None] | None = None,
     ) -> ControllerApplication:
         """Create new instance of application controller."""
         app = cls(config)
 
         if device_resolver is not None:
             app.register_device_resolver(device_resolver)
+
+        if uninitialized_packet_handler is not None:
+            app.register_uninitialized_packet_handler(uninitialized_packet_handler)
 
         await app._load_db()
 
@@ -638,7 +642,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """Resolve a freshly-constructed device into its final object."""
         if self._device_resolver is not None:
             return self._device_resolver(device)
-        return zigpy.quirks.get_device(device)
+        return device
 
     def register_device_resolver(
         self,
@@ -653,9 +657,21 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         whose behavior changes (e.g. reloaded quirks) only takes effect for devices
         constructed afterwards.
 
-        Defaults to ``zigpy.quirks.get_device``.
+        Defaults to returning the device unchanged.
         """
         self._device_resolver = resolver
+
+    def register_uninitialized_packet_handler(
+        self, handler: Callable[..., None]
+    ) -> None:
+        """Register a handler for packets from not-yet-initialized devices.
+
+        Called for each packet from an uninitialized device that is not already
+        routed into interview, letting a consumer short-circuit a flaky join
+        (e.g. adopt a known signature once the model is reported). Defaults to
+        unset (no-op).
+        """
+        self._uninitialized_packet_handler = handler
 
     def device_initialized(self, device: zigpy.device.Device) -> None:
         """Used by a device to signal that it is initialized"""
@@ -1362,15 +1378,16 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
             return device.packet_received(packet)
 
-        # Give quirks a chance to fast-initialize the device (at the moment only Xiaomi)
-        zigpy.quirks.handle_message_from_uninitialized_sender(
-            device,
-            packet.profile_id,
-            packet.cluster_id,
-            packet.src_ep,
-            packet.dst_ep,
-            packet.data.serialize(),
-        )
+        # Give the consumer a chance to fast-initialize the device (e.g. Xiaomi).
+        if self._uninitialized_packet_handler is not None:
+            self._uninitialized_packet_handler(
+                device,
+                packet.profile_id,
+                packet.cluster_id,
+                packet.src_ep,
+                packet.dst_ep,
+                packet.data.serialize(),
+            )
 
         # Reload the device device object, in it was replaced by the quirk
         device = self.get_device(ieee=device.ieee)
