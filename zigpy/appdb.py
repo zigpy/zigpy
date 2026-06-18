@@ -20,7 +20,6 @@ from zigpy.endpoint import Endpoint, Status as EndpointStatus
 import zigpy.exceptions
 import zigpy.group
 import zigpy.profiles
-import zigpy.quirks
 import zigpy.state
 import zigpy.types as t
 import zigpy.typing
@@ -417,10 +416,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         if device.node_desc is not None:
             await self._save_node_descriptor(device)
-
-        if isinstance(device, zigpy.quirks.BaseCustomDevice):
-            await self._db.commit()
-            return
 
         await self._save_endpoints(device)
         for ep in device.non_zdo_endpoints:

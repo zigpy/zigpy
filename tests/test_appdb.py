@@ -53,11 +53,13 @@ from zigpy.zdo import types as zdo_t
 pytestmark = pytest.mark.usefixtures("auto_kill_aiosqlite")
 
 
-async def make_app_with_db(database_file):
+async def make_app_with_db(database_file, device_resolver=None):
     if isinstance(database_file, pathlib.Path):
         database_file = str(database_file)
 
     app = make_app({conf.CONF_DATABASE: database_file})
+    if device_resolver is not None:
+        app.register_device_resolver(device_resolver)
     await app._load_db()
 
     return app
@@ -969,10 +971,8 @@ async def test_load_unsupp_attr_missing_endpoint(tmp_path):
         device.endpoints.pop(4)
         return device
 
-    # Simulate a quirk that removes the entire endpoint
-    with patch("zigpy.quirks.get_device", side_effect=remove_cluster):
-        # The application should still load
-        app = await make_app_with_db(db)
+    # Simulate a resolver (quirk) that removes the entire endpoint
+    app = await make_app_with_db(db, device_resolver=remove_cluster)
 
     dev = app.get_device(ieee)
     assert 4 not in dev.endpoints
@@ -1751,15 +1751,11 @@ async def test_ota_query_cache_cleared_after_update(tmp_path):
 
 @patch("zigpy.quirks.DEVICE_REGISTRY", new=DeviceRegistry())
 async def test_ota_query_cache_skips_quirk_removed_endpoint(tmp_path):
-    """Test that OTA cache load skips entries for endpoints removed by quirks."""
-    # Register a quirk that removes endpoint 2
-    (
-        QuirkBuilder(
-            "ota manufacturer", "ota model", registry=zigpy.quirks.DEVICE_REGISTRY
-        )
-        .removes_endpoint(2)
-        .add_to_registry()
-    )
+    """Test that OTA cache load skips entries for endpoints removed by a resolver."""
+
+    def remove_ep2(device):
+        device.endpoints.pop(2, None)
+        return device
 
     db = tmp_path / "test.db"
     app = await make_app_with_db(db)
@@ -1793,8 +1789,8 @@ async def test_ota_query_cache_skips_quirk_removed_endpoint(tmp_path):
     app.device_initialized(dev)
     await app.shutdown()
 
-    # Reload: quirk removes endpoint 2, OTA cache load should skip it
-    app2 = await make_app_with_db(db)
+    # Reload: resolver removes endpoint 2, OTA cache load should skip it
+    app2 = await make_app_with_db(db, device_resolver=remove_ep2)
     dev2 = app2.get_device(t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
     assert 2 not in dev2.endpoints
     assert dev2.get_last_ota_query_cmd() is None
