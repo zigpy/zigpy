@@ -1,10 +1,11 @@
-"""Compatibility shims for the quirks v2 API, which moved into ZHA.
+"""Compatibility shims for the quirks v2 API, which moved into zha-device-handlers.
 
-The quirks v2 implementation lives in the `zha` package: the builder is
-`zha.quirks.v2.QuirkBuilder` and the metadata model is `zha.quirks.metadata`.
-Importing these names from `zigpy.quirks.v2` is deprecated and requires `zha`
-to be installed; the shims below lazily resolve the old names to their new
-homes.
+The quirks v2 authoring API lives in the `zhaquirks` package: the builder is
+`zhaquirks.v2.QuirkBuilder` and the metadata model is `zhaquirks.v2.metadata`
+(entity/device-class enums remain ZHA constructs in `zha.application`).
+Importing these names from `zigpy.quirks.v2` is deprecated and requires
+`zhaquirks` to be installed; the shims below lazily resolve the old names to
+their new homes.
 
 Only `CustomDeviceV2` remains a real class here: it wraps the zigpy device
 object so quirks can override low-level device behavior, which is inherently
@@ -70,31 +71,31 @@ class CustomDeviceV2(BaseCustomDevice):
 
 
 _MOVED_NAMES: dict[str, tuple[str, str]] = {
-    "QuirkBuilder": ("zha.quirks.v2", "QuirkBuilder"),
-    "UNBUILT_QUIRK_BUILDERS": ("zha.quirks.v2", "UNBUILT_QUIRK_BUILDERS"),
-    "ReportingConfig": ("zha.quirks.metadata", "ReportingConfig"),
-    "EntityMetadata": ("zha.quirks.metadata", "EntityMetadata"),
-    "ZCLEnumMetadata": ("zha.quirks.metadata", "ZCLEnumMetadata"),
-    "ZCLSensorMetadata": ("zha.quirks.metadata", "ZCLSensorMetadata"),
-    "SwitchMetadata": ("zha.quirks.metadata", "SwitchMetadata"),
-    "NumberMetadata": ("zha.quirks.metadata", "NumberMetadata"),
-    "BinarySensorMetadata": ("zha.quirks.metadata", "BinarySensorMetadata"),
+    "QuirkBuilder": ("zhaquirks.v2", "QuirkBuilder"),
+    "UNBUILT_QUIRK_BUILDERS": ("zhaquirks.v2", "UNBUILT_QUIRK_BUILDERS"),
+    "ReportingConfig": ("zhaquirks.v2.metadata", "ReportingConfig"),
+    "EntityMetadata": ("zhaquirks.v2.metadata", "EntityMetadata"),
+    "ZCLEnumMetadata": ("zhaquirks.v2.metadata", "ZCLEnumMetadata"),
+    "ZCLSensorMetadata": ("zhaquirks.v2.metadata", "ZCLSensorMetadata"),
+    "SwitchMetadata": ("zhaquirks.v2.metadata", "SwitchMetadata"),
+    "NumberMetadata": ("zhaquirks.v2.metadata", "NumberMetadata"),
+    "BinarySensorMetadata": ("zhaquirks.v2.metadata", "BinarySensorMetadata"),
     "WriteAttributeButtonMetadata": (
         "zha.quirks.metadata",
         "WriteAttributeButtonMetadata",
     ),
-    "ZCLCommandButtonMetadata": ("zha.quirks.metadata", "ZCLCommandButtonMetadata"),
-    "FriendlyNameMetadata": ("zha.quirks.metadata", "FriendlyNameMetadata"),
-    "ExposesFeatureMetadata": ("zha.quirks.metadata", "ExposesFeatureMetadata"),
-    "DeviceAlertLevel": ("zha.quirks.metadata", "DeviceAlertLevel"),
-    "DeviceAlertMetadata": ("zha.quirks.metadata", "DeviceAlertMetadata"),
+    "ZCLCommandButtonMetadata": ("zhaquirks.v2.metadata", "ZCLCommandButtonMetadata"),
+    "FriendlyNameMetadata": ("zhaquirks.v2.metadata", "FriendlyNameMetadata"),
+    "ExposesFeatureMetadata": ("zhaquirks.v2.metadata", "ExposesFeatureMetadata"),
+    "DeviceAlertLevel": ("zhaquirks.v2.metadata", "DeviceAlertLevel"),
+    "DeviceAlertMetadata": ("zhaquirks.v2.metadata", "DeviceAlertMetadata"),
     "PreventDefaultEntityCreationMetadata": (
         "zha.quirks.metadata",
         "PreventDefaultEntityCreationMetadata",
     ),
-    "ChangedEntityMetadata": ("zha.quirks.metadata", "ChangedEntityMetadata"),
-    "QuirksV2RegistryEntry": ("zha.quirks.metadata", "QuirkDefinition"),
-    "recursive_freeze": ("zha.quirks.metadata", "recursive_freeze"),
+    "ChangedEntityMetadata": ("zhaquirks.v2.metadata", "ChangedEntityMetadata"),
+    "QuirksV2RegistryEntry": ("zhaquirks.v2.metadata", "QuirkDefinition"),
+    "recursive_freeze": ("zhaquirks.v2.metadata", "recursive_freeze"),
     "ManufacturerModelMetadata": ("zha.quirks", "ModelInfo"),
     "EntityType": ("zha.application", "EntityType"),
     "EntityPlatform": ("zha.application", "EntityPlatform"),
