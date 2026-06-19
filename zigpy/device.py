@@ -1190,6 +1190,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         new.node_desc = self.node_desc
         new.manufacturer = self.manufacturer
         new.model = self.model
+        new.manufacturer_id_override = self.manufacturer_id_override
         new.skip_configuration = self.skip_configuration
 
         for endpoint in self.non_zdo_endpoints:
