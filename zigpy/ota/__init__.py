@@ -49,7 +49,7 @@ BROADCAST_SETTLE_DELAY = 60
 
 # Rate limit for user-initiated index refreshes, to avoid hammering the OTA
 # providers when the user repeatedly checks for updates
-USER_REFRESH_RATE_LIMIT = datetime.timedelta(minutes=10)
+USER_REFRESH_RATE_LIMIT = datetime.timedelta(minutes=2)
 
 
 @dataclasses.dataclass(frozen=True)
