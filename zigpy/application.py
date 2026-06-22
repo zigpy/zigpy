@@ -622,21 +622,20 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         return dev
 
     def _finalize_device(self, device: zigpy.device.Device) -> zigpy.device.Device:
-        """Apply quirks, persist to DB, and register the device.
-
-        Returns the (possibly quirked) device stored in ``self.devices``.
-        Does **not** fire any listener events beyond ``raw_device_initialized``
-        (which triggers the DB save).
-        """
+        """Resolve a device, persist to DB, and register the device."""
         device.original_signature = device.get_signature()
 
         self.listener_event("raw_device_initialized", device)
-        device = self._resolve_device(device)
-        self.devices[device.ieee] = device
-        if self._dblistener is not None:
-            device.add_context_listener(self._dblistener)
+        resolved = self._resolve_device(device)
 
-        return device
+        # Ensure we propagate the original device signature
+        resolved.original_signature = device.original_signature
+
+        self.devices[resolved.ieee] = resolved
+        if self._dblistener is not None:
+            resolved.add_context_listener(self._dblistener)
+
+        return resolved
 
     def _resolve_device(self, device: zigpy.device.Device) -> zigpy.device.Device:
         """Resolve a freshly-constructed device into its final object."""
@@ -660,7 +659,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def device_initialized(self, device: zigpy.device.Device) -> None:
         """Used by a device to signal that it is initialized"""
         LOGGER.debug("Device is initialized %s", device)
-        device = self._finalize_device(device)
+
+        # Only a freshly-interviewed device needs to be finalized
+        if device.original_signature is None:
+            device = self._finalize_device(device)
+
         self.listener_event("device_initialized", device)
 
     async def _device_reinterviewed(
