@@ -1173,13 +1173,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         return self.endpoints[key]
 
     def clone(self) -> Device:
-        """Return a detached copy of this device for independent modification.
-
-        Copies endpoints, clusters and cached attribute values (including
-        unsupported markers), but not listeners, tasks or application
-        registration. Used by device resolvers to produce a modified device
-        without mutating the interviewed object, which is persisted as-is.
-        """
+        """Return a detached copy of this device for independent modification."""
         new = Device(self.application, self.ieee, self.nwk)
         new.lqi = self.lqi
         new.rssi = self.rssi

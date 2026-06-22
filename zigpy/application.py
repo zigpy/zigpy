@@ -648,29 +648,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self,
         resolver: Callable[[zigpy.device.Device], zigpy.device.Device],
     ) -> None:
-        """Replace the callable that turns a raw device into its final object.
-
-        The resolver is handed a freshly-constructed device exactly once: when a
-        device completes its interview, or when it is loaded from the database. It
-        may mutate the device in place or return a replacement object. Resolution
-        is never re-run on a live device, so changes are not un-applied: a resolver
-        whose behavior changes (e.g. reloaded quirks) only takes effect for devices
-        constructed afterwards.
-
-        Defaults to returning the device unchanged.
-        """
+        """Replace the callable that turns a raw device into its final object."""
         self._device_resolver = resolver
 
     def register_uninitialized_packet_handler(
         self, handler: Callable[..., None]
     ) -> None:
-        """Register a handler for packets from not-yet-initialized devices.
-
-        Called for each packet from an uninitialized device that is not already
-        routed into interview, letting a consumer short-circuit a flaky join
-        (e.g. adopt a known signature once the model is reported). Defaults to
-        unset (no-op).
-        """
+        """Register a handler for packets from not-yet-initialized devices."""
         self._uninitialized_packet_handler = handler
 
     def device_initialized(self, device: zigpy.device.Device) -> None:
