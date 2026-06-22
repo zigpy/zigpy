@@ -215,11 +215,12 @@ class CustomCluster(zigpy.zcl.Cluster):
 
     _skip_registry = True
     _CONSTANT_ATTRIBUTES: dict[int, typing.Any] | None = None
+    _DEFAULT_VALUES: dict[int, typing.Any] | None = None
 
     async def read_attributes_raw(
         self, attributes: list[int], manufacturer: int | None = None, **kwargs
     ):
-        if not self._CONSTANT_ATTRIBUTES:
+        if not self._CONSTANT_ATTRIBUTES and not self._DEFAULT_VALUES:
             return await super().read_attributes_raw(
                 attributes, manufacturer=manufacturer, **kwargs
             )
@@ -234,11 +235,13 @@ class CustomCluster(zigpy.zcl.Cluster):
                 ),
             )
             for attr in attributes
-            if attr in self._CONSTANT_ATTRIBUTES
+            if self._CONSTANT_ATTRIBUTES and attr in self._CONSTANT_ATTRIBUTES
         ]
 
         attrs_to_read = [
-            attr for attr in attributes if attr not in self._CONSTANT_ATTRIBUTES
+            attr
+            for attr in attributes
+            if not self._CONSTANT_ATTRIBUTES or attr not in self._CONSTANT_ATTRIBUTES
         ]
 
         if not attrs_to_read:
@@ -249,15 +252,35 @@ class CustomCluster(zigpy.zcl.Cluster):
         )
         if not isinstance(results[0], list):
             for attrid in attrs_to_read:
-                succeeded.append(  # noqa: PERF401
-                    foundation.ReadAttributeRecord(
-                        attrid,
-                        results[0],
-                        foundation.TypeValue(),
+                if self._DEFAULT_VALUES and attrid in self._DEFAULT_VALUES:
+                    succeeded.append(
+                        foundation.ReadAttributeRecord(
+                            attrid=attrid,
+                            status=foundation.Status.SUCCESS,
+                            value=foundation.TypeValue(
+                                type=None,
+                                value=self._DEFAULT_VALUES[attrid],
+                            ),
+                        )
                     )
-                )
+                else:
+                    succeeded.append(  # noqa: PERF401
+                        foundation.ReadAttributeRecord(
+                            attrid,
+                            results[0],
+                            foundation.TypeValue(),
+                        )
+                    )
         else:
-            succeeded.extend(results[0])
+            for record in results[0]:
+                if (
+                    record.status != foundation.Status.SUCCESS
+                    and self._DEFAULT_VALUES
+                    and record.attrid in self._DEFAULT_VALUES
+                ):
+                    record.status = foundation.Status.SUCCESS
+                    record.value.value = self._DEFAULT_VALUES[record.attrid]
+                succeeded.append(record)
         return [succeeded]
 
     def get(self, key: int | str, default: typing.Any | None = None) -> typing.Any:
@@ -276,7 +299,16 @@ class CustomCluster(zigpy.zcl.Cluster):
         ):
             return self._CONSTANT_ATTRIBUTES[attr_def.id]
 
-        return super().get(key, default)
+        result = super().get(key)
+        if result is not None:
+            return result
+
+        # Fall back to default values if no cached value exists. These are returned
+        # when no value is cached yet, but are overridden by any cached value.
+        if self._DEFAULT_VALUES is not None and attr_def.id in self._DEFAULT_VALUES:
+            return self._DEFAULT_VALUES[attr_def.id]
+
+        return default
 
     async def apply_custom_configuration(self, *args, **kwargs):
         """Hook for applications to instruct instances to apply custom configuration."""
