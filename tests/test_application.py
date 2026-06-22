@@ -21,7 +21,6 @@ from zigpy.exceptions import (
     TransientConnectionError,
 )
 import zigpy.ota
-import zigpy.quirks
 import zigpy.types as t
 from zigpy.zcl import clusters, foundation
 import zigpy.zdo.types as zdo_t
@@ -260,8 +259,10 @@ async def test_handle_message_shim(app):
 
 
 @patch("zigpy.device.Device.is_initialized", new_callable=PropertyMock)
-@patch("zigpy.quirks.handle_message_from_uninitialized_sender", new=MagicMock())
 async def test_handle_message_uninitialized_dev(is_init_mock, app, ieee):
+    uninitialized_packet_handler = MagicMock()
+    app.register_uninitialized_packet_handler(uninitialized_packet_handler)
+
     dev = app.add_device(ieee, 0x1234)
     dev.packet_received = MagicMock()
     is_init_mock.return_value = False
@@ -292,7 +293,7 @@ async def test_handle_message_uninitialized_dev(is_init_mock, app, ieee):
         make_packet(profile_id=260, cluster_id=0x0001, src_ep=1, dst_ep=1, data=b"test")
     )
     assert dev.packet_received.call_count == 0
-    assert zigpy.quirks.handle_message_from_uninitialized_sender.call_count == 1
+    assert uninitialized_packet_handler.call_count == 1
 
     # Device should be completing initialization
     assert dev.initializing
@@ -315,7 +316,7 @@ async def test_handle_message_uninitialized_dev(is_init_mock, app, ieee):
         make_packet(profile_id=260, cluster_id=0x0001, src_ep=1, dst_ep=1, data=b"test")
     )
     assert dev.packet_received.call_count == 2
-    assert zigpy.quirks.handle_message_from_uninitialized_sender.call_count == 2
+    assert uninitialized_packet_handler.call_count == 2
 
     # They work after the endpoint is initialized
     ep.status = zigpy.endpoint.Status.ZDO_INIT
@@ -323,7 +324,7 @@ async def test_handle_message_uninitialized_dev(is_init_mock, app, ieee):
         make_packet(profile_id=260, cluster_id=0x0001, src_ep=1, dst_ep=1, data=b"test")
     )
     assert dev.packet_received.call_count == 3
-    assert zigpy.quirks.handle_message_from_uninitialized_sender.call_count == 2
+    assert uninitialized_packet_handler.call_count == 2
 
 
 def test_get_dst_address(app):
@@ -338,33 +339,6 @@ def test_props(app):
     assert app.state.network_info.extended_pan_id is not None
     assert app.state.network_info.pan_id is not None
     assert app.state.network_info.nwk_update_id is not None
-
-
-@pytest.mark.filterwarnings(
-    "ignore::DeprecationWarning"
-)  # TODO: migrate `handle_message_from_uninitialized_sender` away from `handle_message`
-async def test_uninitialized_message_handlers(app, ieee):
-    """Test uninitialized message handlers."""
-    handler_1 = MagicMock(return_value=None)
-    handler_2 = MagicMock(return_value=True)
-
-    zigpy.quirks.register_uninitialized_device_message_handler(handler_1)
-    zigpy.quirks.register_uninitialized_device_message_handler(handler_2)
-
-    device = app.add_device(ieee, 0x1234)
-
-    app.handle_message(device, 0x0260, 0x0000, 0, 0, b"123abcd23")
-    assert handler_1.call_count == 0
-    assert handler_2.call_count == 0
-
-    app.handle_message(device, 0x0260, 0x0000, 1, 1, b"123abcd23")
-    assert handler_1.call_count == 1
-    assert handler_2.call_count == 1
-
-    handler_1.return_value = True
-    app.handle_message(device, 0x0260, 0x0000, 1, 1, b"123abcd23")
-    assert handler_1.call_count == 2
-    assert handler_2.call_count == 1
 
 
 async def test_remove_parent_devices(app, make_initialized_device):
@@ -2016,7 +1990,7 @@ async def test_device_reinterviewed_persists_relays(app):
 
 
 async def test_device_resolver_registration(app, ieee):
-    """A registered device resolver replaces zigpy.quirks.get_device."""
+    """A registered device resolver replaces the raw device with its final object."""
     resolved = []
 
     def resolver(device: zigpy.device.Device) -> zigpy.device.Device:
