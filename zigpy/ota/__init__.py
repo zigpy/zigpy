@@ -241,7 +241,8 @@ class OTA:
 
         self._providers: list[zigpy.ota.providers.BaseOtaProvider] = []
         self._image_cache: dict[
-            zigpy.ota.providers.BaseOtaImageMetadata, OtaImageWithMetadata
+            zigpy.ota.providers.BaseOtaProvider,
+            dict[zigpy.ota.providers.BaseOtaImageMetadata, OtaImageWithMetadata],
         ] = {}
 
         self._broadcast_loop_task = None
@@ -290,16 +291,14 @@ class OTA:
     def invalidate_provider_caches(self) -> None:
         """Invalidate all provider index caches, forcing a refresh on next check.
 
-        Also clears the image cache so withdrawn images are not returned.
-        Downloaded firmware will be re-fetched from untrusted providers on
-        the next check, but this is acceptable for a user-initiated action.
+        The refresh revokes images withdrawn from the new indexes.
+        Already-downloaded firmware is carried over for images whose metadata
+        is unchanged and is otherwise re-downloaded.
         """
         for provider in self._providers:
             provider._index_last_updated = datetime.datetime.fromtimestamp(
                 0, tz=datetime.UTC
             )
-
-        self._image_cache.clear()
 
     async def check_cluster_for_ota(self, cluster: Ota) -> None:
         """Check OTA image availability for a single OTA cluster.
@@ -469,12 +468,52 @@ class OTA:
         self._providers.append(provider)
 
     @zigpy.util.combine_concurrent_calls
-    async def _load_provider_index(
+    async def _refresh_provider_index(
         self, provider: zigpy.ota.providers.BaseOtaProvider
-    ) -> list[zigpy.ota.providers.BaseOtaImageMetadata] | None:
-        """Load the index of a provider."""
-        async with asyncio_timeout(OTA_FETCH_TIMEOUT):
-            return await provider.load_index()
+    ) -> None:
+        """Load a provider's index, if it expired, and rebuild its image cache.
+
+        Concurrent calls for the same provider are combined so a burst of device
+        checks (e.g. at startup) downloads, caches, and logs each index once.
+        """
+        try:
+            async with asyncio_timeout(OTA_FETCH_TIMEOUT):
+                index = await provider.load_index()
+        except Exception as exc:  # noqa: BLE001
+            # Keep the previously-cached images: a provider outage should not
+            # withdraw its images
+            _LOGGER.debug("Failed to load provider %s", provider, exc_info=exc)
+            return
+
+        # The cached index is still fresh
+        if index is None:
+            return
+
+        _LOGGER.debug("Loaded %d images from provider: %s", len(index), provider)
+
+        old_images = self._image_cache.get(provider, {})
+        new_images: dict[
+            zigpy.ota.providers.BaseOtaImageMetadata, OtaImageWithMetadata
+        ] = {}
+
+        for meta in index:
+            # Mark metadata as trusted if it comes from a trusted provider
+            if provider.TRUSTED and not meta.trusted:
+                meta = meta.replace(trusted=True)
+
+            if meta in new_images:
+                continue
+
+            # Carry over already-downloaded firmware for unchanged metadata
+            cached = old_images.get(meta)
+            if cached is None or cached.firmware is None:
+                cached = OtaImageWithMetadata(metadata=meta, firmware=None)
+
+            new_images[meta] = cached
+
+        # Replace the provider's images wholesale so images withdrawn from the
+        # index are revoked
+        self._image_cache[provider] = new_images
 
     @zigpy.util.combine_concurrent_calls
     async def _fetch_image(self, image: OtaImageWithMetadata) -> OtaImageWithMetadata:
@@ -494,33 +533,27 @@ class OTA:
             p for p in self._providers if p.compatible_with_device(device)
         ]
 
-        # Load the index of every provider
+        # Refresh the index of every provider whose cache expired
         for provider in compatible_providers:
-            try:
-                index = await self._load_provider_index(provider)
-            except Exception as exc:  # noqa: BLE001
-                _LOGGER.debug("Failed to load provider %s", provider, exc_info=exc)
-                continue
+            await self._refresh_provider_index(provider)
 
-            if index is None:
-                _LOGGER.debug(
-                    "Provider %s was recently contacted, using cached response",
-                    provider,
-                )
-                continue
+        # Merge the cached images of all compatible providers. The same metadata can
+        # be served by multiple providers so prefer entries with downloaded firmware.
+        images: dict[
+            zigpy.ota.providers.BaseOtaImageMetadata, OtaImageWithMetadata
+        ] = {}
+        image_providers: dict[
+            zigpy.ota.providers.BaseOtaImageMetadata,
+            zigpy.ota.providers.BaseOtaProvider,
+        ] = {}
 
-            _LOGGER.debug("Loaded %d images from provider: %s", len(index), provider)
-
-            # Cache its images. If the concurrent call's result was shared, the first
-            # caller will cache these images
-            for meta in index:
-                if meta not in self._image_cache:
-                    # Mark metadata as trusted if it comes from a trusted provider
-                    if provider.TRUSTED and not meta.trusted:
-                        meta = meta.replace(trusted=True)
-                    self._image_cache[meta] = OtaImageWithMetadata(
-                        metadata=meta, firmware=None
-                    )
+        for provider in compatible_providers:
+            for meta, img in self._image_cache.get(provider, {}).items():
+                if meta not in images or (
+                    images[meta].firmware is None and img.firmware is not None
+                ):
+                    images[meta] = img
+                    image_providers[meta] = provider
 
         # Find all superficially compatible images. Note that if an image's contents
         # are unknown and its metadata does not describe hardware compatibility, we will
@@ -528,7 +561,7 @@ class OTA:
         candidates = sorted(
             [
                 img
-                for img in self._image_cache.values()
+                for img in images.values()
                 if img.check_compatibility(device, query_cmd)
             ],
             key=lambda img: img.version,
@@ -569,12 +602,16 @@ class OTA:
             # image with downloaded firmware.
             img = result
 
-            # Cache the image if it isn't already cached (or was cleared by
-            # invalidate_provider_caches() during the download await)
-            cached = self._image_cache.get(img.metadata)
-            if cached is None or cached.firmware is None:
+            # Cache the downloaded firmware, unless the image was withdrawn by an
+            # index refresh (or invalidate_provider_caches()) during the download
+            provider_images = self._image_cache.get(image_providers[img.metadata])
+            if (
+                provider_images is not None
+                and img.metadata in provider_images
+                and provider_images[img.metadata].firmware is None
+            ):
                 _LOGGER.debug("Caching image %s", img)
-                self._image_cache[img.metadata] = img
+                provider_images[img.metadata] = img
 
             if not img.check_compatibility(device, query_cmd):
                 # Ignore images that become incompatible once downloaded
