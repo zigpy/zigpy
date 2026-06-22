@@ -17,4 +17,4 @@ def __getattr__(name: str) -> typing.Any:
         DeprecationWarning,
         stacklevel=2,
     )
-    return importlib.import_module("zhaquirks.legacy.registry").DeviceRegistry
+    return importlib.import_module("zhaquirks.legacy.registry").LegacyDeviceRegistry

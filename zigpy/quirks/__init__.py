@@ -12,7 +12,7 @@ _MOVED_NAMES: dict[str, tuple[str, str]] = {
     "CustomEndpoint": ("zhaquirks.device", "CustomEndpoint"),
     "CustomDeviceV2": ("zhaquirks.device", "CustomZigpyDevice"),
     "CustomDevice": ("zhaquirks.legacy", "CustomDevice"),
-    "DeviceRegistry": ("zhaquirks.legacy", "DeviceRegistry"),
+    "DeviceRegistry": ("zhaquirks.legacy", "LegacyDeviceRegistry"),
     "DEVICE_REGISTRY": ("zhaquirks.legacy", "DEVICE_REGISTRY"),
     "FilterType": ("zhaquirks.legacy", "FilterType"),
     "get_device": ("zhaquirks.legacy", "get_device"),
