@@ -769,10 +769,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             # Populate the device signature before we apply any quirks, which can modify
             # the device structure (for now)
             device.original_signature = device.get_signature()
-
-            self._application.devices[device.ieee] = self._application._resolve_device(
-                device
-            )
+            new_device = self._application._resolve_device(device)
+            new_device.original_signature = device.original_signature
+            self._application.devices[device.ieee] = new_device
 
         # Clear the attribute cache to ensure the quirked state is correct
         for device in self._application.devices.values():
