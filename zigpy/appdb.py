@@ -399,6 +399,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self.enqueue("_raw_device_initialized", device.clone())
 
     async def _raw_device_initialized(self, device: Device) -> None:
+        # To ensure events do not leak with the discarded device clone, we need to clean
+        # up
+        try:
+            await self._raw_device_initialized_internal(device)
+        finally:
+            device.on_remove()
+
+    async def _raw_device_initialized_internal(self, device: Device) -> None:
         # `device` is a clone snapshotted in `raw_device_initialized`, taken before any
         # quirk had a chance to mutate the live device
         if device.original_signature is not None:
