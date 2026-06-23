@@ -1496,8 +1496,15 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         def cancel_callback() -> None:
             """Remove the listener."""
-            if listener in self._req_listeners[src]:
-                self._req_listeners[src].remove(listener)
+            listeners = self._req_listeners.get(src)
+            if listeners is None:
+                return
+
+            if listener in listeners:
+                listeners.remove(listener)
+
+            if not listeners:
+                self._req_listeners.pop(src, None)
 
         return cancel_callback
 
