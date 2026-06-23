@@ -2013,10 +2013,13 @@ async def test_device_resolver_registration(app, ieee):
 
 
 async def test_device_resolver_new_kwarg():
-    """The device resolver can be provided when creating the application."""
+    """The device resolver and packet handler can be provided when creating the app."""
 
     def resolver(device: zigpy.device.Device) -> zigpy.device.Device:
         return device
+
+    def packet_handler(*args) -> None:
+        return None
 
     app = await App.new(
         {
@@ -2026,8 +2029,10 @@ async def test_device_resolver_new_kwarg():
         auto_form=False,
         start_radio=False,
         device_resolver=resolver,
+        uninitialized_packet_handler=packet_handler,
     )
     assert app._device_resolver is resolver
+    assert app._uninitialized_packet_handler is packet_handler
 
     app_default = await App.new(
         {
@@ -2038,3 +2043,4 @@ async def test_device_resolver_new_kwarg():
         start_radio=False,
     )
     assert app_default._device_resolver is None
+    assert app_default._uninitialized_packet_handler is None

@@ -912,6 +912,25 @@ async def test_device_without_node_descriptor_not_persisted(tmp_path) -> None:
         assert not cur.fetchall()
 
 
+async def test_appdb_refuses_to_save_quirked_device(tmp_path) -> None:
+    """Only a bare device may be persisted, a quirked one is refused."""
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    # A populated `original_signature` marks a device that has entered quirk
+    # resolution and must never be written to the database.
+    dev.original_signature = dev.get_signature()
+
+    with pytest.raises(
+        ValueError, match="A device with quirks cannot be saved to the database"
+    ):
+        await app._dblistener._raw_device_initialized_internal(dev)
+
+    await app.shutdown()
+
+
 @patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
 async def test_load_unsupp_attr_wrong_cluster(tmp_path):
     """Test loading unsupported attribute from the wrong cluster."""
