@@ -1826,7 +1826,7 @@ async def test_get_last_ota_query_cmd_returns_none(tmp_path):
 async def test_database_commit_interval(tmp_path):
     """Test that configured database_commit_interval defers writes."""
     db = tmp_path / "test.db"
-    app = make_app({conf.CONF_DATABASE: str(db), "database_commit_interval": 0.1})
+    app = make_app({conf.CONF_DATABASE: str(db), conf.CONF_DB_COMMIT_INTERVAL: 0.1})
     await app._load_db()
 
     ieee = make_ieee()
@@ -1870,7 +1870,7 @@ async def test_database_commit_interval_shutdown_forces_commit(tmp_path):
     """Test that shutting down the application forces pending commits immediately."""
     db = tmp_path / "test.db"
     # Set a very long commit interval so it does not auto-commit during the test
-    app = make_app({conf.CONF_DATABASE: str(db), "database_commit_interval": 10.0})
+    app = make_app({conf.CONF_DATABASE: str(db), conf.CONF_DB_COMMIT_INTERVAL: 10.0})
     await app._load_db()
 
     ieee = make_ieee()

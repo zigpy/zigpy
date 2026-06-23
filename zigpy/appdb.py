@@ -13,6 +13,7 @@ import aiosqlite
 
 import zigpy.appdb_schemas
 import zigpy.backups
+import zigpy.config as conf
 import zigpy.device
 from zigpy.device import Device, Status as DeviceStatus
 import zigpy.endpoint
@@ -135,7 +136,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         # Support database commit batching interval configuration
         self._commit_interval = float(
-            self._application.config.get("database_commit_interval", 0)
+            self._application.config.get(
+                conf.CONF_DB_COMMIT_INTERVAL,
+                conf.defaults.CONF_DB_COMMIT_INTERVAL_DEFAULT,
+            )
         )
         self._commit_task: asyncio.Task | None = None
         self._has_pending_commits = False
