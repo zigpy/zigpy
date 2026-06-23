@@ -759,8 +759,8 @@ async def test_appdb_worker_exception(tmp_path):
     dev_1.node_desc.serialize.side_effect = AttributeError
 
     with patch(
-        "zigpy.appdb.PersistingListener._save_device",
-        wraps=zigpy.appdb.PersistingListener._save_device,
+        "zigpy.appdb.PersistingListener._raw_device_initialized",
+        wraps=zigpy.appdb.PersistingListener._raw_device_initialized,
     ) as save_mock:
         db_listener = await zigpy.appdb.PersistingListener.new(db, app_mock)
 
@@ -790,6 +790,7 @@ async def test_unsupported_attribute(tmp_path, dev_init):
     ep.profile_id = 260
     ep.device_type = profiles.zha.DeviceType.PUMP
     in_clus = ep.add_input_cluster(0)
+    out_clus = ep.add_output_cluster(0)
     in_clus.update_attribute(4, "Custom")
     in_clus.update_attribute(5, "Model")
     app.device_initialized(dev)
@@ -797,7 +798,6 @@ async def test_unsupported_attribute(tmp_path, dev_init):
     in_clus.add_unsupported_attribute(Basic.AttributeDefs.location_desc.id)
     in_clus.add_unsupported_attribute("physical_env")
 
-    out_clus = ep.add_output_cluster(0)
     out_clus.add_unsupported_attribute(Basic.AttributeDefs.location_desc.id)
     await app.shutdown()
 
@@ -874,6 +874,42 @@ async def test_unsupported_attribute(tmp_path, dev_init):
         ._attr_cache.is_unsupported(Basic.AttributeDefs.physical_env)
     )
     await app4.shutdown()
+
+
+async def test_device_without_node_descriptor_not_persisted(tmp_path) -> None:
+    """A device whose node descriptor was never read persists without one."""
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    ieee = t.EUI64.convert("aa:bb:cc:dd:11:22:33:44")
+    dev = app.add_device(nwk=0x1234, ieee=ieee)
+    assert dev.node_desc is None
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ep.add_input_cluster(Basic.cluster_id)
+
+    app.device_initialized(dev)
+    await app.shutdown()
+
+    with sqlite3.connect(str(db)) as conn:
+        cur = conn.cursor()
+
+        # The device itself was persisted
+        cur.execute(
+            f"SELECT ieee FROM devices{zigpy.appdb.DB_V} WHERE ieee=?", [str(ieee)]
+        )
+        assert len(cur.fetchall()) == 1
+
+        # ...but no node descriptor row was written for it
+        cur.execute(
+            f"SELECT * FROM node_descriptors{zigpy.appdb.DB_V} WHERE ieee=?",
+            [str(ieee)],
+        )
+        assert not cur.fetchall()
 
 
 @patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
@@ -1094,7 +1130,11 @@ async def test_appdb_persist_coordinator_info(tmp_path):  # noqa: F811
         await app.initialize()
         await app.shutdown()
 
-    assert mock_save_attr_cache.mock_calls == [call(app._device.endpoints[1])]
+    # The cache is saved from a clone of the device, so the endpoint is a different
+    # object than the live coordinator's, but it is the same endpoint
+    assert len(mock_save_attr_cache.mock_calls) == 1
+    (saved_endpoint,) = mock_save_attr_cache.mock_calls[0].args
+    assert saved_endpoint.endpoint_id == 1
 
 
 async def test_appdb_attribute_clear(tmp_path):

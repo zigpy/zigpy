@@ -623,12 +623,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     def _finalize_device(self, device: zigpy.device.Device) -> zigpy.device.Device:
         """Resolve a device, persist to DB, and register the device."""
-        device.original_signature = device.get_signature()
-
         self.listener_event("raw_device_initialized", device)
-        resolved = self._resolve_device(device)
 
         # Ensure we propagate the original device signature
+        device.original_signature = device.get_signature()
+        resolved = self._resolve_device(device)
         resolved.original_signature = device.original_signature
 
         self.devices[resolved.ieee] = resolved

@@ -255,13 +255,9 @@ async def test_migration_missing_node_descriptor(test_db, caplog):
     bad_dev = app.devices[t.EUI64.convert(ieee)]
     assert bad_dev.node_desc is None
 
-    caplog.clear()
-
-    # Saving the device should cause the node descriptor to not be saved
-    await app._dblistener._save_device(bad_dev)
     await app.shutdown()
 
-    # The node descriptor is not in the database
+    # The migration did not fabricate a node descriptor for the device
     with sqlite3.connect(test_db_v3) as conn:
         cur = conn.cursor()
         cur.execute(

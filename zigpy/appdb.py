@@ -394,9 +394,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.commit()
 
     def raw_device_initialized(self, device: Device) -> None:
-        self.enqueue("_save_device", device)
+        # We work with a clone of a device so that quirks that run in the same event
+        # loop iteration do not manage to mutate it before the async database code runs
+        self.enqueue("_raw_device_initialized", device.clone())
 
-    async def _save_device(self, device: Device) -> None:
+    async def _raw_device_initialized(self, device: Device) -> None:
+        # `device` is a clone snapshotted in `raw_device_initialized`, taken before any
+        # quirk had a chance to mutate the live device
+        if device.original_signature is not None:
+            raise ValueError("A device with quirks cannot be saved to the database")
+
         q = f"""INSERT INTO devices{DB_V} (ieee, nwk, status, last_seen)
                     VALUES (?, ?, ?, ?)
                     ON CONFLICT (ieee)
