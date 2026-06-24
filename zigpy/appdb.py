@@ -20,7 +20,6 @@ from zigpy.endpoint import Endpoint, Status as EndpointStatus
 import zigpy.exceptions
 import zigpy.group
 import zigpy.profiles
-import zigpy.quirks
 import zigpy.state
 import zigpy.types as t
 import zigpy.typing
@@ -395,9 +394,24 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.commit()
 
     def raw_device_initialized(self, device: Device) -> None:
-        self.enqueue("_save_device", device)
+        # We work with a clone of a device so that quirks that run in the same event
+        # loop iteration do not manage to mutate it before the async database code runs
+        self.enqueue("_raw_device_initialized", device.clone())
 
-    async def _save_device(self, device: Device) -> None:
+    async def _raw_device_initialized(self, device: Device) -> None:
+        # To ensure events do not leak with the discarded device clone, we need to clean
+        # up
+        try:
+            await self._raw_device_initialized_internal(device)
+        finally:
+            device.on_remove()
+
+    async def _raw_device_initialized_internal(self, device: Device) -> None:
+        # `device` is a clone snapshotted in `raw_device_initialized`, taken before any
+        # quirk had a chance to mutate the live device
+        if device.original_signature is not None:
+            raise ValueError("A device with quirks cannot be saved to the database")
+
         q = f"""INSERT INTO devices{DB_V} (ieee, nwk, status, last_seen)
                     VALUES (?, ?, ?, ?)
                     ON CONFLICT (ieee)
@@ -417,10 +431,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         if device.node_desc is not None:
             await self._save_node_descriptor(device)
-
-        if isinstance(device, zigpy.quirks.BaseCustomDevice):
-            await self._db.commit()
-            return
 
         await self._save_endpoints(device)
         for ep in device.non_zdo_endpoints:
@@ -767,8 +777,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             # Populate the device signature before we apply any quirks, which can modify
             # the device structure (for now)
             device.original_signature = device.get_signature()
-
-            self._application.devices[device.ieee] = zigpy.quirks.get_device(device)
+            new_device = self._application._resolve_device(device)
+            new_device.original_signature = device.original_signature
+            self._application.devices[device.ieee] = new_device
 
         # Clear the attribute cache to ensure the quirked state is correct
         for device in self._application.devices.values():

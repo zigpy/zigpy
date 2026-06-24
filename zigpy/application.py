@@ -4,7 +4,7 @@ import abc
 import asyncio
 from asyncio import timeout as asyncio_timeout
 import collections
-from collections.abc import AsyncGenerator, Coroutine
+from collections.abc import AsyncGenerator, Callable, Coroutine
 import contextlib
 import contextvars
 from datetime import UTC, datetime
@@ -30,7 +30,6 @@ import zigpy.group
 import zigpy.listeners
 import zigpy.ota
 import zigpy.profiles
-import zigpy.quirks
 import zigpy.state
 import zigpy.topology
 import zigpy.types as t
@@ -78,6 +77,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._groups = zigpy.group.Groups(self)
         self._send_sequence = 0
         self._tasks: set[asyncio.Future[Any]] = set()
+
+        self._device_resolver: (
+            Callable[[zigpy.device.Device], zigpy.device.Device] | None
+        ) = None
+        self._uninitialized_packet_handler: Callable[..., None] | None = None
 
         self._watchdog_task: asyncio.Task | None = None
 
@@ -336,10 +340,22 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     @classmethod
     async def new(
-        cls, config: dict, auto_form: bool = False, start_radio: bool = True
+        cls,
+        config: dict,
+        auto_form: bool = False,
+        start_radio: bool = True,
+        device_resolver: Callable[[zigpy.device.Device], zigpy.device.Device]
+        | None = None,
+        uninitialized_packet_handler: Callable[..., None] | None = None,
     ) -> ControllerApplication:
         """Create new instance of application controller."""
         app = cls(config)
+
+        if device_resolver is not None:
+            app.register_device_resolver(device_resolver)
+
+        if uninitialized_packet_handler is not None:
+            app.register_uninitialized_packet_handler(uninitialized_packet_handler)
 
         await app._load_db()
 
@@ -606,26 +622,47 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         return dev
 
     def _finalize_device(self, device: zigpy.device.Device) -> zigpy.device.Device:
-        """Apply quirks, persist to DB, and register the device.
-
-        Returns the (possibly quirked) device stored in ``self.devices``.
-        Does **not** fire any listener events beyond ``raw_device_initialized``
-        (which triggers the DB save).
-        """
-        device.original_signature = device.get_signature()
-
+        """Resolve a device, persist to DB, and register the device."""
         self.listener_event("raw_device_initialized", device)
-        device = zigpy.quirks.get_device(device)
-        self.devices[device.ieee] = device
-        if self._dblistener is not None:
-            device.add_context_listener(self._dblistener)
 
+        # Ensure we propagate the original device signature
+        device.original_signature = device.get_signature()
+        resolved = self._resolve_device(device)
+        resolved.original_signature = device.original_signature
+
+        self.devices[resolved.ieee] = resolved
+        if self._dblistener is not None:
+            resolved.add_context_listener(self._dblistener)
+
+        return resolved
+
+    def _resolve_device(self, device: zigpy.device.Device) -> zigpy.device.Device:
+        """Resolve a freshly-constructed device into its final object."""
+        if self._device_resolver is not None:
+            return self._device_resolver(device)
         return device
+
+    def register_device_resolver(
+        self,
+        resolver: Callable[[zigpy.device.Device], zigpy.device.Device],
+    ) -> None:
+        """Replace the callable that turns a raw device into its final object."""
+        self._device_resolver = resolver
+
+    def register_uninitialized_packet_handler(
+        self, handler: Callable[..., None]
+    ) -> None:
+        """Register a handler for packets from not-yet-initialized devices."""
+        self._uninitialized_packet_handler = handler
 
     def device_initialized(self, device: zigpy.device.Device) -> None:
         """Used by a device to signal that it is initialized"""
         LOGGER.debug("Device is initialized %s", device)
-        device = self._finalize_device(device)
+
+        # Only a freshly-interviewed device needs to be finalized
+        if device.original_signature is None:
+            device = self._finalize_device(device)
+
         self.listener_event("device_initialized", device)
 
     async def _device_reinterviewed(
@@ -1327,15 +1364,16 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
             return device.packet_received(packet)
 
-        # Give quirks a chance to fast-initialize the device (at the moment only Xiaomi)
-        zigpy.quirks.handle_message_from_uninitialized_sender(
-            device,
-            packet.profile_id,
-            packet.cluster_id,
-            packet.src_ep,
-            packet.dst_ep,
-            packet.data.serialize(),
-        )
+        # Give the consumer a chance to fast-initialize the device (e.g. Xiaomi).
+        if self._uninitialized_packet_handler is not None:
+            self._uninitialized_packet_handler(
+                device,
+                packet.profile_id,
+                packet.cluster_id,
+                packet.src_ep,
+                packet.dst_ep,
+                packet.data.serialize(),
+            )
 
         # Reload the device device object, in it was replaced by the quirk
         device = self.get_device(ieee=device.ieee)
@@ -1458,8 +1496,15 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         def cancel_callback() -> None:
             """Remove the listener."""
-            if listener in self._req_listeners[src]:
-                self._req_listeners[src].remove(listener)
+            listeners = self._req_listeners.get(src)
+            if listeners is None:
+                return
+
+            if listener in listeners:
+                listeners.remove(listener)
+
+            if not listeners:
+                self._req_listeners.pop(src, None)
 
         return cancel_callback
 

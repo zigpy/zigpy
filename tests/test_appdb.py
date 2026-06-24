@@ -1,6 +1,7 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 import pathlib
+import sqlite3
 import time
 
 import aiosqlite
@@ -34,14 +35,9 @@ from zigpy.const import (
 from zigpy.device import Device, Status
 import zigpy.endpoint
 import zigpy.ota
-import zigpy.quirks
-from zigpy.quirks import CustomCluster, CustomDevice
-from zigpy.quirks.registry import DeviceRegistry
-from zigpy.quirks.v2 import QuirkBuilder
 import zigpy.types as t
 import zigpy.zcl
 from zigpy.zcl import (
-    ClusterType,
     OtaQueryCacheClearedEvent,
     OtaQueryCacheUpdatedEvent,
     UnsupportedAttribute,
@@ -53,33 +49,36 @@ from zigpy.zdo import types as zdo_t
 pytestmark = pytest.mark.usefixtures("auto_kill_aiosqlite")
 
 
-async def make_app_with_db(database_file):
+async def make_app_with_db(database_file, device_resolver=None):
     if isinstance(database_file, pathlib.Path):
         database_file = str(database_file)
 
     app = make_app({conf.CONF_DATABASE: database_file})
+    if device_resolver is not None:
+        app.register_device_resolver(device_resolver)
     await app._load_db()
 
     return app
 
 
-class FakeCustomDevice(CustomDevice):
-    replacement = {
-        "endpoints": {
-            # Endpoint exists on original device
-            1: {
-                "input_clusters": [0, 1, 3, 0x0008],
-                "output_clusters": [6],
-            },
-            # Endpoint is created only at runtime by the quirk
-            99: {
-                "input_clusters": [0, 1, 3, 0x0008],
-                "output_clusters": [6],
-                "profile_id": 65535,
-                "device_type": 123,
-            },
-        }
-    }
+def add_ep99_resolver(device):
+    """Resolver that adds clusters to ep1 and a runtime-only ep99 on a clone."""
+    if device.endpoints.get(1) is None or device[1].profile_id != 65535:
+        return device
+
+    new = device.clone()
+    for ep_id in (1, 99):
+        if ep_id in new.endpoints:
+            ep = new.endpoints[ep_id]
+        else:
+            ep = new.add_endpoint(ep_id)
+            ep.status = zigpy.endpoint.Status.ZDO_INIT
+            ep.profile_id = 65535
+            ep.device_type = 123
+        for cluster_id in (0, 1, 3, 0x0008):
+            ep.add_input_cluster(cluster_id)
+        ep.add_output_cluster(6)
+    return new
 
 
 def mock_dev_init(initialize: bool):
@@ -99,12 +98,6 @@ def _mk_rar(attrid, value, status=0):
     r.value = zigpy.zcl.foundation.TypeValue()
     r.value.value = value
     return r
-
-
-def fake_get_device(device):
-    if device.endpoints.get(1) is not None and device[1].profile_id == 65535:
-        return FakeCustomDevice(device.application, device.ieee, device.nwk, device)
-    return device
 
 
 async def test_no_database(tmp_path):
@@ -175,16 +168,15 @@ async def test_database(tmp_path):
     custom_ieee = make_ieee(1)
     app.handle_join(199, custom_ieee, 0)
     dev = app.get_device(custom_ieee)
-    app.device_initialized(dev)
     ep = dev.add_endpoint(1)
     ep.status = zigpy.endpoint.Status.ZDO_INIT
     ep.device_type = profiles.zll.DeviceType.COLOR_LIGHT
     ep.profile_id = 65535
-    with patch("zigpy.quirks.get_device", fake_get_device):
-        app.device_initialized(dev)
-    assert isinstance(app.get_device(custom_ieee), FakeCustomDevice)
-    assert isinstance(app.get_device(custom_ieee), CustomDevice)
+    app.register_device_resolver(add_ep99_resolver)
+    app.device_initialized(dev)
+    assert 99 in app.get_device(custom_ieee).endpoints
     dev = app.get_device(custom_ieee)
+    # A re-announce must not re-persist the quirk's virtual endpoints
     app.device_initialized(dev)
     dev.relays = relays_2
     dev.endpoints[1].level.update_attribute(0x0011, 17)
@@ -197,8 +189,7 @@ async def test_database(tmp_path):
     await app.shutdown()
 
     # Everything should've been saved - check that it re-loads
-    with patch("zigpy.quirks.get_device", fake_get_device):
-        app2 = await make_app_with_db(db)
+    app2 = await make_app_with_db(db, device_resolver=add_ep99_resolver)
     dev = app2.get_device(ieee)
     assert dev.endpoints[1].device_type == profiles.zha.DeviceType.PUMP
     assert dev.endpoints[2].device_type == 0xFFFD
@@ -669,8 +660,7 @@ async def test_device_rejoin(tmp_path):
     await app.shutdown()
 
     # Everything should've been saved - check that it re-loads
-    with patch("zigpy.quirks.get_device", fake_get_device):
-        app2 = await make_app_with_db(db)
+    app2 = await make_app_with_db(db)
     dev = app2.get_device(ieee)
     assert dev.nwk == nwk
     assert dev.endpoints[1].device_type == profiles.zha.DeviceType.PUMP
@@ -679,10 +669,8 @@ async def test_device_rejoin(tmp_path):
     assert dev.endpoints[1].manufacturer == "Custom"
     assert dev.endpoints[1].model == "Model"
 
-    # device rejoins
-    dev.nwk = nwk + 1
-    with patch("zigpy.quirks.get_device", fake_get_device):
-        app2.device_initialized(dev)
+    # device rejoins with a new NWK (persisted via the `device_joined` event)
+    app2.handle_join(nwk + 1, ieee, 0)
     await app2.shutdown()
 
     app3 = await make_app_with_db(db)
@@ -771,8 +759,8 @@ async def test_appdb_worker_exception(tmp_path):
     dev_1.node_desc.serialize.side_effect = AttributeError
 
     with patch(
-        "zigpy.appdb.PersistingListener._save_device",
-        wraps=zigpy.appdb.PersistingListener._save_device,
+        "zigpy.appdb.PersistingListener._raw_device_initialized",
+        wraps=zigpy.appdb.PersistingListener._raw_device_initialized,
     ) as save_mock:
         db_listener = await zigpy.appdb.PersistingListener.new(db, app_mock)
 
@@ -802,6 +790,7 @@ async def test_unsupported_attribute(tmp_path, dev_init):
     ep.profile_id = 260
     ep.device_type = profiles.zha.DeviceType.PUMP
     in_clus = ep.add_input_cluster(0)
+    out_clus = ep.add_output_cluster(0)
     in_clus.update_attribute(4, "Custom")
     in_clus.update_attribute(5, "Model")
     app.device_initialized(dev)
@@ -809,7 +798,6 @@ async def test_unsupported_attribute(tmp_path, dev_init):
     in_clus.add_unsupported_attribute(Basic.AttributeDefs.location_desc.id)
     in_clus.add_unsupported_attribute("physical_env")
 
-    out_clus = ep.add_output_cluster(0)
     out_clus.add_unsupported_attribute(Basic.AttributeDefs.location_desc.id)
     await app.shutdown()
 
@@ -886,6 +874,61 @@ async def test_unsupported_attribute(tmp_path, dev_init):
         ._attr_cache.is_unsupported(Basic.AttributeDefs.physical_env)
     )
     await app4.shutdown()
+
+
+async def test_device_without_node_descriptor_not_persisted(tmp_path) -> None:
+    """A device whose node descriptor was never read persists without one."""
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    ieee = t.EUI64.convert("aa:bb:cc:dd:11:22:33:44")
+    dev = app.add_device(nwk=0x1234, ieee=ieee)
+    assert dev.node_desc is None
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ep.add_input_cluster(Basic.cluster_id)
+
+    app.device_initialized(dev)
+    await app.shutdown()
+
+    with sqlite3.connect(str(db)) as conn:
+        cur = conn.cursor()
+
+        # The device itself was persisted
+        cur.execute(
+            f"SELECT ieee FROM devices{zigpy.appdb.DB_V} WHERE ieee=?", [str(ieee)]
+        )
+        assert len(cur.fetchall()) == 1
+
+        # ...but no node descriptor row was written for it
+        cur.execute(
+            f"SELECT * FROM node_descriptors{zigpy.appdb.DB_V} WHERE ieee=?",
+            [str(ieee)],
+        )
+        assert not cur.fetchall()
+
+
+async def test_appdb_refuses_to_save_quirked_device(tmp_path) -> None:
+    """Only a bare device may be persisted, a quirked one is refused."""
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    # A populated `original_signature` marks a device that has entered quirk
+    # resolution and must never be written to the database.
+    dev.original_signature = dev.get_signature()
+
+    with pytest.raises(
+        ValueError, match="A device with quirks cannot be saved to the database"
+    ):
+        await app._dblistener._raw_device_initialized_internal(dev)
+
+    await app.shutdown()
 
 
 @patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
@@ -969,10 +1012,8 @@ async def test_load_unsupp_attr_missing_endpoint(tmp_path):
         device.endpoints.pop(4)
         return device
 
-    # Simulate a quirk that removes the entire endpoint
-    with patch("zigpy.quirks.get_device", side_effect=remove_cluster):
-        # The application should still load
-        app = await make_app_with_db(db)
+    # Simulate a resolver (quirk) that removes the entire endpoint
+    app = await make_app_with_db(db, device_resolver=remove_cluster)
 
     dev = app.get_device(ieee)
     assert 4 not in dev.endpoints
@@ -1108,7 +1149,11 @@ async def test_appdb_persist_coordinator_info(tmp_path):  # noqa: F811
         await app.initialize()
         await app.shutdown()
 
-    assert mock_save_attr_cache.mock_calls == [call(app._device.endpoints[1])]
+    # The cache is saved from a clone of the device, so the endpoint is a different
+    # object than the live coordinator's, but it is the same endpoint
+    assert len(mock_save_attr_cache.mock_calls) == 1
+    (saved_endpoint,) = mock_save_attr_cache.mock_calls[0].args
+    assert saved_endpoint.endpoint_id == 1
 
 
 async def test_appdb_attribute_clear(tmp_path):
@@ -1154,12 +1199,11 @@ async def test_appdb_attribute_clear(tmp_path):
     await app3.shutdown()
 
 
-async def test_appdb_complex_quirk_matching(tmp_path) -> None:
-    """Test quirks are given full attribute state for matching."""
+async def test_appdb_resolver_sees_populated_attributes(tmp_path) -> None:
+    """Test the resolver is given a fully attribute-populated device on load."""
     db = tmp_path / "test.db"
     app = await make_app_with_db(db)
 
-    # Create a simple device
     dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
     dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
 
@@ -1178,73 +1222,48 @@ async def test_appdb_complex_quirk_matching(tmp_path) -> None:
     app.device_initialized(dev)
     await app.shutdown()
 
-    # Ensure quirks have the correct information to match properly
-    registry = DeviceRegistry()
+    seen = {}
 
-    # Doesn't match
-    _quirk1 = (
-        QuirkBuilder("Some Manufacturer", "Some Model", registry=registry)
-        .firmware_version_filter(
-            min_version=0x12345678 - 1,
-            max_version=0x12345678,
-            allow_missing=False,
-        )
-        .add_to_registry()
-    )
+    def resolver(device):
+        ota_cluster = device.endpoints[1].out_clusters[Ota.cluster_id]
+        seen["firmware"] = ota_cluster.get(Ota.AttributeDefs.current_file_version.id)
+        seen["manufacturer"] = device.manufacturer
+        seen["model"] = device.model
+        return device
 
-    # Matches
-    quirk2 = (
-        QuirkBuilder("Some Manufacturer", "Some Model", registry=registry)
-        .firmware_version_filter(
-            min_version=0x12345678,
-            max_version=0x12345678 + 1,
-            allow_missing=False,
-        )
-        .add_to_registry()
-    )
+    app2 = await make_app_with_db(db, device_resolver=resolver)
 
-    # Doesn't match
-    _quirk3 = (
-        QuirkBuilder("Some Manufacturer", "Some Model", registry=registry)
-        .firmware_version_filter(
-            min_version=0x12345678 + 1,
-            max_version=0x12345678 + 2,
-            allow_missing=False,
-        )
-        .add_to_registry()
-    )
-
-    with patch("zigpy.quirks.get_device", side_effect=registry.get_device):
-        app2 = await make_app_with_db(db)
-
-    # Only the second quirk should match
-    dev2 = app2.get_device(t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
-    assert dev2.quirk_metadata == quirk2
+    assert seen["firmware"] == 0x12345678
+    assert seen["manufacturer"] == "Some Manufacturer"
+    assert seen["model"] == "Some Model"
 
     await app2.shutdown()
 
 
-@patch("zigpy.quirks.DEVICE_REGISTRY", new=DeviceRegistry())
 async def test_attribute_reads_persist(tmp_path) -> None:
     """Test that attribute reads are persisted to the database."""
 
-    class CustomBasicCluster(CustomCluster, Basic):
+    class CustomBasicCluster(Basic):
+        _skip_registry = True
+
         class AttributeDefs(Basic.AttributeDefs):
             # This attribute intentionally collides with `model`
             custom_attr = ZCLAttributeDef(
                 id=0x0004, type=t.uint8_t, manufacturer_code=0x1234
             )
 
-    (
-        QuirkBuilder(
-            "some manufacturer", "some model", registry=zigpy.quirks.DEVICE_REGISTRY
-        )
-        .replaces(CustomBasicCluster, endpoint_id=1)
-        .add_to_registry()
-    )
+    def replace_basic(device):
+        new = device.clone()
+        ep = new.endpoints[1]
+        old = ep.in_clusters.pop(Basic.cluster_id, None)
+        cluster = CustomBasicCluster(ep, is_server=True)
+        ep.add_input_cluster(cluster.cluster_id, cluster)
+        if old is not None:
+            cluster._attr_cache_internal = old._attr_cache.clone(cluster)
+        return new
 
     db = tmp_path / "test.db"
-    app = await make_app_with_db(db)
+    app = await make_app_with_db(db, device_resolver=replace_basic)
 
     dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
     dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
@@ -1282,7 +1301,7 @@ async def test_attribute_reads_persist(tmp_path) -> None:
     await app.shutdown()
 
     # Load it back from disk
-    app2 = await make_app_with_db(db)
+    app2 = await make_app_with_db(db, device_resolver=replace_basic)
     dev2 = app2.get_device(t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
 
     assert (
@@ -1307,27 +1326,249 @@ async def test_attribute_reads_persist(tmp_path) -> None:
     await app2.shutdown()
 
 
-@patch("zigpy.quirks.DEVICE_REGISTRY", new=DeviceRegistry())
+async def test_appdb_custom_device_subclass_round_trip(tmp_path) -> None:
+    """A resolver returning a `Device` subclass round-trips."""
+
+    class CustomBasicCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            # Virtual attribute populated by the quirk, never read from the device
+            virtual_attr = ZCLAttributeDef(id=0x8001, type=t.uint8_t)
+
+    class QuirkedDevice(Device):
+        """Minimal stand-in for a zha-device-handlers CustomDevice."""
+
+        def __init__(self, application, ieee, nwk, *, replaces):
+            super().__init__(application, ieee, nwk)
+            self.lqi = replaces.lqi
+            self.rssi = replaces.rssi
+            self.last_seen = replaces.last_seen
+            self.relays = replaces.relays
+            self.original_signature = replaces.original_signature
+            self.status = replaces.status
+            self.node_desc = replaces.node_desc
+            self.manufacturer = replaces.manufacturer
+            self.model = replaces.model
+
+            for endpoint in replaces.non_zdo_endpoints:
+                new_ep = self.add_endpoint(endpoint.endpoint_id)
+                new_ep.status = endpoint.status
+                new_ep.profile_id = endpoint.profile_id
+                new_ep.device_type = endpoint.device_type
+
+                for cluster in endpoint.in_clusters.values():
+                    if cluster.cluster_id == Basic.cluster_id:
+                        new_cluster = CustomBasicCluster(new_ep, is_server=True)
+                        new_ep.add_input_cluster(new_cluster.cluster_id, new_cluster)
+                    else:
+                        new_cluster = new_ep.add_input_cluster(cluster.cluster_id)
+                    new_cluster._attr_cache_internal = cluster._attr_cache.clone(
+                        new_cluster
+                    )
+
+                for cluster in endpoint.out_clusters.values():
+                    new_cluster = new_ep.add_output_cluster(cluster.cluster_id)
+                    new_cluster._attr_cache_internal = cluster._attr_cache.clone(
+                        new_cluster
+                    )
+
+    def resolver(device):
+        if device.model != "some model":
+            return device
+        return QuirkedDevice(
+            device.application, device.ieee, device.nwk, replaces=device
+        )
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, device_resolver=resolver)
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+
+    basic = ep.add_input_cluster(Basic.cluster_id)
+    basic.update_attribute(Basic.AttributeDefs.model, "some model")
+    basic.update_attribute(Basic.AttributeDefs.manufacturer, "some manufacturer")
+
+    dev.model = "some model"
+    dev.manufacturer = "some manufacturer"
+
+    app.device_initialized(dev)
+
+    dev = app.get_device(ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+
+    # The resolver replaced the bare device with its subclass and custom cluster
+    assert isinstance(dev, QuirkedDevice)
+    assert isinstance(dev.endpoints[1].basic, CustomBasicCluster)
+
+    # State copied from the bare device survives resolution
+    assert dev.endpoints[1].basic.get_cached_value(Basic.AttributeDefs.model) == (
+        "some model"
+    )
+
+    # A virtual attribute set by the quirk at runtime is persisted
+    dev.endpoints[1].basic.update_attribute(
+        CustomBasicCluster.AttributeDefs.virtual_attr, 42
+    )
+
+    await app.shutdown()
+
+    # Reload from disk: the resolver runs again and the subclass + virtual attr return
+    app2 = await make_app_with_db(db, device_resolver=resolver)
+    dev2 = app2.get_device(ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+
+    assert isinstance(dev2, QuirkedDevice)
+    assert isinstance(dev2.endpoints[1].basic, CustomBasicCluster)
+    assert dev2.endpoints[1].basic.get_cached_value(Basic.AttributeDefs.model) == (
+        "some model"
+    )
+    assert (
+        dev2.endpoints[1].basic.get_cached_value(
+            CustomBasicCluster.AttributeDefs.virtual_attr
+        )
+        == 42
+    )
+
+    await app2.shutdown()
+
+
+async def test_quirk_virtual_endpoints_not_persisted(tmp_path) -> None:
+    """Re-finalizing a quirked device must not persist its virtual endpoints."""
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, device_resolver=add_ep99_resolver)
+
+    ieee = t.EUI64.convert("aa:bb:cc:dd:11:22:33:44")
+    dev = app.add_device(nwk=0x1234, ieee=ieee)
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 65535
+    ep.device_type = profiles.zll.DeviceType.COLOR_LIGHT
+    ep.add_input_cluster(0)
+
+    # The bare device is finalized; the resolver adds virtual endpoint 99
+    app.device_initialized(dev)
+    quirked = app.get_device(ieee)
+    assert 99 in quirked.endpoints
+
+    # A re-announce of the already-finalized (quirked) device
+    app.device_initialized(quirked)
+
+    await app.shutdown()
+
+    # Only the bare endpoint should have been persisted
+    with sqlite3.connect(str(db)) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT endpoint_id FROM endpoints{zigpy.appdb.DB_V} ORDER BY endpoint_id"
+        )
+        endpoint_ids = [row[0] for row in cur.fetchall()]
+
+    assert endpoint_ids == [1]
+
+    # On reload, `original_signature` reflects only the bare device
+    app2 = await make_app_with_db(db, device_resolver=add_ep99_resolver)
+    dev2 = app2.get_device(ieee)
+
+    # The resolver still reconstructs ep99 at runtime
+    assert 99 in dev2.endpoints
+    # ...but it never made it into the persisted signature
+    assert list(dev2.original_signature[SIG_ENDPOINTS]) == [1]
+
+    await app2.shutdown()
+
+
+async def test_reinterview_changed_signature_round_trip(tmp_path) -> None:
+    """A reinterview that changes the device's whole signature is persisted cleanly."""
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    ieee = t.EUI64.convert("aa:bb:cc:dd:11:22:33:44")
+    nwk = t.NWK(0x1234)
+    dev = app.add_device(nwk=nwk, ieee=ieee)
+    dev.node_desc = make_node_desc()
+
+    # Original signature: endpoints 1 and 2
+    ep1 = dev.add_endpoint(1)
+    ep1.status = zigpy.endpoint.Status.ZDO_INIT
+    ep1.profile_id = 260
+    ep1.device_type = profiles.zha.DeviceType.PUMP
+    ep1.add_input_cluster(Basic.cluster_id)
+    ep1.add_input_cluster(OnOff.cluster_id)
+
+    ep2 = dev.add_endpoint(2)
+    ep2.status = zigpy.endpoint.Status.ZDO_INIT
+    ep2.profile_id = 260
+    ep2.device_type = profiles.zha.DeviceType.PUMP
+    ep2.add_input_cluster(Identify.cluster_id)
+
+    app.device_initialized(dev)
+    await app.shutdown()
+
+    # Reload: the original structure is intact
+    app2 = await make_app_with_db(db)
+    old_dev = app2.get_device(ieee)
+    assert 1 in old_dev.endpoints
+    assert 2 in old_dev.endpoints
+    assert list(old_dev.original_signature[SIG_ENDPOINTS]) == [1, 2]
+
+    # Re-interview into an entirely different signature: a single endpoint 3
+    shadow = Device(app2, ieee, nwk)
+    shadow.node_desc = make_node_desc()
+    shadow.status = Status.ENDPOINTS_INIT
+    ep3 = shadow.add_endpoint(3)
+    ep3.status = zigpy.endpoint.Status.ZDO_INIT
+    ep3.profile_id = 260
+    ep3.device_type = profiles.zha.DeviceType.PUMP
+    ep3.add_input_cluster(Basic.cluster_id)
+
+    await app2._device_reinterviewed(old_dev, shadow)
+    await app2.shutdown()
+
+    # Reload: only the new structure survives; the old endpoints are gone
+    app3 = await make_app_with_db(db)
+    dev3 = app3.get_device(ieee)
+    assert 1 not in dev3.endpoints
+    assert 2 not in dev3.endpoints
+    assert 3 in dev3.endpoints
+    assert Basic.cluster_id in dev3.endpoints[3].in_clusters
+    assert list(dev3.original_signature[SIG_ENDPOINTS]) == [3]
+
+    await app3.shutdown()
+
+
 async def test_attribute_reports_persist(tmp_path) -> None:
     """Test that attribute reports are persisted to the database."""
 
-    class CustomBasicCluster(CustomCluster, Basic):
+    class CustomBasicCluster(Basic):
+        _skip_registry = True
+
         class AttributeDefs(Basic.AttributeDefs):
             # This attribute intentionally collides with `model`
             custom_attr = ZCLAttributeDef(
                 id=0x0004, type=t.uint8_t, manufacturer_code=0x1234
             )
 
-    (
-        QuirkBuilder(
-            "some manufacturer", "some model", registry=zigpy.quirks.DEVICE_REGISTRY
-        )
-        .replaces(CustomBasicCluster, endpoint_id=1)
-        .add_to_registry()
-    )
+    def replace_basic(device):
+        new = device.clone()
+        ep = new.endpoints[1]
+        old = ep.in_clusters.pop(Basic.cluster_id, None)
+        cluster = CustomBasicCluster(ep, is_server=True)
+        ep.add_input_cluster(cluster.cluster_id, cluster)
+        if old is not None:
+            cluster._attr_cache_internal = old._attr_cache.clone(cluster)
+        return new
 
     db = tmp_path / "test.db"
-    app = await make_app_with_db(db)
+    app = await make_app_with_db(db, device_resolver=replace_basic)
 
     dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
     dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
@@ -1359,7 +1600,7 @@ async def test_attribute_reports_persist(tmp_path) -> None:
     await app.shutdown()
 
     # Load it back from disk
-    app2 = await make_app_with_db(db)
+    app2 = await make_app_with_db(db, device_resolver=replace_basic)
     dev2 = app2.get_device(t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
 
     assert (
@@ -1379,27 +1620,30 @@ async def test_attribute_reports_persist(tmp_path) -> None:
     await app2.shutdown()
 
 
-@patch("zigpy.quirks.DEVICE_REGISTRY", new=DeviceRegistry())
 async def test_attribute_writes_persist(tmp_path) -> None:
     """Test that attribute writes are persisted to the database."""
 
-    class CustomBasicCluster(CustomCluster, Basic):
+    class CustomBasicCluster(Basic):
+        _skip_registry = True
+
         class AttributeDefs(Basic.AttributeDefs):
             # This attribute intentionally collides with `model`
             custom_attr = ZCLAttributeDef(
                 id=0x0004, type=t.uint8_t, manufacturer_code=0x1234
             )
 
-    (
-        QuirkBuilder(
-            "some manufacturer", "some model", registry=zigpy.quirks.DEVICE_REGISTRY
-        )
-        .replaces(CustomBasicCluster, endpoint_id=1)
-        .add_to_registry()
-    )
+    def replace_basic(device):
+        new = device.clone()
+        ep = new.endpoints[1]
+        old = ep.in_clusters.pop(Basic.cluster_id, None)
+        cluster = CustomBasicCluster(ep, is_server=True)
+        ep.add_input_cluster(cluster.cluster_id, cluster)
+        if old is not None:
+            cluster._attr_cache_internal = old._attr_cache.clone(cluster)
+        return new
 
     db = tmp_path / "test.db"
-    app = await make_app_with_db(db)
+    app = await make_app_with_db(db, device_resolver=replace_basic)
 
     dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
     dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
@@ -1437,7 +1681,7 @@ async def test_attribute_writes_persist(tmp_path) -> None:
     await app.shutdown()
 
     # Load it back from disk
-    app2 = await make_app_with_db(db)
+    app2 = await make_app_with_db(db, device_resolver=replace_basic)
     dev2 = app2.get_device(t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
 
     assert (
@@ -1502,20 +1746,20 @@ async def test_attribute_cache_null_manufacturer_code_uniqueness(tmp_path):
         assert row[0] == "Model 2"
 
 
-@patch("zigpy.quirks.DEVICE_REGISTRY", new=DeviceRegistry())
 async def test_device_signature_ignores_quirks(tmp_path) -> None:
     """Test that `device.original_signature` is populated before quirks modify the device."""
 
-    (
-        QuirkBuilder(
-            "some manufacturer", "some model", registry=zigpy.quirks.DEVICE_REGISTRY
-        )
-        .adds_endpoint(99)
-        .adds(Basic.cluster_id, endpoint_id=99)
-        .adds(Identify.cluster_id, endpoint_id=1)
-        .removes(OnOff.cluster_id, cluster_type=ClusterType.Client, endpoint_id=1)
-        .add_to_registry()
-    )
+    def quirk_resolver(device):
+        # A resolver that modifies a clone, leaving the bare device intact
+        new = device.clone()
+        ep99 = new.add_endpoint(99)
+        ep99.status = zigpy.endpoint.Status.ZDO_INIT
+        ep99.profile_id = profiles.zha.PROFILE_ID
+        ep99.device_type = 0xFF
+        ep99.add_input_cluster(Basic.cluster_id)
+        new.endpoints[1].add_input_cluster(Identify.cluster_id)
+        new.endpoints[1].out_clusters.pop(OnOff.cluster_id, None)
+        return new
 
     expected_signature = {
         SIG_MANUFACTURER: "some manufacturer",
@@ -1546,7 +1790,7 @@ async def test_device_signature_ignores_quirks(tmp_path) -> None:
     }
 
     db = tmp_path / "test.db"
-    app = await make_app_with_db(db)
+    app = await make_app_with_db(db, device_resolver=quirk_resolver)
 
     dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
     dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
@@ -1580,7 +1824,7 @@ async def test_device_signature_ignores_quirks(tmp_path) -> None:
     await app.shutdown()
 
     # Also verify loading from the database preserves the original signature
-    app2 = await make_app_with_db(db)
+    app2 = await make_app_with_db(db, device_resolver=quirk_resolver)
     dev2 = app2.get_device(t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
 
     # The quirk modified the device object
@@ -1620,8 +1864,19 @@ async def test_ota_query_cache_persistence(tmp_path):
     )
     cmd.hardware_version = 3
     ota_cluster.last_query_cmd = cmd
-
-    app.device_initialized(dev)
+    ota_cluster.emit(
+        OtaQueryCacheUpdatedEvent.event_type,
+        OtaQueryCacheUpdatedEvent(
+            device_ieee=str(ieee),
+            endpoint_id=1,
+            cluster_type=ota_cluster.cluster_type,
+            cluster_id=ota_cluster.cluster_id,
+            manufacturer_code=cmd.manufacturer_code,
+            image_type=cmd.image_type,
+            current_file_version=cmd.current_file_version,
+            hardware_version=cmd.hardware_version,
+        ),
+    )
     await app.shutdown()
 
     app2 = await make_app_with_db(db)
@@ -1636,13 +1891,26 @@ async def test_ota_query_cache_persistence(tmp_path):
     assert dev2.get_last_ota_query_cmd() is ota2.last_query_cmd
 
     # Update to a command without hardware_version
-    ota2.last_query_cmd = Ota.QueryNextImageCommand(
+    new_cmd = Ota.QueryNextImageCommand(
         field_control=Ota.QueryNextImageCommand.FieldControl(0),
         manufacturer_code=0xAAAA,
         image_type=0xBBBB,
         current_file_version=0x00000042,
     )
-    app2.device_initialized(dev2)
+    ota2.last_query_cmd = new_cmd
+    ota2.emit(
+        OtaQueryCacheUpdatedEvent.event_type,
+        OtaQueryCacheUpdatedEvent(
+            device_ieee=str(ieee),
+            endpoint_id=1,
+            cluster_type=ota2.cluster_type,
+            cluster_id=ota2.cluster_id,
+            manufacturer_code=new_cmd.manufacturer_code,
+            image_type=new_cmd.image_type,
+            current_file_version=new_cmd.current_file_version,
+            hardware_version=getattr(new_cmd, "hardware_version", None),
+        ),
+    )
     await app2.shutdown()
 
     app3 = await make_app_with_db(db)
@@ -1749,17 +2017,12 @@ async def test_ota_query_cache_cleared_after_update(tmp_path):
     await app2.shutdown()
 
 
-@patch("zigpy.quirks.DEVICE_REGISTRY", new=DeviceRegistry())
 async def test_ota_query_cache_skips_quirk_removed_endpoint(tmp_path):
-    """Test that OTA cache load skips entries for endpoints removed by quirks."""
-    # Register a quirk that removes endpoint 2
-    (
-        QuirkBuilder(
-            "ota manufacturer", "ota model", registry=zigpy.quirks.DEVICE_REGISTRY
-        )
-        .removes_endpoint(2)
-        .add_to_registry()
-    )
+    """Test that OTA cache load skips entries for endpoints removed by a resolver."""
+
+    def remove_ep2(device):
+        device.endpoints.pop(2, None)
+        return device
 
     db = tmp_path / "test.db"
     app = await make_app_with_db(db)
@@ -1793,8 +2056,8 @@ async def test_ota_query_cache_skips_quirk_removed_endpoint(tmp_path):
     app.device_initialized(dev)
     await app.shutdown()
 
-    # Reload: quirk removes endpoint 2, OTA cache load should skip it
-    app2 = await make_app_with_db(db)
+    # Reload: resolver removes endpoint 2, OTA cache load should skip it
+    app2 = await make_app_with_db(db, device_resolver=remove_ep2)
     dev2 = app2.get_device(t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
     assert 2 not in dev2.endpoints
     assert dev2.get_last_ota_query_cmd() is None

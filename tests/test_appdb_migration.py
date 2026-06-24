@@ -14,10 +14,8 @@ import zigpy.appdb
 import zigpy.appdb_schemas
 import zigpy.endpoint
 from zigpy.profiles import zha as zha_profile
-from zigpy.quirks import CustomCluster
-from zigpy.quirks.registry import DeviceRegistry
-from zigpy.quirks.v2 import QuirkBuilder
 import zigpy.types as t
+import zigpy.zcl
 from zigpy.zcl.clusters.general import Basic
 from zigpy.zcl.foundation import BaseAttributeDefs, Status, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
@@ -257,13 +255,9 @@ async def test_migration_missing_node_descriptor(test_db, caplog):
     bad_dev = app.devices[t.EUI64.convert(ieee)]
     assert bad_dev.node_desc is None
 
-    caplog.clear()
-
-    # Saving the device should cause the node descriptor to not be saved
-    await app._dblistener._save_device(bad_dev)
     await app.shutdown()
 
-    # The node descriptor is not in the database
+    # The migration did not fabricate a node descriptor for the device
     with sqlite3.connect(test_db_v3) as conn:
         cur = conn.cursor()
         cur.execute(
@@ -431,7 +425,7 @@ async def test_v4_to_v6_migration_missing_endpoints(test_db, with_quirk_attribut
             """
             )
 
-    def get_device(dev):
+    def resolver(dev):
         if dev.ieee == t.EUI64.convert("00:0d:6f:ff:fe:a6:11:7a"):
             ep = dev.add_endpoint(123)
             ep.add_input_cluster(456)
@@ -439,8 +433,7 @@ async def test_v4_to_v6_migration_missing_endpoints(test_db, with_quirk_attribut
         return dev
 
     # Migrate to v5 and then v6
-    with patch("zigpy.quirks.get_device", get_device):
-        app = await make_app_with_db(test_db_v3)
+    app = await make_app_with_db(test_db_v3, device_resolver=resolver)
 
     if with_quirk_attribute:
         dev = app.get_device(ieee=t.EUI64.convert("00:0d:6f:ff:fe:a6:11:7a"))
@@ -586,8 +579,9 @@ async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
     # Simple quirk for Third Reality night light with is_manufacturer_specific=True.
     # The real device (f4:42:50:c3:96:14:00:00) has cached attrs 2-5 on 0xFC00 and
     # attr 4 is also in unsupported_attributes_v13.
-    class TestCluster(CustomCluster):
+    class TestCluster(zigpy.zcl.Cluster):
         cluster_id = 0xFC00
+        _skip_registry = True
 
         class AttributeDefs(BaseAttributeDefs):
             test_attr = ZCLAttributeDef(
@@ -601,19 +595,24 @@ async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
                 is_manufacturer_specific=True,
             )
 
-    registry = DeviceRegistry()
+    def resolver(device):
+        if device.model != "3RSNL02043Z":
+            return device
 
-    (
-        QuirkBuilder("Third Reality, Inc", "3RSNL02043Z", registry=registry)
-        .replaces(TestCluster)
-        .add_to_registry()
-    )
+        new = device.clone()
+        for ep in new.non_zdo_endpoints:
+            old = ep.in_clusters.pop(TestCluster.cluster_id, None)
+            if old is None:
+                continue
+            cluster = TestCluster(ep, is_server=True)
+            ep.add_input_cluster(cluster.cluster_id, cluster)
+            cluster._attr_cache_internal = old._attr_cache.clone(cluster)
+        return new
 
     test_db_path = test_db("zigbee_puddly2.db")
     third_reality_ieee = "f4:42:50:c3:96:14:00:00"
 
-    with patch("zigpy.quirks.DEVICE_REGISTRY", registry):
-        app = await make_app_with_db(test_db_path)
+    app = await make_app_with_db(test_db_path, device_resolver=resolver)
 
     # Check that cached attributes on 0xFC00 got the device's manufacturer_id
     with sqlite3.connect(test_db_path) as conn:
@@ -667,8 +666,9 @@ async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
 async def test_data_migration_ambiguous_attributes(tmp_path):
     """Test data migration disambiguation when find_attributes returns multiple."""
 
-    class DisambiguatedCluster(CustomCluster):
+    class DisambiguatedCluster(zigpy.zcl.Cluster):
         cluster_id = 0xFC01
+        _skip_registry = True
 
         class AttributeDefs(BaseAttributeDefs):
             standard_attr = ZCLAttributeDef(
@@ -678,8 +678,9 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
                 id=0x0010, type=t.uint8_t, is_manufacturer_specific=True
             )
 
-    class AmbiguousCluster(CustomCluster):
+    class AmbiguousCluster(zigpy.zcl.Cluster):
         cluster_id = 0xFC02
+        _skip_registry = True
 
         class AttributeDefs(BaseAttributeDefs):
             attr_a = ZCLAttributeDef(
@@ -692,14 +693,20 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
                 id=0x0020, type=t.uint8_t, manufacturer_code=0x2222
             )
 
-    registry = DeviceRegistry()
+    def resolver(device):
+        if device.model != "model":
+            return device
 
-    (
-        QuirkBuilder("manufacturer", "model", registry=registry)
-        .replaces(DisambiguatedCluster)
-        .replaces(AmbiguousCluster)
-        .add_to_registry()
-    )
+        new = device.clone()
+        for ep in new.non_zdo_endpoints:
+            for custom_cls in (DisambiguatedCluster, AmbiguousCluster):
+                old = ep.in_clusters.pop(custom_cls.cluster_id, None)
+                if old is None:
+                    continue
+                cluster = custom_cls(ep, is_server=True)
+                ep.add_input_cluster(cluster.cluster_id, cluster)
+                cluster._attr_cache_internal = old._attr_cache.clone(cluster)
+        return new
 
     db_path = str(tmp_path / "test.db")
 
@@ -742,9 +749,8 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
         )
         conn.commit()
 
-    with patch("zigpy.quirks.DEVICE_REGISTRY", registry):
-        app = await make_app_with_db(db_path)
-        dev = app.get_device(ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    app = await make_app_with_db(db_path, device_resolver=resolver)
+    dev = app.get_device(ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
 
     # Migration runs during load
     disambiguated = dev.endpoints[1].in_clusters[0xFC01]

@@ -1172,6 +1172,41 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def __getitem__(self, key):
         return self.endpoints[key]
 
+    def clone(self) -> Device:
+        """Return a detached copy of this device for independent modification."""
+        new = Device(self.application, self.ieee, self.nwk)
+        new.lqi = self.lqi
+        new.rssi = self.rssi
+        new.last_seen = self.last_seen
+        new.relays = self.relays
+        new.original_signature = self.original_signature
+        new.status = self.status
+        new.node_desc = self.node_desc
+        new.manufacturer = self.manufacturer
+        new.model = self.model
+        new.manufacturer_id_override = self.manufacturer_id_override
+        new.skip_configuration = self.skip_configuration
+
+        for endpoint in self.non_zdo_endpoints:
+            new_ep = new.add_endpoint(endpoint.endpoint_id)
+            new_ep.status = endpoint.status
+            new_ep.profile_id = endpoint.profile_id
+            new_ep.device_type = endpoint.device_type
+
+            for cluster in endpoint.in_clusters.values():
+                new_cluster = new_ep.add_input_cluster(cluster.cluster_id)
+                new_cluster._attr_cache_internal = cluster._attr_cache.clone(
+                    new_cluster
+                )
+
+            for cluster in endpoint.out_clusters.values():
+                new_cluster = new_ep.add_output_cluster(cluster.cluster_id)
+                new_cluster._attr_cache_internal = cluster._attr_cache.clone(
+                    new_cluster
+                )
+
+        return new
+
     def get_signature(self) -> dict[str, typing.Any]:
         # return the device signature by providing essential device information
         #    - Model Identifier ( Attribute 0x0005 of Basic Cluster 0x0000 )
