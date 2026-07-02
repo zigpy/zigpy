@@ -16,6 +16,7 @@ from zigpy.zcl.foundation import (
 import zigpy.zgp.types as zgptypes
 
 
+# Figure 31 — 16 bits total
 class CommissioningNotificationOptions(t.Struct):
     application_id: zgptypes.ApplicationID
     rx_after_tx: t.uint1_t
@@ -24,10 +25,10 @@ class CommissioningNotificationOptions(t.Struct):
     security_failed: t.uint1_t
     bidirectional_cap: t.uint1_t
     proxy_info_present: t.uint1_t
-    _reserved: t.uint6_t
+    _reserved: t.uint4_t
 
 
-# Figure 27
+# Figure 30
 class CommissioningNotificationSchema(foundation.CommandSchema):
     options: CommissioningNotificationOptions
     gpd_id: zgptypes.DeviceID
@@ -35,24 +36,34 @@ class CommissioningNotificationSchema(foundation.CommandSchema):
     command_id: t.uint8_t
     payload: t.LVBytes
     gpp_short_addr: t.uint16_t = StructField(
-        requires=lambda s: s.proxy_info_present, optional=True
+        requires=lambda s: s.options.proxy_info_present, optional=True
     )
-    distance: t.uint8_t = StructField(
-        requires=lambda s: s.proxy_info_present, optional=True
+    gpp_gpd_link: t.uint8_t = StructField(
+        requires=lambda s: s.options.proxy_info_present, optional=True
     )
-    mic: t.uint32_t = StructField(requires=lambda s: s.security_failed, optional=True)
+    mic: t.uint32_t = StructField(
+        requires=lambda s: s.options.security_failed, optional=True
+    )
 
 
+# Figure 59
 class ResponseOptions(t.Struct):
     application_id: zgptypes.ApplicationID
-    _reserved: t.uint5_t
+    transmit_on_endpoint_match: t.uint1_t
+    _reserved: t.uint4_t
 
 
-# Figure 45
+# Figure 60 — TempMaster TX channel sub-field of the GP Response command
+class TempMasterTxChannel(t.Struct):
+    transmit_channel: t.uint4_t  # IEEE 802.15.4 channel == transmit_channel + 11
+    _reserved: t.uint4_t
+
+
+# Figure 58
 class ResponseSchema(foundation.CommandSchema):
     options: ResponseOptions
     temp_master_short_addr: t.uint16_t
-    temp_master_tx_channel: t.uint8_t
+    temp_master_tx_channel: TempMasterTxChannel
     gpd_id: zgptypes.DeviceID
     gpd_command_id: t.uint8_t
     gpd_command_payload: t.LVBytes
@@ -114,7 +125,7 @@ class PairingOptions(t.Struct):
     security_frame_counter_present: t.uint1_t
     security_key_present: t.uint1_t
     assigned_alias_present: t.uint1_t
-    forwarding_radius_present: t.uint1_t
+    groupcast_radius_present: t.uint1_t
     _reserved: t.uint6_t
 
 
@@ -124,34 +135,41 @@ class PairingSchema(foundation.CommandSchema):
     gpd_id: zgptypes.DeviceID
     # Table 37
     sink_ieee: t.EUI64 = StructField(
-        requires=lambda s: not s.options.remove_gpd
-        and s.options.communication_mode
-        in (
-            zgptypes.CommunicationMode.Unicast,
-            zgptypes.CommunicationMode.UnicastLightweight,
+        requires=lambda s: (
+            not s.options.remove_gpd
+            and s.options.communication_mode
+            in (
+                zgptypes.CommunicationMode.Unicast,
+                zgptypes.CommunicationMode.UnicastLightweight,
+            )
         )
     )
     sink_nwk_addr: t.NWK = StructField(
-        requires=lambda s: not s.options.remove_gpd
-        and s.options.communication_mode
-        in (
-            zgptypes.CommunicationMode.Unicast,
-            zgptypes.CommunicationMode.UnicastLightweight,
+        requires=lambda s: (
+            not s.options.remove_gpd
+            and s.options.communication_mode
+            in (
+                zgptypes.CommunicationMode.Unicast,
+                zgptypes.CommunicationMode.UnicastLightweight,
+            )
         )
     )
     sink_group: t.Group = StructField(
-        requires=lambda s: not s.options.remove_gpd
-        and s.options.communication_mode
-        in (
-            zgptypes.CommunicationMode.GroupcastForwardToDGroup,
-            zgptypes.CommunicationMode.GroupcastForwardToCommGroup,
+        requires=lambda s: (
+            not s.options.remove_gpd
+            and s.options.communication_mode
+            in (
+                zgptypes.CommunicationMode.GroupcastForwardToDGroup,
+                zgptypes.CommunicationMode.GroupcastForwardToCommGroup,
+            )
         )
     )
 
     device_id: t.uint8_t = StructField(requires=lambda s: s.options.add_sink)
     frame_counter: t.uint32_t = StructField(
-        requires=lambda s: s.options.add_sink
-        and s.options.security_frame_counter_present
+        requires=lambda s: (
+            s.options.add_sink and s.options.security_frame_counter_present
+        )
     )
     key: t.KeyData = StructField(
         requires=lambda s: s.options.add_sink and s.options.security_key_present
@@ -159,8 +177,8 @@ class PairingSchema(foundation.CommandSchema):
     alias: t.uint16_t = StructField(
         requires=lambda s: s.options.add_sink and s.options.assigned_alias_present
     )
-    forwarding_radius: t.uint8_t = StructField(
-        requires=lambda s: s.options.add_sink and s.options.forwarding_radius_present
+    groupcast_radius: t.uint8_t = StructField(
+        requires=lambda s: s.options.add_sink and s.options.groupcast_radius_present
     )
 
 
@@ -178,18 +196,26 @@ class NotificationResponseSchema(foundation.CommandSchema):
     frame_counter: t.uint32_t
 
 
-# Figure 43
+# Figure 56
 class ProxyCommissioningModeOptions(t.Struct):
     enter: t.uint1_t
-    exit_mode: zgptypes.ProxyCommissioningModeExitMode
+    commissioning_window_present: t.uint1_t
+    # Exit-mode sub-field (Figure 57): bit 0 = on first pairing, bit 1 = on
+    # explicit exit. Only 2 bits here, unlike the 3-bit gpsCommissioningExitMode
+    # attribute (Figure 22).
+    exit_mode: t.uint2_t
     channel_present: t.uint1_t
     unicast: t.uint1_t
     _reserved: t.uint2_t
 
 
+# Figure 55
 class ProxyCommissioningModeSchema(foundation.CommandSchema):
     options: ProxyCommissioningModeOptions
-    window: t.uint16_t = StructField(optional=True)
+    window: t.uint16_t = StructField(
+        requires=lambda s: s.options.commissioning_window_present
+    )
+    channel: t.uint8_t = StructField(requires=lambda s: s.options.channel_present)
 
 
 class GreenPowerProxy(Cluster):
