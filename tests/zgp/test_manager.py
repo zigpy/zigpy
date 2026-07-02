@@ -279,6 +279,26 @@ async def test_close_commissioning_sends_exit(app, manager):
     assert app.send_packet.call_count == 1
 
 
+async def test_commissioning_window_timer_closes_on_expiry(app, manager, monkeypatch):
+    """The commissioning window auto-closes when its timer expires."""
+
+    async def _instant_sleep(_delay: float) -> None:
+        return None
+
+    monkeypatch.setattr("asyncio.sleep", _instant_sleep)
+
+    await manager.permit_join(time_s=60)
+    assert manager.is_commissioning
+    app.send_packet.reset_mock()
+
+    # With sleep patched, the timer task closes the window immediately.
+    await manager._commissioning_task
+
+    assert not manager.is_commissioning
+    assert manager._commissioning_window_end == 0
+    assert app.send_packet.call_count == 1
+
+
 async def test_process_commissioning_creates_device(app, manager, gp_events):
     """Commissioning command should create a GPDevice."""
     # Open commissioning window
