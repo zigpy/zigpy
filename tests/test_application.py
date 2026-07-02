@@ -73,10 +73,35 @@ async def test_permit_broadcast(app):
     app.permit_ncp = AsyncMock()
     app.send_packet = AsyncMock()
     await app.permit(time_s=30)
-    assert app.send_packet.call_count == 1
+    # Two broadcasts: standard Mgmt_Permit_Joining_req plus the GP
+    # ProxyCommissioningMode that opens the GP commissioning window.
+    assert app.send_packet.call_count == 2
     assert app.permit_ncp.call_count == 1
 
     assert app.send_packet.mock_calls[0].args[0].dst.addr_mode == t.AddrMode.Broadcast
+
+
+async def test_permit_opens_gp_window(app):
+    """Broadcast permit should open the GP commissioning window too."""
+    app.green_power.permit_join = AsyncMock()
+    app.permit_ncp = AsyncMock()
+    app.send_packet = AsyncMock()
+
+    await app.permit(time_s=120)
+
+    app.green_power.permit_join.assert_called_once_with(120)
+
+
+async def test_permit_node_also_opens_gp_window(app, ieee):
+    """Targeted permit must still open the GP window."""
+    app.devices[ieee] = MagicMock()
+    app.devices[ieee].zdo.permit = AsyncMock()
+    app.green_power.permit_join = AsyncMock()
+    app.permit_ncp = AsyncMock()
+
+    await app.permit(time_s=60, node=ieee)
+
+    app.green_power.permit_join.assert_called_once_with(60)
 
 
 @patch("zigpy.device.Device.initialize", new_callable=AsyncMock)
