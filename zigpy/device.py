@@ -57,7 +57,7 @@ DEFAULT_REQUEST_RETRIES = 2
 DEFAULT_REQUEST_RETRY_DELAY = 0.1
 
 AFTER_OTA_ATTR_READ_DELAY = 10
-POST_OTA_PROBE_ATTEMPTS = 10
+POST_OTA_PROBE_RETRIES = 10
 POST_OTA_CONFIRMATION_TIMEOUT = 300
 
 
@@ -1098,6 +1098,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
           that reboot without sending any traffic of their own).
         - A new `QueryNextImageCommand` whose `current_file_version` differs
           from the value cached on the OTA cluster before this wait began.
+          When no baseline was cached, any query counts: the device is alive
+          and talking after the flash, which is all this wait establishes.
         - A `device_joined` event for this device on the Application (fires
           on TC-join and on the Device_annce path when the device's NWK
           changes or it was unknown).
@@ -1140,7 +1142,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             try:
                 await ota.read_attributes(
                     [Ota.AttributeDefs.current_file_version.name],
-                    retries=POST_OTA_PROBE_ATTEMPTS,
+                    retries=POST_OTA_PROBE_RETRIES,
                     retry_delay=AFTER_OTA_ATTR_READ_DELAY,
                 )
             except Exception:  # noqa: BLE001
@@ -1149,7 +1151,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
             confirmed.set()
 
-        probe_task = asyncio.ensure_future(probe_version())
+        probe_task = asyncio.create_task(probe_version())
 
         try:
             # Race-safe re-check after attaching listeners: if a confirming
