@@ -61,6 +61,7 @@ POST_OTA_PROBE_RETRIES = 10
 POST_OTA_CONFIRMATION_TIMEOUT = 300
 
 CHECKIN_ACTION_RETRY_COOLDOWN = 300
+REINTERVIEW_CHECKIN_ACTION = "reinterview"
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,6 +115,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.rssi: int | None = None
         self.ota_in_progress: bool = False
         self._last_seen: datetime | None = None
+        self._reinterview_pending: datetime | None = None
 
         self._initialize_task: asyncio.Task | None = None
         self._reinterview_in_progress: bool = False
@@ -253,6 +255,63 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self._last_seen = value
         self.listener_event("device_last_seen_updated", self._last_seen)
+
+    @property
+    def reinterview_pending(self) -> float | None:
+        """Timestamp of a pending re-interview request, or None."""
+        if self._reinterview_pending is None:
+            return None
+
+        return self._reinterview_pending.timestamp()
+
+    @reinterview_pending.setter
+    def reinterview_pending(self, value: datetime | float | None) -> None:
+        if isinstance(value, int | float):
+            value = datetime.fromtimestamp(value, UTC)
+
+        self._reinterview_pending = value
+        self.listener_event("device_reinterview_pending_updated", value)
+
+        # Keep the invariant: the flag is set exactly when the re-interview
+        # check-in action is armed
+        if value is not None:
+            self.register_checkin_action(
+                REINTERVIEW_CHECKIN_ACTION, self._reinterview_checkin_action
+            )
+        else:
+            self.remove_checkin_action(REINTERVIEW_CHECKIN_ACTION)
+
+    def schedule_reinterview_on_checkin(self) -> None:
+        """Re-interview this device the next time it is seen awake.
+
+        Unlike `reinterview()`, this is safe for sleepy end devices that are
+        currently unreachable: the re-interview is deferred until the device
+        next checks in and is retried until it succeeds.
+        """
+        if self.ieee == self._application.state.node_info.ieee:
+            self.debug("Not scheduling a re-interview for the coordinator")
+            return
+
+        if self._reinterview_pending is None:
+            self.reinterview_pending = datetime.now(UTC)
+        else:
+            # Keep the original request timestamp but make sure the check-in
+            # action is armed
+            self.register_checkin_action(
+                REINTERVIEW_CHECKIN_ACTION, self._reinterview_checkin_action
+            )
+
+    async def _reinterview_checkin_action(self) -> bool:
+        """Check-in action driving a pending re-interview."""
+        if self.ota_in_progress or self.initializing or self.reinterviewing:
+            return False
+
+        await self.reinterview()
+
+        # reinterview() handles its own errors: success means this device
+        # object was replaced by the re-interviewed one. A device that is no
+        # longer registered at all was removed, so stop retrying then too.
+        return self._application.devices.get(self.ieee) is not self
 
     @property
     def non_zdo_endpoints(self) -> list[zigpy.endpoint.Endpoint]:
@@ -1155,6 +1214,11 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         if result != foundation.Status.SUCCESS:
             return result
 
+        # Queue a re-interview for the device's next check-in first: if the
+        # confirmation below times out (e.g. for sleepy end devices), the
+        # re-interview still happens once the device is next heard from.
+        self.schedule_reinterview_on_checkin()
+
         ota = self.find_cluster(
             cluster_id=Ota.cluster_id, cluster_type=ClusterType.Client
         )
@@ -1178,8 +1242,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             )
         except TimeoutError:
             self.warning(
-                "Device did not confirm new firmware within %ds; reinterview "
-                "will run if/when the device next reports a version change",
+                "Device did not confirm new firmware within %ds; a "
+                "re-interview stays queued for the device's next check-in",
                 POST_OTA_CONFIRMATION_TIMEOUT,
             )
             return result
@@ -1245,6 +1309,12 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         class _PostOtaJoinListener:
             def device_joined(self, joined_dev: Device) -> None:
                 if joined_dev.ieee == device_ieee:
+                    confirmed.set()
+
+            def device_reinterviewed(self, new_device: Device) -> None:
+                # The queued re-interview already ran (e.g. driven by a
+                # check-in), which is the strongest possible confirmation
+                if new_device.ieee == device_ieee:
                     confirmed.set()
 
         join_listener = _PostOtaJoinListener()
@@ -1393,6 +1463,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         new.lqi = self.lqi
         new.rssi = self.rssi
         new.last_seen = self.last_seen
+        # Copied without the setter: a detached clone must not fire events or
+        # arm check-in actions
+        new._reinterview_pending = self._reinterview_pending
         new.relays = self.relays
         new.original_signature = self.original_signature
         new.status = self.status

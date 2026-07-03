@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from zigpy import device, types, zcl
+import zigpy.device
 import zigpy.endpoint
 from zigpy.ota import OTA, OtaImagesResult
 from zigpy.zcl import OtaImageAvailableEvent, OtaQueryCacheUpdatedEvent, foundation
@@ -439,6 +440,31 @@ async def test_qni_reinterview_on_version_change(ota_cluster_for_reinterview):
     await ota_cluster._handle_query_next_image(hdr, _make_qni_cmd(0x00000002))
     await asyncio.sleep(0)
     assert dev.reinterview.call_count == 1
+
+
+async def test_qni_version_change_queues_reinterview_for_checkin(
+    ota_cluster_for_reinterview,
+):
+    """A version change also queues a re-interview for the next check-in.
+
+    If the immediate re-interview attempt fails (e.g. a sleepy device going
+    back to sleep), it is retried whenever the device is next heard from.
+    """
+    ota_cluster = ota_cluster_for_reinterview
+    dev = ota_cluster.endpoint.device
+
+    hdr = zigpy.zcl.foundation.ZCLHeader.cluster(
+        tsn=0x12, command_id=Ota.ServerCommandDefs.query_next_image.id
+    )
+
+    await ota_cluster._handle_query_next_image(hdr, _make_qni_cmd(0x00000001))
+    assert dev.reinterview_pending is None
+
+    await ota_cluster._handle_query_next_image(hdr, _make_qni_cmd(0x00000002))
+    await asyncio.sleep(0)
+
+    assert dev.reinterview_pending is not None
+    assert zigpy.device.REINTERVIEW_CHECKIN_ACTION in dev._checkin_actions
 
 
 async def test_qni_no_reinterview_when_version_unchanged(ota_cluster_for_reinterview):

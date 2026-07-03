@@ -2231,6 +2231,13 @@ class Ota(Cluster):
             old_version,
             new_version,
         )
+
+        # Queue the re-interview so it is retried on a later check-in if the
+        # attempt below fails (e.g. a sleepy device going back to sleep)
+        device.schedule_reinterview_on_checkin()
+
+        # The device is awake right now (it just sent a QueryNextImage), so
+        # also attempt the re-interview immediately
         app.create_task(
             device.reinterview(),
             name=f"reinterview_after_fw_change-{device.ieee}",

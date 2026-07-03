@@ -9,7 +9,7 @@ from unittest.mock import call
 
 import pytest
 
-from tests.conftest import make_node_desc, mock_attribute_reads
+from tests.conftest import NCP_IEEE, make_node_desc, mock_attribute_reads
 from zigpy import device, endpoint
 import zigpy.application
 from zigpy.datastructures import RequestLimiter
@@ -2325,6 +2325,166 @@ async def test_reinterview_during_ota(dev):
     dev._application._device_reinterviewed.assert_not_called()
 
 
+async def test_schedule_reinterview_on_checkin(dev: device.Device) -> None:
+    """Scheduling sets the pending flag, fires an event, and arms the action."""
+    listener = MagicMock()
+    dev.add_listener(listener)
+
+    assert dev.reinterview_pending is None
+    dev.schedule_reinterview_on_checkin()
+
+    assert dev.reinterview_pending is not None
+    assert device.REINTERVIEW_CHECKIN_ACTION in dev._checkin_actions
+    listener.device_reinterview_pending_updated.assert_called_once()
+
+    # Scheduling again keeps the original request timestamp
+    pending = dev.reinterview_pending
+    dev.schedule_reinterview_on_checkin()
+    assert dev.reinterview_pending == pending
+
+    # Clearing the flag disarms the check-in action
+    dev.reinterview_pending = None
+    assert not dev.has_pending_checkin_actions
+    listener.device_reinterview_pending_updated.assert_called_with(None)
+
+
+async def test_schedule_reinterview_on_checkin_coordinator(app) -> None:
+    """The coordinator itself is never queued for a re-interview."""
+    coordinator = app.add_device(nwk=0x0000, ieee=NCP_IEEE)
+
+    coordinator.schedule_reinterview_on_checkin()
+
+    assert coordinator.reinterview_pending is None
+    assert not coordinator.has_pending_checkin_actions
+
+
+async def test_reinterview_checkin_action_bails_when_busy(dev: device.Device) -> None:
+    """The re-interview action defers while the device is otherwise busy."""
+    dev.reinterview = AsyncMock()
+
+    dev.ota_in_progress = True
+    assert await dev._reinterview_checkin_action() is False
+    dev.ota_in_progress = False
+
+    dev._reinterview_in_progress = True
+    assert await dev._reinterview_checkin_action() is False
+    dev._reinterview_in_progress = False
+
+    mock_task = MagicMock()
+    mock_task.done.return_value = False
+    dev._initialize_task = mock_task
+    assert await dev._reinterview_checkin_action() is False
+    dev._initialize_task = None
+
+    dev.reinterview.assert_not_called()
+
+
+async def test_reinterview_checkin_action_success_is_the_swap(app) -> None:
+    """The action reports success only when the device object was replaced."""
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    # A failed re-interview leaves the old device registered: not done yet
+    dev.reinterview = AsyncMock()
+    assert await dev._reinterview_checkin_action() is False
+
+    # A successful one replaces the device object: done
+    def swap() -> None:
+        app.devices[dev.ieee] = MagicMock()
+
+    dev.reinterview = AsyncMock(side_effect=swap)
+    assert await dev._reinterview_checkin_action() is True
+
+
+async def test_reinterview_on_checkin_end_to_end(
+    monkeypatch,
+    app: zigpy.application.ControllerApplication,
+) -> None:
+    """A queued re-interview runs off an inbound packet and clears itself."""
+    ieee = t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11")
+    node_desc = make_node_desc()
+
+    async def mock_get_node_descriptor(self):
+        self.node_desc = node_desc
+        return node_desc
+
+    async def mockrequest(*args, **kwargs):
+        return [0, None, [0, 1]]
+
+    async def mockepinit(self, *args, **kwargs):
+        self.status = endpoint.Status.ZDO_INIT
+        self.add_input_cluster(Basic.cluster_id)
+
+    async def mock_ep_get_model_info(self):
+        return "Model", "Manufacturer"
+
+    monkeypatch.setattr(device.Device, "get_node_descriptor", mock_get_node_descriptor)
+    monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
+    monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
+
+    dev = app.add_device(ieee=ieee, nwk=t.NWK(0x1234))
+    dev.zdo.Active_EP_req = mockrequest
+    await dev.initialize()
+    old_dev = app.devices[ieee]
+
+    # Patch Device.__init__ so the shadow also gets Active_EP_req mocked
+    original_init = device.Device.__init__
+
+    def patched_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        self.zdo.Active_EP_req = mockrequest
+
+    monkeypatch.setattr(device.Device, "__init__", patched_init)
+
+    old_dev.schedule_reinterview_on_checkin()
+    assert old_dev.reinterview_pending is not None
+
+    # The device checks in: any inbound packet triggers the re-interview
+    old_dev.packet_received(make_wake_packet(old_dev))
+
+    async with asyncio.timeout(1):
+        while app.devices[ieee] is old_dev:
+            await asyncio.sleep(0)
+
+    new_dev = app.devices[ieee]
+    assert new_dev.is_initialized
+    assert new_dev.reinterview_pending is None
+    assert not new_dev.has_pending_checkin_actions
+
+
+async def test_update_firmware_queues_reinterview_before_confirmation(
+    monkeypatch, dev, caplog
+):
+    """update_firmware() queues a re-interview even when confirmation times out."""
+    ep = dev.add_endpoint(1)
+    cluster = zigpy.zcl.Cluster.from_id(ep, Ota.cluster_id, is_server=False)
+    ep.add_output_cluster(Ota.cluster_id, cluster)
+
+    monkeypatch.setattr(
+        "zigpy.device.update_firmware",
+        AsyncMock(return_value=foundation.Status.SUCCESS),
+    )
+    monkeypatch.setattr("zigpy.device.AFTER_OTA_ATTR_READ_DELAY", 0)
+    monkeypatch.setattr("zigpy.device.POST_OTA_CONFIRMATION_TIMEOUT", 0.05)
+
+    result = await dev.update_firmware(MagicMock(), progress_callback=MagicMock())
+
+    assert result == foundation.Status.SUCCESS
+    assert dev.reinterview_pending is not None
+    assert device.REINTERVIEW_CHECKIN_ACTION in dev._checkin_actions
+    assert "re-interview stays queued" in caplog.text
+
+
+async def test_clone_copies_reinterview_pending_silently(dev: device.Device) -> None:
+    """clone() carries the pending flag without arming actions on the clone."""
+    dev.reinterview_pending = datetime(2026, 1, 1, tzinfo=UTC)
+
+    clone = dev.clone()
+
+    assert clone._reinterview_pending == dev._reinterview_pending
+    assert not clone.has_pending_checkin_actions
+
+
 async def test_update_firmware_no_reinterview_on_confirmation_timeout(monkeypatch, dev):
     """update_firmware() does not invoke reinterview() when confirmation times
     out — recovery is deferred to the version-change listener instead.
@@ -2445,6 +2605,17 @@ async def test_post_ota_confirmation_resolves_on_version_change(ota_dev):
         "ota_query_cache_updated",
         _make_post_ota_qni_event(cluster, current_file_version=0x00000002),
     )
+    await asyncio.wait_for(wait_task, timeout=1.0)
+
+
+async def test_post_ota_confirmation_resolves_on_reinterview(ota_dev):
+    """A completed re-interview for this device resolves the wait."""
+    dev, cluster = ota_dev
+
+    wait_task = asyncio.create_task(dev._wait_for_post_ota_confirmation(cluster))
+    await asyncio.sleep(0)
+
+    dev.application.listener_event("device_reinterviewed", dev)
     await asyncio.wait_for(wait_task, timeout=1.0)
 
 
