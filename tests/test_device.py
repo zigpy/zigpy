@@ -4,6 +4,7 @@ from contextlib import AsyncExitStack
 from datetime import UTC, datetime
 import logging
 import math
+import time
 from unittest.mock import call
 
 import pytest
@@ -1642,6 +1643,218 @@ async def test_fast_poll_mode_cancel_old_timer(dev: device.Device) -> None:
     # It would have happened by now
     await asyncio.sleep(0.3)
     assert dev._fast_polling
+
+
+def make_wake_packet(dev, tsn: int = 0x12) -> t.ZigbeePacket:
+    """Build a minimal inbound packet signalling that the device is awake."""
+    return t.ZigbeePacket(
+        profile_id=260,
+        cluster_id=Basic.cluster_id,
+        src_ep=1,
+        dst_ep=1,
+        data=t.SerializableBytes(
+            foundation.ZCLHeader(
+                frame_control=foundation.FrameControl(
+                    frame_type=foundation.FrameType.GLOBAL_COMMAND,
+                    is_manufacturer_specific=False,
+                    direction=foundation.Direction.Server_to_Client,
+                    disable_default_response=True,
+                    reserved=0,
+                ),
+                tsn=tsn,
+                command_id=foundation.GeneralCommand.Default_Response,
+                manufacturer=None,
+            ).serialize()
+            + (
+                foundation.GENERAL_COMMANDS[foundation.GeneralCommand.Default_Response]
+                .schema(
+                    command_id=Basic.ServerCommandDefs.reset_fact_default.id,
+                    status=foundation.Status.SUCCESS,
+                )
+                .serialize()
+            )
+        ),
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+    )
+
+
+async def test_checkin_action_runs_and_unregisters(dev: device.Device) -> None:
+    """A completed (True) check-in action runs once and is unregistered."""
+    action = AsyncMock(return_value=True)
+    dev.register_checkin_action("test", action)
+    assert dev.has_pending_checkin_actions
+
+    dev.packet_received(make_wake_packet(dev))
+    await asyncio.sleep(0)
+
+    action.assert_awaited_once()
+    assert not dev.has_pending_checkin_actions
+
+    # Further packets do not run it again
+    dev.packet_received(make_wake_packet(dev, tsn=0x13))
+    await asyncio.sleep(0)
+    action.assert_awaited_once()
+
+
+async def test_checkin_action_cooldown(dev: device.Device) -> None:
+    """An incomplete (False) action is retried, but not within its cooldown."""
+    action = AsyncMock(return_value=False)
+    dev.register_checkin_action("test", action, cooldown=60)
+
+    dev.packet_received(make_wake_packet(dev))
+    await asyncio.sleep(0)
+    action.assert_awaited_once()
+    assert dev.has_pending_checkin_actions
+
+    # A packet within the cooldown does not retrigger the action
+    dev.packet_received(make_wake_packet(dev, tsn=0x13))
+    await asyncio.sleep(0)
+    action.assert_awaited_once()
+
+    # After the cooldown expires, the action is retried
+    dev._checkin_actions["test"].last_attempt -= 61
+    dev.packet_received(make_wake_packet(dev, tsn=0x14))
+    await asyncio.sleep(0)
+    assert action.await_count == 2
+
+
+async def test_checkin_action_exception_keeps_registered(
+    dev: device.Device, caplog
+) -> None:
+    """A raising action is logged and stays registered."""
+    action = AsyncMock(side_effect=RuntimeError("Oops"))
+    dev.register_checkin_action("test", action, cooldown=0)
+
+    dev.packet_received(make_wake_packet(dev))
+    await asyncio.sleep(0)
+
+    action.assert_awaited_once()
+    assert "Check-in action 'test' failed" in caplog.text
+    assert dev.has_pending_checkin_actions
+
+    # It is retried on a later check-in
+    dev.packet_received(make_wake_packet(dev, tsn=0x13))
+    await asyncio.sleep(0)
+    assert action.await_count == 2
+
+
+async def test_checkin_action_not_retriggered_while_running(
+    dev: device.Device,
+) -> None:
+    """An in-flight action is not started a second time by its own traffic."""
+    started = 0
+    finish = asyncio.Event()
+
+    async def action() -> bool:
+        nonlocal started
+        started += 1
+        await finish.wait()
+        return True
+
+    dev.register_checkin_action("test", action, cooldown=0)
+
+    dev.packet_received(make_wake_packet(dev))
+    await asyncio.sleep(0)
+    assert started == 1
+
+    # Traffic while the action is running (e.g. its own responses) is ignored
+    dev.packet_received(make_wake_packet(dev, tsn=0x13))
+    await asyncio.sleep(0)
+    assert started == 1
+
+    finish.set()
+    await asyncio.sleep(0)
+    assert not dev.has_pending_checkin_actions
+
+
+async def test_checkin_action_duplicate_packet_still_triggers(
+    dev: device.Device,
+) -> None:
+    """A duplicate (debounced) packet is still a wake signal."""
+    action = AsyncMock(return_value=False)
+    dev.register_checkin_action("test", action, cooldown=0)
+
+    packet = make_wake_packet(dev)
+    dev.packet_received(packet)
+    await asyncio.sleep(0)
+    dev.packet_received(packet)  # filtered by the debouncer
+    await asyncio.sleep(0)
+
+    assert action.await_count == 2
+
+
+async def test_checkin_action_cleared_on_remove(dev: device.Device) -> None:
+    """Removing the device clears its pending check-in actions."""
+    dev.register_checkin_action("test", AsyncMock(return_value=True))
+    assert dev.has_pending_checkin_actions
+
+    dev.on_remove()
+    assert not dev.has_pending_checkin_actions
+
+
+async def test_checkin_action_remove_is_idempotent(dev: device.Device) -> None:
+    """Removing a missing action is a no-op."""
+    dev.remove_checkin_action("missing")
+
+    dev.register_checkin_action("test", AsyncMock(return_value=True))
+    dev.remove_checkin_action("test")
+    assert not dev.has_pending_checkin_actions
+
+
+async def test_checkin_action_triggered_by_handle_join(app) -> None:
+    """A stack-reported join/announce triggers pending check-in actions."""
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    action = AsyncMock(return_value=True)
+    dev.register_checkin_action("test", action)
+
+    app.handle_join(nwk=dev.nwk, ieee=dev.ieee, parent_nwk=0x0000)
+    await asyncio.sleep(0)
+
+    action.assert_awaited_once()
+    assert not dev.has_pending_checkin_actions
+
+
+async def test_poll_control_checkin_fast_polls_with_pending_actions(
+    dev: device.Device,
+) -> None:
+    """A Poll Control check-in starts fast polling when actions are pending."""
+    ep = dev.add_endpoint(1)
+    poll_control = ep.add_input_cluster(PollControl.cluster_id)
+    poll_control.checkin_response = AsyncMock()
+
+    # Prevent the action from running (and completing) via the trigger, so the
+    # response decision is made while the action is still pending
+    dev.register_checkin_action("test", AsyncMock(return_value=True), cooldown=0)
+    dev._checkin_actions["test"].last_attempt = time.monotonic()
+    dev._checkin_actions["test"].cooldown = 60
+
+    zcl_hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.CLUSTER_COMMAND,
+            is_manufacturer_specific=False,
+            direction=foundation.Direction.Server_to_Client,
+            disable_default_response=1,
+            reserved=0,
+        ),
+        tsn=0x12,
+        command_id=PollControl.ClientCommandDefs.checkin.id,
+    )
+    command = PollControl.ClientCommandDefs.checkin.schema()
+
+    await dev.poll_control_checkin_callback(zcl_hdr, command)
+
+    assert poll_control.checkin_response.mock_calls == [
+        call(
+            start_fast_polling=True,
+            fast_poll_timeout=int(device.DEFAULT_FAST_POLL_TIMEOUT * 4),
+            tsn=0x12,
+            expect_reply=False,
+            disable_default_response=True,
+        )
+    ]
 
     # The second one resets it
     await asyncio.sleep(0.3)

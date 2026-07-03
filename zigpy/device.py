@@ -60,6 +60,8 @@ AFTER_OTA_ATTR_READ_DELAY = 10
 POST_OTA_PROBE_RETRIES = 10
 POST_OTA_CONFIRMATION_TIMEOUT = 300
 
+CHECKIN_ACTION_RETRY_COOLDOWN = 300
+
 
 @dataclass(frozen=True, slots=True)
 class ResponseKey:
@@ -69,6 +71,17 @@ class ResponseKey:
     cluster_id: int
     direction: foundation.Direction | None
     tsn: int
+
+
+@dataclass
+class _CheckinAction:
+    """A pending action to run when the device is next seen awake."""
+
+    name: str
+    coro_factory: Callable[[], Coroutine[Any, Any, bool]]
+    cooldown: float
+    task: asyncio.Task | None = None
+    last_attempt: float | None = None
 
 
 class Status(enum.IntEnum):
@@ -120,6 +133,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._on_remove_callbacks: list[typing.Callable[[], None]] = []
         self._tasks: set[asyncio.Future[Any]] = set()
 
+        self._checkin_actions: dict[str, _CheckinAction] = {}
+
         self._packet_debouncer = zigpy.datastructures.Debouncer()
         self._concurrent_requests_semaphore = zigpy.datastructures.RequestLimiter(
             max_concurrency=MAX_DEVICE_CONCURRENCY,
@@ -159,6 +174,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             callback()
 
         self._on_remove_callbacks.clear()
+        self._checkin_actions.clear()
 
         for task in self._tasks:
             task.cancel()
@@ -413,6 +429,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             if (
                 self.initializing
                 or self.reinterviewing
+                or self.has_pending_checkin_actions
                 or self._concurrent_requests_semaphore.active_requests > 0
                 or self._fast_polling
             ):
@@ -433,6 +450,82 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     expect_reply=False,
                     disable_default_response=True,
                 )
+
+    def register_checkin_action(
+        self,
+        name: str,
+        coro_factory: Callable[[], Coroutine[Any, Any, bool]],
+        *,
+        cooldown: float = CHECKIN_ACTION_RETRY_COOLDOWN,
+    ) -> None:
+        """Run an action the next time the device shows signs of being awake.
+
+        Sleepy end devices can only receive requests for a short moment after
+        they send something themselves. `coro_factory` is called (and the
+        coroutine awaited) when a packet is received from the device. The
+        coroutine must return `True` when the action is complete, which
+        unregisters it, or `False` to retry on a later check-in, no sooner
+        than `cooldown` seconds after the last attempt started. A raised
+        exception is logged and keeps the action registered, like `False`.
+
+        Registering an action with an existing name replaces its coroutine
+        factory but keeps the running attempt and cooldown state.
+        """
+        existing = self._checkin_actions.get(name)
+        self._checkin_actions[name] = _CheckinAction(
+            name=name,
+            coro_factory=coro_factory,
+            cooldown=cooldown,
+            task=existing.task if existing is not None else None,
+            last_attempt=existing.last_attempt if existing is not None else None,
+        )
+
+    def remove_checkin_action(self, name: str) -> None:
+        """Remove a previously registered check-in action, if present."""
+        self._checkin_actions.pop(name, None)
+
+    @property
+    def has_pending_checkin_actions(self) -> bool:
+        """Return True if any check-in actions are waiting to run."""
+        return bool(self._checkin_actions)
+
+    def _trigger_checkin_actions(self) -> None:
+        """Start all due check-in actions: the device appears to be awake."""
+        now = time.monotonic()
+
+        for action in list(self._checkin_actions.values()):
+            if action.task is not None and not action.task.done():
+                # Already running: ignore traffic caused by the action itself
+                continue
+
+            if (
+                action.last_attempt is not None
+                and now - action.last_attempt < action.cooldown
+            ):
+                continue
+
+            action.last_attempt = now
+            # Run on the application, not the device: device-owned tasks are
+            # cancelled when a re-interview swaps the device object, which
+            # would cancel an action that is itself driving the re-interview.
+            action.task = self._application.create_task(
+                self._run_checkin_action(action),
+                name=f"checkin_action_{action.name}-{self.ieee}",
+            )
+
+    async def _run_checkin_action(self, action: _CheckinAction) -> None:
+        try:
+            done = await action.coro_factory()
+        except Exception:  # noqa: BLE001
+            self.warning(
+                "Check-in action %r failed, will retry on a later check-in",
+                action.name,
+                exc_info=True,
+            )
+            return
+
+        if done and self._checkin_actions.get(action.name) is action:
+            del self._checkin_actions[action.name]
 
     async def begin_fast_polling(
         self, timeout: float = DEFAULT_FAST_POLL_TIMEOUT, *, reset_after: bool = True
@@ -926,6 +1019,12 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         if packet.rssi is not None:
             self.rssi = packet.rssi
+
+        # The device just sent traffic, so it is likely briefly awake and able
+        # to receive queued requests. Duplicate packets are a wake signal too,
+        # so trigger before the debouncer filters them out.
+        if self._checkin_actions:
+            self._trigger_checkin_actions()
 
         # Filter duplicate packets
         if self._should_filter_packet(packet):
