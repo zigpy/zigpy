@@ -32,7 +32,7 @@ from zigpy.const import (
     SIG_MODEL,
     SIG_NODE_DESC,
 )
-from zigpy.device import Device, Status
+from zigpy.device import REINTERVIEW_CHECKIN_ACTION, Device, Status
 import zigpy.endpoint
 import zigpy.ota
 import zigpy.types as t
@@ -1078,6 +1078,86 @@ async def test_last_seen(tmp_path):
     app = await make_app_with_db(db)
     dev = app.get_device(ieee=ieee)
     assert dev.last_seen >= next_last_seen + 35  # updated
+    await app.shutdown()
+
+
+async def test_reinterview_pending(tmp_path):
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee=ieee)
+    ep = dev.add_endpoint(3)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0)
+    ep.add_output_cluster(1)
+    clus.update_attribute(4, "Custom")
+    clus.update_attribute(5, "Model")
+    app.device_initialized(dev)
+    await app.shutdown()
+
+    # No pending re-interview: nothing is restored
+    app = await make_app_with_db(db)
+    dev = app.get_device(ieee=ieee)
+    assert dev.reinterview_pending is None
+    assert not dev.has_pending_checkin_actions
+
+    # A pending re-interview is persisted
+    dev.schedule_reinterview_on_checkin()
+    pending = dev.reinterview_pending
+    assert pending is not None
+    await app.shutdown()
+
+    # And restored, with the check-in action re-armed
+    app = await make_app_with_db(db)
+    dev = app.get_device(ieee=ieee)
+    assert dev.reinterview_pending == pending
+    assert REINTERVIEW_CHECKIN_ACTION in dev._checkin_actions
+
+    # Clearing the flag is persisted too
+    dev.reinterview_pending = None
+    await app.shutdown()
+
+    app = await make_app_with_db(db)
+    dev = app.get_device(ieee=ieee)
+    assert dev.reinterview_pending is None
+    assert not dev.has_pending_checkin_actions
+    await app.shutdown()
+
+
+async def test_reinterview_pending_survives_resolver_swap(tmp_path):
+    """A restored pending re-interview is re-armed on the resolved device."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee=ieee)
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 65535
+    ep.device_type = 123
+    clus = ep.add_input_cluster(0)
+    clus.update_attribute(4, "Custom")
+    clus.update_attribute(5, "Model")
+    app.device_initialized(dev)
+
+    dev.schedule_reinterview_on_checkin()
+    pending = dev.reinterview_pending
+    await app.shutdown()
+
+    # The resolver replaces the loaded device with a clone (like a quirk would)
+    app = await make_app_with_db(db, device_resolver=add_ep99_resolver)
+    dev = app.get_device(ieee=ieee)
+    assert 99 in dev.endpoints  # the swap actually happened
+
+    assert dev.reinterview_pending == pending
+    assert REINTERVIEW_CHECKIN_ACTION in dev._checkin_actions
     await app.shutdown()
 
 
