@@ -310,7 +310,7 @@ class GreenPowerManager(EventBase):
             return
 
         try:
-            comm = GPCommissioningPayload.from_bytes(payload)
+            comm, _ = GPCommissioningPayload.deserialize(payload)
         except (ValueError, IndexError):
             LOGGER.warning(
                 "Failed to parse GP Commissioning payload from 0x%08X",
@@ -337,7 +337,7 @@ class GreenPowerManager(EventBase):
                     mic_bytes = struct.pack("<I", comm.key_mic)
                     try:
                         key_data = decrypt_security_key(
-                            source_id, comm.security_key, mic_bytes
+                            source_id, bytes(comm.security_key), mic_bytes
                         )
                     except Exception:  # noqa: BLE001
                         LOGGER.warning(
@@ -363,12 +363,12 @@ class GreenPowerManager(EventBase):
             ),
             manufacturer_id=comm.manufacturer_id,
             model_id=comm.model_id,
-            gpd_commands=comm.gpd_commands,
-            server_clusters=comm.server_clusters,
-            client_clusters=comm.client_clusters,
-            mac_seq_num_capability=comm.options.mac_seq_num_capability,
-            rx_on_capability=comm.options.rx_on_capability,
-            fixed_location=comm.options.fixed_location,
+            gpd_commands=list(comm.gpd_commands or []),
+            server_clusters=list(comm.server_clusters or []),
+            client_clusters=list(comm.client_clusters or []),
+            mac_seq_num_capability=bool(comm.options.mac_seq_num_capability),
+            rx_on_capability=bool(comm.options.rx_on_capability),
+            fixed_location=bool(comm.options.fixed_location),
         )
 
         self.add_device(device)
@@ -412,7 +412,7 @@ class GreenPowerManager(EventBase):
     ) -> None:
         """Process a GP Channel Request (0xE3) by replying with Channel Configuration."""
         try:
-            channel_req = GPChannelRequestPayload.from_bytes(payload)
+            channel_req, _ = GPChannelRequestPayload.deserialize(payload)
         except (ValueError, IndexError):
             LOGGER.warning("Failed to parse Channel Request from 0x%08X", source_id)
             return
@@ -423,8 +423,8 @@ class GreenPowerManager(EventBase):
             "GP Channel Request from 0x%08X: next=%d, second=%d, "
             "responding with channel %d",
             source_id,
-            channel_req.next_channel,
-            channel_req.second_next_channel,
+            channel_req.next_channel + 11,
+            channel_req.second_next_channel + 11,
             channel,
         )
 
