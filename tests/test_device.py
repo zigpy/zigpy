@@ -1768,6 +1768,33 @@ async def test_checkin_action_not_retriggered_while_running(
     assert not dev.has_pending_checkin_actions
 
 
+async def test_checkin_action_reregistered_while_running(
+    dev: device.Device,
+) -> None:
+    """Re-registering an in-flight action must not orphan its completion."""
+    finish = asyncio.Event()
+
+    async def action() -> bool:
+        await finish.wait()
+        return True
+
+    dev.register_checkin_action("test", action, cooldown=0)
+
+    dev.packet_received(make_wake_packet(dev))
+    await asyncio.sleep(0)
+
+    # Re-register while the first attempt is still running: the entry must be
+    # updated in place so the running attempt can still unregister on success
+    replacement = AsyncMock(return_value=True)
+    dev.register_checkin_action("test", replacement, cooldown=30)
+
+    finish.set()
+    await asyncio.sleep(0)
+
+    assert not dev.has_pending_checkin_actions
+    replacement.assert_not_called()
+
+
 async def test_checkin_action_duplicate_packet_still_triggers(
     dev: device.Device,
 ) -> None:

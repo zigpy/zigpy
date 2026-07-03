@@ -174,6 +174,12 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             callback()
 
         self._on_remove_callbacks.clear()
+
+        # Check-in action tasks run on the application and are deliberately
+        # not cancelled here: `_device_reinterviewed()` calls the old device's
+        # `on_remove()` mid-swap, and an action driving that very re-interview
+        # must not cancel its own call stack. Orphaned tasks fail their device
+        # I/O and are never retriggered.
         self._checkin_actions.clear()
 
         for task in self._tasks:
@@ -472,16 +478,27 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         factory but keeps the running attempt and cooldown state.
         """
         existing = self._checkin_actions.get(name)
+
+        if existing is not None:
+            # Mutate in place instead of replacing: a running attempt holds a
+            # reference to this object and unregisters by identity on success
+            existing.coro_factory = coro_factory
+            existing.cooldown = cooldown
+            return
+
         self._checkin_actions[name] = _CheckinAction(
             name=name,
             coro_factory=coro_factory,
             cooldown=cooldown,
-            task=existing.task if existing is not None else None,
-            last_attempt=existing.last_attempt if existing is not None else None,
         )
 
     def remove_checkin_action(self, name: str) -> None:
-        """Remove a previously registered check-in action, if present."""
+        """Remove a previously registered check-in action, if present.
+
+        A currently running attempt is deliberately not cancelled — it may be
+        mid-request (or mid-re-interview) and aborting it is riskier than
+        letting it finish; it just will not be retried afterwards.
+        """
         self._checkin_actions.pop(name, None)
 
     @property
