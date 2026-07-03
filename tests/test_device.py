@@ -2302,6 +2302,30 @@ async def test_post_ota_confirmation_cleans_up_listeners_on_cancel(ota_dev):
     assert len(dev.application._listeners) == app_listeners_before
 
 
+async def test_post_ota_confirmation_unanswered_probe_is_swallowed(ota_dev, caplog):
+    """A probe read that fails outright neither confirms nor raises."""
+    dev, cluster = ota_dev
+
+    cluster.read_attributes = AsyncMock(
+        side_effect=zigpy.exceptions.DeliveryError("Device asleep")
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        wait_task = asyncio.create_task(dev._wait_for_post_ota_confirmation(cluster))
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+    # The probe failed, but the wait keeps waiting for the passive signals
+    cluster.read_attributes.assert_awaited_once()
+    assert "probe went unanswered" in caplog.text
+    assert not wait_task.done()
+
+    # Cleanup
+    wait_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await wait_task
+
+
 async def test_update_firmware_post_ota_timeout(monkeypatch, dev, caplog):
     """If neither confirmation signal arrives, timeout but still return SUCCESS."""
     ep = dev.add_endpoint(1)
