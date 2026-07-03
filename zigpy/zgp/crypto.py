@@ -1,15 +1,4 @@
-"""Green Power security primitives: AES-128-CCM* per ZGP spec A.1.5.4.
-
-Nonce is 13 bytes built from the source ID and frame counter; MIC length
-depends on the SecurityLevel.
-
-Key encryption/decryption (commissioning, A.3.7.1.2.3) uses the 4-byte SrcID
-as associated data for ApplicationID=0b000.
-
-Operational payload AAD (A.1.5.4.3) is the full GPDF header, which isn't
-available once a frame arrives as a GP Notification ZCL command. Radios
-decrypt those in firmware anyway, same as zigbee-herdsman.
-"""
+"""Green Power security primitives: AES-128-CCM* per ZGP spec A.1.5.4."""
 
 from __future__ import annotations
 
