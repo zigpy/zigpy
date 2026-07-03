@@ -2348,6 +2348,17 @@ async def test_schedule_reinterview_on_checkin(dev: device.Device) -> None:
     listener.device_reinterview_pending_updated.assert_called_with(None)
 
 
+async def test_reinterview_pending_accepts_timestamps(dev: device.Device) -> None:
+    """The setter accepts numeric timestamps, as restored from the database."""
+    timestamp = datetime(2026, 7, 3, tzinfo=UTC).timestamp()
+
+    dev.reinterview_pending = timestamp
+
+    assert dev.reinterview_pending == timestamp
+    assert dev._reinterview_pending == datetime.fromtimestamp(timestamp, UTC)
+    assert device.REINTERVIEW_CHECKIN_ACTION in dev._checkin_actions
+
+
 async def test_schedule_reinterview_on_checkin_coordinator(app) -> None:
     """The coordinator itself is never queued for a re-interview."""
     coordinator = app.add_device(nwk=0x0000, ieee=NCP_IEEE)
