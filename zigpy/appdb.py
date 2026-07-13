@@ -55,7 +55,7 @@ if sqlite3.sqlite_version_info < MIN_SQLITE_VERSION:
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 15
+DB_VERSION = 16
 DB_V = f"_v{DB_VERSION}"
 
 UNIX_EPOCH = datetime.fromtimestamp(0, tz=UTC)
@@ -726,26 +726,252 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.commit()
 
     def network_backup_created(self, backup: zigpy.backups.NetworkBackup) -> None:
-        self.enqueue("_network_backup_created", json.dumps(backup.as_dict()))
+        self.enqueue("_network_backup_created", backup)
 
-    async def _network_backup_created(self, backup_json: str) -> None:
-        q = f"""INSERT INTO network_backups{DB_V} VALUES (?, ?)
-                    ON CONFLICT (id)
-                    DO UPDATE SET
-                        backup_json=excluded.backup_json"""
-
-        await self.execute(q, (None, backup_json))
+    async def _network_backup_created(
+        self, backup: zigpy.backups.NetworkBackup
+    ) -> None:
+        await self._write_network_backup(backup)
         await self._db.commit()
 
     def network_backup_removed(self, backup: zigpy.backups.NetworkBackup) -> None:
         self.enqueue("_network_backup_removed", backup.backup_time)
 
     async def _network_backup_removed(self, backup_time: datetime) -> None:
-        q = f"""DELETE FROM network_backups{DB_V}
-                    WHERE json_extract(backup_json, '$.backup_time')=?"""
-
-        await self.execute(q, (backup_time.isoformat(),))
+        await self.execute(
+            f"DELETE FROM network_info{DB_V} WHERE backup_time=?",
+            (backup_time.timestamp(),),
+        )
         await self._db.commit()
+
+    async def _write_network_backup(self, backup: zigpy.backups.NetworkBackup) -> None:
+        """Decompose a `NetworkBackup` into the granular network-state tables."""
+        net = backup.network_info
+        node = backup.node_info
+
+        async with self.execute(
+            f"""INSERT INTO network_info{DB_V} (
+                backup_time,
+                node_ieee, node_nwk, node_logical_type,
+                node_model, node_manufacturer, node_version,
+                extended_pan_id, pan_id, nwk_update_id, nwk_manager_id,
+                channel, channel_mask, security_level, tx_power,
+                network_key, network_key_seq,
+                network_key_tx_counter, network_key_rx_counter,
+                tc_link_key, tc_link_key_partner_ieee, tc_link_key_seq,
+                tc_link_key_tx_counter, tc_link_key_rx_counter,
+                stack_specific, metadata, source
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                backup.backup_time.timestamp(),
+                node.ieee,
+                int(node.nwk),
+                int(node.logical_type),
+                node.model,
+                node.manufacturer,
+                node.version,
+                net.extended_pan_id,
+                int(net.pan_id),
+                int(net.nwk_update_id),
+                int(net.nwk_manager_id),
+                int(net.channel),
+                int(net.channel_mask),
+                int(net.security_level),
+                (None if net.tx_power is None else int(net.tx_power)),
+                net.network_key.key.serialize(),
+                int(net.network_key.seq),
+                int(net.network_key.tx_counter),
+                int(net.network_key.rx_counter),
+                net.tc_link_key.key.serialize(),
+                net.tc_link_key.partner_ieee,
+                int(net.tc_link_key.seq),
+                int(net.tc_link_key.tx_counter),
+                int(net.tc_link_key.rx_counter),
+                json.dumps(net.stack_specific),
+                json.dumps(net.metadata),
+                net.source,
+            ),
+        ) as cursor:
+            backup_id = cursor.lastrowid
+
+        await self._db.executemany(
+            f"""INSERT INTO network_link_keys{DB_V}
+                    (backup_id, partner_ieee, key, tx_counter, rx_counter, seq)
+                    VALUES (?,?,?,?,?,?)""",
+            [
+                (
+                    backup_id,
+                    key.partner_ieee,
+                    key.key.serialize(),
+                    int(key.tx_counter),
+                    int(key.rx_counter),
+                    int(key.seq),
+                )
+                for key in net.key_table
+            ],
+        )
+
+        await self._db.executemany(
+            f"INSERT INTO network_children{DB_V} (backup_id, ieee) VALUES (?,?)",
+            [(backup_id, ieee) for ieee in net.children],
+        )
+
+        await self._db.executemany(
+            f"INSERT INTO network_addresses{DB_V} (backup_id, ieee, nwk) VALUES (?,?,?)",
+            [(backup_id, ieee, int(nwk)) for ieee, nwk in net.nwk_addresses.items()],
+        )
+
+        await self._db.executemany(
+            f"""INSERT INTO network_routes{DB_V} (backup_id, destination, next_hop)
+                    VALUES (?,?,?)""",
+            [
+                (backup_id, int(dst), int(next_hop))
+                for dst, next_hop in net.route_table.items()
+            ],
+        )
+
+    async def _read_network_backups(self) -> list[zigpy.backups.NetworkBackup]:
+        """Reconstruct every stored `NetworkBackup` from the granular tables."""
+        async with self.execute(
+            f"""SELECT
+                    id, backup_time,
+                    node_ieee, node_nwk, node_logical_type,
+                    node_model, node_manufacturer, node_version,
+                    extended_pan_id, pan_id, nwk_update_id, nwk_manager_id,
+                    channel, channel_mask, security_level, tx_power,
+                    network_key, network_key_seq,
+                    network_key_tx_counter, network_key_rx_counter,
+                    tc_link_key, tc_link_key_partner_ieee, tc_link_key_seq,
+                    tc_link_key_tx_counter, tc_link_key_rx_counter,
+                    stack_specific, metadata, source
+                FROM network_info{DB_V} ORDER BY backup_time"""
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+        backups = []
+
+        for (
+            backup_id,
+            backup_time,
+            node_ieee,
+            node_nwk,
+            node_logical_type,
+            node_model,
+            node_manufacturer,
+            node_version,
+            extended_pan_id,
+            pan_id,
+            nwk_update_id,
+            nwk_manager_id,
+            channel,
+            channel_mask,
+            security_level,
+            tx_power,
+            network_key,
+            network_key_seq,
+            network_key_tx_counter,
+            network_key_rx_counter,
+            tc_link_key,
+            tc_link_key_partner_ieee,
+            tc_link_key_seq,
+            tc_link_key_tx_counter,
+            tc_link_key_rx_counter,
+            stack_specific,
+            metadata,
+            source,
+        ) in rows:
+            node_info = zigpy.state.NodeInfo(
+                nwk=t.NWK(node_nwk),
+                ieee=node_ieee,
+                logical_type=zdo_t.LogicalType(node_logical_type),
+                model=node_model,
+                manufacturer=node_manufacturer,
+                version=node_version,
+            )
+
+            # Sorted by partner IEEE to match `NetworkInfo.from_dict`
+            key_table = []
+            async with self.execute(
+                f"""SELECT partner_ieee, key, tx_counter, rx_counter, seq
+                    FROM network_link_keys{DB_V}
+                    WHERE backup_id=? ORDER BY partner_ieee""",
+                (backup_id,),
+            ) as cursor:
+                async for partner_ieee, key, tx_counter, rx_counter, seq in cursor:
+                    key_table.append(
+                        zigpy.state.Key(
+                            key=t.KeyData(key),
+                            tx_counter=tx_counter,
+                            rx_counter=rx_counter,
+                            seq=seq,
+                            partner_ieee=partner_ieee,
+                        )
+                    )
+
+            children = []
+            async with self.execute(
+                f"SELECT ieee FROM network_children{DB_V} WHERE backup_id=? ORDER BY ieee",
+                (backup_id,),
+            ) as cursor:
+                async for (ieee,) in cursor:
+                    children.append(ieee)
+
+            nwk_addresses = {}
+            async with self.execute(
+                f"SELECT ieee, nwk FROM network_addresses{DB_V} WHERE backup_id=?",
+                (backup_id,),
+            ) as cursor:
+                async for ieee, nwk in cursor:
+                    nwk_addresses[ieee] = t.NWK(nwk)
+
+            route_table = {}
+            async with self.execute(
+                f"SELECT destination, next_hop FROM network_routes{DB_V} WHERE backup_id=?",
+                (backup_id,),
+            ) as cursor:
+                async for destination, next_hop in cursor:
+                    route_table[t.NWK(destination)] = t.NWK(next_hop)
+
+            network_info = zigpy.state.NetworkInfo(
+                extended_pan_id=t.ExtendedPanId(extended_pan_id),
+                pan_id=t.PanId(pan_id),
+                nwk_update_id=t.uint8_t(nwk_update_id),
+                nwk_manager_id=t.NWK(nwk_manager_id),
+                channel=t.uint8_t(channel),
+                channel_mask=t.Channels(channel_mask),
+                security_level=t.uint8_t(security_level),
+                network_key=zigpy.state.Key(
+                    key=t.KeyData(network_key),
+                    seq=network_key_seq,
+                    tx_counter=network_key_tx_counter,
+                    rx_counter=network_key_rx_counter,
+                ),
+                tc_link_key=zigpy.state.Key(
+                    key=t.KeyData(tc_link_key),
+                    partner_ieee=tc_link_key_partner_ieee,
+                    seq=tc_link_key_seq,
+                    tx_counter=tc_link_key_tx_counter,
+                    rx_counter=tc_link_key_rx_counter,
+                ),
+                key_table=key_table,
+                children=children,
+                route_table=route_table,
+                tx_power=tx_power,
+                nwk_addresses=nwk_addresses,
+                stack_specific=json.loads(stack_specific),
+                metadata=json.loads(metadata),
+                source=source,
+            )
+
+            backups.append(
+                zigpy.backups.NetworkBackup(
+                    backup_time=datetime.fromtimestamp(backup_time, tz=UTC),
+                    network_info=network_info,
+                    node_info=node_info,
+                )
+            )
+
+        return backups
 
     async def _read_all_attributes(
         self,
@@ -1096,18 +1322,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _load_network_backups(self) -> None:
         self._application.backups.backups.clear()
 
-        async with self.execute(
-            f"SELECT * FROM network_backups{DB_V} ORDER BY id"
-        ) as cursor:
-            backups = []
-
-            async for _id, backup_json in cursor:
-                backup = zigpy.backups.NetworkBackup.from_dict(json.loads(backup_json))
-                backups.append(backup)
-
-        backups.sort(key=lambda b: b.backup_time)
-
-        for backup in backups:
+        for backup in await self._read_network_backups():
             self._application.backups.add_backup(backup, suppress_event=True)
 
     async def _load_ota_query_cache(self) -> None:
@@ -1243,6 +1458,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 (self._migrate_to_v13, 13),
                 (self._migrate_to_v14, 14),
                 (self._migrate_to_v15, 15),
+                (self._migrate_to_v16, 16),
             ]:
                 if db_version >= min(to_db_version, DB_VERSION):
                     continue
@@ -1708,3 +1924,32 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             }
         )
         # ota_query_cache_v15 is new and starts empty
+
+    async def _migrate_to_v16(self) -> None:
+        """Schema v16 decomposes the `network_backups` JSON blob into split tables."""
+        await self._migrate_tables(
+            {
+                "devices_v15": "devices_v16",
+                "endpoints_v15": "endpoints_v16",
+                "neighbors_v15": "neighbors_v16",
+                "routes_v15": "routes_v16",
+                "node_descriptors_v15": "node_descriptors_v16",
+                "groups_v15": "groups_v16",
+                "group_members_v15": "group_members_v16",
+                "relays_v15": "relays_v16",
+                "clusters_v15": "clusters_v16",
+                "attributes_cache_v15": "attributes_cache_v16",
+                "ota_query_cache_v15": "ota_query_cache_v16",
+                # The JSON blobs are decomposed below rather than copied verbatim
+                "network_backups_v15": None,
+            }
+        )
+
+        async with self.execute(
+            "SELECT backup_json FROM network_backups_v15 ORDER BY id"
+        ) as cursor:
+            backup_jsons = [backup_json for (backup_json,) in await cursor.fetchall()]
+
+        for backup_json in backup_jsons:
+            backup = zigpy.backups.NetworkBackup.from_dict(json.loads(backup_json))
+            await self._write_network_backup(backup)
