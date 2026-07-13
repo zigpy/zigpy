@@ -3,8 +3,9 @@ from __future__ import annotations
 import asyncio
 import datetime
 import hashlib
+import logging
 import typing
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 import aiohttp
 import attrs
@@ -16,7 +17,13 @@ from zigpy import config
 import zigpy.device
 import zigpy.ota
 from zigpy.ota.image import FieldControl
-from zigpy.ota.providers import BaseOtaImageMetadata, BaseOtaProvider
+from zigpy.ota.providers import (
+    AdvancedFileProvider,
+    BaseOtaImageMetadata,
+    BaseOtaProvider,
+    LocalZ2MProvider,
+    LocalZigpyProvider,
+)
 import zigpy.types
 from zigpy.zcl import ClusterType, OtaImageAvailableEvent
 from zigpy.zcl.clusters.general import Ota
@@ -710,33 +717,212 @@ async def test_invalidate_provider_caches(query_cmd) -> None:
         assert result is not None  # Empty list, not None (which means "cached")
 
 
-async def test_invalidate_provider_caches_clears_image_cache(
-    query_cmd, ota_image
+async def test_invalidate_provider_caches_revokes_withdrawn_images(
+    query_cmd, ota_hdr, ota_subelements
 ) -> None:
-    """invalidate_provider_caches clears the image cache so withdrawn images disappear."""
+    """invalidate_provider_caches refreshes the indexes so withdrawn images disappear."""
     device = make_device(model="device model", manufacturer_id=0x1234)
 
-    index_with_image = [
-        SelfContainedOtaImageMetadata(
-            file_version=query_cmd.current_file_version + 1,
-            manufacturer_id=query_cmd.manufacturer_code,
-            image_type=query_cmd.image_type,
-            test_data=ota_image.serialize(),
-        ),
-    ]
+    meta_kept = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 1,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=zigpy.ota.image.OTAImage(
+            header=ota_hdr,
+            subelements=ota_subelements,
+        ).serialize(),
+    )
+    meta_withdrawn = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 2,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=zigpy.ota.image.OTAImage(
+            header=ota_hdr.replace(file_version=query_cmd.current_file_version + 2),
+            subelements=ota_subelements,
+        ).serialize(),
+    )
 
     ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
-    provider = SelfContainedProvider(index_with_image)
+    provider = SelfContainedProvider([meta_kept, meta_withdrawn])
     ota.register_provider(provider)
 
-    # First check finds the upgrade
+    # First check finds both upgrades
     result1 = await ota.get_ota_images(device, query_cmd)
-    assert len(result1.upgrades) == 1
+    assert len(result1.upgrades) == 2
 
-    # Provider now returns an empty index (image was withdrawn)
-    provider._index = []
+    cached_kept = ota._image_cache[provider][meta_kept]
+    assert cached_kept.firmware is not None
+
+    # Provider now only serves the first image (the other was withdrawn)
+    provider._index = [meta_kept]
     ota.invalidate_provider_caches()
 
-    # Second check should find no upgrades
+    # Second check should only find the remaining upgrade
     result2 = await ota.get_ota_images(device, query_cmd)
-    assert len(result2.upgrades) == 0
+    assert len(result2.upgrades) == 1
+    assert result2.upgrades[0].metadata == meta_kept
+
+    # The already-downloaded firmware was carried over, not re-downloaded
+    assert ota._image_cache[provider][meta_kept] is cached_kept
+
+
+async def test_ota_index_refresh_revokes_withdrawn_images(
+    query_cmd, ota_hdr, ota_subelements
+) -> None:
+    """Images withdrawn from a refreshed index are no longer offered."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    meta_kept = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 1,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=zigpy.ota.image.OTAImage(
+            header=ota_hdr,
+            subelements=ota_subelements,
+        ).serialize(),
+    )
+    meta_withdrawn = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 2,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=zigpy.ota.image.OTAImage(
+            header=ota_hdr.replace(file_version=query_cmd.current_file_version + 2),
+            subelements=ota_subelements,
+        ).serialize(),
+    )
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    provider = SelfContainedProvider([meta_kept, meta_withdrawn])
+    ota.register_provider(provider)
+
+    images1 = await ota.get_ota_images(device, query_cmd)
+    assert len(images1.upgrades) == 2
+
+    cached_kept = ota._image_cache[provider][meta_kept]
+    assert cached_kept.firmware is not None
+
+    # The newest image is pulled from the index, which then expires
+    provider._index = [meta_kept]
+    provider._index_last_updated = datetime.datetime.fromtimestamp(0, tz=datetime.UTC)
+
+    images2 = await ota.get_ota_images(device, query_cmd)
+    assert len(images2.upgrades) == 1
+    assert images2.upgrades[0].metadata == meta_kept
+
+    # The already-downloaded firmware was carried over, not re-downloaded
+    assert ota._image_cache[provider][meta_kept] is cached_kept
+
+
+async def test_ota_index_refresh_failure_keeps_cached_images(
+    query_cmd, ota_image
+) -> None:
+    """A provider outage during an index refresh does not withdraw its images."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    meta = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 1,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=ota_image.serialize(),
+    )
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    provider = SelfContainedProvider([meta])
+    ota.register_provider(provider)
+
+    images1 = await ota.get_ota_images(device, query_cmd)
+    assert len(images1.upgrades) == 1
+
+    # The provider goes down and the index expires
+    provider._index_last_updated = datetime.datetime.fromtimestamp(0, tz=datetime.UTC)
+
+    with patch.object(provider, "_load_index", side_effect=RuntimeError("offline")):
+        images2 = await ota.get_ota_images(device, query_cmd)
+
+    assert images2 == images1
+
+
+async def test_ota_concurrent_checks_load_and_log_index_once(
+    query_cmd, ota_image, caplog
+) -> None:
+    """A burst of concurrent device checks loads and logs each index only once."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    meta = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 1,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=ota_image.serialize(),
+    )
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    provider = SelfContainedProvider([meta], load_index_delay=0.1)
+    ota.register_provider(provider)
+
+    with (
+        patch.object(provider, "_load_index", wraps=provider._load_index) as load_index,
+        caplog.at_level(logging.DEBUG, logger="zigpy.ota"),
+    ):
+        results = await asyncio.gather(
+            *(ota.get_ota_images(device, query_cmd) for _ in range(5))
+        )
+
+    assert all(result == results[0] for result in results)
+    assert len(load_index.mock_calls) == 1
+    assert caplog.text.count("Loaded 1 images from provider") == 1
+
+
+async def test_ota_provider_equality_requires_exact_type() -> None:
+    """Providers of different types with the same URL do not compare equal."""
+    untrusted = SelfContainedProvider([])
+    trusted = TrustedSelfContainedProvider([])
+
+    assert untrusted == SelfContainedProvider([])
+    assert untrusted != trusted
+    assert trusted != untrusted
+
+    # Comparing against a non-provider falls back to the reflected comparison
+    assert untrusted != "not a provider"
+
+    # Only true if __eq__ returns NotImplemented for non-providers, so Python
+    # falls back to ANY's own __eq__
+    assert untrusted == ANY
+
+    # Distinct provider types occupy distinct dict keys, equal providers share one
+    buckets = {untrusted: 1, trusted: 2}
+    assert len(buckets) == 2
+    assert buckets[SelfContainedProvider([])] == 1
+    assert buckets[TrustedSelfContainedProvider([])] == 2
+
+
+async def test_ota_provider_hash_includes_type(tmp_path) -> None:
+    """Distinct provider types hashing over the same fields do not collide."""
+    index_file = tmp_path / "index.json"
+
+    local_zigpy = LocalZigpyProvider(index_file=index_file)
+    local_z2m = LocalZ2MProvider(index_file=index_file)
+    advanced = AdvancedFileProvider(path=tmp_path)
+
+    buckets = {local_zigpy: 1, local_z2m: 2, advanced: 3}
+    assert len(buckets) == 3
+    assert buckets[LocalZigpyProvider(index_file=index_file)] == 1
+    assert buckets[LocalZ2MProvider(index_file=index_file)] == 2
+    assert buckets[AdvancedFileProvider(path=tmp_path)] == 3
+
+    # Same type but different fields is not equal
+    other_index_file = tmp_path / "other_index.json"
+    assert LocalZigpyProvider(index_file=other_index_file) not in buckets
+    assert LocalZ2MProvider(index_file=other_index_file) not in buckets
+    assert AdvancedFileProvider(path=tmp_path / "other") not in buckets
+
+
+async def test_register_provider_skips_duplicates(caplog) -> None:
+    """Registering a provider equal to an already-registered one is a no-op."""
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+
+    provider = SelfContainedProvider([])
+    ota.register_provider(provider)
+    ota.register_provider(SelfContainedProvider([]))
+
+    assert ota._providers == [provider]
+    assert "Ignoring duplicate OTA provider" in caplog.text
+
+    # A provider of a different type with the same fields is not a duplicate
+    trusted = TrustedSelfContainedProvider([])
+    ota.register_provider(trusted)
+
+    assert ota._providers == [provider, trusted]

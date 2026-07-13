@@ -486,6 +486,12 @@ disable_error_code = [
 
 [tool.coverage.run]
 source = ["zigpy"]
+omit = [
+    # Deprecation shims re-exporting the quirks API that moved to
+    # zha-device-handlers/ZHA. zigpy cannot import their targets, so they are not
+    # exercisable from zigpy's own test suite.
+    "zigpy/quirks/*",
+]
 
 [tool.coverage.report]
 exclude_lines = [
