@@ -1152,9 +1152,10 @@ async def test_appdb_network_state_reactive_updates(tmp_path, backup_factory):  
     app2.state.network_info = reloaded.network_info
     app2.state.node_info = reloaded.node_info
 
-    reloaded.network_info.network_key.tx_counter += 1000
-    reloaded.network_info.tc_link_key.tx_counter += 2000
-    app2.network_state_updated()
+    app2.network_frame_counter_updated(
+        reloaded.network_info.network_key.tx_counter + 1000
+    )
+    app2.aps_frame_counter_updated(reloaded.network_info.tc_link_key.tx_counter + 2000)
 
     app2.network_route_updated(t.NWK(0x1234), t.NWK(0x5678))
     await app2.shutdown()

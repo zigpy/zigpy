@@ -132,6 +132,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self.running = False
         self._worker_task = asyncio.create_task(self._worker())
 
+        # The backup that reactive updates (frame counters, routes) write to: the most
+        # recent one. Tracked here so those hot writes target it by id directly.
+        self._current_backup_id: int | None = None
+
     async def initialize_tables(self) -> None:
         async with self.execute("PRAGMA integrity_check") as cursor:
             rows = await cursor.fetchall()
@@ -742,27 +746,44 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             f"DELETE FROM network_info{DB_V} WHERE backup_time=?",
             (backup_time.timestamp(),),
         )
+
+        # The removed backup may have been the current one; repoint to the newest that
+        # remains (this rare path can afford the lookup the hot path avoids).
+        async with self.execute(
+            f"SELECT id FROM network_info{DB_V} ORDER BY backup_time DESC LIMIT 1"
+        ) as cursor:
+            row = await cursor.fetchone()
+        self._current_backup_id = row[0] if row is not None else None
+
         await self._db.commit()
 
-    def on_network_state_updated(
-        self, event: zigpy.backups.NetworkStateUpdatedEvent
+    def on_network_frame_counter_updated(
+        self, event: zigpy.backups.NetworkFrameCounterUpdatedEvent
     ) -> None:
-        self.enqueue("_save_network_state_fields", event.network_info)
+        self.enqueue("_save_network_frame_counter", event.frame_counter)
 
-    async def _save_network_state_fields(
-        self, network_info: zigpy.state.NetworkInfo
-    ) -> None:
-        # Update just the volatile frame counters on the current (most recent) backup,
-        # rather than rewriting the whole decomposed snapshot.
+    async def _save_network_frame_counter(self, frame_counter: int) -> None:
+        # Update just the NWK counter on the current backup, rather than rewriting the
+        # whole decomposed snapshot.
+        if self._current_backup_id is None:
+            return
         await self.execute(
-            f"""UPDATE network_info{DB_V}
-                    SET network_key_tx_counter=?, tc_link_key_tx_counter=?
-                    WHERE id=(SELECT id FROM network_info{DB_V}
-                                  ORDER BY backup_time DESC LIMIT 1)""",
-            (
-                int(network_info.network_key.tx_counter),
-                int(network_info.tc_link_key.tx_counter),
-            ),
+            f"UPDATE network_info{DB_V} SET network_key_tx_counter=? WHERE id=?",
+            (int(frame_counter), self._current_backup_id),
+        )
+        await self._db.commit()
+
+    def on_aps_frame_counter_updated(
+        self, event: zigpy.backups.ApsFrameCounterUpdatedEvent
+    ) -> None:
+        self.enqueue("_save_aps_frame_counter", event.frame_counter)
+
+    async def _save_aps_frame_counter(self, frame_counter: int) -> None:
+        if self._current_backup_id is None:
+            return
+        await self.execute(
+            f"UPDATE network_info{DB_V} SET tc_link_key_tx_counter=? WHERE id=?",
+            (int(frame_counter), self._current_backup_id),
         )
         await self._db.commit()
 
@@ -776,20 +797,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _save_network_route(
         self, destination: t.NWK, next_hop: t.NWK, removed: bool
     ) -> None:
-        async with self.execute(
-            f"SELECT id FROM network_info{DB_V} ORDER BY backup_time DESC LIMIT 1"
-        ) as cursor:
-            row = await cursor.fetchone()
-
-        if row is None:
+        if self._current_backup_id is None:
             return
-
-        (backup_id,) = row
 
         if removed:
             await self.execute(
                 f"DELETE FROM network_routes{DB_V} WHERE backup_id=? AND destination=?",
-                (backup_id, int(destination)),
+                (self._current_backup_id, int(destination)),
             )
         else:
             await self.execute(
@@ -798,7 +812,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         ON CONFLICT (backup_id, destination)
                         DO UPDATE SET next_hop=excluded.next_hop
                             WHERE next_hop != excluded.next_hop""",
-                (backup_id, int(destination), int(next_hop)),
+                (self._current_backup_id, int(destination), int(next_hop)),
             )
 
         await self._db.commit()
@@ -853,6 +867,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         ) as cursor:
             backup_id = cursor.lastrowid
 
+        # Reactive updates persist against the backup just written (the current one)
+        self._current_backup_id = backup_id
+
         await self._db.executemany(
             f"""INSERT INTO network_link_keys{DB_V}
                     (backup_id, partner_ieee, key, tx_counter, rx_counter, seq)
@@ -906,6 +923,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 FROM network_info{DB_V} ORDER BY backup_time"""
         ) as cursor:
             rows = await cursor.fetchall()
+
+        # The most recent backup (last by backup_time) is the one reactive updates target
+        if rows:
+            self._current_backup_id = rows[-1][0]
 
         backups = []
 

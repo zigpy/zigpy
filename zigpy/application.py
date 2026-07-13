@@ -20,7 +20,11 @@ import warnings
 
 import zigpy.appdb
 import zigpy.backups
-from zigpy.backups import NetworkRouteUpdatedEvent, NetworkStateUpdatedEvent
+from zigpy.backups import (
+    ApsFrameCounterUpdatedEvent,
+    NetworkFrameCounterUpdatedEvent,
+    NetworkRouteUpdatedEvent,
+)
 import zigpy.config as conf
 from zigpy.const import INTERFERENCE_MESSAGE
 from zigpy.datastructures import RequestLimiter
@@ -187,8 +191,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, EventBase, abc.ABC):
 
         self._db_event_unsubs = [
             self.on_event(
-                NetworkStateUpdatedEvent.event_type,
-                self._dblistener.on_network_state_updated,
+                NetworkFrameCounterUpdatedEvent.event_type,
+                self._dblistener.on_network_frame_counter_updated,
+            ),
+            self.on_event(
+                ApsFrameCounterUpdatedEvent.event_type,
+                self._dblistener.on_aps_frame_counter_updated,
             ),
             self.on_event(
                 NetworkRouteUpdatedEvent.event_type,
@@ -904,11 +912,20 @@ class ControllerApplication(zigpy.util.ListenableMixin, EventBase, abc.ABC):
         else:
             device.relays = zigpy.util.filter_relays(relays)
 
-    def network_state_updated(self) -> None:
-        """Called after volatile network state changes."""
+    def network_frame_counter_updated(self, frame_counter: int) -> None:
+        """Called when the radio reports the NWK outgoing frame counter advancing."""
+        self.state.network_info.network_key.tx_counter = frame_counter
         self.emit(
-            NetworkStateUpdatedEvent.event_type,
-            NetworkStateUpdatedEvent(network_info=self.state.network_info),
+            NetworkFrameCounterUpdatedEvent.event_type,
+            NetworkFrameCounterUpdatedEvent(frame_counter=frame_counter),
+        )
+
+    def aps_frame_counter_updated(self, frame_counter: int) -> None:
+        """Called when the radio reports the APS outgoing frame counter advancing."""
+        self.state.network_info.tc_link_key.tx_counter = frame_counter
+        self.emit(
+            ApsFrameCounterUpdatedEvent.event_type,
+            ApsFrameCounterUpdatedEvent(frame_counter=frame_counter),
         )
 
     def network_route_updated(

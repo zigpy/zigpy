@@ -22,12 +22,21 @@ BACKUP_FORMAT_VERSION = 1
 
 
 @dataclasses.dataclass(kw_only=True, frozen=True)
-class NetworkStateUpdatedEvent:
-    """Network state changed (outgoing frame counters) and should be persisted."""
+class NetworkFrameCounterUpdatedEvent:
+    """The outgoing NWK-layer (network key) frame counter advanced."""
 
-    event_type: Final[str] = "network_state_updated"
+    event_type: Final[str] = "network_frame_counter_updated"
 
-    network_info: zigpy.state.NetworkInfo
+    frame_counter: int
+
+
+@dataclasses.dataclass(kw_only=True, frozen=True)
+class ApsFrameCounterUpdatedEvent:
+    """The outgoing APS-layer frame counter advanced."""
+
+    event_type: Final[str] = "aps_frame_counter_updated"
+
+    frame_counter: int
 
 
 @dataclasses.dataclass(kw_only=True, frozen=True)
