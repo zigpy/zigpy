@@ -133,13 +133,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self.running = False
         self._worker_task = asyncio.create_task(self._worker())
 
-        # Support database commit batching interval configuration
-        self._commit_interval = float(
-            self._application.config.get(
-                conf.CONF_DB_COMMIT_INTERVAL,
-                conf.defaults.CONF_DB_COMMIT_INTERVAL_DEFAULT,
-            )
-        )
+        self._commit_interval = self._application.config[conf.CONF_DB_COMMIT_INTERVAL]
         self._commit_task: asyncio.Task | None = None
         self._has_pending_commits = False
 
