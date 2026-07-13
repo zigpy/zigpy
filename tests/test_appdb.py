@@ -1138,6 +1138,44 @@ async def test_appdb_network_backups_format_change(tmp_path, backup_factory):  #
     assert mock_add_backup.mock_calls == [call(new_backup, suppress_event=True)]
 
 
+async def test_appdb_network_state_reactive_updates(tmp_path, backup_factory):  # noqa: F811
+    db = tmp_path / "test.db"
+
+    # Phase 1: persist a baseline backup
+    app1 = await make_app_with_db(db)
+    app1.backups.add_backup(backup_factory())
+    await app1.shutdown()
+
+    # Phase 2: only granular reactive updates, no new backup
+    app2 = await make_app_with_db(db)
+    reloaded = app2.backups.backups[0]
+    app2.state.network_info = reloaded.network_info
+    app2.state.node_info = reloaded.node_info
+
+    reloaded.network_info.network_key.tx_counter += 1000
+    reloaded.network_info.tc_link_key.tx_counter += 2000
+    app2.network_state_updated()
+
+    app2.network_route_updated(t.NWK(0x1234), t.NWK(0x5678))
+    await app2.shutdown()
+
+    # Phase 3: the granular writes landed on the current backup row
+    app3 = await make_app_with_db(db)
+    net = app3.backups.backups[0].network_info
+    assert net.network_key.tx_counter == reloaded.network_info.network_key.tx_counter
+    assert net.tc_link_key.tx_counter == reloaded.network_info.tc_link_key.tx_counter
+    assert net.route_table[t.NWK(0x1234)] == t.NWK(0x5678)
+
+    # Phase 4: removing the route deletes it
+    app3.state.network_info = net
+    app3.network_route_updated(t.NWK(0x1234), t.NWK(0x5678), removed=True)
+    await app3.shutdown()
+
+    app4 = await make_app_with_db(db)
+    assert t.NWK(0x1234) not in app4.backups.backups[0].network_info.route_table
+    await app4.shutdown()
+
+
 async def test_appdb_persist_coordinator_info(tmp_path):  # noqa: F811
     db = tmp_path / "test.db"
 

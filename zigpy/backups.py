@@ -7,7 +7,7 @@ import copy
 import dataclasses
 from datetime import UTC, datetime
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import zigpy.config as conf
 import zigpy.state
@@ -19,6 +19,26 @@ if TYPE_CHECKING:
 
 LOGGER = logging.getLogger(__name__)
 BACKUP_FORMAT_VERSION = 1
+
+
+@dataclasses.dataclass(kw_only=True, frozen=True)
+class NetworkStateUpdatedEvent:
+    """Network state changed (outgoing frame counters) and should be persisted."""
+
+    event_type: Final[str] = "network_state_updated"
+
+    network_info: zigpy.state.NetworkInfo
+
+
+@dataclasses.dataclass(kw_only=True, frozen=True)
+class NetworkRouteUpdatedEvent:
+    """The next-hop route to a destination was established, changed, or removed."""
+
+    event_type: Final[str] = "network_route_updated"
+
+    destination: t.NWK
+    next_hop: t.NWK
+    removed: bool = False
 
 
 @dataclasses.dataclass

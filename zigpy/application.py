@@ -20,11 +20,13 @@ import warnings
 
 import zigpy.appdb
 import zigpy.backups
+from zigpy.backups import NetworkRouteUpdatedEvent, NetworkStateUpdatedEvent
 import zigpy.config as conf
 from zigpy.const import INTERFERENCE_MESSAGE
 from zigpy.datastructures import RequestLimiter
 import zigpy.device
 import zigpy.endpoint
+from zigpy.event import EventBase
 import zigpy.exceptions
 import zigpy.group
 import zigpy.listeners
@@ -57,7 +59,7 @@ CHANNEL_CHANGE_SETTINGS_RELOAD_DELAY_S = 1.0
 RADIO_ENTRY_POINT_GROUP = "zigpy.radio"
 
 
-class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
+class ControllerApplication(zigpy.util.ListenableMixin, EventBase, abc.ABC):
     SCHEMA = conf.CONFIG_SCHEMA
 
     # User-facing metadata, set by radio libraries advertising themselves via the
@@ -69,6 +71,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     _probe_configs: list[dict[str, Any]] = []
 
     def __init__(self, config: dict) -> None:
+        super().__init__()
+
         self.devices: dict[t.EUI64, zigpy.device.Device] = {}
         self.state: zigpy.state.State = zigpy.state.State()
         self._listeners = {}
@@ -181,9 +185,24 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.backups.add_listener(self._dblistener)
         self.topology.add_listener(self._dblistener)
 
+        self._db_event_unsubs = [
+            self.on_event(
+                NetworkStateUpdatedEvent.event_type,
+                self._dblistener.on_network_state_updated,
+            ),
+            self.on_event(
+                NetworkRouteUpdatedEvent.event_type,
+                self._dblistener.on_network_route_updated,
+            ),
+        ]
+
     def _remove_db_listeners(self):
         if self._dblistener is None:
             return
+
+        for unsub in getattr(self, "_db_event_unsubs", []):
+            unsub()
+        self._db_event_unsubs = []
 
         self.topology.remove_listener(self._dblistener)
         self.backups.remove_listener(self._dblistener)
@@ -884,6 +903,29 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             )
         else:
             device.relays = zigpy.util.filter_relays(relays)
+
+    def network_state_updated(self) -> None:
+        """Called after volatile network state changes."""
+        self.emit(
+            NetworkStateUpdatedEvent.event_type,
+            NetworkStateUpdatedEvent(network_info=self.state.network_info),
+        )
+
+    def network_route_updated(
+        self, destination: t.NWK, next_hop: t.NWK, *, removed: bool = False
+    ) -> None:
+        """Called when a next-hop route is changed."""
+        if removed:
+            self.state.network_info.route_table.pop(destination, None)
+        else:
+            self.state.network_info.route_table[destination] = next_hop
+
+        self.emit(
+            NetworkRouteUpdatedEvent.event_type,
+            NetworkRouteUpdatedEvent(
+                destination=destination, next_hop=next_hop, removed=removed
+            ),
+        )
 
     @classmethod
     async def probe(cls, device_config: dict[str, Any]) -> bool | dict[str, Any]:

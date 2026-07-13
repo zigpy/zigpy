@@ -744,6 +744,65 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         )
         await self._db.commit()
 
+    def on_network_state_updated(
+        self, event: zigpy.backups.NetworkStateUpdatedEvent
+    ) -> None:
+        self.enqueue("_save_network_state_fields", event.network_info)
+
+    async def _save_network_state_fields(
+        self, network_info: zigpy.state.NetworkInfo
+    ) -> None:
+        # Update just the volatile frame counters on the current (most recent) backup,
+        # rather than rewriting the whole decomposed snapshot.
+        await self.execute(
+            f"""UPDATE network_info{DB_V}
+                    SET network_key_tx_counter=?, tc_link_key_tx_counter=?
+                    WHERE id=(SELECT id FROM network_info{DB_V}
+                                  ORDER BY backup_time DESC LIMIT 1)""",
+            (
+                int(network_info.network_key.tx_counter),
+                int(network_info.tc_link_key.tx_counter),
+            ),
+        )
+        await self._db.commit()
+
+    def on_network_route_updated(
+        self, event: zigpy.backups.NetworkRouteUpdatedEvent
+    ) -> None:
+        self.enqueue(
+            "_save_network_route", event.destination, event.next_hop, event.removed
+        )
+
+    async def _save_network_route(
+        self, destination: t.NWK, next_hop: t.NWK, removed: bool
+    ) -> None:
+        async with self.execute(
+            f"SELECT id FROM network_info{DB_V} ORDER BY backup_time DESC LIMIT 1"
+        ) as cursor:
+            row = await cursor.fetchone()
+
+        if row is None:
+            return
+
+        (backup_id,) = row
+
+        if removed:
+            await self.execute(
+                f"DELETE FROM network_routes{DB_V} WHERE backup_id=? AND destination=?",
+                (backup_id, int(destination)),
+            )
+        else:
+            await self.execute(
+                f"""INSERT INTO network_routes{DB_V} (backup_id, destination, next_hop)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT (backup_id, destination)
+                        DO UPDATE SET next_hop=excluded.next_hop
+                            WHERE next_hop != excluded.next_hop""",
+                (backup_id, int(destination), int(next_hop)),
+            )
+
+        await self._db.commit()
+
     async def _write_network_backup(self, backup: zigpy.backups.NetworkBackup) -> None:
         """Decompose a `NetworkBackup` into the granular network-state tables."""
         net = backup.network_info
