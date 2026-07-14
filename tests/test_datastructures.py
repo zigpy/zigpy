@@ -274,6 +274,38 @@ async def test_dynamic_bounded_semaphore_cancellation():
     assert not sem.locked()
 
 
+async def test_dynamic_bounded_semaphore_cancel_waiting_then_task_cancelled() -> None:
+    """Test that a cancelled waiter does not corrupt the active-request bookkeeping."""
+    sem = datastructures.PriorityDynamicBoundedSemaphore(1)
+
+    async def acquire():
+        async with sem:
+            await asyncio.sleep(60)
+
+    # Hold the only slot so the next acquire must wait
+    async with sem:
+        assert sem.value == 0
+
+        task = asyncio.create_task(acquire())
+        await asyncio.sleep(0)  # Let the task start waiting
+        assert len(sem._waiters) == 1
+
+        # `cancel_waiting` resolves the future with an exception and the task is
+        # then cancelled: cancellation wins, so the acquire raises `CancelledError`
+        # even though no slot was ever granted.
+        sem.cancel_waiting(RuntimeError("rejoin"))
+        task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        # The waiter never acquired a slot, so the active count is unchanged
+        assert sem.value == 0
+
+    # Releasing the outer slot must not trip the bookkeeping assertion
+    assert sem.value == 1
+
+
 async def test_priority_lock():
     """Test priority lock."""
 

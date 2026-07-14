@@ -145,8 +145,10 @@ class PriorityDynamicBoundedSemaphore:
             finally:
                 self._waiters.remove(obj)
         except asyncio.CancelledError:
-            # Currently the only exception designed be able to occur here.
-            if fut.done() and not fut.cancelled():
+            # Only undo the bookkeeping if the slot was actually granted. If the future
+            # instead carries an exception (e.g. from `cancel_waiting`), no slot was
+            # ever acquired and there is nothing to release.
+            if fut.done() and not fut.cancelled() and fut.exception() is None:
                 # Our Future was successfully set to True via _wake_up_next(),
                 # but we are not about to successfully acquire(). Therefore we
                 # must undo the bookkeeping already done and attempt to wake
