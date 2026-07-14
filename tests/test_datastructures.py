@@ -710,7 +710,7 @@ async def test_request_limiter_cancel_waiting():
 
 
 async def test_request_limiter_cancel_waiting_then_task_cancelled() -> None:
-    """Test that a cancelled waiter not corrupt the active-request bookkeeping."""
+    """Test that a cancelled waiter does not corrupt the active-request bookkeeping."""
     limiter = datastructures.RequestLimiter(1, {1: 1.0})
 
     async def acquire():
