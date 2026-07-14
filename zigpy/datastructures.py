@@ -517,7 +517,10 @@ class RequestLimiter:
                     self._waiters.remove(waiter_obj)
                     heapq.heapify(self._waiters)
         except asyncio.CancelledError:
-            if fut.done() and not fut.cancelled():
+            # Only undo the bookkeeping if the slot was actually granted. If the future
+            # instead carries an exception (e.g. from `cancel_waiting`), no slot was
+            # ever acquired and there is nothing to release.
+            if fut.done() and not fut.cancelled() and fut.exception() is None:
                 self._active_requests_by_tier[effective_tier] -= 1
 
             raise

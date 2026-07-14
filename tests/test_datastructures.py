@@ -709,6 +709,38 @@ async def test_request_limiter_cancel_waiting():
             await task2
 
 
+async def test_request_limiter_cancel_waiting_then_task_cancelled() -> None:
+    """Test that a cancelled waiter not corrupt the active-request bookkeeping."""
+    limiter = datastructures.RequestLimiter(1, {1: 1.0})
+
+    async def acquire():
+        async with limiter(priority=1):
+            await asyncio.sleep(60)
+
+    # Hold the only slot so the next acquire must wait
+    async with limiter(priority=1):
+        assert limiter.active_requests == 1
+
+        task = asyncio.create_task(acquire())
+        await asyncio.sleep(0)  # Let the task start waiting
+        assert limiter.waiting_requests == 1
+
+        # `cancel_waiting` resolves the future with an exception and the task is
+        # then cancelled: cancellation wins, so the acquire raises `CancelledError`
+        # even though no slot was ever granted.
+        limiter.cancel_waiting(RuntimeError("rejoin"))
+        task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        # The waiter never acquired a slot, so the active count is unchanged
+        assert limiter.active_requests == 1
+
+    # Releasing the outer slot must not trip the bookkeeping assertion
+    assert limiter.active_requests == 0
+
+
 async def test_request_limiter_backwards_compatibility() -> None:
     """Test `max_value` property proxying `max_concurrency`."""
     limiter = datastructures.RequestLimiter(5, {1: 1.0})
