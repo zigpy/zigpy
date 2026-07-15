@@ -2639,6 +2639,211 @@ async def test_read_attributes_chunked_by_count(app_mock) -> None:
     }
 
 
+async def test_read_attributes_insufficient_space_retry_success(app_mock) -> None:
+    """An INSUFFICIENT_SPACE record is re-read individually and can then succeed."""
+
+    class TestCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            attr_0 = foundation.ZCLAttributeDef(id=0xFF00, type=t.uint8_t)
+            attr_1 = foundation.ZCLAttributeDef(id=0xFF01, type=t.uint8_t)
+            attr_2 = foundation.ZCLAttributeDef(id=0xFF02, type=t.uint8_t)
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    attrs = [
+        TestCluster.AttributeDefs.attr_0,
+        TestCluster.AttributeDefs.attr_1,
+        TestCluster.AttributeDefs.attr_2,
+    ]
+
+    supported = {
+        TestCluster.AttributeDefs.attr_0: 10,
+        # Runs out of space in the batched read, but fits when read alone
+        TestCluster.AttributeDefs.attr_1: mock.Mock(
+            side_effect=[foundation.Status.INSUFFICIENT_SPACE, 20]
+        ),
+        TestCluster.AttributeDefs.attr_2: 30,
+    }
+
+    events = []
+    cluster.on_event(AttributeReadEvent.event_type, events.append)
+    cluster.on_event(AttributeUpdatedEvent.event_type, events.append)
+
+    with mock_attribute_reads(cluster, supported) as (mock_read, _):
+        success, failure = await cluster.read_attributes(attrs)
+
+    assert success == {
+        TestCluster.AttributeDefs.attr_0: 10,
+        TestCluster.AttributeDefs.attr_1: 20,
+        TestCluster.AttributeDefs.attr_2: 30,
+    }
+    assert failure == {}
+
+    # The batched read, then a solo re-read of the attribute that didn't fit
+    chunks = [call_obj.args[0] for call_obj in mock_read.call_args_list]
+    assert chunks == [[0xFF00, 0xFF01, 0xFF02], [0xFF01]]
+
+    assert events == [
+        AttributeReadEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=TestCluster.cluster_id,
+            attribute_name=TestCluster.AttributeDefs.attr_0.name,
+            attribute_id=TestCluster.AttributeDefs.attr_0.id,
+            manufacturer_code=None,
+            raw_value=10,
+            value=10,
+        ),
+        AttributeReadEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=TestCluster.cluster_id,
+            attribute_name=TestCluster.AttributeDefs.attr_2.name,
+            attribute_id=TestCluster.AttributeDefs.attr_2.id,
+            manufacturer_code=None,
+            raw_value=30,
+            value=30,
+        ),
+        # No event for attr_1's INSUFFICIENT_SPACE record; the solo re-read then emits
+        # its AttributeReadEvent last, after the two attributes that succeeded in the
+        # batch
+        AttributeReadEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=TestCluster.cluster_id,
+            attribute_name=TestCluster.AttributeDefs.attr_1.name,
+            attribute_id=TestCluster.AttributeDefs.attr_1.id,
+            manufacturer_code=None,
+            raw_value=20,
+            value=20,
+        ),
+    ]
+
+
+async def test_read_attributes_insufficient_space_retry_persistent(app_mock) -> None:
+    """An attribute that still doesn't fit when read alone is a terminal failure."""
+
+    class TestCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            attr_0 = foundation.ZCLAttributeDef(id=0xFF00, type=t.uint8_t)
+            attr_1 = foundation.ZCLAttributeDef(id=0xFF01, type=t.uint8_t)
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    attrs = [TestCluster.AttributeDefs.attr_0, TestCluster.AttributeDefs.attr_1]
+
+    supported = {
+        TestCluster.AttributeDefs.attr_0: 10,
+        # Never fits, even when read alone
+        TestCluster.AttributeDefs.attr_1: mock.Mock(
+            return_value=foundation.Status.INSUFFICIENT_SPACE
+        ),
+    }
+
+    with mock_attribute_reads(cluster, supported) as (mock_read, _):
+        success, failure = await cluster.read_attributes(attrs)
+
+    assert success == {TestCluster.AttributeDefs.attr_0: 10}
+    assert failure == {
+        TestCluster.AttributeDefs.attr_1: foundation.Status.INSUFFICIENT_SPACE
+    }
+
+    chunks = [call_obj.args[0] for call_obj in mock_read.call_args_list]
+    assert chunks == [[0xFF00, 0xFF01], [0xFF01]]
+
+
+async def test_read_attributes_insufficient_space_single_chunk_no_retry(
+    app_mock,
+) -> None:
+    """A single-attribute chunk is already isolated, so it is not re-read."""
+
+    class TestCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            attr_0 = foundation.ZCLAttributeDef(id=0xFF00, type=t.uint8_t)
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    supported = {
+        TestCluster.AttributeDefs.attr_0: mock.Mock(
+            return_value=foundation.Status.INSUFFICIENT_SPACE
+        ),
+    }
+
+    with mock_attribute_reads(cluster, supported) as (mock_read, _):
+        success, failure = await cluster.read_attributes(
+            [TestCluster.AttributeDefs.attr_0]
+        )
+
+    assert success == {}
+    assert failure == {
+        TestCluster.AttributeDefs.attr_0: foundation.Status.INSUFFICIENT_SPACE
+    }
+
+    # Read exactly once: no redundant solo re-read of an already-isolated attribute
+    chunks = [call_obj.args[0] for call_obj in mock_read.call_args_list]
+    assert chunks == [[0xFF00]]
+
+
+@pytest.mark.parametrize("omitted_again", [False, True])
+async def test_read_attributes_omitted_record_retry(
+    app_mock, omitted_again: bool
+) -> None:
+    """Records omitted from a response are re-read individually (ZCL R8 §2.5.2.3)."""
+
+    class TestCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            attr_0 = foundation.ZCLAttributeDef(id=0xFF00, type=t.uint8_t)
+            attr_1 = foundation.ZCLAttributeDef(id=0xFF01, type=t.uint8_t)
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    attrs = [TestCluster.AttributeDefs.attr_0, TestCluster.AttributeDefs.attr_1]
+
+    supported = {
+        TestCluster.AttributeDefs.attr_0: 10,
+        TestCluster.AttributeDefs.attr_1: mock.Mock(
+            side_effect=[None, None] if omitted_again else [None, 20]
+        ),
+    }
+
+    with mock_attribute_reads(cluster, supported) as (mock_read, _):
+        success, failure = await cluster.read_attributes(attrs)
+
+    if omitted_again:
+        assert success == {TestCluster.AttributeDefs.attr_0: 10}
+        assert failure == {
+            TestCluster.AttributeDefs.attr_1: foundation.Status.INSUFFICIENT_SPACE
+        }
+    else:
+        assert success == {
+            TestCluster.AttributeDefs.attr_0: 10,
+            TestCluster.AttributeDefs.attr_1: 20,
+        }
+        assert failure == {}
+
+    chunks = [call_obj.args[0] for call_obj in mock_read.call_args_list]
+    assert chunks == [[0xFF00, 0xFF01], [0xFF01]]
+
+
 async def test_write_attributes_chunked_by_size(app_mock) -> None:
     """Write_attributes splits requests if a single one would exceed the limit."""
 
