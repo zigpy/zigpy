@@ -310,6 +310,7 @@ CREATE TABLE network_routes_v16 (
     backup_id INTEGER NOT NULL,
     destination INTEGER NOT NULL,
     next_hop INTEGER NOT NULL,
+    path_cost INTEGER NOT NULL,
 
     FOREIGN KEY(backup_id)
         REFERENCES network_info_v16(id)

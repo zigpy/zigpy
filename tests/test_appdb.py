@@ -35,6 +35,7 @@ from zigpy.const import (
 from zigpy.device import Device, Status
 import zigpy.endpoint
 import zigpy.ota
+import zigpy.state
 import zigpy.types as t
 import zigpy.zcl
 from zigpy.zcl import (
@@ -1157,7 +1158,7 @@ async def test_appdb_network_state_reactive_updates(tmp_path, backup_factory):  
     )
     app2.aps_frame_counter_updated(reloaded.network_info.tc_link_key.tx_counter + 2000)
 
-    app2.network_route_updated(t.NWK(0x1234), t.NWK(0x5678))
+    app2.network_route_updated(t.NWK(0x1234), t.NWK(0x5678), t.uint8_t(7))
     await app2.shutdown()
 
     # Phase 3: the granular writes landed on the current backup row
@@ -1165,7 +1166,9 @@ async def test_appdb_network_state_reactive_updates(tmp_path, backup_factory):  
     net = app3.backups.backups[0].network_info
     assert net.network_key.tx_counter == reloaded.network_info.network_key.tx_counter
     assert net.tc_link_key.tx_counter == reloaded.network_info.tc_link_key.tx_counter
-    assert net.route_table[t.NWK(0x1234)] == t.NWK(0x5678)
+    assert net.route_table[t.NWK(0x1234)] == zigpy.state.Route(
+        next_hop=t.NWK(0x5678), path_cost=t.uint8_t(7)
+    )
 
     # Phase 4: removing the route deletes it
     app3.state.network_info = net

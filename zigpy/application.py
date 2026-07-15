@@ -929,18 +929,28 @@ class ControllerApplication(zigpy.util.ListenableMixin, EventBase, abc.ABC):
         )
 
     def network_route_updated(
-        self, destination: t.NWK, next_hop: t.NWK, *, removed: bool = False
+        self,
+        destination: t.NWK,
+        next_hop: t.NWK = t.NWK(0xFFFF),
+        path_cost: t.uint8_t = t.uint8_t(0xFF),
+        *,
+        removed: bool = False,
     ) -> None:
         """Called when a next-hop route is changed."""
         if removed:
             self.state.network_info.route_table.pop(destination, None)
         else:
-            self.state.network_info.route_table[destination] = next_hop
+            self.state.network_info.route_table[destination] = zigpy.state.Route(
+                next_hop=next_hop, path_cost=path_cost
+            )
 
         self.emit(
             NetworkRouteUpdatedEvent.event_type,
             NetworkRouteUpdatedEvent(
-                destination=destination, next_hop=next_hop, removed=removed
+                destination=destination,
+                next_hop=next_hop,
+                path_cost=path_cost,
+                removed=removed,
             ),
         )
 

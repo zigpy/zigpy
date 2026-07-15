@@ -791,11 +791,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self, event: zigpy.backups.NetworkRouteUpdatedEvent
     ) -> None:
         self.enqueue(
-            "_save_network_route", event.destination, event.next_hop, event.removed
+            "_save_network_route",
+            event.destination,
+            event.next_hop,
+            event.path_cost,
+            event.removed,
         )
 
     async def _save_network_route(
-        self, destination: t.NWK, next_hop: t.NWK, removed: bool
+        self, destination: t.NWK, next_hop: t.NWK, path_cost: t.uint8_t, removed: bool
     ) -> None:
         if self._current_backup_id is None:
             return
@@ -807,12 +811,20 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             )
         else:
             await self.execute(
-                f"""INSERT INTO network_routes{DB_V} (backup_id, destination, next_hop)
-                        VALUES (?, ?, ?)
+                f"""INSERT INTO network_routes{DB_V}
+                            (backup_id, destination, next_hop, path_cost)
+                        VALUES (?, ?, ?, ?)
                         ON CONFLICT (backup_id, destination)
-                        DO UPDATE SET next_hop=excluded.next_hop
-                            WHERE next_hop != excluded.next_hop""",
-                (self._current_backup_id, int(destination), int(next_hop)),
+                        DO UPDATE SET next_hop=excluded.next_hop,
+                                      path_cost=excluded.path_cost
+                            WHERE next_hop != excluded.next_hop
+                               OR path_cost != excluded.path_cost""",
+                (
+                    self._current_backup_id,
+                    int(destination),
+                    int(next_hop),
+                    int(path_cost),
+                ),
             )
 
         await self._db.commit()
@@ -898,11 +910,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         )
 
         await self._db.executemany(
-            f"""INSERT INTO network_routes{DB_V} (backup_id, destination, next_hop)
-                    VALUES (?,?,?)""",
+            f"""INSERT INTO network_routes{DB_V}
+                        (backup_id, destination, next_hop, path_cost)
+                    VALUES (?,?,?,?)""",
             [
-                (backup_id, int(dst), int(next_hop))
-                for dst, next_hop in net.route_table.items()
+                (backup_id, int(dst), int(route.next_hop), int(route.path_cost))
+                for dst, route in net.route_table.items()
             ],
         )
 
@@ -1006,11 +1019,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
             route_table = {}
             async with self.execute(
-                f"SELECT destination, next_hop FROM network_routes{DB_V} WHERE backup_id=?",
+                f"""SELECT destination, next_hop, path_cost
+                        FROM network_routes{DB_V} WHERE backup_id=?""",
                 (backup_id,),
             ) as cursor:
-                async for destination, next_hop in cursor:
-                    route_table[t.NWK(destination)] = t.NWK(next_hop)
+                async for destination, next_hop, path_cost in cursor:
+                    route_table[t.NWK(destination)] = zigpy.state.Route(
+                        next_hop=t.NWK(next_hop), path_cost=t.uint8_t(path_cost)
+                    )
 
             network_info = zigpy.state.NetworkInfo(
                 extended_pan_id=t.ExtendedPanId(extended_pan_id),

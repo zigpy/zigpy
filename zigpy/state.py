@@ -54,6 +54,27 @@ class Key(t.BaseDataclassMixin):
 
 
 @dataclasses.dataclass
+class Route(t.BaseDataclassMixin):
+    """A next-hop route entry."""
+
+    next_hop: t.NWK
+    path_cost: t.uint8_t = t.uint8_t(0xFF)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "next_hop": str(t.NWK(self.next_hop))[2:],
+            "path_cost": self.path_cost,
+        }
+
+    @classmethod
+    def from_dict(cls, obj: dict[str, Any]) -> Route:
+        return cls(
+            next_hop=t.NWK.convert(obj["next_hop"]),
+            path_cost=t.uint8_t(obj["path_cost"]),
+        )
+
+
+@dataclasses.dataclass
 class NodeInfo(t.BaseDataclassMixin):
     """Controller Application network Node information."""
 
@@ -113,7 +134,7 @@ class NetworkInfo(t.BaseDataclassMixin):
     )
     key_table: list[Key] = dataclasses.field(default_factory=list)
     children: list[t.EUI64] = dataclasses.field(default_factory=list)
-    route_table: dict[t.NWK, t.NWK] = dataclasses.field(default_factory=dict)
+    route_table: dict[t.NWK, Route] = dataclasses.field(default_factory=dict)
     tx_power: int | None = None
 
     # If exposed by the stack, NWK addresses of other connected devices on the network
@@ -143,8 +164,8 @@ class NetworkInfo(t.BaseDataclassMixin):
             "key_table": [key.as_dict() for key in self.key_table],
             "children": sorted(str(ieee) for ieee in self.children),
             "route_table": {
-                str(t.NWK(dst))[2:]: str(t.NWK(next_hop))[2:]
-                for dst, next_hop in self.route_table.items()
+                str(t.NWK(dst))[2:]: route.as_dict()
+                for dst, route in self.route_table.items()
             },
             "tx_power": self.tx_power,
             "nwk_addresses": {
@@ -174,8 +195,8 @@ class NetworkInfo(t.BaseDataclassMixin):
             ),
             children=[t.EUI64.convert(ieee) for ieee in obj["children"]],
             route_table={
-                t.NWK.convert(dst): t.NWK.convert(next_hop)
-                for dst, next_hop in obj["route_table"].items()
+                t.NWK.convert(dst): Route.from_dict(route)
+                for dst, route in obj["route_table"].items()
             },
             tx_power=obj["tx_power"],
             nwk_addresses={

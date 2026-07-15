@@ -86,8 +86,12 @@ def backup_factory():
                     t.EUI64.convert("AA:BB:CC:DD:11:22:33:44"): t.NWK(0x0ABC),
                 },
                 route_table={
-                    t.NWK(0x16B5): t.NWK(0xBFB9),
-                    t.NWK(0x1AF6): t.NWK(0x0ABC),
+                    t.NWK(0x16B5): app_state.Route(
+                        next_hop=t.NWK(0xBFB9), path_cost=t.uint8_t(5)
+                    ),
+                    t.NWK(0x1AF6): app_state.Route(
+                        next_hop=t.NWK(0x0ABC), path_cost=t.uint8_t(9)
+                    ),
                 },
                 stack_specific={
                     "zstack": {"tclk_seed": "71e31105bb92a2d15747a0d0a042dbfd"}
@@ -287,6 +291,25 @@ def test_from_dict_future_version(backup: zigpy.backups.NetworkBackup, caplog) -
 
     # Verify version was downgraded to current BACKUP_FORMAT_VERSION
     assert backup.version == zigpy.backups.BACKUP_FORMAT_VERSION
+
+
+def test_from_dict_v1_route_table(backup: zigpy.backups.NetworkBackup) -> None:
+    """A v1 backup stored the bare next hop; it upgrades to a Route with unknown cost."""
+    obj = backup.as_dict()
+    obj["version"] = 1
+    obj["network_info"]["route_table"] = {"16b5": "bfb9", "1af6": "0abc"}
+
+    restored = zigpy.backups.NetworkBackup.from_dict(obj)
+
+    assert restored.version == zigpy.backups.BACKUP_FORMAT_VERSION
+    assert restored.network_info.route_table == {
+        t.NWK(0x16B5): app_state.Route(
+            next_hop=t.NWK(0xBFB9), path_cost=t.uint8_t(0xFF)
+        ),
+        t.NWK(0x1AF6): app_state.Route(
+            next_hop=t.NWK(0x0ABC), path_cost=t.uint8_t(0xFF)
+        ),
+    }
 
 
 def test_backup_compatibility(backup_factory):

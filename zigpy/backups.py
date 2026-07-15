@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     import zigpy.application
 
 LOGGER = logging.getLogger(__name__)
-BACKUP_FORMAT_VERSION = 1
+BACKUP_FORMAT_VERSION = 2
 
 
 @dataclasses.dataclass(kw_only=True, frozen=True)
@@ -47,6 +47,7 @@ class NetworkRouteUpdatedEvent:
 
     destination: t.NWK
     next_hop: t.NWK
+    path_cost: t.uint8_t = t.uint8_t(0xFF)
     removed: bool = False
 
 
@@ -146,6 +147,16 @@ class NetworkBackup(t.BaseDataclassMixin):
             if "tx_power" not in obj["network_info"]:
                 obj = copy.deepcopy(obj)
                 obj["network_info"]["tx_power"] = None
+
+            # Version 2 gave each route table entry a path cost. Older backups stored
+            # the bare next hop; wrap it with the "unknown" cost sentinel.
+            if version < 2:
+                obj = copy.deepcopy(obj)
+                obj["network_info"]["route_table"] = {
+                    dst: {"next_hop": next_hop, "path_cost": 0xFF}
+                    for dst, next_hop in obj["network_info"]["route_table"].items()
+                }
+                version = 2
 
             return cls(
                 version=BACKUP_FORMAT_VERSION,
@@ -342,8 +353,8 @@ def _network_backup_to_open_coordinator_backup(backup: NetworkBackup) -> dict[st
                     for key in network_info.key_table
                 },
                 "route_table": {
-                    str(t.NWK(dst))[2:]: str(t.NWK(next_hop))[2:]
-                    for dst, next_hop in network_info.route_table.items()
+                    str(t.NWK(dst))[2:]: route.as_dict()
+                    for dst, route in network_info.route_table.items()
                 },
                 "tx_power": network_info.tx_power,
                 **network_info.metadata,
@@ -491,8 +502,16 @@ def _open_coordinator_backup_to_network_backup(obj: dict[str, Any]) -> NetworkBa
         # XXX: Devices that are not children, have no NWK address, and have no link key
         #      are effectively ignored, since there is no place to write them
 
-    for dst, next_hop in obj["metadata"]["internal"].get("route_table", {}).items():
-        network_info.route_table[t.NWK.convert(dst)] = t.NWK.convert(next_hop)
+    for dst, route in obj["metadata"]["internal"].get("route_table", {}).items():
+        # Older backups stored just the next hop instead of a {next_hop, path_cost} map
+        if isinstance(route, dict):
+            network_info.route_table[t.NWK.convert(dst)] = zigpy.state.Route.from_dict(
+                route
+            )
+        else:
+            network_info.route_table[t.NWK.convert(dst)] = zigpy.state.Route(
+                next_hop=t.NWK.convert(route)
+            )
 
     network_info.tx_power = obj["metadata"]["internal"].get("tx_power")
 
