@@ -2763,6 +2763,42 @@ async def test_read_attributes_insufficient_space_retry_persistent(app_mock) -> 
     assert chunks == [[0xFF00, 0xFF01], [0xFF01]]
 
 
+async def test_read_attributes_insufficient_space_single_chunk_no_retry(
+    app_mock,
+) -> None:
+    """A single-attribute chunk is already isolated, so it is not re-read."""
+
+    class TestCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            attr_0 = foundation.ZCLAttributeDef(id=0xFF00, type=t.uint8_t)
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    supported = {
+        TestCluster.AttributeDefs.attr_0: mock.Mock(
+            return_value=foundation.Status.INSUFFICIENT_SPACE
+        ),
+    }
+
+    with mock_attribute_reads(cluster, supported) as (mock_read, _):
+        success, failure = await cluster.read_attributes(
+            [TestCluster.AttributeDefs.attr_0]
+        )
+
+    assert success == {}
+    assert failure == {
+        TestCluster.AttributeDefs.attr_0: foundation.Status.INSUFFICIENT_SPACE
+    }
+
+    # Read exactly once: no redundant solo re-read of an already-isolated attribute
+    chunks = [call_obj.args[0] for call_obj in mock_read.call_args_list]
+    assert chunks == [[0xFF00]]
+
+
 @pytest.mark.parametrize("omitted_again", [False, True])
 async def test_read_attributes_omitted_record_retry(
     app_mock, omitted_again: bool

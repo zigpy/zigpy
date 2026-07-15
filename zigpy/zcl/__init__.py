@@ -1187,7 +1187,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                         manufacturer_code,
                         success,
                         failure,
-                        allow_retry=True,
+                        # A single-attribute chunk is already being read in isolation,
+                        # so there is nothing to gain from a solo re-read
+                        allow_retry=len(chunk) > 1,
                     )
                 )
 
