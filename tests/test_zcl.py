@@ -2669,6 +2669,10 @@ async def test_read_attributes_insufficient_space_retry_success(app_mock) -> Non
         TestCluster.AttributeDefs.attr_2: 30,
     }
 
+    events = []
+    cluster.on_event(AttributeReadEvent.event_type, events.append)
+    cluster.on_event(AttributeUpdatedEvent.event_type, events.append)
+
     with mock_attribute_reads(cluster, supported) as (mock_read, _):
         success, failure = await cluster.read_attributes(attrs)
 
@@ -2682,6 +2686,45 @@ async def test_read_attributes_insufficient_space_retry_success(app_mock) -> Non
     # The batched read, then a solo re-read of the attribute that didn't fit
     chunks = [call_obj.args[0] for call_obj in mock_read.call_args_list]
     assert chunks == [[0xFF00, 0xFF01, 0xFF02], [0xFF01]]
+
+    assert events == [
+        AttributeReadEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=TestCluster.cluster_id,
+            attribute_name=TestCluster.AttributeDefs.attr_0.name,
+            attribute_id=TestCluster.AttributeDefs.attr_0.id,
+            manufacturer_code=None,
+            raw_value=10,
+            value=10,
+        ),
+        AttributeReadEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=TestCluster.cluster_id,
+            attribute_name=TestCluster.AttributeDefs.attr_2.name,
+            attribute_id=TestCluster.AttributeDefs.attr_2.id,
+            manufacturer_code=None,
+            raw_value=30,
+            value=30,
+        ),
+        # No event for attr_1's INSUFFICIENT_SPACE record; the solo re-read then emits
+        # its AttributeReadEvent last, after the two attributes that succeeded in the
+        # batch
+        AttributeReadEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=TestCluster.cluster_id,
+            attribute_name=TestCluster.AttributeDefs.attr_1.name,
+            attribute_id=TestCluster.AttributeDefs.attr_1.id,
+            manufacturer_code=None,
+            raw_value=20,
+            value=20,
+        ),
+    ]
 
 
 async def test_read_attributes_insufficient_space_retry_persistent(app_mock) -> None:
