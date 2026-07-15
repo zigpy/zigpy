@@ -414,7 +414,10 @@ def mock_attribute_reads(
             if attr_def in mock_reads:
                 value = mock_reads[attr_def]()
 
-                if isinstance(value, foundation.Status):
+                if value is None:
+                    # Omit the record from the response entirely
+                    continue
+                elif isinstance(value, foundation.Status):
                     record.status = value
                 else:
                     record.status = foundation.Status.SUCCESS
