@@ -37,6 +37,8 @@ import zigpy.util
 import zigpy.zcl
 import zigpy.zdo
 import zigpy.zdo.types as zdo_types
+from zigpy.zgp.manager import GreenPowerManager
+from zigpy.zgp.types import GP_CLUSTER_ID, GP_ENDPOINT
 
 DEFAULT_ENDPOINT_ID = 1
 LOGGER = logging.getLogger(__name__)
@@ -93,6 +95,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.ota = zigpy.ota.OTA(self._config[conf.CONF_OTA], self)
         self.backups: zigpy.backups.BackupManager = zigpy.backups.BackupManager(self)
         self.topology: zigpy.topology.Topology = zigpy.topology.Topology(self)
+        self.green_power: GreenPowerManager = GreenPowerManager(self)
 
         self._req_listeners: collections.defaultdict[
             zigpy.device.Device | zigpy.listeners.AnyDeviceType,
@@ -180,11 +183,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.groups.add_listener(self._dblistener)
         self.backups.add_listener(self._dblistener)
         self.topology.add_listener(self._dblistener)
+        if hasattr(self, "green_power"):
+            self._dblistener.subscribe_to_green_power(self.green_power)
 
     def _remove_db_listeners(self):
         if self._dblistener is None:
             return
 
+        self._dblistener.unsubscribe_from_green_power()
         self.topology.remove_listener(self._dblistener)
         self.backups.remove_listener(self._dblistener)
         self.groups.remove_listener(self._dblistener)
@@ -587,6 +593,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.ota.stop_periodic_broadcasts()
         self.backups.stop_periodic_backups()
         self.topology.stop_periodic_scans()
+        await self.green_power.shutdown()
 
         for device in self.devices.values():
             try:
@@ -1304,6 +1311,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if zigpy.zdo.ZDO_ENDPOINT in (packet.src_ep, packet.dst_ep):
             self._maybe_parse_zdo(packet)
 
+        # Intercept Green Power frames (endpoint 242, cluster 0x0021)
+        if packet.dst_ep == GP_ENDPOINT and packet.cluster_id == GP_CLUSTER_ID:
+            if self.green_power.handle_packet(packet):
+                return None
+
         try:
             device = self.get_device_with_address(packet.src)
         except KeyError:
@@ -1670,6 +1682,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     async def permit(self, time_s: int = 60, node: t.EUI64 | str | None = None) -> None:
         """Permit joining on a specific node or all router nodes."""
         assert 0 <= time_s <= 254
+        await self.permit_gp(time_s)
+
         if node is not None:
             if not isinstance(node, t.EUI64):
                 node = t.EUI64([t.uint8_t(p) for p in node])
@@ -1696,6 +1710,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             broadcast_address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
         )
         await self.permit_ncp(time_s)
+
+    async def permit_gp(self, time_s: int = 180) -> None:
+        """Open or close (``time_s=0``) the Green Power commissioning window."""
+        await self.green_power.permit_join(time_s)
 
     def get_sequence(self) -> int:
         self._send_sequence = (self._send_sequence + 1) % 256
