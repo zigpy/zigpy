@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from zigpy.ota.providers import OtaImageWithMetadata
 
 
-MAX_TIME_WITHOUT_PROGRESS = 30
+MAX_TIME_WITHOUT_PROGRESS = 60
 
 
 def _image_block_size_for_manufacturer(
