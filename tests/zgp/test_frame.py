@@ -132,6 +132,18 @@ def test_cluster_list_present():
     assert info.cluster_list_present
 
 
+def test_switch_info_present():
+    info = GPCommissioningAppInfo(0x10)
+    assert info.switch_info_present
+    assert not info.app_description_follows
+
+
+def test_app_description_follows():
+    info = GPCommissioningAppInfo(0x20)
+    assert info.app_description_follows
+    assert not info.switch_info_present
+
+
 def test_minimal_payload():
     """Minimal commissioning: device_id + options (no extended, no app info)."""
     data = bytes([0x02, 0x00])  # device_id=2, options=0

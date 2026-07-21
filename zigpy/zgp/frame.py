@@ -36,7 +36,7 @@ class GPCommissioningExtendedOptions(t.IntStruct, t.uint8_t):
     outgoing_counter_present: t.uint1_t
 
 
-# Table 55
+# Figure 111
 class GPCommissioningAppInfo(t.IntStruct, t.uint8_t):
     """Application Information byte from the GP Commissioning command payload."""
 
@@ -44,7 +44,13 @@ class GPCommissioningAppInfo(t.IntStruct, t.uint8_t):
     model_id_present: t.uint1_t
     gpd_commands_present: t.uint1_t
     cluster_list_present: t.uint1_t
-    _reserved: t.uint4_t
+    # The Switch information field (Figure 114) that switch_info_present gates
+    # is not modeled yet: when set, its bytes are left in the deserialization
+    # remainder. app_description_follows announces a subsequent GPD
+    # Application Description command (0xE4).
+    switch_info_present: t.uint1_t
+    app_description_follows: t.uint1_t
+    _reserved: t.uint2_t
 
 
 # Table 55 — the cluster-list length byte packs both counts into one nibble each
