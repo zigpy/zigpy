@@ -7,7 +7,7 @@ import struct
 from cryptography.hazmat.primitives.ciphers.aead import AESCCM
 
 from zigpy.types import KeyData
-from zigpy.zgp.types import DEFAULT_GP_LINK_KEY, SecurityLevel
+from zigpy.zgp.types import DEFAULT_GP_LINK_KEY, CommunicationDirection, SecurityLevel
 
 # Security level to MIC length mapping (Table 11 in ZGP spec).
 # NoSecurity carries no MIC, and level 0b01 is Reserved with no defined
@@ -36,12 +36,46 @@ def build_nonce(source_id: int, frame_counter: int) -> bytes:
     )
 
 
+def _key_protection_nonce(
+    source_id: int,
+    direction: CommunicationDirection,
+    frame_counter: int | None,
+) -> bytes:
+    """Nonce for TC-LK protection of the GPD key (A.3.7.1.2.3).
+
+    For a GPDF sent by the GPD (the key in a Commissioning GPDF), the source
+    address is {SrcID || SrcID} and the frame counter is the SrcID. For a
+    GPDF sent to the GPD (a Commissioning Reply), the source address is
+    {0x00000000 || SrcID} and the frame counter is the value transmitted in
+    the reply's Frame Counter field (the triggering GPDF's security frame
+    counter + 1).
+    """
+    if direction == CommunicationDirection.GPDtoGPP:
+        if frame_counter is not None:
+            raise ValueError("frame_counter only applies to the GPPtoGPD direction")
+        return build_nonce(source_id, source_id)
+
+    if frame_counter is None:
+        raise ValueError("frame_counter is required for the GPPtoGPD direction")
+    return struct.pack(
+        "<IIIB", 0x00000000, source_id, frame_counter, GP_SECURITY_CONTROL_BYTE
+    )
+
+
 def encrypt_security_key(
     source_id: int,
     security_key: bytes,
     link_key: KeyData | bytes = DEFAULT_GP_LINK_KEY,
+    *,
+    direction: CommunicationDirection = CommunicationDirection.GPDtoGPP,
+    frame_counter: int | None = None,
 ) -> tuple[bytes, bytes]:
-    """Encrypt a GP security key for a GP Commissioning Reply (A.3.7.1.2.3).
+    """Protect a GP security key with the TC link key (A.3.7.1.2.3).
+
+    `GPDtoGPP` (the default) is the by-GPD form used for the encrypted key in
+    a GPD Commissioning frame; `GPPtoGPD` is the form a sink uses in a GP
+    Commissioning Reply and requires `frame_counter` (the value transmitted
+    in the reply's Frame Counter field).
 
     Returns (encrypted_key, 4-byte MIC).
     """
@@ -50,8 +84,7 @@ def encrypt_security_key(
     if len(link_key) != 16:
         raise ValueError(f"Link key must be 16 bytes, got {len(link_key)}")
 
-    # For key encryption, frame counter = sourceID
-    nonce = build_nonce(source_id, source_id)
+    nonce = _key_protection_nonce(source_id, direction, frame_counter)
     # CCM* associated data for ApplicationID=0b000 is the SrcID (A.3.7.1.2.3)
     header = struct.pack("<I", source_id)
 
@@ -70,8 +103,16 @@ def decrypt_security_key(
     encrypted_key: bytes,
     mic: bytes,
     link_key: KeyData | bytes = DEFAULT_GP_LINK_KEY,
+    *,
+    direction: CommunicationDirection = CommunicationDirection.GPDtoGPP,
+    frame_counter: int | None = None,
 ) -> bytes:
-    """Decrypt a GP security key from a Commissioning payload (A.3.7.1.2.3)."""
+    """Unwrap a TC-LK protected GP security key (A.3.7.1.2.3).
+
+    `GPDtoGPP` (the default) unwraps the key from a GPD Commissioning frame;
+    `GPPtoGPD` unwraps the key from a GP Commissioning Reply and requires
+    `frame_counter` (the value from the reply's Frame Counter field).
+    """
     if len(encrypted_key) != 16:
         raise ValueError(f"Encrypted key must be 16 bytes, got {len(encrypted_key)}")
     if len(mic) != 4:
@@ -79,7 +120,7 @@ def decrypt_security_key(
     if len(link_key) != 16:
         raise ValueError(f"Link key must be 16 bytes, got {len(link_key)}")
 
-    nonce = build_nonce(source_id, source_id)
+    nonce = _key_protection_nonce(source_id, direction, frame_counter)
     # CCM* associated data for ApplicationID=0b000 is the SrcID (A.3.7.1.2.3)
     header = struct.pack("<I", source_id)
     aesccm = AESCCM(bytes(link_key), tag_length=4)

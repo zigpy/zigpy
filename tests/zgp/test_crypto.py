@@ -14,7 +14,7 @@ from zigpy.zgp.crypto import (
     encrypt_payload,
     encrypt_security_key,
 )
-from zigpy.zgp.types import DEFAULT_GP_LINK_KEY, SecurityLevel
+from zigpy.zgp.types import DEFAULT_GP_LINK_KEY, CommunicationDirection, SecurityLevel
 
 
 def gpdf_header(source_id: int, frame_counter: int, nwk_ext_fc: int) -> bytes:
@@ -477,28 +477,73 @@ def test_default_link_key_is_zigbee_alliance():
     assert len(DEFAULT_GP_LINK_KEY) == 16
 
 
-def test_key_encryption_known_vector():
-    """Regression fixture for key encryption.
-
-    sourceID=0x12345678, link_key=ZigBeeAlliance09, plaintext=00..0F.
-    AAD is the 4-byte SrcID (A.3.7.1.2.3), so it changes the MIC but not
-    the ciphertext.
-    """
+def test_key_encryption_spec_vector():
+    """ZGP spec A.1.5.8.1: OOB key in a Commissioning GPDF (by-GPD)."""
     encrypted, mic = encrypt_security_key(
-        source_id=0x12345678, security_key=bytes(range(16))
+        source_id=0x12345678, security_key=bytes(range(0xC0, 0xD0))
     )
-    assert encrypted == bytes.fromhex("bdd7bb125e603d6670d7c3a5471ce6c0")
-    assert mic == bytes.fromhex("d24ca0a9")
+    assert encrypted == bytes.fromhex("7d177bd29ea0fda6b017036587dc2600")
+    assert mic == bytes.fromhex("61f163a9")
 
 
-def test_key_decryption_known_vector():
-    """Verify key decryption matches the known plaintext."""
+def test_key_decryption_spec_vector():
+    """ZGP spec A.1.5.8.1: unwrapping the published protected OOB key."""
     decrypted = decrypt_security_key(
         source_id=0x12345678,
-        encrypted_key=bytes.fromhex("bdd7bb125e603d6670d7c3a5471ce6c0"),
-        mic=bytes.fromhex("d24ca0a9"),
+        encrypted_key=bytes.fromhex("7d177bd29ea0fda6b017036587dc2600"),
+        mic=bytes.fromhex("61f163a9"),
     )
-    assert decrypted == bytes(range(16))
+    assert decrypted == bytes(range(0xC0, 0xD0))
+
+
+def test_key_encryption_reply_spec_vector():
+    """ZGP spec A.1.5.8.3: shared key in a Commissioning Reply (to-GPD).
+
+    The triggering GPDF's security frame counter is 3, so the reply's
+    Frame Counter field carries 4.
+    """
+    encrypted, mic = encrypt_security_key(
+        source_id=0x12345678,
+        security_key=bytes(range(0xC0, 0xD0)),
+        direction=CommunicationDirection.GPPtoGPD,
+        frame_counter=4,
+    )
+    assert encrypted == bytes.fromhex("e90006631d0dfdc638068e5e6967d325")
+    assert mic == bytes.fromhex("27559f75")
+
+
+def test_key_decryption_reply_spec_vector():
+    """ZGP spec A.1.5.8.3: unwrapping the published Commissioning Reply key."""
+    decrypted = decrypt_security_key(
+        source_id=0x12345678,
+        encrypted_key=bytes.fromhex("e90006631d0dfdc638068e5e6967d325"),
+        mic=bytes.fromhex("27559f75"),
+        direction=CommunicationDirection.GPPtoGPD,
+        frame_counter=4,
+    )
+    assert decrypted == bytes(range(0xC0, 0xD0))
+
+
+def test_key_direction_frame_counter_validation():
+    """frame_counter is required for GPPtoGPD and rejected for GPDtoGPP."""
+    key = bytes(range(16))
+
+    with pytest.raises(ValueError, match="frame_counter is required"):
+        encrypt_security_key(0x12345678, key, direction=CommunicationDirection.GPPtoGPD)
+
+    with pytest.raises(ValueError, match="only applies"):
+        encrypt_security_key(0x12345678, key, frame_counter=4)
+
+    with pytest.raises(ValueError, match="frame_counter is required"):
+        decrypt_security_key(
+            0x12345678,
+            key,
+            b"\x00" * 4,
+            direction=CommunicationDirection.GPPtoGPD,
+        )
+
+    with pytest.raises(ValueError, match="only applies"):
+        decrypt_security_key(0x12345678, key, b"\x00" * 4, frame_counter=4)
 
 
 # ZGP spec A.1.5.4 common settings: SrcID 0x87654321, security frame counter 2,
