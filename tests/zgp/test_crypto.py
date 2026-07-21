@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import struct
+
 from cryptography.exceptions import InvalidTag
 import pytest
 
@@ -13,6 +15,15 @@ from zigpy.zgp.crypto import (
     encrypt_security_key,
 )
 from zigpy.zgp.types import DEFAULT_GP_LINK_KEY, SecurityLevel
+
+
+def gpdf_header(source_id: int, frame_counter: int, nwk_ext_fc: int) -> bytes:
+    """Build the GPDF header authenticated as CCM* associated data.
+
+    NWK FC (0x8C) || NWK ext FC || SrcID || security frame counter,
+    per ZGP spec A.1.5.4.2.3 / A.1.5.4.3.3.
+    """
+    return bytes([0x8C, nwk_ext_fc]) + struct.pack("<II", source_id, frame_counter)
 
 
 def test_nonce_length():
@@ -190,11 +201,23 @@ def test_encrypted_roundtrip():
     key = bytes(range(16))
     payload = b"Hello GP!"
 
+    header = gpdf_header(source_id, frame_counter, 0x18)
     encrypted, mic = encrypt_payload(
-        source_id, frame_counter, key, payload, SecurityLevel.Encrypted
+        source_id,
+        frame_counter,
+        key,
+        payload,
+        header=header,
+        security_level=SecurityLevel.Encrypted,
     )
     decrypted = decrypt_payload(
-        source_id, frame_counter, key, encrypted, mic, SecurityLevel.Encrypted
+        source_id,
+        frame_counter,
+        key,
+        encrypted,
+        mic,
+        header=header,
+        security_level=SecurityLevel.Encrypted,
     )
 
     assert decrypted == payload
@@ -211,12 +234,14 @@ def test_full_frame_counter_and_mic_roundtrip():
     key = bytes(range(16))
     payload = b"\x20"  # Toggle command
 
+    header = gpdf_header(source_id, frame_counter, 0x10)
     output, mic = encrypt_payload(
         source_id,
         frame_counter,
         key,
         payload,
-        SecurityLevel.FullFrameCounterAndMIC,
+        header=header,
+        security_level=SecurityLevel.FullFrameCounterAndMIC,
     )
     assert len(mic) == 4
     # Auth-only: output payload must be identical to input (NOT encrypted)
@@ -228,7 +253,8 @@ def test_full_frame_counter_and_mic_roundtrip():
         key,
         output,
         mic,
-        SecurityLevel.FullFrameCounterAndMIC,
+        header=header,
+        security_level=SecurityLevel.FullFrameCounterAndMIC,
     )
     assert verified == payload
 
@@ -240,12 +266,14 @@ def test_full_frame_counter_and_mic_tampered():
     key = bytes(range(16))
     payload = b"\x20\x21\x22"
 
+    header = gpdf_header(source_id, frame_counter, 0x10)
     output, mic = encrypt_payload(
         source_id,
         frame_counter,
         key,
         payload,
-        SecurityLevel.FullFrameCounterAndMIC,
+        header=header,
+        security_level=SecurityLevel.FullFrameCounterAndMIC,
     )
 
     # Tamper with the payload
@@ -257,7 +285,8 @@ def test_full_frame_counter_and_mic_tampered():
             key,
             tampered,
             mic,
-            SecurityLevel.FullFrameCounterAndMIC,
+            header=header,
+            security_level=SecurityLevel.FullFrameCounterAndMIC,
         )
 
 
@@ -268,12 +297,14 @@ def test_short_frame_counter_and_mic():
     key = bytes(range(16))
     payload = b"\x22"  # Toggle
 
+    header = gpdf_header(source_id, frame_counter, 0x08)
     output, mic = encrypt_payload(
         source_id,
         frame_counter,
         key,
         payload,
-        SecurityLevel.Reserved,
+        header=header,
+        security_level=SecurityLevel.Reserved,
     )
     assert len(mic) == 4
     # Auth-only: payload must NOT be encrypted
@@ -285,7 +316,8 @@ def test_short_frame_counter_and_mic():
         key,
         output,
         mic,
-        SecurityLevel.Reserved,
+        header=header,
+        security_level=SecurityLevel.Reserved,
     )
     assert verified == payload
 
@@ -294,7 +326,12 @@ def test_no_security_encrypt_raises():
     """Cannot encrypt with NoSecurity level."""
     with pytest.raises(ValueError, match="NoSecurity"):
         encrypt_payload(
-            0x12345678, 0, bytes(range(16)), b"test", SecurityLevel.NoSecurity
+            0x12345678,
+            0,
+            bytes(range(16)),
+            b"test",
+            header=gpdf_header(0x12345678, 0, 0x00),
+            security_level=SecurityLevel.NoSecurity,
         )
 
 
@@ -302,7 +339,13 @@ def test_no_security_decrypt_raises():
     """Cannot decrypt with NoSecurity level."""
     with pytest.raises(ValueError, match="NoSecurity"):
         decrypt_payload(
-            0x12345678, 0, bytes(range(16)), b"test", b"", SecurityLevel.NoSecurity
+            0x12345678,
+            0,
+            bytes(range(16)),
+            b"test",
+            b"",
+            header=gpdf_header(0x12345678, 0, 0x00),
+            security_level=SecurityLevel.NoSecurity,
         )
 
 
@@ -313,8 +356,14 @@ def test_tampered_payload_fails():
     key = bytes(range(16))
     payload = b"secret data here"
 
+    header = gpdf_header(source_id, frame_counter, 0x18)
     encrypted, mic = encrypt_payload(
-        source_id, frame_counter, key, payload, SecurityLevel.Encrypted
+        source_id,
+        frame_counter,
+        key,
+        payload,
+        header=header,
+        security_level=SecurityLevel.Encrypted,
     )
 
     # Tamper with encrypted payload
@@ -327,7 +376,8 @@ def test_tampered_payload_fails():
             key,
             bytes(tampered),
             mic,
-            SecurityLevel.Encrypted,
+            header=header,
+            security_level=SecurityLevel.Encrypted,
         )
 
 
@@ -338,24 +388,50 @@ def test_wrong_frame_counter_fails():
     payload = b"test"
 
     encrypted, mic = encrypt_payload(
-        source_id, 1, key, payload, SecurityLevel.Encrypted
+        source_id,
+        1,
+        key,
+        payload,
+        header=gpdf_header(source_id, 1, 0x18),
+        security_level=SecurityLevel.Encrypted,
     )
 
     with pytest.raises(InvalidTag):
-        decrypt_payload(source_id, 2, key, encrypted, mic, SecurityLevel.Encrypted)
+        decrypt_payload(
+            source_id,
+            2,
+            key,
+            encrypted,
+            mic,
+            header=gpdf_header(source_id, 2, 0x18),
+            security_level=SecurityLevel.Encrypted,
+        )
 
 
 def test_payload_invalid_key_length():
     """Security key must be 16 bytes."""
     with pytest.raises(ValueError, match="16 bytes"):
-        encrypt_payload(0, 0, b"\x00" * 15, b"test", SecurityLevel.Encrypted)
+        encrypt_payload(
+            0,
+            0,
+            b"\x00" * 15,
+            b"test",
+            header=gpdf_header(0, 0, 0x18),
+            security_level=SecurityLevel.Encrypted,
+        )
 
 
 def test_decrypt_payload_bad_key_length():
     """Decrypt must reject security_key that is not 16 bytes."""
     with pytest.raises(ValueError, match="16 bytes"):
         decrypt_payload(
-            0, 0, b"\x00" * 15, b"test", b"\x00" * 4, SecurityLevel.Encrypted
+            0,
+            0,
+            b"\x00" * 15,
+            b"test",
+            b"\x00" * 4,
+            header=gpdf_header(0, 0, 0x18),
+            security_level=SecurityLevel.Encrypted,
         )
 
 
@@ -363,7 +439,13 @@ def test_wrong_mic_length():
     """MIC length must match security level."""
     with pytest.raises(ValueError, match="4 bytes"):
         decrypt_payload(
-            0, 0, bytes(range(16)), b"test", b"\x00" * 2, SecurityLevel.Encrypted
+            0,
+            0,
+            bytes(range(16)),
+            b"test",
+            b"\x00" * 2,
+            header=gpdf_header(0, 0, 0x18),
+            security_level=SecurityLevel.Encrypted,
         )
 
 
@@ -372,9 +454,18 @@ def test_empty_payload_encrypted():
     source_id = 0x12345678
     key = bytes(range(16))
 
-    encrypted, mic = encrypt_payload(source_id, 0, key, b"", SecurityLevel.Encrypted)
+    header = gpdf_header(source_id, 0, 0x18)
+    encrypted, mic = encrypt_payload(
+        source_id, 0, key, b"", header=header, security_level=SecurityLevel.Encrypted
+    )
     decrypted = decrypt_payload(
-        source_id, 0, key, encrypted, mic, SecurityLevel.Encrypted
+        source_id,
+        0,
+        key,
+        encrypted,
+        mic,
+        header=header,
+        security_level=SecurityLevel.Encrypted,
     )
     assert decrypted == b""
 
@@ -409,65 +500,95 @@ def test_key_decryption_known_vector():
     assert decrypted == bytes(range(16))
 
 
-def test_payload_encryption_known_vector():
-    """Verify payload encryption (SecurityLevel.Encrypted) against known values.
+# ZGP spec A.1.5.4 common settings: SrcID 0x87654321, security frame counter 2,
+# GP security key C0..CF, payload 0x20 (Off command)
+SPEC_SRC_ID = 0x87654321
+SPEC_FRAME_COUNTER = 0x00000002
+SPEC_KEY = bytes(range(0xC0, 0xD0))
+SPEC_PAYLOAD = b"\x20"
+# NWK ext FC is 0x10 for SecurityLevel 0b10 and 0x18 for 0b11 (A.1.5.4.2.2/.3.2)
+SPEC_HEADER_0B10 = gpdf_header(SPEC_SRC_ID, SPEC_FRAME_COUNTER, 0x10)
+SPEC_HEADER_0B11 = gpdf_header(SPEC_SRC_ID, SPEC_FRAME_COUNTER, 0x18)
 
-    sourceID=0x87654321, frameCounter=0x42, key=C0..CF, payload=0x20
-    nonce=21436587214365874200000005
-    """
+
+def test_payload_encryption_spec_vector():
+    """ZGP spec A.1.5.4.3: SecurityLevel 0b11 test vector."""
     encrypted, mic = encrypt_payload(
-        source_id=0x87654321,
-        frame_counter=0x42,
-        security_key=bytes(0xC0 + i for i in range(16)),
-        payload=bytes([0x20]),
+        source_id=SPEC_SRC_ID,
+        frame_counter=SPEC_FRAME_COUNTER,
+        security_key=SPEC_KEY,
+        payload=SPEC_PAYLOAD,
+        header=SPEC_HEADER_0B11,
         security_level=SecurityLevel.Encrypted,
     )
-    assert encrypted == bytes.fromhex("dd")
-    assert mic == bytes.fromhex("a4493107")
+    assert encrypted == bytes.fromhex("83")
+    assert mic == bytes.fromhex("ca4324dd")
 
 
-def test_payload_decryption_known_vector():
-    """Verify payload decryption matches the known plaintext."""
+def test_payload_decryption_spec_vector():
+    """ZGP spec A.1.5.4.3: decrypting the published packet yields the payload."""
     decrypted = decrypt_payload(
-        source_id=0x87654321,
-        frame_counter=0x42,
-        security_key=bytes(0xC0 + i for i in range(16)),
-        payload=bytes.fromhex("dd"),
-        mic=bytes.fromhex("a4493107"),
+        source_id=SPEC_SRC_ID,
+        frame_counter=SPEC_FRAME_COUNTER,
+        security_key=SPEC_KEY,
+        payload=bytes.fromhex("83"),
+        mic=bytes.fromhex("ca4324dd"),
+        header=SPEC_HEADER_0B11,
         security_level=SecurityLevel.Encrypted,
     )
-    assert decrypted == bytes([0x20])
+    assert decrypted == SPEC_PAYLOAD
 
 
-def test_auth_only_known_vector():
-    """Verify auth-only MIC against independently computed value.
+def test_auth_only_spec_vector():
+    """ZGP spec A.1.5.4.2: SecurityLevel 0b10 test vector.
 
-    sourceID=0x11223344, frameCounter=1, key=00..0F, payload=0x20
-    nonce=44332211443322110100000005
     Payload must NOT be encrypted (auth-only).
     """
     output, mic = encrypt_payload(
-        source_id=0x11223344,
-        frame_counter=1,
-        security_key=bytes(range(16)),
-        payload=bytes([0x20]),
+        source_id=SPEC_SRC_ID,
+        frame_counter=SPEC_FRAME_COUNTER,
+        security_key=SPEC_KEY,
+        payload=SPEC_PAYLOAD,
+        header=SPEC_HEADER_0B10,
         security_level=SecurityLevel.FullFrameCounterAndMIC,
     )
-    assert output == bytes([0x20])  # unchanged, not encrypted
-    assert mic == bytes.fromhex("49342b82")
+    assert output == SPEC_PAYLOAD  # unchanged, not encrypted
+    assert mic == bytes.fromhex("cf787e72")
 
 
-def test_auth_only_verification_known_vector():
-    """Verify MIC check passes for known auth-only payload."""
+def test_auth_only_verification_spec_vector():
+    """ZGP spec A.1.5.4.2: MIC check passes for the published packet."""
     verified = decrypt_payload(
-        source_id=0x11223344,
-        frame_counter=1,
-        security_key=bytes(range(16)),
-        payload=bytes([0x20]),
-        mic=bytes.fromhex("49342b82"),
+        source_id=SPEC_SRC_ID,
+        frame_counter=SPEC_FRAME_COUNTER,
+        security_key=SPEC_KEY,
+        payload=SPEC_PAYLOAD,
+        mic=bytes.fromhex("cf787e72"),
+        header=SPEC_HEADER_0B10,
         security_level=SecurityLevel.FullFrameCounterAndMIC,
     )
-    assert verified == bytes([0x20])
+    assert verified == SPEC_PAYLOAD
+
+
+def test_empty_header_raises():
+    """The GPDF header is mandatory associated data."""
+    with pytest.raises(ValueError, match="header"):
+        encrypt_payload(
+            SPEC_SRC_ID,
+            SPEC_FRAME_COUNTER,
+            SPEC_KEY,
+            SPEC_PAYLOAD,
+            header=b"",
+        )
+    with pytest.raises(ValueError, match="header"):
+        decrypt_payload(
+            SPEC_SRC_ID,
+            SPEC_FRAME_COUNTER,
+            SPEC_KEY,
+            SPEC_PAYLOAD,
+            b"\x00" * 4,
+            header=b"",
+        )
 
 
 def test_nonce_known_vector():

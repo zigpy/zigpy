@@ -102,15 +102,22 @@ def encrypt_payload(
     frame_counter: int,
     security_key: bytes,
     payload: bytes,
+    *,
+    header: bytes,
     security_level: SecurityLevel = SecurityLevel.Encrypted,
 ) -> tuple[bytes, bytes]:
     """Encrypt (Encrypted) or MIC-only authenticate (auth-only levels) a payload.
+
+    `header` is the over-the-air GPDF header (NWK FC || NWK ext FC || SrcID ||
+    security frame counter); it is authenticated but never encrypted.
 
     Returns (output_payload, mic); output_payload is the plaintext for
     auth-only levels.
     """
     if len(security_key) != 16:
         raise ValueError(f"Security key must be 16 bytes, got {len(security_key)}")
+    if not header:
+        raise ValueError("GPDF header must not be empty")
 
     mic_length = SECURITY_LEVEL_MIC_LENGTH[security_level]
     if mic_length == 0:
@@ -120,15 +127,14 @@ def encrypt_payload(
     aesccm = AESCCM(security_key, tag_length=mic_length)
 
     if _is_auth_only(security_level):
-        # Authentication only: payload is passed as associated data (AAD),
-        # plaintext message is empty. The MIC authenticates the payload
-        # without encrypting it. Per ZGP spec, FullFrameCounterAndMIC
-        # provides integrity protection but the payload remains in cleartext.
-        mic = aesccm.encrypt(nonce, b"", associated_data=payload)
+        # Authentication only: a = header || payload, plaintext message is
+        # empty (A.1.5.4.2.3). The MIC authenticates the whole frame without
+        # encrypting it; the payload remains in cleartext on the air.
+        mic = aesccm.encrypt(nonce, b"", associated_data=header + payload)
         return payload, mic
     else:
-        # Full encryption: payload is encrypted and authenticated
-        ciphertext_and_mic = aesccm.encrypt(nonce, payload, associated_data=None)
+        # Full encryption: a = header, m = payload (A.1.5.4.3.3)
+        ciphertext_and_mic = aesccm.encrypt(nonce, payload, associated_data=header)
         encrypted = ciphertext_and_mic[:-mic_length]
         mic = ciphertext_and_mic[-mic_length:]
         return encrypted, mic
@@ -140,14 +146,21 @@ def decrypt_payload(
     security_key: bytes,
     payload: bytes,
     mic: bytes,
+    *,
+    header: bytes,
     security_level: SecurityLevel = SecurityLevel.Encrypted,
 ) -> bytes:
     """Decrypt (Encrypted) or verify MIC (auth-only levels) a payload.
+
+    `header` is the over-the-air GPDF header (NWK FC || NWK ext FC || SrcID ||
+    security frame counter), as received.
 
     Returns the plaintext; raises InvalidTag if the MIC does not verify.
     """
     if len(security_key) != 16:
         raise ValueError(f"Security key must be 16 bytes, got {len(security_key)}")
+    if not header:
+        raise ValueError("GPDF header must not be empty")
 
     mic_length = SECURITY_LEVEL_MIC_LENGTH[security_level]
     if mic_length == 0:
@@ -159,10 +172,10 @@ def decrypt_payload(
     aesccm = AESCCM(security_key, tag_length=mic_length)
 
     if _is_auth_only(security_level):
-        # Authentication only: verify MIC with payload as AAD.
-        # The "ciphertext" is empty, only the MIC tag is present.
-        aesccm.decrypt(nonce, mic, associated_data=payload)
+        # Authentication only: verify the MIC with a = header || payload
+        # (A.1.5.4.2.3). The "ciphertext" is empty, only the MIC tag is present.
+        aesccm.decrypt(nonce, mic, associated_data=header + payload)
         return payload
     else:
-        # Full decryption: ciphertext + MIC concatenated
-        return aesccm.decrypt(nonce, payload + mic, associated_data=None)
+        # Full decryption: a = header, ciphertext + MIC concatenated (A.1.5.4.3.3)
+        return aesccm.decrypt(nonce, payload + mic, associated_data=header)
