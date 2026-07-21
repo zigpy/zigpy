@@ -370,7 +370,7 @@ def test_empty_payload():
 
 
 def test_serialize_with_encrypted_key_and_mic():
-    """Serialization must include encrypted key + MIC per Table 54.
+    """Serialization must include encrypted key + MIC per Figure 107.
 
     Extended 0x63: Encrypted(0b11) + key_present(bit5) + key_encrypted(bit6).
     MIC follows key as uint32 LE.
@@ -392,7 +392,7 @@ def test_serialize_with_encrypted_key_and_mic():
 
 
 def test_serialize_with_manufacturer_and_model():
-    """Serialization must include manufacturer_id and model_id per Table 55."""
+    """Serialization must include manufacturer_id and model_id per Figure 108."""
     payload = GPCommissioningPayload(
         device_id=0x07,
         options=GPCommissioningOptions(0x04),  # app_info present (bit 2)
@@ -411,7 +411,7 @@ def test_serialize_with_manufacturer_and_model():
 def test_serialize_with_gpd_commands_and_clusters():
     """Serialization must include GPD commands list and cluster list.
 
-    Per Table 55, cluster list length byte uses low nibble for server
+    Per Figure 113, cluster list length byte uses low nibble for server
     count and high nibble for client count.
     """
     payload = GPCommissioningPayload(

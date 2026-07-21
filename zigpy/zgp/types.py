@@ -38,7 +38,7 @@ class DeviceID(basic.uint32_t, repr="hex"):
     pass
 
 
-# GPD Command IDs (Table 49 in ZGP specification)
+# GPD Command IDs (Tables 54-56 in the ZGP specification)
 class GPDCommandID(basic.enum8):
     """GPD command identifiers sent by Green Power Devices."""
 
@@ -94,7 +94,7 @@ class GPDCommandID(basic.enum8):
     LockDoor = 0x50
     UnlockDoor = 0x51
 
-    # Generic switch button events (Table 49)
+    # Generic switch button events (Table 54)
     Press1of1 = 0x60
     Release1of1 = 0x61
     Press1of2 = 0x62
@@ -141,7 +141,7 @@ class ApplicationID(basic.enum3):
     LPED = 0b001
 
 
-# Table 13
+# Table 11
 class SecurityLevel(basic.enum2):
     NoSecurity = 0b00
     Reserved = 0b01
@@ -149,7 +149,7 @@ class SecurityLevel(basic.enum2):
     Encrypted = 0b11
 
 
-# Table 14
+# Table 53
 class SecurityKeyType(basic.enum3):
     NoKey = 0b000
     NWKKey = 0b001
@@ -168,7 +168,7 @@ class ProxyCommissioningModeExitMode(basic.bitmap3):
     OnExplicitExit = 0b100
 
 
-# Table 29
+# Table 27
 class CommunicationMode(basic.enum2):
     Unicast = 0b00
     GroupcastForwardToDGroup = 0b01

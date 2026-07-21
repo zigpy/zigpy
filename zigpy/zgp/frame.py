@@ -11,7 +11,7 @@ import zigpy.types as t
 from zigpy.zgp.types import SecurityKeyType, SecurityLevel
 
 
-# Table 53
+# Figure 109
 class GPCommissioningOptions(t.IntStruct, t.uint8_t):
     """Options byte from the GP Commissioning command (0xE0) payload."""
 
@@ -25,7 +25,7 @@ class GPCommissioningOptions(t.IntStruct, t.uint8_t):
     extended_options_present: t.uint1_t
 
 
-# Table 54
+# Figure 110
 class GPCommissioningExtendedOptions(t.IntStruct, t.uint8_t):
     """Extended options byte from the GP Commissioning command payload."""
 
@@ -53,7 +53,7 @@ class GPCommissioningAppInfo(t.IntStruct, t.uint8_t):
     _reserved: t.uint2_t
 
 
-# Table 55 — the cluster-list length byte packs both counts into one nibble each
+# Figure 113 — the cluster-list length byte packs both counts into one nibble each
 class GPClusterListCount(t.IntStruct, t.uint8_t):
     num_server: t.uint4_t
     num_client: t.uint4_t
@@ -137,7 +137,7 @@ class GPCommissioningPayload(t.Struct):
         return instance
 
 
-# Figure 45 — one byte carrying two channel nibbles (IEEE 802.15.4 channel == nibble + 11)
+# Figure 119 — one byte carrying two channel nibbles (IEEE 802.15.4 channel == nibble + 11)
 class GPChannelRequestPayload(t.IntStruct, t.uint8_t):
     """GP Channel Request command (0xE3) payload."""
 
