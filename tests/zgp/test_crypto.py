@@ -290,36 +290,37 @@ def test_full_frame_counter_and_mic_tampered():
         )
 
 
-def test_short_frame_counter_and_mic():
-    """Reserved: auth-only with 4-byte MIC."""
+def test_reserved_level_raises():
+    """The reserved level 0b01 has no defined transformation (Table 11).
+
+    Per A.1.5.2.2, frames with an unsupported SecurityLevel (including 0b01)
+    are silently dropped — so it is rejected like NoSecurity.
+    """
     source_id = 0x55667788
     frame_counter = 0x00000010
     key = bytes(range(16))
-    payload = b"\x22"  # Toggle
-
     header = gpdf_header(source_id, frame_counter, 0x08)
-    output, mic = encrypt_payload(
-        source_id,
-        frame_counter,
-        key,
-        payload,
-        header=header,
-        security_level=SecurityLevel.Reserved,
-    )
-    assert len(mic) == 4
-    # Auth-only: payload must NOT be encrypted
-    assert output == payload
 
-    verified = decrypt_payload(
-        source_id,
-        frame_counter,
-        key,
-        output,
-        mic,
-        header=header,
-        security_level=SecurityLevel.Reserved,
-    )
-    assert verified == payload
+    with pytest.raises(ValueError, match="Reserved"):
+        encrypt_payload(
+            source_id,
+            frame_counter,
+            key,
+            b"\x22",
+            header=header,
+            security_level=SecurityLevel.Reserved,
+        )
+
+    with pytest.raises(ValueError, match="Reserved"):
+        decrypt_payload(
+            source_id,
+            frame_counter,
+            key,
+            b"\x22",
+            b"\x00" * 4,
+            header=header,
+            security_level=SecurityLevel.Reserved,
+        )
 
 
 def test_no_security_encrypt_raises():
