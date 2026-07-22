@@ -964,6 +964,23 @@ async def test_commissioning_with_bad_encrypted_key(manager):
     assert manager.get_device(0xBBBBBBBB) is None
 
 
+async def test_commissioning_with_reserved_security_level(manager):
+    """The reserved security level 0b01 must not commission a device (A.1.4.1.3)."""
+
+    await manager.permit_join(time_s=60)
+
+    # Extended 0x01: security level 0b01, no key material (Table 54)
+    comm_payload = bytes([0x02, 0x80, 0x01])
+
+    await manager._process_commissioning(
+        source_id=0xCCCCCCCC,
+        frame_counter=1,
+        payload=comm_payload,
+    )
+
+    assert manager.get_device(0xCCCCCCCC) is None
+
+
 async def test_unhandled_server_command_ignored(manager, gp_events):
     """Unknown server command (e.g. PairingSearch 0x01) is ignored."""
     await manager._process_zcl_command(

@@ -325,6 +325,14 @@ class GreenPowerManager(EventBase):
 
         if comm.extended_options is not None:
             security_level = comm.extended_options.security_level
+            if security_level == SecurityLevel.Reserved:
+                # A.1.4.1.3: no processing is defined for the reserved level,
+                # and pairing a GPD with it would push it to every proxy.
+                LOGGER.warning(
+                    "GP Commissioning from 0x%08X uses the reserved security level",
+                    source_id,
+                )
+                return
             security_key_type = comm.extended_options.key_type
 
             if comm.extended_options.key_present and comm.security_key is not None:
