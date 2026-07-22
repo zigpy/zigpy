@@ -812,6 +812,88 @@ async def test_dispatch_secured_payload_is_not_truncated(manager, gp_events):
     ]
 
 
+def _secured_device(manager, frame_counter: int = 10) -> GPDevice:
+    dev = GPDevice(
+        source_id=0x12345678,
+        device_id=0x02,
+        security_key=bytes(range(16)),
+        security_level=SecurityLevel.Encrypted,
+        security_key_type=SecurityKeyType.IndividualKey,
+        frame_counter=frame_counter,
+    )
+    manager.add_device(dev)
+    return dev
+
+
+def _notification(
+    source_id: int,
+    security_level: SecurityLevel,
+    security_key_type: SecurityKeyType,
+    frame_counter: int,
+) -> bytes:
+    options = NotificationOptions(
+        application_id=zgptypes.ApplicationID.SrcID,
+        also_unicast=0,
+        also_derived_group=0,
+        also_commissioned_group=0,
+        security_level=security_level,
+        security_key_type=security_key_type,
+        appoint_temp_master=0,
+        tx_queue_full=0,
+        _reserved=0,
+    )
+    return NotificationSchema(
+        options=options,
+        gpd_id=zgptypes.DeviceID(source_id),
+        frame_counter=t.uint32_t(frame_counter),
+        command_id=t.uint8_t(GPDCommandID.Toggle),
+        payload=t.LVBytes(b""),
+    ).serialize()
+
+
+async def test_notification_security_level_mismatch_dropped(manager, gp_events):
+    """A notification announcing another security level is dropped (A.3.5.2.5).
+
+    The frame counter must not advance either, or a forged notification would
+    lock out the real device.
+    """
+
+    dev = _secured_device(manager)
+    payload = _notification(
+        dev.source_id,
+        SecurityLevel.NoSecurity,
+        SecurityKeyType.NoKey,
+        frame_counter=9999,
+    )
+
+    await manager._handle_gp_notification(payload, proxy_nwk=0x1111)
+
+    assert gp_events == []
+    assert dev.frame_counter == 10
+
+
+async def test_notification_key_type_mismatch_delivered(manager, gp_events):
+    """The announced key type is not compared: a proxy reports its own.
+
+    EZSP fills it from the NCP's tables, which zigpy never programs, so it
+    arrives as NoKey for a GPD commissioned with an individual key.
+    """
+
+    dev = _secured_device(manager)
+    payload = _notification(
+        dev.source_id,
+        SecurityLevel.Encrypted,
+        SecurityKeyType.NoKey,
+        frame_counter=11,
+    )
+
+    await manager._handle_gp_notification(payload, proxy_nwk=0x1111)
+
+    commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
+    assert [c.command_id for c in commands] == [GPDCommandID.Toggle]
+    assert dev.frame_counter == 11
+
+
 async def test_commissioning_with_encrypted_key(app, manager):
     """Commissioning with key_encrypted=True should decrypt the key.
 

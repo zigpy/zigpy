@@ -19,6 +19,7 @@ import zigpy.types as t
 from zigpy.zcl import foundation
 from zigpy.zcl.clusters.greenpower import (
     GreenPowerProxy,
+    NotificationOptions,
     PairingOptions,
     PairingSchema,
     ProxyCommissioningModeOptions,
@@ -245,6 +246,9 @@ class GreenPowerManager(EventBase):
             LOGGER.debug("GP Success from 0x%08X", source_id)
             return
 
+        if not self._security_matches(source_id, notification.options):
+            return
+
         await self._dispatch_gp_command(
             source_id, frame_counter, gpd_command_id, gpd_payload
         )
@@ -445,6 +449,32 @@ class GreenPowerManager(EventBase):
         )
 
     # --- Command dispatch ---
+
+    def _security_matches(self, source_id: int, options: NotificationOptions) -> bool:
+        """Compare a notification's security level with the GPD's (A.3.5.2.5).
+
+        Runs before dispatch, so a rejected frame never reaches the frame
+        counter. A.3.5.2.5 orders the checks the same way.
+        """
+        device = self.get_device(source_id)
+        if device is None:
+            # Nothing to compare against; _dispatch_gp_command reports it
+            return True
+
+        # A.3.5.2.5 compares the SecurityKeyType too, from the Sink Table. Only
+        # a radio holding that table can: EZSP fills the sub-field from the
+        # NCP's own tables, which zigpy never programs, so it arrives as NoKey
+        # and comparing it would drop every frame from a secured GPD.
+        if options.security_level == device.security_level:
+            return True
+
+        LOGGER.warning(
+            "GP command from 0x%08X announces level %s, commissioned with %s",
+            source_id,
+            options.security_level,
+            device.security_level,
+        )
+        return False
 
     async def _dispatch_gp_command(
         self,
