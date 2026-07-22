@@ -9,7 +9,7 @@ from tests.async_mock import AsyncMock, MagicMock
 from zigpy.profiles import zgp as zgp_profile
 import zigpy.types as t
 from zigpy.zcl.clusters.greenpower import NotificationOptions, NotificationSchema
-from zigpy.zgp.crypto import encrypt_payload, encrypt_security_key
+from zigpy.zgp.crypto import encrypt_security_key
 from zigpy.zgp.device import GPDevice
 from zigpy.zgp.events import CommandReceived, DeviceJoined, DeviceLeft
 from zigpy.zgp.manager import GreenPowerManager
@@ -776,48 +776,39 @@ async def test_gp_response_send_failure(app, manager):
     # Should not raise, just log warning
 
 
-async def test_dispatch_with_encrypted_payload(manager, gp_events):
-    """Command dispatch should decrypt payload when security is active.
+async def test_dispatch_secured_payload_is_not_truncated(manager, gp_events):
+    """A secured GPD's payload must reach listeners byte for byte.
 
-    Tests the decryption path in _dispatch_gp_command that was
-    previously uncovered (SecurityLevel != NoSecurity).
+    The GP Notification has no MIC field (Figure 23), so the trailing bytes of
+    the payload are command data, never a MIC to strip.
     """
 
     source_id = 0xAABBCCDD
-    security_key = bytes(range(16))
-    plaintext = bytes([0x20])  # Toggle command
-    frame_counter = 5
-
-    # Encrypt the payload to simulate what a GPD would send
-    encrypted, mic = encrypt_payload(
-        source_id,
-        frame_counter,
-        security_key,
-        plaintext,
-        SecurityLevel.Encrypted,
-    )
+    payload = bytes([0x00, 0x00, 0x21, 0x30, 0x02, 0x00, 0x01])
 
     dev = GPDevice(
         source_id=source_id,
         device_id=0x02,
-        security_key=security_key,
+        security_key=bytes(range(16)),
         security_level=SecurityLevel.Encrypted,
         frame_counter=0,
     )
     manager.add_device(dev)
 
-    # Dispatch with encrypted payload + MIC concatenated
     await manager._dispatch_gp_command(
         source_id=source_id,
-        frame_counter=frame_counter,
-        command_id=GPDCommandID.Toggle,
-        payload=encrypted + mic,
+        frame_counter=5,
+        command_id=GPDCommandID.AttributeReporting,
+        payload=payload,
     )
 
-    # Should fire event with DECRYPTED payload
     commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
     assert commands == [
-        CommandReceived(device=dev, command_id=GPDCommandID.Toggle, payload=plaintext)
+        CommandReceived(
+            device=dev,
+            command_id=GPDCommandID.AttributeReporting,
+            payload=payload,
+        )
     ]
 
 
@@ -971,30 +962,6 @@ async def test_commissioning_with_bad_encrypted_key(manager):
 
     # Device must NOT be created when key decryption fails
     assert manager.get_device(0xBBBBBBBB) is None
-
-
-async def test_decrypt_payload_failure_drops_command(manager, gp_events):
-    """Corrupted encrypted payload must be dropped, no event fired."""
-    dev = GPDevice(
-        source_id=0xAABBCCDD,
-        device_id=0x02,
-        security_key=bytes(range(16)),
-        security_level=SecurityLevel.Encrypted,
-        frame_counter=0,
-    )
-    manager.add_device(dev)
-
-    # Payload with wrong MIC (4 bytes appended)
-    corrupt_payload = b"\xff\xff\xff\xff\xff\xff\xff\xff"
-
-    await manager._dispatch_gp_command(
-        source_id=0xAABBCCDD,
-        frame_counter=1,
-        command_id=GPDCommandID.Toggle,
-        payload=corrupt_payload,
-    )
-
-    assert not any(isinstance(e, CommandReceived) for _, e in gp_events)
 
 
 async def test_unhandled_server_command_ignored(manager, gp_events):

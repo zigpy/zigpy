@@ -28,12 +28,7 @@ from zigpy.zcl.clusters.greenpower import (
     TempMasterTxChannel,
 )
 from zigpy.zgp.commands import GPChannelRequestPayload, GPCommissioningPayload
-from zigpy.zgp.crypto import (
-    SECURITY_LEVEL_MIC_LENGTH,
-    decrypt_payload,
-    decrypt_security_key,
-    encrypt_security_key,
-)
+from zigpy.zgp.crypto import decrypt_security_key, encrypt_security_key
 from zigpy.zgp.device import GPDevice
 from zigpy.zgp.events import CommandReceived, DeviceJoined, DeviceLeft
 from zigpy.zgp.proxy import GPProxyTable
@@ -450,7 +445,12 @@ class GreenPowerManager(EventBase):
         command_id: int,
         payload: bytes,
     ) -> None:
-        """Dispatch a GP data command: verify counter, decrypt, emit CommandReceived."""
+        """Dispatch a GP data command: verify the counter, emit CommandReceived.
+
+        The payload is emitted as the forwarding GPP security-processed it: a
+        GP Notification carries neither the MIC nor the RxAfterTx bit (Figures
+        23/24), so the CCM* header of the original GPDF cannot be rebuilt here.
+        """
         device = self.get_device(source_id)
 
         if device is None:
@@ -464,39 +464,11 @@ class GreenPowerManager(EventBase):
         if not device.update_frame_counter(frame_counter):
             return
 
-        decrypted_payload = payload
-        if (
-            device.security_level != SecurityLevel.NoSecurity
-            and device.security_key is not None
-            and payload
-        ):
-            try:
-                # For encrypted payloads, the MIC is appended to the payload
-                mic_length = SECURITY_LEVEL_MIC_LENGTH[device.security_level]
-                if mic_length > 0 and len(payload) >= mic_length:
-                    encrypted_data = payload[:-mic_length]
-                    mic = payload[-mic_length:]
-                    decrypted_payload = decrypt_payload(
-                        source_id,
-                        frame_counter,
-                        bytes(device.security_key),
-                        encrypted_data,
-                        mic,
-                        device.security_level,
-                    )
-            except Exception:  # noqa: BLE001
-                LOGGER.warning(
-                    "Failed to decrypt GP payload from 0x%08X",
-                    source_id,
-                    exc_info=True,
-                )
-                return
-
         LOGGER.debug(
             "GP command from 0x%08X: cmd=0x%02X, payload=%s",
             source_id,
             command_id,
-            decrypted_payload.hex() if decrypted_payload else "empty",
+            payload.hex() if payload else "empty",
         )
 
         self.emit(
@@ -504,7 +476,7 @@ class GreenPowerManager(EventBase):
             CommandReceived(
                 device=device,
                 command_id=GPDCommandID(command_id),
-                payload=decrypted_payload,
+                payload=payload,
             ),
         )
 
