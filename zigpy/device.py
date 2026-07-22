@@ -40,6 +40,13 @@ import zigpy.util
 from zigpy.zcl import Cluster, ClusterType, OtaQueryCacheClearedEvent, foundation
 from zigpy.zcl.clusters.general import Ota, PollControl, QueryNextImageCommand
 import zigpy.zdo.types as zdo_t
+from zigpy.zgp.types import (
+    ApplicationID,
+    DeviceID,
+    GPDCommandID,
+    SecurityKeyType,
+    SecurityLevel,
+)
 
 if typing.TYPE_CHECKING:
     _R = TypeVar("_R")
@@ -57,6 +64,9 @@ DEFAULT_REQUEST_RETRIES = 2
 DEFAULT_REQUEST_RETRY_DELAY = 0.1
 
 AFTER_OTA_ATTR_READ_DELAY = 10
+
+# Marks a synthetic EUI64 built from a 32-bit GPD SrcID
+GP_SYNTHETIC_IEEE_MARKER = b"\xff\xff\xff\xfe"
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,14 +90,156 @@ class Status(enum.IntEnum):
     ENDPOINTS_INIT = 2
 
 
-class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
-    """A device on the network"""
+class BaseDevice(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
+    """Base class shared by all device types, keyed on an `ieee` address."""
+
+    def __init__(self, application: ControllerApplication, ieee: t.EUI64) -> None:
+        super().__init__()
+        self._application: ControllerApplication = application
+        self._ieee: t.EUI64 = ieee
+
+        self.lqi: int | None = None
+        self.rssi: int | None = None
+        self._last_seen: datetime | None = None
+
+        self._on_remove_callbacks: list[typing.Callable[[], None]] = []
+        self._tasks: set[asyncio.Future[Any]] = set()
+
+    def create_task(
+        self, target: Coroutine[Any, Any, _R], name: str | None = None
+    ) -> asyncio.Task[_R]:
+        """Create a task and store a reference to it until the task completes."""
+        task = asyncio.get_running_loop().create_task(target, name=name)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.remove)
+        return task
+
+    def on_remove(self) -> None:
+        """Call on remove callbacks."""
+        for callback in self._on_remove_callbacks:
+            callback()
+
+        self._on_remove_callbacks.clear()
+
+        for task in self._tasks:
+            task.cancel()
+
+        self._tasks.clear()
+
+    def update_last_seen(self) -> None:
+        """Update the `last_seen` attribute to the current time and emit an event."""
+        warnings.warn(
+            "Calling `update_last_seen` directly is deprecated", DeprecationWarning
+        )
+        self.last_seen = datetime.now(UTC)
+
+    @property
+    def last_seen(self) -> float | None:
+        return self._last_seen.timestamp() if self._last_seen is not None else None
+
+    @last_seen.setter
+    def last_seen(self, value: datetime | float | None):
+        if isinstance(value, int | float):
+            value = datetime.fromtimestamp(value, UTC)
+
+        self._last_seen = value
+        self.listener_event("device_last_seen_updated", self._last_seen)
+
+    def radio_details(self, lqi=None, rssi=None) -> None:
+        if lqi is not None:
+            self.lqi = lqi
+        if rssi is not None:
+            self.rssi = rssi
+
+    @property
+    def application(self) -> ControllerApplication:
+        return self._application
+
+    @property
+    def ieee(self) -> t.EUI64:
+        return self._ieee
+
+
+class GreenPowerDevice(BaseDevice):
+    """A Green Power Device (GPD)."""
+
+    def __init__(
+        self,
+        application: ControllerApplication,
+        *,
+        application_id: ApplicationID,
+        src_id: DeviceID | None = None,
+        ieee: t.EUI64 | None = None,
+        endpoint: t.uint8_t | None = None,
+    ) -> None:
+        if application_id is ApplicationID.SrcID:
+            assert src_id is not None
+            ieee = self._synthetic_ieee(src_id)
+        else:
+            assert ieee is not None
+
+        super().__init__(application, ieee)
+
+        self.application_id = application_id
+        self._src_id = src_id
+        # The GPD endpoint (IEEE addressing only); part of identity when present.
+        self.endpoint = endpoint
+
+        # Commissioning-derived signature (the quirk match input). All optional:
+        # cheap GPDs commonly advertise only `device_id`.
+        self.device_id: t.uint8_t | None = None  # GPD device type
+        self.gpd_manufacturer_id: t.uint16_t | None = None
+        self.gpd_model_id: t.uint16_t | None = None
+        self.commands: list[GPDCommandID] = []
+        self.server_cluster_ids: list[t.uint16_t] = []
+        self.client_cluster_ids: list[t.uint16_t] = []
+
+        # Security material for decoding subsequent data frames.
+        self.security_key: t.KeyData | None = None
+        self.security_key_type: SecurityKeyType | None = None
+        self.security_level: SecurityLevel | None = None
+        self.frame_counter: t.uint32_t | None = None
+
+    @staticmethod
+    def _synthetic_ieee(src_id: int) -> t.EUI64:
+        return t.EUI64(int(src_id).to_bytes(4, "little") + GP_SYNTHETIC_IEEE_MARKER)
+
+    @property
+    def src_id(self) -> DeviceID | None:
+        """The 32-bit GPD SrcID, or None for IEEE-addressed GPDs."""
+        return self._src_id
+
+    @property
+    def manufacturer_id(self) -> int | None:
+        return self.gpd_manufacturer_id
+
+    @property
+    def name(self) -> str:
+        if self.application_id is ApplicationID.SrcID:
+            return f"GreenPowerDevice 0x{self._src_id:08X}"
+
+        return f"GreenPowerDevice {self._ieee}"
+
+    def log(self, lvl: int, msg: str, *args, **kwargs) -> None:
+        msg = "[%s] " + msg
+        args = (self.name, *args)
+        LOGGER.log(lvl, msg, *args, **kwargs)
+
+    def packet_received(self, packet: t.ZigbeeGpPacket) -> None:
+        # Both GP ingress paths converge here as a decoded, decrypted frame: a
+        # tunneled GP Notification parsed out of a ZigbeePacket, or (later) a GPDF
+        # decrypted by the local GP stub. Duplicate filtering (by frame counter)
+        # and command dispatch land here.
+        raise NotImplementedError("GPDF handling is not yet implemented")
+
+
+class ZigbeeDevice(BaseDevice):
+    """A conventional Zigbee device on the network."""
 
     manufacturer_id_override = None
 
     def __init__(self, application: ControllerApplication, ieee: t.EUI64, nwk: t.NWK):
-        self._application: ControllerApplication = application
-        self._ieee: t.EUI64 = ieee
+        super().__init__(application, ieee)
         self.nwk: t.NWK = t.NWK(nwk)
         self.zdo: zdo.ZDO = zdo.ZDO(self)
         self.endpoints: dict[int, zdo.ZDO | zigpy.endpoint.Endpoint] = {0: self.zdo}
@@ -95,17 +247,13 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         # Persist the original signature for the device, before quirks are applied
         self._original_signature: dict[str, Any] | None = None
 
-        self.lqi: int | None = None
-        self.rssi: int | None = None
         self.ota_in_progress: bool = False
-        self._last_seen: datetime | None = None
 
         self._initialize_task: asyncio.Task | None = None
         self._reinterview_in_progress: bool = False
         self._group_scan_task: asyncio.Task | None = None
         self._fast_polling_reset_task: asyncio.Task | None = None
 
-        self._listeners = {}
         self._manufacturer: str | None = None
         self._model: str | None = None
         self.node_desc: zdo_t.NodeDescriptor | None = None
@@ -115,8 +263,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._send_sequence: int = 0
 
         self._fast_polling = False
-        self._on_remove_callbacks: list[typing.Callable[[], None]] = []
-        self._tasks: set[asyncio.Future[Any]] = set()
 
         self._packet_debouncer = zigpy.datastructures.Debouncer()
         self._concurrent_requests_semaphore = zigpy.datastructures.RequestLimiter(
@@ -138,30 +284,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 callback=self.poll_control_checkin_callback,
             )
         )
-
-    def create_task(
-        self, target: Coroutine[Any, Any, _R], name: str | None = None
-    ) -> asyncio.Task[_R]:
-        """Create a task and store a reference to it until the task completes.
-
-        target: target to call.
-        """
-        task = asyncio.get_running_loop().create_task(target, name=name)
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.remove)
-        return task
-
-    def on_remove(self) -> None:
-        """Call on remove callbacks."""
-        for callback in self._on_remove_callbacks:
-            callback()
-
-        self._on_remove_callbacks.clear()
-
-        for task in self._tasks:
-            task.cancel()
-
-        self._tasks.clear()
 
     @contextlib.asynccontextmanager
     async def _limit_concurrency(self, *, priority: int | None = None):
@@ -208,27 +330,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     @property
     def name(self) -> str:
         return f"0x{self.nwk:04X}"
-
-    def update_last_seen(self) -> None:
-        """Update the `last_seen` attribute to the current time and emit an event."""
-
-        warnings.warn(
-            "Calling `update_last_seen` directly is deprecated", DeprecationWarning
-        )
-
-        self.last_seen = datetime.now(UTC)
-
-    @property
-    def last_seen(self) -> float | None:
-        return self._last_seen.timestamp() if self._last_seen is not None else None
-
-    @last_seen.setter
-    def last_seen(self, value: datetime | float | None):
-        if isinstance(value, int | float):
-            value = datetime.fromtimestamp(value, UTC)
-
-        self._last_seen = value
-        self.listener_event("device_last_seen_updated", self._last_seen)
 
     @property
     def non_zdo_endpoints(self) -> list[zigpy.endpoint.Endpoint]:
@@ -322,7 +423,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._reinterview_in_progress = True
 
         try:
-            shadow = Device(self._application, self._ieee, self.nwk)
+            shadow = ZigbeeDevice(self._application, self._ieee, self.nwk)
             shadow._reinterview_in_progress = True  # prevent auto-initialization
 
             # Temporarily register the shadow in app.devices so it receives
@@ -1085,24 +1186,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     return cluster.last_query_cmd
         return None
 
-    def radio_details(self, lqi=None, rssi=None) -> None:
-        if lqi is not None:
-            self.lqi = lqi
-        if rssi is not None:
-            self.rssi = rssi
-
     def log(self, lvl, msg, *args, **kwargs) -> None:
         msg = "[0x%04x] " + msg
         args = (self.nwk, *args)
         LOGGER.log(lvl, msg, *args, **kwargs)
-
-    @property
-    def application(self) -> ControllerApplication:
-        return self._application
-
-    @property
-    def ieee(self) -> t.EUI64:
-        return self._ieee
 
     @property
     def manufacturer(self) -> str | None:
@@ -1172,9 +1259,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def __getitem__(self, key):
         return self.endpoints[key]
 
-    def clone(self) -> Device:
+    def clone(self) -> ZigbeeDevice:
         """Return a detached copy of this device for independent modification."""
-        new = Device(self.application, self.ieee, self.nwk)
+        new = ZigbeeDevice(self.application, self.ieee, self.nwk)
         new.lqi = self.lqi
         new.rssi = self.rssi
         new.last_seen = self.last_seen
@@ -1246,6 +1333,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             f" is_initialized={self.is_initialized}"
             f">"
         )
+
+
+# Backwards-compatible alias
+Device = ZigbeeDevice
 
 
 async def broadcast(
