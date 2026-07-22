@@ -12,7 +12,7 @@ from zigpy import device, types, zcl
 import zigpy.endpoint
 from zigpy.ota import OTA, OtaImagesResult
 from zigpy.zcl import OtaImageAvailableEvent, OtaQueryCacheUpdatedEvent, foundation
-from zigpy.zcl.clusters.general import Basic, Ota, Time
+from zigpy.zcl.clusters.general import Basic, KeepAlive, Ota, Time
 import zigpy.zcl.clusters.security as sec
 from zigpy.zdo import types as zdo_t
 
@@ -134,6 +134,39 @@ async def test_basic_cluster():
     assert rsp.status_records[2] == foundation.ReadAttributeRecord(
         attrid=Basic.AttributeDefs.serial_number.id,
         status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
+    )
+
+
+async def test_keepalive_cluster() -> None:
+    ep = MagicMock()
+    ep.reply = AsyncMock()
+
+    cluster = KeepAlive(ep)
+
+    rsp = await read_attributes(
+        cluster,
+        [
+            KeepAlive.AttributeDefs.tc_keep_alive_base.id,
+            KeepAlive.AttributeDefs.tc_keep_alive_jitter.id,
+        ],
+    )
+
+    assert rsp.status_records[0] == foundation.ReadAttributeRecord(
+        attrid=KeepAlive.AttributeDefs.tc_keep_alive_base.id,
+        status=foundation.Status.SUCCESS,
+        value=foundation.TypeValue(
+            type=foundation.DataTypeId.uint8,
+            value=10,
+        ),
+    )
+
+    assert rsp.status_records[1] == foundation.ReadAttributeRecord(
+        attrid=KeepAlive.AttributeDefs.tc_keep_alive_jitter.id,
+        status=foundation.Status.SUCCESS,
+        value=foundation.TypeValue(
+            type=foundation.DataTypeId.uint16,
+            value=300,
+        ),
     )
 
 
