@@ -2445,7 +2445,11 @@ class KeepAlive(Cluster):
         )
 
     def handle_read_attribute_tc_keep_alive_base(self) -> t.uint8_t:
+        # Spec default (0x0A). Represents the time base (in minutes) that a Zigbee 4.0
+        # device will use to check if the trust center is alive.
         return t.uint8_t(10)
 
     def handle_read_attribute_tc_keep_alive_jitter(self) -> t.uint16_t:
+        # Spec default (0x012C). Represents the jitter (in _seconds_) that a Zigbee 4.0
+        # device will add to the time base when checking if the trust center is alive.
         return t.uint16_t(300)
