@@ -350,7 +350,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _update_device_nwk(self, ieee: t.EUI64, nwk: t.NWK) -> None:
         await self.execute(f"UPDATE devices{DB_V} SET nwk=? WHERE ieee=?", (nwk, ieee))
-        await self._commit()
+        await self._commit(force=True)
 
     def device_initialized(self, device: Device) -> None:
         pass

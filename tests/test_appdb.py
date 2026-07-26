@@ -2203,11 +2203,10 @@ async def test_commit_does_not_land_mid_handler(tmp_path):
     """A deferred commit must never persist a partial handler.
 
     We run a synthetic two-statement "handler" on the worker queue that yields
-    for longer than the commit interval between its two statements. With the
-    old code (timer committing directly), `_db.commit()` would have been
-    called during the yield. With the queue-based flush, the timer only
-    enqueues `_flush_commit` — which cannot run because the worker is busy
-    — so `_db.commit()` is not called until after the handler returns.
+    for longer than the commit interval between its two statements. The timer
+    fires during the yield and enqueues ``_flush_commit``, but ``_flush_commit``
+    cannot run because the worker is busy — so ``_db.commit()`` is not called
+    until after the handler returns.
     """
     app, db = _make_app_with_db(tmp_path, commit_interval=0.05)
     await app._load_db()
@@ -2236,10 +2235,9 @@ async def test_commit_does_not_land_mid_handler(tmp_path):
         await listener._commit()
         handler_first_statement_done.set()
 
-        # Sleep well past the commit interval. The old buggy code would have
-        # called `_db.commit()` here directly from the timer task. With the
-        # fix, the timer only enqueues `_flush_commit` — which cannot run
-        # because we're still holding the worker.
+        # Sleep well past the commit interval. The timer fires during this
+        # sleep and enqueues `_flush_commit`, which cannot run because we're
+        # still holding the worker.
         await asyncio.sleep(0.20)
         handler_finished.set()
 
@@ -2249,8 +2247,8 @@ async def test_commit_does_not_land_mid_handler(tmp_path):
     # Wait for the handler to reach its first statement and arm the timer.
     await asyncio.wait_for(handler_first_statement_done.wait(), timeout=2.0)
 
-    # Wait long enough that the 0.05s timer has fired (it just enqueues
-    # `_flush_commit` — it does NOT commit directly).
+    # Wait long enough that the 0.05s timer has fired (it enqueues
+    # `_flush_commit`, which is still queued behind us).
     await asyncio.sleep(0.10)
     assert not handler_finished.is_set(), (
         "handler should still be sleeping — worker is busy running it"
@@ -2261,11 +2259,10 @@ async def test_commit_does_not_land_mid_handler(tmp_path):
     )
 
     # Wait for the handler to finish, then for the enqueued `_flush_commit`
-    # to run on the worker.
+    # to run on the worker. `join()` waits until the worker has drained the
+    # queue, so `_flush_commit` has run and committed.
     await asyncio.wait_for(handler_finished.wait(), timeout=2.0)
-    # Yield enough for the worker to pick up `_flush_commit` and run it.
-    for _ in range(5):
-        await asyncio.sleep(0)
+    await listener._callback_handlers.join()
 
     assert len(commit_calls) == 1, (
         f"expected exactly one commit from `_flush_commit` after the handler "
@@ -2281,23 +2278,17 @@ async def test_commit_does_not_land_mid_handler(tmp_path):
 async def test_has_pending_commits_not_cleared_concurrently(tmp_path):
     """A write that arrives while the flush is in flight must not be lost.
 
-    Trace of the old bug:
-      1. Handler A calls `_commit()`, arms timer.
-      2. Timer fires, starts `await self._db.commit()`.
-      3. Worker runs Handler B, calls `_commit()`, sets `_has_pending_commits = True`.
-         Timer task isn't `.done()` yet, so no new timer is armed.
-      4. Commit returns, clears `_has_pending_commits = False`.
-      5. Handler B's write is now uncommitted with no timer armed.
-
-    With the queue-based fix, step 2 just enqueues `_flush_commit` and
-    clears `_commit_task`. Step 3 sees `_commit_task is None` and arms a
-    new timer. Step 4 doesn't exist (the commit runs in `_flush_commit` on
-    the worker). So Handler B's write is either included in the first flush
-    (if it ran before `_flush_commit`) or in a second flush (if it ran
-    after).
+    The deferred-commit path arms a timer that, on expiry, enqueues
+    ``_flush_commit`` on the worker queue and clears ``_commit_task``. A
+    subsequent ``_commit()`` call from another handler sees
+    ``_commit_task is None`` and arms a fresh timer. The newer write is
+    therefore either included in the first flush (if it ran before
+    ``_flush_commit``) or in a second flush (if it ran after).
     """
     app, db = _make_app_with_db(tmp_path, commit_interval=0.05)
     await app._load_db()
+
+    listener = app._dblistener
 
     # First write: arm the timer.
     ieee = make_ieee()
@@ -2311,20 +2302,32 @@ async def test_has_pending_commits_not_cleared_concurrently(tmp_path):
     app.device_initialized(dev)
     clus.update_attribute(0, 1)
 
-    # Wait for the timer to fire and the flush to run.
-    await asyncio.sleep(0.20)
-    assert await _read_attr_value(db) == 1
+    # Wait for the first flush to land by polling for the value rather than
+    # budgeting a fixed sleep — the worker has to drain `_update_device_nwk`,
+    # `_raw_device_initialized` and `_save_attribute`, then the 0.05s timer
+    # has to fire and `_flush_commit` has to run.
+    await listener._callback_handlers.join()
+    for _ in range(200):
+        if await _read_attr_value(db) == 1:
+            break
+        await asyncio.sleep(0.01)
+    else:
+        raise AssertionError("first flush did not land within 2s")
 
     # Second write after the first flush — arms a new timer.
     clus.update_attribute(0, 2)
-    # Yield once so the worker runs `_save_attribute` and arms the timer.
-    await asyncio.sleep(0)
+    # Wait for the worker to run `_save_attribute` and arm the timer.
+    await listener._callback_handlers.join()
     # The second write should not be committed yet (timer hasn't fired).
     assert await _read_attr_value(db) == 1
 
-    # Wait for the second flush.
-    await asyncio.sleep(0.20)
-    assert await _read_attr_value(db) == 2
+    # Wait for the second flush by polling for the value.
+    for _ in range(200):
+        if await _read_attr_value(db) == 2:
+            break
+        await asyncio.sleep(0.01)
+    else:
+        raise AssertionError("second flush did not land within 2s")
 
     await app.shutdown()
 
@@ -2352,13 +2355,17 @@ async def test_force_commit_cancels_pending_timer(tmp_path):
     clus = ep.add_input_cluster(0)
     app.device_initialized(dev)
 
-    # Arm the 10s timer.
+    # Arm the 10s timer. `handle_join` and `device_initialized` each enqueue
+    # their own handlers, so wait for the worker to drain all of them before
+    # issuing the attribute write — otherwise the earlier handlers' timers
+    # (cancelled by their own force-commits) confuse the assertions below.
+    await listener._callback_handlers.join()
+
     clus.update_attribute(0, 7)
-    # Poll until the worker has run `_save_attribute` and armed the timer.
-    for _ in range(50):
-        if listener._commit_task is not None:
-            break
-        await asyncio.sleep(0.005)
+    # Wait for `_save_attribute` to run and arm the timer. `join()` is exact
+    # (it blocks until the queue is empty), unlike polling `_commit_task`,
+    # which can be armed by an earlier handler.
+    await listener._callback_handlers.join()
     assert listener._commit_task is not None
     assert listener._has_pending_commits is True
 
@@ -2433,12 +2440,10 @@ async def test_ota_query_cache_delete_is_deferred_like_save(tmp_path):
         endpoint_id=1,
     )
     listener.on_ota_query_cache_cleared(event)
-    # Poll until the worker has run the delete handler (the row count from
-    # the listener's connection will drop to 0 even before commit, since
-    # the DELETE is issued — but a *separate* connection won't see it
-    # until commit).
-    for _ in range(100):
-        await asyncio.sleep(0)
+    # Wait for the worker to run the delete handler. `join()` is exact (it
+    # blocks until the queue is empty), unlike `sleep(0)` which only yields
+    # the event loop and cannot wait on aiosqlite's connection thread.
+    await listener._callback_handlers.join()
 
     # The delete was issued but the commit is deferred — a separate reader
     # should still see the row until the timer fires (10s, well past the test).
@@ -2641,5 +2646,27 @@ async def test_group_operations_are_forced(tmp_path):
             "removed group must be committed immediately (force=True) — "
             "row still in DB after 1s"
         )
+
+    await app.shutdown()
+
+
+async def test_flush_commit_noop_when_nothing_pending(tmp_path):
+    """`_flush_commit` should be a no-op when there are no pending commits.
+
+    The timer can fire and enqueue `_flush_commit` after a force commit has
+    already flushed everything (the timer is cancelled in that path, but the
+    enqueue may already have raced). In that case `_flush_commit` must not
+    issue a redundant commit, and must not crash.
+    """
+    app, db = _make_app_with_db(tmp_path, commit_interval=10.0)
+    await app._load_db()
+
+    listener = app._dblistener
+
+    # With nothing pending, `_flush_commit` should return without committing
+    # and without raising.
+    assert listener._has_pending_commits is False
+    await listener._flush_commit()
+    assert listener._has_pending_commits is False
 
     await app.shutdown()
