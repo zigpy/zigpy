@@ -2200,23 +2200,16 @@ async def _read_attr_value(db, attr_id=0):
 
 
 async def test_commit_does_not_land_mid_handler(tmp_path):
-    """A deferred commit must never persist a partial handler.
-
-    We run a synthetic two-statement "handler" on the worker queue that yields
-    for longer than the commit interval between its two statements. The timer
-    fires during the yield and enqueues ``_flush_commit``, but ``_flush_commit``
-    cannot run because the worker is busy — so ``_db.commit()`` is not called
-    until after the handler returns.
-    """
+    """A deferred commit must never persist a partial handler."""
     app, db = _make_app_with_db(tmp_path, commit_interval=0.05)
     await app._load_db()
 
     listener = app._dblistener
 
-    # Wrap `_db.commit` to count calls. We do NOT need to do actual SQL writes
-    # — the invariant under test is purely about *when* `commit()` is called,
-    # not what it persists. Skipping the write also avoids the FK constraints
-    # that would require a fully-populated device row.
+    # Wrap `_db.commit` to count calls. We do NOT need to do actual SQL writes - the
+    # invariant under test is purely about *when* `commit()` is called, not what it
+    # persists. Skipping the write also avoids the FK constraints that would require a
+    # fully-populated device row.
     commit_calls = []
     original_commit = listener._db.commit
 
@@ -2230,14 +2223,14 @@ async def test_commit_does_not_land_mid_handler(tmp_path):
     handler_finished = asyncio.Event()
 
     async def _synthetic_two_statement_handler():
-        # First "statement" — just arm the deferred commit. The 0.05s timer
-        # will fire while we sleep below.
+        # First "statement" — just arm the deferred commit. The 0.05s timer will fire
+        # while we sleep below.
         await listener._commit()
         handler_first_statement_done.set()
 
-        # Sleep well past the commit interval. The timer fires during this
-        # sleep and enqueues `_flush_commit`, which cannot run because we're
-        # still holding the worker.
+        # Sleep well past the commit interval. The timer fires during this sleep and
+        # enqueues `_flush_commit`, which cannot run because we're still holding the
+        # worker.
         await asyncio.sleep(0.20)
         handler_finished.set()
 
@@ -2247,8 +2240,8 @@ async def test_commit_does_not_land_mid_handler(tmp_path):
     # Wait for the handler to reach its first statement and arm the timer.
     await asyncio.wait_for(handler_first_statement_done.wait(), timeout=2.0)
 
-    # Wait long enough that the 0.05s timer has fired (it enqueues
-    # `_flush_commit`, which is still queued behind us).
+    # Wait long enough that the 0.05s timer has fired (it enqueues `_flush_commit`,
+    # which is still queued behind us).
     await asyncio.sleep(0.10)
     assert not handler_finished.is_set(), (
         "handler should still be sleeping — worker is busy running it"
@@ -2258,9 +2251,9 @@ async def test_commit_does_not_land_mid_handler(tmp_path):
         "commit calls before the handler returned"
     )
 
-    # Wait for the handler to finish, then for the enqueued `_flush_commit`
-    # to run on the worker. `join()` waits until the worker has drained the
-    # queue, so `_flush_commit` has run and committed.
+    # Wait for the handler to finish, then for the enqueued `_flush_commit` to run on
+    # the worker. `join()` waits until the worker has drained the queue, so
+    # `_flush_commit` has run and committed.
     await asyncio.wait_for(handler_finished.wait(), timeout=2.0)
     await listener._callback_handlers.join()
 
@@ -2276,15 +2269,7 @@ async def test_commit_does_not_land_mid_handler(tmp_path):
 
 
 async def test_has_pending_commits_not_cleared_concurrently(tmp_path):
-    """A write that arrives while the flush is in flight must not be lost.
-
-    The deferred-commit path arms a timer that, on expiry, enqueues
-    ``_flush_commit`` on the worker queue and clears ``_commit_task``. A
-    subsequent ``_commit()`` call from another handler sees
-    ``_commit_task is None`` and arms a fresh timer. The newer write is
-    therefore either included in the first flush (if it ran before
-    ``_flush_commit``) or in a second flush (if it ran after).
-    """
+    """A write that arrives while the flush is in flight must not be lost."""
     app, db = _make_app_with_db(tmp_path, commit_interval=0.05)
     await app._load_db()
 
@@ -2302,10 +2287,7 @@ async def test_has_pending_commits_not_cleared_concurrently(tmp_path):
     app.device_initialized(dev)
     clus.update_attribute(0, 1)
 
-    # Wait for the first flush to land by polling for the value rather than
-    # budgeting a fixed sleep — the worker has to drain `_update_device_nwk`,
-    # `_raw_device_initialized` and `_save_attribute`, then the 0.05s timer
-    # has to fire and `_flush_commit` has to run.
+    # Wait for the first flush to land by polling for the value.
     await listener._callback_handlers.join()
     for _ in range(200):
         if await _read_attr_value(db) == 1:
@@ -2316,8 +2298,10 @@ async def test_has_pending_commits_not_cleared_concurrently(tmp_path):
 
     # Second write after the first flush — arms a new timer.
     clus.update_attribute(0, 2)
+
     # Wait for the worker to run `_save_attribute` and arm the timer.
     await listener._callback_handlers.join()
+
     # The second write should not be committed yet (timer hasn't fired).
     assert await _read_attr_value(db) == 1
 
@@ -2651,13 +2635,7 @@ async def test_group_operations_are_forced(tmp_path):
 
 
 async def test_flush_commit_noop_when_nothing_pending(tmp_path):
-    """`_flush_commit` should be a no-op when there are no pending commits.
-
-    The timer can fire and enqueue `_flush_commit` after a force commit has
-    already flushed everything (the timer is cancelled in that path, but the
-    enqueue may already have raced). In that case `_flush_commit` must not
-    issue a redundant commit, and must not crash.
-    """
+    """`_flush_commit` should be a no-op when there are no pending commits."""
     app, db = _make_app_with_db(tmp_path, commit_interval=10.0)
     await app._load_db()
 
