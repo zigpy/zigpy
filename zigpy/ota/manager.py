@@ -194,15 +194,16 @@ class OTAManager:
             return
 
         try:
-            await self.ota_cluster.image_block_response(
-                status=foundation.Status.SUCCESS,
-                manufacturer_code=self.image.firmware.header.manufacturer_id,
-                image_type=self.image.firmware.header.image_type,
-                file_version=self.image.firmware.header.file_version,
-                file_offset=command.file_offset,
-                image_data=block,
-                tsn=hdr.tsn,
-            )
+            async with self.device.application.request_priority(t.PacketPriority.LOW):
+                await self.ota_cluster.image_block_response(
+                    status=foundation.Status.SUCCESS,
+                    manufacturer_code=self.image.firmware.header.manufacturer_id,
+                    image_type=self.image.firmware.header.image_type,
+                    file_version=self.image.firmware.header.file_version,
+                    file_offset=command.file_offset,
+                    image_data=block,
+                    tsn=hdr.tsn,
+                )
 
             if command.file_offset + len(block) < len(self._image_data):
                 self._stall_timer.reschedule(MAX_TIME_WITHOUT_PROGRESS)
