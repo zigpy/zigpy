@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 from unittest import mock
 from unittest.mock import AsyncMock, MagicMock, call, patch, sentinel
@@ -2914,20 +2915,72 @@ def test_chunk_records_by_size(sizes, max_bytes, expected) -> None:
 
 
 @pytest.mark.parametrize(
-    ("sizes", "max_bytes"),
+    ("sizes", "max_bytes", "expected"),
     [
         # A single record larger than the limit, on its own
-        ([15], 10),
-        # An oversized record surrounded by ones that would otherwise fit
-        ([3, 15, 4], 10),
+        ([15], 10, [[15]]),
+        # An oversized record does not take the records around it down with it
+        ([3, 15, 4], 10, [[3], [15], [4]]),
+        # Records before an oversized one still pack together
+        ([3, 3, 15, 4], 10, [[3, 3], [15], [4]]),
+        # Consecutive oversized records each get a chunk of their own
+        ([15, 15], 10, [[15], [15]]),
     ],
 )
-def test_chunk_records_by_size_oversized_record(sizes, max_bytes) -> None:
-    """A record that on its own exceeds max_bytes can never be sent, so the chunker
-    fails loudly instead of emitting an oversized chunk the transport would reject.
-    """
-    with pytest.raises(ValueError, match="too large to fit in a single request"):
-        _chunk_records_by_size(sizes, lambda size: size, max_bytes=max_bytes)
+def test_chunk_records_by_size_oversized_record(
+    sizes, max_bytes, expected, caplog
+) -> None:
+    """A record that on its own exceeds max_bytes is emitted as its own chunk."""
+    with caplog.at_level(logging.DEBUG, logger="zigpy.zcl"):
+        chunks = _chunk_records_by_size(sizes, lambda size: size, max_bytes=max_bytes)
+
+    assert chunks == expected
+    assert caplog.text.count("exceeds the 10 byte request budget") == sum(
+        size > max_bytes for size in sizes
+    )
+
+
+async def test_write_attributes_oversized_record(app_mock) -> None:
+    """An attribute record over the size budget is still sent, on its own."""
+
+    class TestCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            attr_small = foundation.ZCLAttributeDef(id=0xFF00, type=t.uint8_t)
+            attr_big = foundation.ZCLAttributeDef(id=0xFF01, type=t.LVBytes)
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    # 2 bytes of attribute id + 1 type + 1 length prefix + 55 bytes of value
+    oversized = b"\xaa" * 55
+
+    with mock_attribute_writes(
+        cluster,
+        {
+            TestCluster.AttributeDefs.attr_small: foundation.Status.SUCCESS,
+            TestCluster.AttributeDefs.attr_big: foundation.Status.SUCCESS,
+        },
+    ) as (mock_write, _):
+        [results] = await cluster.write_attributes(
+            {
+                TestCluster.AttributeDefs.attr_small: 1,
+                TestCluster.AttributeDefs.attr_big: oversized,
+            }
+        )
+
+    # The small record is sent normally, the oversized one in a request of its own
+    assert mock_write.call_count == 2
+    chunks = [call_obj.args[0] for call_obj in mock_write.call_args_list]
+    assert [[a.attrid for a in chunk] for chunk in chunks] == [[0xFF00], [0xFF01]]
+
+    [big_record] = chunks[1]
+    assert len(big_record.serialize()) == 59 > MAX_ATTRIBUTE_RECORDS_BYTES
+
+    assert len(results) == 2
+    assert all(r.status == foundation.Status.SUCCESS for r in results)
 
 
 def test_manufacturer_id_override_manuf_specific_cluster(app_mock) -> None:
