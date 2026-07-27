@@ -2055,9 +2055,17 @@ async def test_coordinator_group_subscribe_unsubscribe(
     # Subscribe to a group
     with patch.object(app, "_subscribe_to_multicast_group") as mock_subscribe:
         await app.subscribe_to_multicast_group(0x1234)
-        assert mock_subscribe.mock_calls == [call(group_id=0x1234)]
+        await app.subscribe_to_multicast_group(0x1234, endpoint_id=2)
+        assert mock_subscribe.mock_calls == [
+            call(group_id=0x1234, endpoint_id=1),
+            call(group_id=0x1234, endpoint_id=2),
+        ]
 
     # Unsubscribe from a group
     with patch.object(app, "_unsubscribe_from_multicast_group") as mock_unsubscribe:
         await app.unsubscribe_from_multicast_group(0x1234)
-        assert mock_unsubscribe.mock_calls == [call(group_id=0x1234)]
+        await app.unsubscribe_from_multicast_group(0x1234, endpoint_id=2)
+        assert mock_unsubscribe.mock_calls == [
+            call(group_id=0x1234, endpoint_id=1),
+            call(group_id=0x1234, endpoint_id=2),
+        ]
