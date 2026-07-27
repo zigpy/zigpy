@@ -53,7 +53,7 @@ def _chunk_records_by_size(
     *,
     max_bytes: int = MAX_ATTRIBUTE_RECORDS_BYTES,
 ) -> list[list[_RecordT]]:
-    """Split records into chunks not exceeding max_bytes of serialized payload."""
+    """Split records into chunks of at most max_bytes, except oversized records."""
     chunks: list[list[_RecordT]] = []
     chunk_size = 0
 
@@ -65,9 +65,8 @@ def _chunk_records_by_size(
             # device reject it. `max_bytes + 1` keeps the next record out of this
             # chunk, whatever its size.
             LOGGER.debug(
-                "Record %r exceeds the %d byte request budget (%d bytes), sending it"
+                "Record exceeds the %d byte request budget (%d bytes), sending it"
                 " on its own",
-                record,
                 max_bytes,
                 record_size,
             )
