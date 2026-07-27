@@ -53,13 +53,7 @@ def _chunk_records_by_size(
     *,
     max_bytes: int = MAX_ATTRIBUTE_RECORDS_BYTES,
 ) -> list[list[_RecordT]]:
-    """Split records into chunks not exceeding max_bytes of serialized payload.
-
-    A record that on its own exceeds max_bytes is emitted as its own chunk: chunking
-    cannot make it any smaller, and max_bytes is a conservative budget rather than a
-    protocol limit, so it is better to attempt the request and let the device or the
-    transport reject it than to fail locally without ever sending anything.
-    """
+    """Split records into chunks not exceeding max_bytes of serialized payload."""
     chunks: list[list[_RecordT]] = []
     chunk_size = 0
 
@@ -67,7 +61,10 @@ def _chunk_records_by_size(
         record_size = get_size(record)
 
         if record_size > max_bytes:
-            LOGGER.warning(
+            # Chunking can't shrink a single record, so send it alone and let the
+            # device reject it. `max_bytes + 1` keeps the next record out of this
+            # chunk, whatever its size.
+            LOGGER.debug(
                 "Record %r exceeds the %d byte request budget (%d bytes), sending it"
                 " on its own",
                 record,
@@ -75,7 +72,6 @@ def _chunk_records_by_size(
                 record_size,
             )
             chunks.append([record])
-            # Nothing else may share a chunk that is already over budget
             chunk_size = max_bytes + 1
             continue
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 from unittest import mock
 from unittest.mock import AsyncMock, MagicMock, call, patch, sentinel
@@ -2929,13 +2930,9 @@ def test_chunk_records_by_size(sizes, max_bytes, expected) -> None:
 def test_chunk_records_by_size_oversized_record(
     sizes, max_bytes, expected, caplog
 ) -> None:
-    """A record that on its own exceeds max_bytes is emitted as its own chunk.
-
-    Chunking cannot make such a record any smaller and max_bytes is a conservative
-    budget rather than a protocol limit, so the request is attempted and the device
-    or the transport gets to reject it, instead of failing locally.
-    """
-    chunks = _chunk_records_by_size(sizes, lambda size: size, max_bytes=max_bytes)
+    """A record that on its own exceeds max_bytes is emitted as its own chunk."""
+    with caplog.at_level(logging.DEBUG, logger="zigpy.zcl"):
+        chunks = _chunk_records_by_size(sizes, lambda size: size, max_bytes=max_bytes)
 
     assert chunks == expected
     assert caplog.text.count("exceeds the 10 byte request budget") == sum(
