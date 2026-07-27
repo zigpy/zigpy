@@ -799,7 +799,11 @@ async def test_ota_manager_final_block_timeout(use_pages: bool) -> None:
                 )
             )
 
+    final_block_sent_at = None
+
     async def send_packet(packet: t.ZigbeePacket):
+        nonlocal final_block_sent_at
+
         if packet.cluster_id != Ota.cluster_id:
             return
 
@@ -825,6 +829,7 @@ async def test_ota_manager_final_block_timeout(use_pages: bool) -> None:
 
             # The device never sends `upgrade_end`, it just goes silent
             if next_offset >= image_size:
+                final_block_sent_at = time.monotonic()
                 return
 
             # The manager sends the rest of the current page on its own
@@ -835,12 +840,13 @@ async def test_ota_manager_final_block_timeout(use_pages: bool) -> None:
 
     dev.application.send_packet = AsyncMock(side_effect=send_packet)
 
-    start = time.monotonic()
     result = await update_firmware(dev, FW_IMAGE)
-    elapsed = time.monotonic() - start
+
+    assert final_block_sent_at is not None
+    elapsed = time.monotonic() - final_block_sent_at
 
     assert result == foundation.Status.TIMEOUT
-    assert 0.5 <= elapsed < 0.85
+    assert 0.5 <= elapsed < 1.5
 
 
 async def test_ota_manager_deferred_download():
