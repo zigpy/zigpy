@@ -269,7 +269,7 @@ class OTAManager:
                         image_data=block,
                     )
 
-                if command.file_offset + len(block) < len(self._image_data):
+                if offset < len(self._image_data):
                     self._stall_timer.reschedule(MAX_TIME_WITHOUT_PROGRESS)
                 else:
                     self._stall_timer.reschedule(FINAL_BLOCK_TIMEOUT)

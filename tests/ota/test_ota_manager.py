@@ -1,4 +1,5 @@
 import itertools
+import time
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import aiohttp
@@ -736,6 +737,110 @@ async def test_ota_manager_image_page_failure():
     result = await update_firmware(dev, FW_IMAGE, progress_callback)
 
     assert result != foundation.Status.SUCCESS
+
+
+@pytest.mark.parametrize("use_pages", [False, True])
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
+@patch("zigpy.ota.manager.FINAL_BLOCK_TIMEOUT", 0.5)
+async def test_ota_manager_final_block_timeout(use_pages: bool) -> None:
+    """Test that the final image block is given a longer timeout for verification."""
+
+    app = make_app({})
+    dev = add_initialized_device(
+        app, nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77")
+    )
+    cluster = dev.endpoints[1].add_output_cluster(Ota.cluster_id)
+
+    with mock_attribute_reads(
+        cluster, {"current_file_version": FW_IMAGE.firmware.header.file_version - 10}
+    ):
+        await dev.initialize()
+
+    # Stop the general cluster handler from interfering
+    dev.ota_in_progress = True
+
+    page_size = 40
+    # Pages must hold more than one block, otherwise the final block of the image is
+    # also the first block of its page and offset bugs cannot be observed
+    max_data_size = 20 if use_pages else page_size
+    image_size = len(FW_IMAGE.firmware.serialize())
+
+    def request_block(offset: int) -> None:
+        if use_pages:
+            dev.application.packet_received(
+                make_packet(
+                    dev,
+                    cluster,
+                    "image_page",
+                    field_control=Ota.ImageBlockCommand.FieldControl.RequestNodeAddr,
+                    manufacturer_code=FW_IMAGE.firmware.header.manufacturer_id,
+                    image_type=FW_IMAGE.firmware.header.image_type,
+                    file_version=FW_IMAGE.firmware.header.file_version,
+                    file_offset=offset,
+                    maximum_data_size=max_data_size,
+                    page_size=page_size,
+                    response_spacing=0,
+                    request_node_addr=dev.ieee,
+                )
+            )
+        else:
+            dev.application.packet_received(
+                make_packet(
+                    dev,
+                    cluster,
+                    "image_block",
+                    field_control=Ota.ImageBlockCommand.FieldControl.RequestNodeAddr,
+                    manufacturer_code=FW_IMAGE.firmware.header.manufacturer_id,
+                    image_type=FW_IMAGE.firmware.header.image_type,
+                    file_version=FW_IMAGE.firmware.header.file_version,
+                    file_offset=offset,
+                    maximum_data_size=max_data_size,
+                    request_node_addr=dev.ieee,
+                )
+            )
+
+    async def send_packet(packet: t.ZigbeePacket):
+        if packet.cluster_id != Ota.cluster_id:
+            return
+
+        hdr, cmd = cluster.deserialize(packet.data.serialize())
+
+        if isinstance(cmd, Ota.ImageNotifyCommand):
+            dev.application.packet_received(
+                make_packet(
+                    dev,
+                    cluster,
+                    "query_next_image",
+                    field_control=Ota.QueryNextImageCommand.FieldControl.HardwareVersion,
+                    manufacturer_code=FW_IMAGE.firmware.header.manufacturer_id,
+                    image_type=FW_IMAGE.firmware.header.image_type,
+                    current_file_version=FW_IMAGE.firmware.header.file_version - 10,
+                    hardware_version=1,
+                )
+            )
+        elif isinstance(cmd, Ota.ClientCommandDefs.query_next_image_response.schema):
+            request_block(0)
+        elif isinstance(cmd, Ota.ClientCommandDefs.image_block_response.schema):
+            next_offset = cmd.file_offset + len(cmd.image_data)
+
+            # The device never sends `upgrade_end`, it just goes silent
+            if next_offset >= image_size:
+                return
+
+            # The manager sends the rest of the current page on its own
+            if use_pages and next_offset % page_size != 0:
+                return
+
+            request_block(next_offset)
+
+    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+
+    start = time.monotonic()
+    result = await update_firmware(dev, FW_IMAGE)
+    elapsed = time.monotonic() - start
+
+    assert result == foundation.Status.TIMEOUT
+    assert 0.5 <= elapsed < 0.85
 
 
 async def test_ota_manager_deferred_download():
