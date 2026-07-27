@@ -26,7 +26,11 @@ if TYPE_CHECKING:
     from zigpy.ota.providers import OtaImageWithMetadata
 
 
+# Maximum time between two block requests, to detect when OTA has permanently stalled
 MAX_TIME_WITHOUT_PROGRESS = 30
+
+# Separate timeout for the final block, to give devices time to finally verify the OTA
+FINAL_BLOCK_TIMEOUT = 60
 
 
 def _image_block_size_for_manufacturer(
@@ -200,7 +204,10 @@ class OTAManager:
                 tsn=hdr.tsn,
             )
 
-            self._stall_timer.reschedule(MAX_TIME_WITHOUT_PROGRESS)
+            if command.file_offset + len(block) < len(self._image_data):
+                self._stall_timer.reschedule(MAX_TIME_WITHOUT_PROGRESS)
+            else:
+                self._stall_timer.reschedule(FINAL_BLOCK_TIMEOUT)
 
             # Image block requests can sometimes succeed after the device aborts the
             # update. We should not allow the progress callback to be called.
@@ -261,7 +268,10 @@ class OTAManager:
                         image_data=block,
                     )
 
-                self._stall_timer.reschedule(MAX_TIME_WITHOUT_PROGRESS)
+                if command.file_offset + len(block) < len(self._image_data):
+                    self._stall_timer.reschedule(MAX_TIME_WITHOUT_PROGRESS)
+                else:
+                    self._stall_timer.reschedule(FINAL_BLOCK_TIMEOUT)
 
                 if (
                     self.progress_callback is not None
