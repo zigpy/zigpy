@@ -171,6 +171,12 @@ class App(BaseApp):
         else:
             return 10
 
+    async def _subscribe_to_multicast_group(self, group_id: t.GroupId) -> None:
+        pass
+
+    async def _unsubscribe_from_multicast_group(self, group_id: t.GroupId) -> None:
+        pass
+
 
 def recursive_dict_merge(
     obj: dict[str, typing.Any], updates: dict[str, typing.Any]

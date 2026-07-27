@@ -2044,3 +2044,20 @@ async def test_device_resolver_new_kwarg():
     )
     assert app_default._device_resolver is None
     assert app_default._uninitialized_packet_handler is None
+
+
+async def test_coordinator_group_subscribe_unsubscribe(
+    app: zigpy.application.ControllerApplication,
+) -> None:
+    """Test that the coordinator can subscribe and unsubscribe from group messages."""
+    await app.startup()
+
+    # Subscribe to a group
+    with patch.object(app, "_subscribe_to_multicast_group") as mock_subscribe:
+        await app.subscribe_to_multicast_group(0x1234)
+        assert mock_subscribe.mock_calls == [call(group_id=0x1234)]
+
+    # Unsubscribe from a group
+    with patch.object(app, "_unsubscribe_from_multicast_group") as mock_unsubscribe:
+        await app.unsubscribe_from_multicast_group(0x1234)
+        assert mock_unsubscribe.mock_calls == [call(group_id=0x1234)]
