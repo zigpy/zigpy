@@ -171,10 +171,14 @@ class App(BaseApp):
         else:
             return 10
 
-    async def _subscribe_to_multicast_group(self, group_id: t.Group) -> None:
+    async def _subscribe_to_multicast_group(
+        self, group_id: t.Group, endpoint_id: int
+    ) -> None:
         pass
 
-    async def _unsubscribe_from_multicast_group(self, group_id: t.Group) -> None:
+    async def _unsubscribe_from_multicast_group(
+        self, group_id: t.Group, endpoint_id: int
+    ) -> None:
         pass
 
 

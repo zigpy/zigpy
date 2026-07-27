@@ -1668,7 +1668,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     async def _packet_capture_change_channel(self, channel: int) -> None:
         """Change the channel of an active packet capture, internal."""
 
-    async def subscribe_to_multicast_group(self, group_id: t.Group) -> None:
+    async def subscribe_to_multicast_group(
+        self, group_id: t.Group, endpoint_id: int = 1
+    ) -> None:
         """Ask the coordinator firmware to subscribe to a group, if needed."""
         await self._subscribe_to_multicast_group(group_id=group_id)
 
@@ -1676,7 +1678,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     async def _subscribe_to_multicast_group(self, group_id: t.Group) -> None:
         """Ask the coordinator firmware to subscribe to a group, if needed."""
 
-    async def unsubscribe_from_multicast_group(self, group_id: t.Group) -> None:
+    async def unsubscribe_from_multicast_group(
+        self, group_id: t.Group, endpoint_id: int = 1
+    ) -> None:
         """Ask the coordinator firmware to unsubscribe from a group, if needed."""
         await self._unsubscribe_from_multicast_group(group_id=group_id)
 
