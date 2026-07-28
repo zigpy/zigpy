@@ -12,13 +12,7 @@ from zigpy import device, types, zcl
 import zigpy.endpoint
 from zigpy.ota import OTA, OtaImagesResult
 from zigpy.zcl import OtaImageAvailableEvent, OtaQueryCacheUpdatedEvent, foundation
-from zigpy.zcl.clusters.general import (
-    Basic,
-    KeepAlive,
-    Ota,
-    Time,
-    ZigbeeDirectConfiguration,
-)
+from zigpy.zcl.clusters.general import Basic, KeepAlive, Ota, Time
 import zigpy.zcl.clusters.security as sec
 from zigpy.zdo import types as zdo_t
 
@@ -174,29 +168,6 @@ async def test_keepalive_cluster() -> None:
             value=300,
         ),
     )
-
-
-def test_zigbee_direct_configuration_cluster() -> None:
-    configure_interface = (
-        ZigbeeDirectConfiguration.ServerCommandDefs.configure_interface.schema(
-            interface_state=ZigbeeDirectConfiguration.InterfaceState.Enabled
-        )
-    )
-    assert configure_interface.serialize() == b"\x01"
-
-    configure_timeout = ZigbeeDirectConfiguration.ServerCommandDefs.configure_anonymous_join_timeout.schema(
-        anonymous_join_timeout=3600
-    )
-    assert configure_timeout.serialize() == b"\x10\x0e\x00"
-
-    rsp, rest = (
-        ZigbeeDirectConfiguration.ClientCommandDefs.configure_interface_rsp.schema.deserialize(
-            b"\x00\x01"
-        )
-    )
-    assert not rest
-    assert rsp.status == foundation.Status.SUCCESS
-    assert rsp.interface_state == ZigbeeDirectConfiguration.InterfaceState.Enabled
 
 
 def _make_patched_datetime(fake_now):
