@@ -2453,3 +2453,58 @@ class KeepAlive(Cluster):
         # Spec default (0x012C). Represents the jitter (in _seconds_) that a Zigbee 4.0
         # device will add to the time base when checking if the trust center is alive.
         return t.uint16_t(300)
+
+
+class ZigbeeDirectInterfaceState(t.bitmap8):
+    """Zigbee Direct interface state bitmap."""
+
+    Enabled = 0b00000001
+
+
+class ZigbeeDirectConfiguration(Cluster):
+    """Zigbee Direct Configuration cluster definition.
+
+    Configures Zigbee Direct on a Zigbee Direct Device (ZDD). Commands are
+    only accepted via unicast and, in a centralized security network, all
+    interactions with this cluster require APS encryption with the Trust
+    Center link key.
+    """
+
+    InterfaceState: Final = ZigbeeDirectInterfaceState
+
+    cluster_id: Final[t.uint16_t] = 0x003D
+    ep_attribute: Final = "zigbee_direct_configuration"
+
+    class AttributeDefs(BaseAttributeDefs):
+        """Zigbee Direct Configuration cluster attributes."""
+
+        interface_state: Final = ZCLAttributeDef(
+            id=0x0000, type=ZigbeeDirectInterfaceState, access="r", mandatory=True
+        )
+        # Timeout in seconds (0x000000-0x100000, or 0xFFFFFF for no timeout)
+        # during which a ZVD can establish a provisioning session using the
+        # Anonymous Well-Known Secret while the network is open
+        anonymous_join_timeout: Final = ZCLAttributeDef(
+            id=0x0001, type=t.uint24_t, access="r", mandatory=True
+        )
+
+    class ServerCommandDefs(BaseCommandDefs):
+        """Zigbee Direct Configuration cluster server commands."""
+
+        configure_interface: Final = ZCLCommandDef(
+            id=0x00, schema={"interface_state": ZigbeeDirectInterfaceState}
+        )
+        configure_anonymous_join_timeout: Final = ZCLCommandDef(
+            id=0x01, schema={"anonymous_join_timeout": t.uint24_t}
+        )
+
+    class ClientCommandDefs(BaseCommandDefs):
+        """Zigbee Direct Configuration cluster client commands."""
+
+        configure_interface_rsp: Final = ZCLCommandDef(
+            id=0x00,
+            schema={
+                "status": foundation.Status,
+                "interface_state": ZigbeeDirectInterfaceState,
+            },
+        )
