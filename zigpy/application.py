@@ -1668,6 +1668,34 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     async def _packet_capture_change_channel(self, channel: int) -> None:
         """Change the channel of an active packet capture, internal."""
 
+    async def subscribe_to_multicast_group(
+        self, group_id: t.Group, endpoint_id: int = 1
+    ) -> None:
+        """Ask the coordinator firmware to subscribe to a group, if needed."""
+        await self._subscribe_to_multicast_group(
+            group_id=group_id, endpoint_id=endpoint_id
+        )
+
+    # @abc.abstractmethod
+    async def _subscribe_to_multicast_group(
+        self, group_id: t.Group, endpoint_id: int
+    ) -> None:
+        """Ask the coordinator firmware to subscribe to a group, if needed."""
+
+    async def unsubscribe_from_multicast_group(
+        self, group_id: t.Group, endpoint_id: int = 1
+    ) -> None:
+        """Ask the coordinator firmware to unsubscribe from a group, if needed."""
+        await self._unsubscribe_from_multicast_group(
+            group_id=group_id, endpoint_id=endpoint_id
+        )
+
+    # @abc.abstractmethod
+    async def _unsubscribe_from_multicast_group(
+        self, group_id: t.Group, endpoint_id: int
+    ) -> None:
+        """Ask the coordinator firmware to unsubscribe from a group, if needed."""
+
     async def permit(self, time_s: int = 60, node: t.EUI64 | str | None = None) -> None:
         """Permit joining on a specific node or all router nodes."""
         assert 0 <= time_s <= 254
