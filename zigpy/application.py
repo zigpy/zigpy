@@ -1134,6 +1134,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if force_route_discovery:
             tx_options |= t.TransmitOptions.FORCE_ROUTE_DISCOVERY
 
+        if cluster == zigpy.zcl.clusters.general.ZigbeeDirectConfiguration.cluster_id:
+            # All interactions with the Zigbee Direct Configuration cluster require
+            # APS encryption (with the Trust Center link key, in a centralized
+            # security network)
+            tx_options |= t.TransmitOptions.APS_Encryption
+
         await self.send_packet(
             t.ZigbeePacket(
                 src=src,

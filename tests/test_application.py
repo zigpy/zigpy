@@ -946,6 +946,31 @@ async def test_force_route_discovery(app, device, packet) -> None:
     ]
 
 
+async def test_request_zigbee_direct_aps_encryption(app, device, packet) -> None:
+    await app.request(
+        device=device,
+        profile=0x1234,
+        cluster=clusters.general.ZigbeeDirectConfiguration.cluster_id,
+        src_ep=0x9A,
+        dst_ep=0xBC,
+        sequence=0xDE,
+        data=b"test data",
+        expect_reply=True,
+        use_ieee=False,
+        extended_timeout=False,
+    )
+
+    assert app.send_packet.mock_calls == [
+        call(
+            packet.replace(
+                cluster_id=clusters.general.ZigbeeDirectConfiguration.cluster_id,
+                tx_options=packet.tx_options | t.TransmitOptions.APS_Encryption,
+                priority=t.PacketPriority.NORMAL,
+            )
+        ),
+    ]
+
+
 def test_build_source_route_has_relays(app):
     device = MagicMock()
     device.relays = [0x1234, 0x5678]
