@@ -17,7 +17,6 @@ import warnings
 _MOVED_NAMES: dict[str, tuple[str, str]] = {
     "CustomDeviceV2": ("zhaquirks.device", "CustomZigpyDevice"),
     "QuirkBuilder": ("zhaquirks.builder", "QuirkBuilder"),
-    "UNBUILT_QUIRK_BUILDERS": ("zhaquirks.builder", "UNBUILT_QUIRK_BUILDERS"),
     "ReportingConfig": ("zhaquirks.builder.metadata", "ReportingConfig"),
     "EntityMetadata": ("zhaquirks.builder.metadata", "EntityMetadata"),
     "ZCLEnumMetadata": ("zhaquirks.builder.metadata", "ZCLEnumMetadata"),
