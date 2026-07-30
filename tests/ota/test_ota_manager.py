@@ -158,7 +158,7 @@ async def test_ota_manger_stall(image_with_metadata: OtaImageWithMetadata) -> No
                 # Do nothing, just let it time out
                 pass
 
-    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+    dev.application._send_packet = AsyncMock(side_effect=send_packet)
 
     status = await dev.update_firmware(img)
     assert status == foundation.Status.TIMEOUT
@@ -203,7 +203,7 @@ async def test_ota_manger_device_reject(
                     )
                 )
 
-    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+    dev.application._send_packet = AsyncMock(side_effect=send_packet)
 
     status = await dev.update_firmware(img)
     assert status == foundation.Status.NO_IMAGE_AVAILABLE
@@ -371,7 +371,7 @@ async def test_ota_manager():
                 )
             )
 
-    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+    dev.application._send_packet = AsyncMock(side_effect=send_packet)
     progress_callback = MagicMock()
     result = await update_firmware(dev, FW_IMAGE, progress_callback)
 
@@ -572,7 +572,7 @@ async def test_ota_manager_image_page():
                 )
             )
 
-    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+    dev.application._send_packet = AsyncMock(side_effect=send_packet)
     progress_callback = MagicMock()
     result = await update_firmware(dev, FW_IMAGE, progress_callback)
 
@@ -650,7 +650,7 @@ async def test_ota_manager_image_page_invalid_size():
                 )
             )
 
-    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+    dev.application._send_packet = AsyncMock(side_effect=send_packet)
     progress_callback = MagicMock()
     result = await update_firmware(dev, FW_IMAGE, progress_callback)
 
@@ -732,7 +732,7 @@ async def test_ota_manager_image_page_failure():
 
             start_failing = True
 
-    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+    dev.application._send_packet = AsyncMock(side_effect=send_packet)
     progress_callback = MagicMock()
     result = await update_firmware(dev, FW_IMAGE, progress_callback)
 
@@ -838,7 +838,7 @@ async def test_ota_manager_final_block_timeout(use_pages: bool) -> None:
 
             request_block(next_offset)
 
-    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+    dev.application._send_packet = AsyncMock(side_effect=send_packet)
 
     result = await update_firmware(dev, FW_IMAGE)
 
@@ -895,7 +895,7 @@ async def test_ota_manager_deferred_download():
                 )
             )
 
-    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+    dev.application._send_packet = AsyncMock(side_effect=send_packet)
 
     # Mock fetch() to return the complete image
     mock_fetch = AsyncMock(return_value=FW_IMAGE)

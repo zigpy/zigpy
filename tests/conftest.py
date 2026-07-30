@@ -86,10 +86,6 @@ def raise_on_bad_log_formatting():
 
 
 class BaseApp(zigpy.application.ControllerApplication):
-    async def send_packet(self, packet):
-        async with self._limit_concurrency(priority=packet.priority):
-            return await self._send_packet(packet)
-
     async def _send_packet(self, packet):
         await asyncio.sleep(0)
 
@@ -219,7 +215,9 @@ def make_app(
     app.device_initialized = Mock(wraps=app.device_initialized)
     app.listener_event = Mock(wraps=app.listener_event)
     app.get_sequence = MagicMock(wraps=app.get_sequence, return_value=123)
+    # `send_packet` is the public submission API, `_send_packet` is a single attempt
     app.send_packet = AsyncMock(wraps=app.send_packet)
+    app._send_packet = AsyncMock(wraps=app._send_packet)
     app.write_network_info = AsyncMock(wraps=app.write_network_info)
 
     return app

@@ -35,6 +35,7 @@ from zigpy.exceptions import DeliveryError
 import zigpy.listeners
 from zigpy.ota.manager import update_firmware
 from zigpy.profiles import zha, zll
+import zigpy.scheduler
 import zigpy.types as t
 import zigpy.util
 from zigpy.zcl import Cluster, ClusterType, OtaQueryCacheClearedEvent, foundation
@@ -109,7 +110,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._manufacturer: str | None = None
         self._model: str | None = None
         self.node_desc: zdo_t.NodeDescriptor | None = None
-        self._requests: dict[ResponseKey, asyncio.Future] = {}
+        self._requests: dict[
+            ResponseKey, asyncio.Future | zigpy.scheduler.SendHandle
+        ] = {}
         self._relays: t.Relays | None = None
         self._skip_configuration: bool = False
         self._send_sequence: int = 0
@@ -666,6 +669,44 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         else:
             rsp_key = None
 
+        if self._application._uses_scheduler:
+            packet = self._application.build_packet(
+                device=self,
+                profile=profile,
+                cluster=cluster,
+                src_ep=src_ep,
+                dst_ep=dst_ep,
+                sequence=sequence,
+                data=data,
+                expect_reply=expect_reply,
+                use_ieee=use_ieee,
+                extended_timeout=extended_timeout,
+                ask_for_ack=ask_for_ack,
+                priority=priority,
+                **kwargs,
+            )
+
+            handle = self._application._scheduler.submit(
+                packet,
+                expect_reply=expect_reply,
+                retries=retries,
+                retry_delay=retry_delay,
+                reply_timeout=timeout,
+            )
+
+            if not expect_reply:
+                await handle
+                return None
+
+            assert rsp_key is not None
+            self._requests[rsp_key] = handle
+
+            try:
+                return await handle
+            finally:
+                handle.cancel()
+                del self._requests[rsp_key]
+
         max_attempts = retries + 1
 
         # Use a lambda so we don't leave the coroutine unawaited in case of an exception
@@ -888,8 +929,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self, rsp_key: ResponseKey, cmd: typing.Any | None, error: Exception | None
     ) -> bool:
         """Handle response matching for pending requests, returns True if packet was matched."""
-        future = self._requests.get(rsp_key)
-        if future is None:
+        request = self._requests.get(rsp_key)
+        if request is None:
             return False
 
         # Attribute reports often collide with command responses, they should never be
@@ -902,11 +943,19 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         ):
             return False
 
+        if isinstance(request, zigpy.scheduler.SendHandle):
+            if not request.resolve_reply(error if error is not None else cmd):
+                self.debug(
+                    "Reply for %s ignored -- probably duplicate response", rsp_key
+                )
+
+            return True
+
         try:
             if error is not None:
-                future.set_exception(error)
+                request.set_exception(error)
             else:
-                future.set_result(cmd)
+                request.set_result(cmd)
         except asyncio.InvalidStateError:
             self.debug(
                 "Invalid state on future for %s -- probably duplicate response",

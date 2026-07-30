@@ -30,6 +30,7 @@ import zigpy.group
 import zigpy.listeners
 import zigpy.ota
 import zigpy.profiles
+import zigpy.scheduler
 import zigpy.state
 import zigpy.topology
 import zigpy.types as t
@@ -88,6 +89,18 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._concurrent_requests_semaphore = RequestLimiter(
             max_concurrency=self._config[conf.CONF_MAX_CONCURRENT_REQUESTS],
             capacities=self._config[conf.CONF_EXPERIMENTAL][conf.CONF_CONCURRENCY],
+        )
+
+        # Late-bound so `_send_packet` can be patched or rebound after construction
+        self._scheduler = zigpy.scheduler.SendScheduler(
+            lambda packet: self._send_packet(packet),
+            max_in_flight=self._config[conf.CONF_MAX_CONCURRENT_REQUESTS],
+            destination_window=zigpy.device.MAX_DEVICE_CONCURRENCY,
+        )
+
+        # Only radios implementing `_send_packet` route sends through the scheduler
+        self._uses_scheduler = (
+            type(self)._send_packet is not ControllerApplication._send_packet
         )
 
         self.ota = zigpy.ota.OTA(self._config[conf.CONF_OTA], self)
@@ -578,6 +591,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     async def shutdown(self, *, db: bool = True) -> None:
         """Shutdown controller."""
+        self._scheduler.stop()
+
         if self._watchdog_task is not None:
             self._watchdog_task.cancel()
 
@@ -1060,11 +1075,27 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
             yield
 
-    @abc.abstractmethod
     async def send_packet(self, packet: t.ZigbeePacket) -> None:
         """Send a Zigbee packet using the appropriate addressing mode and provided options."""
+        if packet.priority is None:
+            packet = packet.replace(priority=self._packet_priority_var.get())
+
+        # Retries are still owned by `Device.request`. Radios that have not migrated to
+        # `_send_packet` override this method entirely and bypass the scheduler.
+        await self._scheduler.submit(packet, retries=0)
+
+    async def _send_packet(self, packet: t.ZigbeePacket) -> None:
+        """Make a single attempt to send a frame: no queueing, retries, or pacing."""
 
         raise NotImplementedError  # pragma: no cover
+
+    def packet_sent(self, packet: t.ZigbeePacket) -> None:
+        """Radio callback: the mesh accepted the frame, ahead of its delivery verdict.
+
+        Optional. A radio that cannot distinguish acceptance from delivery never calls
+        this; the sent stage then resolves together with the confirmation.
+        """
+        self._scheduler.resolve_sent(packet)
 
     def build_source_route_to(self, dest: zigpy.device.Device) -> list[t.NWK] | None:
         """Compute a source route to the destination device."""
@@ -1075,7 +1106,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         # TODO: utilize topology scanner information
         return dest.relays[::-1]
 
-    async def request(
+    def build_packet(
         self,
         device: zigpy.device.Device,
         profile: t.uint16_t,
@@ -1089,22 +1120,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         use_ieee: bool = False,
         extended_timeout: bool = False,
         ask_for_ack: bool | None = None,
-        priority: int = t.PacketPriority.NORMAL,
+        priority: int | None = None,
         force_route_discovery: bool = False,
-    ) -> tuple[zigpy.zcl.foundation.Status, str]:
-        """Submit and send data out as an unicast transmission.
-        :param device: destination device
-        :param profile: Zigbee Profile ID to use for outgoing message
-        :param cluster: cluster id where the message is being sent
-        :param src_ep: source endpoint id
-        :param dst_ep: destination endpoint id
-        :param sequence: transaction sequence number of the message
-        :param data: Zigbee message payload
-        :param expect_reply: True if this is essentially a request
-        :param use_ieee: use EUI64 for destination addressing
-        :param extended_timeout: instruct the radio to use slower APS retries
-        :param force_route_discovery: force route re-discovery for this transmission
-        """
+    ) -> t.ZigbeePacket:
+        """Build an outgoing unicast packet destined for a device."""
+        if priority is None:
+            priority = self._packet_priority_var.get()
 
         if use_ieee:
             src = t.AddrModeAddress(
@@ -1140,20 +1161,67 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             # security network)
             tx_options |= t.TransmitOptions.APS_Encryption
 
+        return t.ZigbeePacket(
+            src=src,
+            src_ep=src_ep,
+            dst=dst,
+            dst_ep=dst_ep,
+            tsn=sequence,
+            profile_id=profile,
+            cluster_id=cluster,
+            data=t.SerializableBytes(data),
+            extended_timeout=extended_timeout,
+            source_route=source_route,
+            tx_options=tx_options,
+            priority=priority,
+        )
+
+    async def request(
+        self,
+        device: zigpy.device.Device,
+        profile: t.uint16_t,
+        cluster: t.uint16_t,
+        src_ep: t.uint8_t,
+        dst_ep: t.uint8_t,
+        sequence: t.uint8_t,
+        data: bytes,
+        *,
+        expect_reply: bool = True,
+        use_ieee: bool = False,
+        extended_timeout: bool = False,
+        ask_for_ack: bool | None = None,
+        priority: int = t.PacketPriority.NORMAL,
+        force_route_discovery: bool = False,
+    ) -> tuple[zigpy.zcl.foundation.Status, str]:
+        """Submit and send data out as an unicast transmission.
+        :param device: destination device
+        :param profile: Zigbee Profile ID to use for outgoing message
+        :param cluster: cluster id where the message is being sent
+        :param src_ep: source endpoint id
+        :param dst_ep: destination endpoint id
+        :param sequence: transaction sequence number of the message
+        :param data: Zigbee message payload
+        :param expect_reply: True if this is essentially a request
+        :param use_ieee: use EUI64 for destination addressing
+        :param extended_timeout: instruct the radio to use slower APS retries
+        :param force_route_discovery: force route re-discovery for this transmission
+        """
+
         await self.send_packet(
-            t.ZigbeePacket(
-                src=src,
+            self.build_packet(
+                device=device,
+                profile=profile,
+                cluster=cluster,
                 src_ep=src_ep,
-                dst=dst,
                 dst_ep=dst_ep,
-                tsn=sequence,
-                profile_id=profile,
-                cluster_id=cluster,
-                data=t.SerializableBytes(data),
+                sequence=sequence,
+                data=data,
+                expect_reply=expect_reply,
+                use_ieee=use_ieee,
                 extended_timeout=extended_timeout,
-                source_route=source_route,
-                tx_options=tx_options,
+                ask_for_ack=ask_for_ack,
                 priority=priority,
+                force_route_discovery=force_route_discovery,
             )
         )
 
@@ -1306,6 +1374,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         LOGGER.debug("Received a packet: %r", packet)
         assert packet.src is not None
         assert packet.dst is not None
+
+        # Any incoming packet is a liveness indicator for its source
+        self._scheduler.destination_seen(packet.src)
 
         # Peek into ZDO packets to handle possible ZDO notifications
         if zigpy.zdo.ZDO_ENDPOINT in (packet.src_ep, packet.dst_ep):
