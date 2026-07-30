@@ -198,6 +198,35 @@ async def test_supersession(make_scheduler):
     assert [p.data.serialize() for p in radio.sent] == [b"data", b"third"]
 
 
+async def test_supersession_keeps_queue_position(make_scheduler):
+    """Test that a trickle of superseding sends cannot starve the coalesced entry."""
+    sched, radio = make_scheduler(max_in_flight=1)
+    radio.effects = [radio.hold]
+
+    blocker = sched.submit(make_packet(nwk=0x0001))
+    await asyncio.sleep(0.01)
+
+    # The coalesced send is submitted first, then unrelated contention piles up
+    first = sched.submit(make_packet(nwk=0x000A, data=b"v1", key=("k",)))
+    others = [sched.submit(make_packet(nwk=i, tsn=i)) for i in range(0x000B, 0x000F)]
+
+    # A steady trickle of supersessions must not push it back in the queue
+    for i in range(2, 5):
+        newest = sched.submit(make_packet(nwk=0x000A, data=b"v%d" % i, key=("k",)))
+
+    radio.gate.set()
+    await blocker
+    await asyncio.gather(newest, *others)
+
+    with pytest.raises(SupersededError):
+        await first
+
+    # The coalesced send dispatched at the *first* submission's queue position,
+    # ahead of the contention submitted after it, carrying the newest payload
+    assert radio.sent[1].data.serialize() == b"v4"
+    assert [p.dst.address for p in radio.sent[2:]] == [0x000B, 0x000C, 0x000D, 0x000E]
+
+
 async def test_supersession_does_not_replace_in_flight(make_scheduler):
     """Test that an in-flight send is never superseded."""
     sched, radio = make_scheduler()
