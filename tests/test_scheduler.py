@@ -376,6 +376,54 @@ async def test_transient_destination_scope(make_scheduler):
     await asyncio.wait_for(blocked, 1)
     assert len(radio.sent) == 3
 
+    # Lane-scoped backpressure says nothing about radio capacity
+    assert sched._window == sched.max_in_flight
+
+
+async def test_broadcast_domain_rate_limit(make_scheduler):
+    """Test all broadcast traffic sharing one rate-limited scheduling domain."""
+    sched, radio = make_scheduler()
+    loop = asyncio.get_running_loop()
+
+    broadcast = make_packet().replace(
+        dst=t.AddrModeAddress(
+            addr_mode=t.AddrMode.Broadcast,
+            address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
+        )
+    )
+    groupcast = make_packet().replace(
+        dst=t.AddrModeAddress(addr_mode=t.AddrMode.Group, address=t.Group(0x0002))
+    )
+
+    # The firmware's broadcast budget rejects with an exact retry hint
+    radio.effects = [
+        TransientSendError(
+            "rate limited", scope=FailureScope.DESTINATION, retry_in=0.1
+        ),
+        None,
+        None,
+        None,
+    ]
+
+    start = loop.time()
+    h_broadcast = sched.submit(broadcast)
+    await asyncio.sleep(0.01)
+
+    # A groupcast contends for the same budget: it defers instead of probing
+    h_group = sched.submit(groupcast)
+    await asyncio.sleep(0.01)
+    assert h_group.park_reason is scheduler.ParkReason.DESTINATION_BLOCKED
+
+    # Unicasts are unaffected by the broadcast domain block
+    await sched.submit(make_packet(nwk=0x0001))
+    assert len(radio.sent) == 2
+
+    await asyncio.gather(h_broadcast, h_group)
+
+    # The rejected broadcast retried no earlier than the firmware's promise
+    assert radio.times[2] - start >= 0.09
+    assert sched._window == sched.max_in_flight
+
 
 async def test_awaiting_wake(make_scheduler):
     """Test frames parking until the sleepy destination is heard from."""

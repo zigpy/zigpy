@@ -49,12 +49,26 @@ DestKey: typing.TypeAlias = tuple[t.AddrMode, typing.Any]
 _UNSET = object()
 
 
+# The broadcast domain: a single scheduling lane for every broadcast and groupcast.
+# Each Zigbee stack keeps every broadcast in a delivery table for ~9s to suppress
+# relay loops, a hard firmware-wide limit shared by all broadcast traffic, so the
+# whole class is paced and blocked together.
+BROADCAST_DEST_KEY: DestKey = (t.AddrMode.Broadcast, None)
+
+
 def packet_dest_key(packet: t.ZigbeePacket) -> DestKey:
     assert packet.dst is not None
+
+    if packet.dst.addr_mode in (t.AddrMode.Broadcast, t.AddrMode.Group):
+        return BROADCAST_DEST_KEY
+
     return (packet.dst.addr_mode, packet.dst.address)
 
 
 def format_dest_key(key: DestKey) -> str:
+    if key == BROADCAST_DEST_KEY:
+        return "Broadcast"
+
     return f"{key[0].name}:{key[1]!r}"
 
 
@@ -719,31 +733,45 @@ class SendScheduler:
             # The frame never left the radio: no attempt is consumed
             transient = True
             now = loop.time()
-            self._window = max(1, len(self._in_flight) - 1)
 
-            LOGGER.debug(
-                "Radio backpressure (%r), window clamped to %d: %r",
-                exc,
-                self._window,
-                self,
-            )
-
-            if exc.scope is FailureScope.DESTINATION:
+            if (
+                exc.scope is FailureScope.DESTINATION
+                or entry.dest_key == BROADCAST_DEST_KEY
+            ):
+                # Backpressure limited to this entry's lane: a destination's own
+                # congestion, or the firmware-wide broadcast budget. Rejections here
+                # say nothing about unicast radio capacity, so the window is left
+                # alone. Broadcast-domain rejections block the whole class even when
+                # the radio can only report a generic global status.
                 dest = self._destination(entry.dest_key)
                 dest.blocked_until = now + (
                     exc.retry_in
                     if exc.retry_in is not None
                     else DEFAULT_DESTINATION_BACKOFF
                 )
+                LOGGER.debug(
+                    "Backpressure on %s (%r), blocked for %.2fs: %r",
+                    format_dest_key(entry.dest_key),
+                    exc,
+                    dest.blocked_until - now,
+                    self,
+                )
                 self._park_deferred(entry, ParkReason.DESTINATION_BLOCKED)
                 self._timer.reschedule(dest.blocked_until - now)
             else:
+                self._window = max(1, len(self._in_flight) - 1)
                 self._blocked_until = now + (
                     exc.retry_in if exc.retry_in is not None else DEFAULT_GLOBAL_BACKOFF
                 )
                 # Slot/buffer exhaustion also clears as soon as an in-flight frame
                 # completes; channel congestion only clears on the timer
                 self._unblock_on_completion = isinstance(exc, RadioBusyError)
+                LOGGER.debug(
+                    "Radio backpressure (%r), window clamped to %d: %r",
+                    exc,
+                    self._window,
+                    self,
+                )
                 self._push_ready(entry)
                 self._timer.reschedule(self._blocked_until - now)
         except TransactionExpiredError:
