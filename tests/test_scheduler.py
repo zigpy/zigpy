@@ -7,6 +7,7 @@ from zigpy.exceptions import (
     DeliveryError,
     FailureScope,
     NetworkBusyError,
+    PermanentSendError,
     RadioBusyError,
     SendCancelledError,
     SupersededError,
@@ -459,7 +460,7 @@ async def test_awaiting_wake(make_scheduler):
     sched, radio = make_scheduler()
     radio.effects = [TransactionExpiredError("no poll"), None]
 
-    handle = sched.submit(make_packet(nwk=0xABCD))
+    handle = sched.submit(make_packet(nwk=0xABCD), park_on_wake=True)
     await asyncio.sleep(0.01)
 
     assert handle.park_reason is scheduler.ParkReason.AWAITING_WAKE
@@ -476,6 +477,180 @@ async def test_awaiting_wake(make_scheduler):
     )
     await asyncio.wait_for(handle, 1)
     assert len(radio.sent) == 2
+
+
+async def test_transaction_expired_consumes_attempts_by_default(make_scheduler):
+    """Test a non-polling destination failing the send unless parking is opted into."""
+    sched, radio = make_scheduler(retry_delay=0.01)
+    radio.effects = [TransactionExpiredError("no poll")] * 5
+
+    handle = sched.submit(make_packet(nwk=0xABCD), retries=1)
+
+    with pytest.raises(TransactionExpiredError):
+        await asyncio.wait_for(handle, 1)
+
+    assert len(radio.sent) == 2
+
+
+async def test_parked_send_expires(make_scheduler):
+    """Test an awaiting-wake send expiring at its deadline without a liveness signal."""
+    sched, radio = make_scheduler()
+    loop = asyncio.get_running_loop()
+    radio.effects = [TransactionExpiredError("no poll")]
+
+    handle = sched.submit(
+        make_packet(nwk=0xABCD), park_on_wake=True, expires_at=loop.time() + 0.1
+    )
+    await asyncio.sleep(0.01)
+    assert handle.park_reason is scheduler.ParkReason.AWAITING_WAKE
+
+    with pytest.raises(SendCancelledError):
+        await asyncio.wait_for(handle, 1)
+
+    assert len(radio.sent) == 1
+
+
+async def test_expired_at_submission(make_scheduler):
+    """Test a send already expired at submission failing without a radio attempt."""
+    sched, radio = make_scheduler()
+    loop = asyncio.get_running_loop()
+
+    handle = sched.submit(make_packet(), expires_at=loop.time() - 1)
+
+    with pytest.raises(SendCancelledError):
+        await handle
+
+    assert not radio.sent
+
+
+async def test_coalesced_send_survives_global_backpressure(make_scheduler):
+    """Test global backpressure re-registering the re-queued send's coalesce key."""
+    sched, radio = make_scheduler()
+    radio.effects = [RadioBusyError("full", retry_in=0.01), None]
+
+    handle = sched.submit(make_packet(key=("k",)), retries=0)
+    await asyncio.wait_for(handle, 1)
+
+    assert len(radio.sent) == 2
+    assert not sched._task.done()
+
+
+async def test_late_reply_does_not_resurrect_send(make_scheduler):
+    """Test a reply racing an in-flight retry attempt not reviving the send."""
+    sched, radio = make_scheduler()
+    radio.effects = [None, radio.hold]
+
+    handle = sched.submit(
+        make_packet(),
+        expect_reply=True,
+        retries=3,
+        retry_delay=0.01,
+        reply_timeout=0.05,
+    )
+
+    # The first attempt confirms but gets no reply; the retry attempt is held in
+    # flight when the original reply finally lands
+    while len(radio.sent) < 2:
+        await asyncio.sleep(0.01)
+
+    assert handle.resolve_reply("late reply")
+    radio.gate.set()
+
+    assert (await handle) == "late reply"
+
+    # The completed retry attempt must not resurrect the resolved send
+    await asyncio.sleep(0.3)
+    assert len(radio.sent) == 2
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [PermanentSendError("frame too long"), SendCancelledError("cancelled by radio")],
+)
+async def test_permanent_failures_are_not_retried(make_scheduler, exc):
+    """Test permanent and cancellation verdicts failing fast."""
+    sched, radio = make_scheduler(retry_delay=0.01)
+    radio.effects = [exc] * 5
+
+    handle = sched.submit(make_packet(), retries=3)
+
+    with pytest.raises(type(exc)):
+        await asyncio.wait_for(handle, 1)
+
+    assert len(radio.sent) == 1
+
+
+async def test_timeout_error_is_retried(make_scheduler):
+    """Test a radio-level timeout consuming an attempt instead of failing terminally."""
+    sched, radio = make_scheduler(retry_delay=0.01)
+    radio.effects = [TimeoutError("radio hiccup"), None]
+
+    handle = sched.submit(make_packet(), retries=1)
+    await asyncio.wait_for(handle, 1)
+
+    assert len(radio.sent) == 2
+
+
+async def test_reply_resolution_releases_deferred_send(make_scheduler):
+    """Test a reply freeing the destination window waking deferred sends promptly."""
+    sched, radio = make_scheduler(destination_window=1)
+    loop = asyncio.get_running_loop()
+
+    first = sched.submit(make_packet(tsn=1), expect_reply=True, reply_timeout=5)
+    await asyncio.sleep(0.01)
+    assert first.state is scheduler.SendState.AWAITING_REPLY
+
+    deferred = sched.submit(make_packet(tsn=2))
+    await asyncio.sleep(0.01)
+    assert deferred.park_reason is scheduler.ParkReason.DESTINATION_BLOCKED
+
+    # Resolving the interaction frees the slot and must wake the dispatch loop,
+    # not wait for the stale 5s reply deadline
+    start = loop.time()
+    first.resolve_reply("done")
+    await asyncio.wait_for(deferred, 1)
+    assert loop.time() - start < 1
+
+
+async def test_cancel_clears_coalesce_registration(make_scheduler):
+    """Test a cancelled keyed send not superseding a later same-key send."""
+    sched, radio = make_scheduler(max_in_flight=1)
+    radio.effects = [radio.hold]
+
+    blocker = sched.submit(make_packet(nwk=0x0001))
+    await asyncio.sleep(0.01)
+
+    h1 = sched.submit(make_packet(data=b"cancelled", key=("k",)))
+    assert h1.cancel()
+
+    h2 = sched.submit(make_packet(data=b"fresh", key=("k",)))
+    radio.gate.set()
+    await blocker
+    await h2
+
+    assert radio.sent[-1].data.serialize() == b"fresh"
+
+
+async def test_supersede_while_parking_awaiting_wake(make_scheduler):
+    """Test a newer same-key send superseding an entry as it parks awaiting wake."""
+    sched, radio = make_scheduler(max_in_flight=1)
+
+    async def gated_expire(packet):
+        await radio.gate.wait()
+        raise TransactionExpiredError("no poll")
+
+    radio.effects = [gated_expire]
+
+    h1 = sched.submit(make_packet(data=b"first", key=("k",)), park_on_wake=True)
+    await asyncio.sleep(0.01)
+    h2 = sched.submit(make_packet(data=b"second", key=("k",)))
+    radio.gate.set()
+
+    with pytest.raises(SupersededError):
+        await h1
+
+    await h2
+    assert [p.data.serialize() for p in radio.sent] == [b"first", b"second"]
 
 
 @pytest.mark.parametrize("retries", [0, 2])
@@ -666,7 +841,7 @@ async def test_scheduler_repr(make_scheduler):
     sched, radio = make_scheduler(max_in_flight=1)
     radio.effects = [TransactionExpiredError("no poll"), radio.hold]
 
-    parked = sched.submit(make_packet(nwk=0x0001))
+    parked = sched.submit(make_packet(nwk=0x0001), park_on_wake=True)
     await asyncio.sleep(0.01)
     assert parked.park_reason is scheduler.ParkReason.AWAITING_WAKE
 

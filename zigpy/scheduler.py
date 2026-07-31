@@ -15,6 +15,7 @@ import zigpy.datastructures
 from zigpy.exceptions import (
     DeliveryError,
     FailureScope,
+    PermanentSendError,
     RadioBusyError,
     SendCancelledError,
     SupersededError,
@@ -106,7 +107,7 @@ class ParkReason(enum.Enum):
     RETRY_BACKOFF = "retry_backoff"
     # The destination is temporarily unable to accept frames or its window is full
     DESTINATION_BLOCKED = "destination_blocked"
-    # The sleepy destination did not poll: parked with no deadline until it is heard from
+    # The sleepy destination did not poll: parked until it is heard from (opt-in)
     AWAITING_WAKE = "awaiting_wake"
 
 
@@ -172,6 +173,9 @@ class QueuedSend:
     retry_delay: float
     reply_timeout: float
     submitted_at: float = 0.0
+    # Park until the destination is heard from when it does not poll, instead of
+    # consuming a retry attempt (opt-in: only safe for callers that bound the wait)
+    park_on_wake: bool = False
     state: SendState = SendState.QUEUED
     park_reason: ParkReason | None = None
     not_before: float = 0.0
@@ -238,7 +242,6 @@ class DestinationState:
     # Open interactions: dispatched sends up to and including their reply wait
     in_flight: int = 0
     blocked_until: float = 0.0
-    last_alive: float = 0.0
     deferred: list[QueuedSend] = dataclasses.field(default_factory=list)
 
     def is_idle(self, now: float) -> bool:
@@ -371,6 +374,7 @@ class SendScheduler:
         retry_delay: float | None = None,
         reply_timeout: float | None = None,
         expires_at: float | None = None,
+        park_on_wake: bool = False,
     ) -> SendHandle:
         """Admit a packet for sending and return a staged handle over it.
 
@@ -403,6 +407,7 @@ class SendScheduler:
             entry.expires_at = expires_at
             entry.retry_delay = retry_delay
             entry.reply_timeout = reply_timeout
+            entry.park_on_wake = park_on_wake
             old_slot.resolve(SendStage.SENT, SupersededError("Send was superseded"))
             LOGGER.debug(
                 "Superseded queued send %r to %s",
@@ -424,6 +429,7 @@ class SendScheduler:
             expires_at=expires_at,
             retry_delay=retry_delay,
             reply_timeout=reply_timeout,
+            park_on_wake=park_on_wake,
         )
 
         if key is not None:
@@ -433,10 +439,16 @@ class SendScheduler:
         # every gate is open, avoiding the dispatch loop's added latency
         now = asyncio.get_running_loop().time()
         entry.submitted_at = now
+
+        if entry.expires_at is not None and now >= entry.expires_at:
+            self._finalize(entry, SendCancelledError("Send expired before dispatch"))
+            return SendHandle(self, entry, entry.slot)
+
         dest = self._destination(entry.dest_key)
 
         if (
             not self._ready
+            and not dest.deferred
             and self._can_dispatch(now)
             and self._dest_can_dispatch(dest, now)
         ):
@@ -495,8 +507,6 @@ class SendScheduler:
             return
 
         dest = self._destinations[key]
-        dest.last_alive = asyncio.get_running_loop().time()
-
         woken = [e for e in dest.deferred if e.park_reason is ParkReason.AWAITING_WAKE]
 
         if not woken:
@@ -529,6 +539,8 @@ class SendScheduler:
         dest = self._destinations[entry.dest_key]
         dest.in_flight -= 1
         self._maybe_evict(entry.dest_key, asyncio.get_running_loop().time())
+        # A freed interaction slot may unblock sends deferred on the window
+        self._wake.set()
 
     def _finalize(
         self,
@@ -538,6 +550,12 @@ class SendScheduler:
         stage: SendStage = SendStage.CONFIRMED,
     ) -> None:
         self._release_dest_slot(entry)
+
+        if entry.dest_key in self._destinations:
+            dest = self._destinations[entry.dest_key]
+            if entry in dest.deferred:
+                dest.deferred.remove(entry)
+
         entry.state = SendState.DONE
         entry.park_reason = None
         entry.slot.resolve(stage, result)
@@ -641,6 +659,7 @@ class SendScheduler:
             self._wake.clear()
 
             now = asyncio.get_running_loop().time()
+            self._expire_entries(now)
             self._release_reply_timeouts(now)
             self._release_parked(now)
             self._release_destinations(now)
@@ -704,7 +723,7 @@ class SendScheduler:
 
         # An in-flight send can no longer be superseded
         key = entry.coalesce_key
-        if key is not None and self._coalesce[key] is entry:
+        if key is not None and key in self._coalesce and self._coalesce[key] is entry:
             del self._coalesce[key]
 
         dest.in_flight += 1
@@ -734,7 +753,10 @@ class SendScheduler:
             transient = True
             now = loop.time()
 
-            if (
+            if entry.state is SendState.DONE:
+                # Resolved while in flight (late reply or cancellation)
+                pass
+            elif (
                 exc.scope is FailureScope.DESTINATION
                 or entry.dest_key == BROADCAST_DEST_KEY
             ):
@@ -772,19 +794,33 @@ class SendScheduler:
                     self._window,
                     self,
                 )
-                self._push_ready(entry)
+                if self._restore_coalesce(entry):
+                    self._push_ready(entry)
+
                 self._timer.reschedule(self._blocked_until - now)
-        except TransactionExpiredError:
-            # The sleepy destination did not poll: park until it is heard from
-            LOGGER.debug(
-                "Destination %s did not poll, parking send until it wakes",
-                format_dest_key(entry.dest_key),
-            )
+        except (PermanentSendError, SendCancelledError) as exc:
+            # Retrying cannot help: fail immediately
             self._grow_window()
-            self._park_deferred(entry, ParkReason.AWAITING_WAKE)
-        except DeliveryError as exc:
+            self._finalize(entry, exc)
+        except TransactionExpiredError as exc:
             self._grow_window()
-            self._retry_or_fail(entry, exc, loop.time())
+
+            if entry.state is SendState.DONE:
+                pass
+            elif entry.park_on_wake:
+                # The sleepy destination did not poll: park until it is heard from
+                LOGGER.debug(
+                    "Destination %s did not poll, parking send until it wakes",
+                    format_dest_key(entry.dest_key),
+                )
+                self._park_deferred(entry, ParkReason.AWAITING_WAKE)
+            else:
+                self._retry_or_fail(entry, exc, loop.time())
+        except (DeliveryError, TimeoutError) as exc:
+            self._grow_window()
+
+            if entry.state is not SendState.DONE:
+                self._retry_or_fail(entry, exc, loop.time())
         except Exception as exc:  # noqa: BLE001
             # Anything else is a terminal verdict for this send
             self._grow_window()
@@ -792,14 +828,23 @@ class SendScheduler:
         else:
             self._grow_window()
 
-            if entry.slot.final_stage is SendStage.REPLIED:
+            if entry.state is SendState.DONE:
+                # Resolved while in flight (late reply or cancellation)
+                pass
+            elif entry.slot.final_stage is SendStage.REPLIED:
                 entry.slot.resolve(SendStage.CONFIRMED, None)
                 self._await_reply(entry, loop.time())
             else:
                 self._finalize(entry)
         finally:
             self._in_flight.discard(entry)
-            del self._in_flight_by_packet[id(packet)]
+
+            if (
+                id(packet) in self._in_flight_by_packet
+                and self._in_flight_by_packet[id(packet)] is entry
+            ):
+                del self._in_flight_by_packet[id(packet)]
+
             entry.attempt_task = None
             self._bytes_in_flight -= entry.size
 
@@ -814,6 +859,15 @@ class SendScheduler:
                 self._blocked_until = 0.0
 
             self._wake.set()
+
+    def _expire_entries(self, now: float) -> None:
+        for entry in set(self._all_entries()):
+            if (
+                entry.expires_at is not None
+                and now >= entry.expires_at
+                and entry.state in (SendState.QUEUED, SendState.PARKED)
+            ):
+                self._finalize(entry, SendCancelledError("Send expired"))
 
     def _release_reply_timeouts(self, now: float) -> None:
         while self._awaiting_reply and self._awaiting_reply[0][0] <= now:
@@ -866,6 +920,13 @@ class SendScheduler:
         for dest in self._destinations.values():
             if dest.deferred and now < dest.blocked_until:
                 deadlines.append(dest.blocked_until)  # noqa: PERF401
+
+        for entry in set(self._all_entries()):
+            if entry.expires_at is not None and entry.state in (
+                SendState.QUEUED,
+                SendState.PARKED,
+            ):
+                deadlines.append(entry.expires_at)  # noqa: PERF401
 
         if deadlines:
             self._timer.reschedule(max(0.0, min(deadlines) - now))

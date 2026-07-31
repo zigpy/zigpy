@@ -1085,7 +1085,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         await self._scheduler.submit(packet, retries=0)
 
     async def _send_packet(self, packet: t.ZigbeePacket) -> None:
-        """Make a single attempt to send a frame: no queueing, retries, or pacing."""
+        """Make a single attempt to send a frame: no queueing, retries, or pacing.
+
+        The exception contract is load-bearing: `TransientSendError` re-parks the
+        frame without consuming an attempt, `PermanentSendError` and
+        `SendCancelledError` fail it immediately, any other `DeliveryError` or a
+        `TimeoutError` consumes a retry attempt, and every other exception is a
+        terminal verdict. Radios must wrap retryable transport failures accordingly.
+        """
 
         raise NotImplementedError  # pragma: no cover
 

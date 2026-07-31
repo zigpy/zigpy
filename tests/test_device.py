@@ -2231,8 +2231,10 @@ async def test_update_firmware_triggers_reinterview(monkeypatch, dev):
     dev.reinterview.assert_awaited_once()
 
 
-async def test_request_retry_success(app) -> None:
+@pytest.mark.parametrize("use_scheduler", [True, False])
+async def test_request_retry_success(app, use_scheduler) -> None:
     """Test retry logic succeeding after a few attempts."""
+    app._uses_scheduler = use_scheduler
     tsn = 0x12
 
     dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
@@ -2305,8 +2307,10 @@ async def test_request_retry_success(app) -> None:
     assert len(app._send_packet.mock_calls) == 3
 
 
-async def test_request_retry_failure(app) -> None:
+@pytest.mark.parametrize("use_scheduler", [True, False])
+async def test_request_retry_failure(app, use_scheduler) -> None:
     """Test retry logic when all attempts fail."""
+    app._uses_scheduler = use_scheduler
     dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
     dev.node_desc = make_node_desc()
 
@@ -2371,8 +2375,10 @@ async def test_request_retry_failure(app) -> None:
     ]
 
 
-async def test_request_retry_reply_timeout(app) -> None:
+@pytest.mark.parametrize("use_scheduler", [True, False])
+async def test_request_retry_reply_timeout(app, use_scheduler) -> None:
     """Test retry logic when a request is enqueued but no reply arrives, then a later attempt succeeds."""
+    app._uses_scheduler = use_scheduler
     tsn = 0x12
 
     dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
