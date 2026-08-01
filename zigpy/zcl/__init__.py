@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 import enum
 import functools
+from inspect import iscoroutinefunction
 import itertools
 import logging
 import types
@@ -293,6 +294,35 @@ class OtaQueryCacheClearedEvent:
     endpoint_id: int
 
 
+@dataclass(kw_only=True, frozen=True)
+class ClusterCommandReceivedEvent:
+    """Event generated when a cluster command is received."""
+
+    event_type: Final[str] = "cluster_command_received"
+
+    device_ieee: str
+    endpoint_id: int
+    cluster_type: ClusterType
+    cluster_id: int
+    command_id: int
+    tsn: int
+    # `None` when the cluster does not define this command id, so it cannot be decoded
+    command: CommandSchema | None
+
+
+class AnyCommandType(enum.Enum):
+    """Singleton type for a registration covering every command on a cluster."""
+
+    _singleton = 0
+
+
+ANY_COMMAND = AnyCommandType._singleton  # noqa: SLF001
+
+# A command def is identified by its direction and id: a server and a client command
+# may share an id, and `with_compiled_schema` replaces the def object itself
+CommandKey = tuple[foundation.Direction, int] | AnyCommandType
+
+
 def convert_list_schema(
     schema: Sequence[type], command_id: int, direction: foundation.Direction
 ) -> type[t.Struct]:
@@ -368,9 +398,30 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     _registry: dict = {}
     _registry_range: dict = {}
 
+    # Set per subclass by `__init_subclass__`
+    _takes_over_command_handling: bool = False
+
     def __init_subclass__(cls) -> None:
         if cls.cluster_id is not None:
             cls.cluster_id = t.ClusterId(cls.cluster_id)
+
+        # A cluster that overrides `handle_cluster_request` has taken over command
+        # handling, including whether a Default Response is sent, so the base class
+        # must not second-guess it. True for custom quirks we cannot audit.
+        cls._takes_over_command_handling = (
+            cls.handle_cluster_request is not Cluster.handle_cluster_request
+        )
+
+        # Warn once per class, and only for a class that introduces the override, so a
+        # subclass of an unmigrated quirk does not repeat its parent's warning
+        if "handle_cluster_request" in cls.__dict__:
+            warnings.warn(
+                f"{cls.__name__} overrides `handle_cluster_request`, which will be"
+                f" removed. Use `Cluster.respond_to_command()` for commands it replies"
+                f" to and `Cluster.on_command()` for the rest.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         # Compile the old command definitions
         for commands in [cls.server_commands, cls.client_commands]:
@@ -546,6 +597,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         # We proxy `_attr_cache` because custom quirks can overwrite it with a dict
         self._attr_cache_internal: AttributeCache = AttributeCache(self)
+
+        # Keyed by (direction, command id), or ANY_COMMAND for a cluster-wide handler.
+        # Owners are responsible for replying; a default owner stands down whenever a
+        # non-default one is registered, without being unregistered itself.
+        self._command_owners: dict[CommandKey, list[Callable]] = defaultdict(list)
+        self._default_command_owners: dict[CommandKey, list[Callable]] = defaultdict(
+            list
+        )
 
         # Register event handlers for cache side effects, allowing quirks to
         # override emit() or the handler to prevent cache modifications.
@@ -919,11 +978,115 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             "Received command 0x%02X (TSN %d): %s", hdr.command_id, hdr.tsn, args
         )
         if hdr.frame_control.is_cluster:
+            command = args if isinstance(args, CommandSchema) else None
+            self._dispatch_command_owners(hdr, command)
+            self.emit(
+                ClusterCommandReceivedEvent.event_type,
+                ClusterCommandReceivedEvent(
+                    device_ieee=str(self.endpoint.device.ieee),
+                    endpoint_id=self.endpoint.endpoint_id,
+                    cluster_type=self._type,
+                    cluster_id=self.cluster_id,
+                    command_id=hdr.command_id,
+                    tsn=hdr.tsn,
+                    command=command,
+                ),
+            )
             self.handle_cluster_request(hdr, args)
             self.listener_event("cluster_command", hdr.tsn, hdr.command_id, args)
             return
         self.listener_event("general_command", hdr, args)
         self.handle_cluster_general_request(hdr, args)
+
+    @staticmethod
+    def _command_key(
+        command: foundation.ZCLCommandDef | AnyCommandType,
+    ) -> CommandKey:
+        if command is ANY_COMMAND:
+            return ANY_COMMAND
+
+        return (command.direction, command.id)
+
+    def _command_keys(self, command: CommandSchema | None) -> list[CommandKey]:
+        """The keys a received command matches, most specific first."""
+        if command is None:
+            return [ANY_COMMAND]
+
+        return [self._command_key(command.command), ANY_COMMAND]
+
+    def on_command(
+        self,
+        command: foundation.ZCLCommandDef | AnyCommandType,
+        callback: Callable,
+    ) -> Callable[[], None]:
+        """Subscribe to a received command, without taking responsibility for replying."""
+        # Sugar over ClusterCommandReceivedEvent, so that callers do not each write the
+        # same command id dispatch. An undecodable command only matches ANY_COMMAND.
+        key = self._command_key(command)
+
+        if iscoroutinefunction(callback):
+
+            async def listener(event: ClusterCommandReceivedEvent) -> None:
+                if key in self._command_keys(event.command):
+                    await callback(event)
+
+        else:
+
+            def listener(event: ClusterCommandReceivedEvent) -> None:
+                if key in self._command_keys(event.command):
+                    callback(event)
+
+        return self.on_event(ClusterCommandReceivedEvent.event_type, listener)
+
+    def respond_to_command(
+        self,
+        command: foundation.ZCLCommandDef | AnyCommandType,
+        callback: Callable,
+        *,
+        default: bool = False,
+    ) -> Callable[[], None]:
+        """Register the owner of a received command, responsible for replying to it.
+
+        A `default` owner is skipped while any non-default owner is registered for the
+        same command, but stays registered so it resumes if that owner goes away.
+        """
+        key = self._command_key(command)
+        owners = self._default_command_owners if default else self._command_owners
+
+        if not default and self._command_owners[key]:
+            raise ValueError(
+                f"{self}: a non-default owner is already registered for {command}"
+            )
+
+        owners[key].append(callback)
+
+        def unsubscribe() -> None:
+            if callback in owners[key]:
+                owners[key].remove(callback)
+
+        return unsubscribe
+
+    def _owners_for(self, command: CommandSchema | None) -> list[Callable]:
+        """The owners that will answer a received command, defaults only as a fallback."""
+        keys = self._command_keys(command)
+        owners = [cb for key in keys for cb in self._command_owners[key]]
+
+        if owners:
+            return owners
+
+        return [cb for key in keys for cb in self._default_command_owners[key]]
+
+    def _dispatch_command_owners(
+        self, hdr: foundation.ZCLHeader, command: CommandSchema | None
+    ) -> None:
+        """Hand a received command to its owner, or to the default owner if it has none."""
+        for callback in self._owners_for(command):
+            if iscoroutinefunction(callback):
+                # `exceptions=()` because an owner failing to reply must stay visible:
+                # the default `ZigbeeException` catch would swallow a DeliveryError
+                self.create_catching_task(callback(hdr, command), exceptions=())
+            else:
+                callback(hdr, command)
 
     def handle_cluster_request(
         self,
@@ -938,6 +1101,20 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             hdr.command_id,
             args,
         )
+
+        self.maybe_send_default_rsp(hdr, args)
+
+    def maybe_send_default_rsp(
+        self, hdr: foundation.ZCLHeader, args: CommandSchema | bytes
+    ) -> None:
+        """Send the Default Response owed for a received cluster command, if any."""
+        command = args if isinstance(args, CommandSchema) else None
+
+        # An owner answers the command with a specific response, reusing its TSN, so a
+        # Default Response would be a second reply to the same transaction. A default
+        # owner counts: it is still the one answering when no other owner exists.
+        if self._owners_for(command):
+            return
 
         if not hdr.frame_control.disable_default_response:
             self.send_default_rsp(

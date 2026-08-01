@@ -112,6 +112,8 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         if self._device.application._dblistener is not None:
             self._device.application._dblistener.register_cluster_events(cluster)
 
+        self._device.cluster_added(cluster)
+
         return cluster
 
     def add_output_cluster(
@@ -131,6 +133,8 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         if self._device.application._dblistener is not None:
             self._device.application._dblistener.register_cluster_events(cluster)
+
+        self._device.cluster_added(cluster)
 
         return cluster
 

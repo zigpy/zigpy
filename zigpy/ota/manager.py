@@ -77,43 +77,26 @@ class OTAManager:
         self.stack = contextlib.ExitStack()
 
     def __enter__(self) -> Self:
-        self.stack.enter_context(
-            self.device._application.callback_for_response(
-                src=self.device,
-                filters=[
-                    Ota.ServerCommandDefs.query_next_image.schema(),
-                ],
-                callback=self._image_query_req,
+        # Owning these for the duration of the upgrade displaces the cluster's own
+        # default owners, which resume once this stack is closed
+        self.stack.callback(
+            self.ota_cluster.respond_to_command(
+                Ota.ServerCommandDefs.query_next_image, self._image_query_req
             )
         )
-
-        self.stack.enter_context(
-            self.device._application.callback_for_response(
-                src=self.device,
-                filters=[
-                    Ota.ServerCommandDefs.image_block.schema(),
-                ],
-                callback=self._image_block_req,
+        self.stack.callback(
+            self.ota_cluster.respond_to_command(
+                Ota.ServerCommandDefs.image_block, self._image_block_req
             )
         )
-
-        self.stack.enter_context(
-            self.device._application.callback_for_response(
-                src=self.device,
-                filters=[
-                    Ota.ServerCommandDefs.image_page.schema(),
-                ],
-                callback=self._image_page_req,
+        self.stack.callback(
+            self.ota_cluster.respond_to_command(
+                Ota.ServerCommandDefs.image_page, self._image_page_req
             )
         )
-
-        self.stack.enter_context(
-            self.device._application.callback_for_response(
-                src=self.device,
-                filters=[
-                    Ota.ServerCommandDefs.upgrade_end.schema(),
-                ],
-                callback=self._upgrade_end,
+        self.stack.callback(
+            self.ota_cluster.respond_to_command(
+                Ota.ServerCommandDefs.upgrade_end, self._upgrade_end
             )
         )
 

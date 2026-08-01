@@ -501,6 +501,21 @@ async def test_handle_unknown_cluster(dev, caplog) -> None:
     assert "Ignoring message on unknown cluster: 0x9999" in caplog.text
 
 
+async def test_device_owns_poll_control_checkin(dev) -> None:
+    """Test that a device claims the check-in, so no Default Response duplicates it."""
+    ep = dev.add_endpoint(1)
+
+    with patch.object(device.Device, "poll_control_checkin_callback") as checkin:
+        cluster = ep.add_input_cluster(PollControl.cluster_id)
+        hdr, command = cluster.deserialize(b"\x09\x4c\x00")
+
+        with patch.object(cluster, "send_default_rsp") as rsp:
+            cluster.handle_message(hdr, command)
+
+    assert checkin.mock_calls == [call(hdr, command)]
+    assert len(rsp.mock_calls) == 0
+
+
 async def test_update_device_firmware_no_ota_cluster(dev):
     """Test that device firmware updates fails: no ota cluster."""
     mock_image = MagicMock()

@@ -131,13 +131,15 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         # Retained for backwards compatibility, will be removed in a future release
         self.status = Status.NEW
 
-        self._on_remove_callbacks.append(
-            self._application.register_callback_listener(
-                src=self,
-                filters=[PollControl.ClientCommandDefs.checkin.schema()],
-                callback=self.poll_control_checkin_callback,
+    def cluster_added(self, cluster: Cluster) -> None:
+        """Take ownership of the commands this device's clusters let us answer."""
+        if cluster.cluster_id == PollControl.cluster_id:
+            self._on_remove_callbacks.append(
+                cluster.respond_to_command(
+                    PollControl.ClientCommandDefs.checkin,
+                    self.poll_control_checkin_callback,
+                )
             )
-        )
 
     def create_task(
         self, target: Coroutine[Any, Any, _R], name: str | None = None
