@@ -53,8 +53,8 @@ class GPSFunctionality(t.bitmap24):
     Proximity_Bidirectional_Operation = 0x000040
     Multi_Hop_Bidirectional_Operation = 0x000080
     Proxy_Table_Maintenance = 0x000100
-    # b9 Reserved
-    GP_Commissioning = 0x000400
+    Proximity_Commissioning = 0x000200
+    Multi_Hop_Commissioning = 0x000400
     CT_Based_Commissioning = 0x000800
     Maintenance_Of_GPD = 0x001000
     GPD_SecurityLevel_0b00 = 0x002000
@@ -64,7 +64,8 @@ class GPSFunctionality(t.bitmap24):
     Sink_Table_Based_Groupcast_Forwarding = 0x020000
     Translation_Table = 0x040000
     GPD_IEEE_Address = 0x080000
-    # b20-b23 Reserved
+    Compact_Attribute_Reporting = 0x100000
+    # b21-b23 Reserved
 
 
 # Figure 31 — 16 bits total

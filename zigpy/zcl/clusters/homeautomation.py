@@ -94,6 +94,20 @@ class MeterIdentification(Cluster):
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
 
+# Figure 15-8, with the Alerts Count field split up per Table 15-19
+class GetAlertsResponseSchema(foundation.CommandSchema):
+    number_of_alerts: t.uint4_t
+    alert_structure_type: t.uint4_t
+    alerts: t.List[t.uint24_t] = t.StructField(length=lambda s: s.number_of_alerts)
+
+
+# Figure 15-9
+class AlertsNotificationSchema(foundation.CommandSchema):
+    number_of_alerts: t.uint4_t
+    alert_structure_type: t.uint4_t
+    alerts: t.List[t.uint24_t] = t.StructField(length=lambda s: s.number_of_alerts)
+
+
 class ApplianceEventAlerts(Cluster):
     cluster_id: Final[t.uint16_t] = 0x0B02
     name: Final = "Appliance Event Alerts"
@@ -108,17 +122,43 @@ class ApplianceEventAlerts(Cluster):
 
     class ClientCommandDefs(BaseCommandDefs):
         get_alerts_response: Final = ZCLCommandDef(
-            id=0x00,
-            schema={"alerts_count": t.uint8_t, "alerts": t.LVList[t.uint24_t]},
+            id=0x00, schema=GetAlertsResponseSchema
         )
         alerts_notification: Final = ZCLCommandDef(
-            id=0x01,
-            schema={"alerts_count": t.uint8_t, "alerts": t.LVList[t.uint24_t]},
+            id=0x01, schema=AlertsNotificationSchema
         )
         event_notification: Final = ZCLCommandDef(
             id=0x02,
             schema={"event_header": t.uint8_t, "event_id": t.uint8_t},
         )
+
+
+# Figure 15-11
+class LogNotificationSchema(foundation.CommandSchema):
+    time_stamp: t.UTCTime
+    log_id: t.uint32_t
+    log_length: t.uint32_t
+    log_payload: t.List[t.uint8_t] = t.StructField(length=lambda s: s.log_length)
+
+
+# Figure 15-13
+class LogResponseSchema(foundation.CommandSchema):
+    time_stamp: t.UTCTime
+    log_id: t.uint32_t
+    log_length: t.uint32_t
+    log_payload: t.List[t.uint8_t] = t.StructField(length=lambda s: s.log_length)
+
+
+# Figure 15-14
+class LogQueueResponseSchema(foundation.CommandSchema):
+    log_queue_size: t.uint8_t
+    log_ids: t.List[t.uint32_t] = t.StructField(length=lambda s: s.log_queue_size)
+
+
+# Figure 15-15
+class StatisticsAvailableSchema(foundation.CommandSchema):
+    log_queue_size: t.uint8_t
+    log_ids: t.List[t.uint32_t] = t.StructField(length=lambda s: s.log_queue_size)
 
 
 class ApplianceStatistics(Cluster):
@@ -141,31 +181,13 @@ class ApplianceStatistics(Cluster):
         log_queue_request: Final = ZCLCommandDef(id=0x01, schema={})
 
     class ClientCommandDefs(BaseCommandDefs):
-        log_notification: Final = ZCLCommandDef(
-            id=0x00,
-            schema={
-                "time_stamp": t.UTCTime,
-                "log_id": t.uint32_t,
-                "log_length": t.uint32_t,
-                "log_payload": t.LVList[t.uint8_t],
-            },
-        )
-        log_response: Final = ZCLCommandDef(
-            id=0x01,
-            schema={
-                "time_stamp": t.UTCTime,
-                "log_id": t.uint32_t,
-                "log_length": t.uint32_t,
-                "log_payload": t.LVList[t.uint8_t],
-            },
-        )
+        log_notification: Final = ZCLCommandDef(id=0x00, schema=LogNotificationSchema)
+        log_response: Final = ZCLCommandDef(id=0x01, schema=LogResponseSchema)
         log_queue_response: Final = ZCLCommandDef(
-            id=0x02,
-            schema={"log_queue_size": t.uint8_t, "log_ids": t.LVList[t.uint32_t]},
+            id=0x02, schema=LogQueueResponseSchema
         )
         statistics_available: Final = ZCLCommandDef(
-            id=0x03,
-            schema={"log_queue_size": t.uint8_t, "log_ids": t.LVList[t.uint32_t]},
+            id=0x03, schema=StatisticsAvailableSchema
         )
 
 

@@ -10,6 +10,7 @@ from zigpy.zcl import Cluster, OtaQueryCacheUpdatedEvent, foundation
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
     BaseCommandDefs,
+    CommandSchema,
     ZCLAttributeDef,
     ZCLCommandDef,
 )
@@ -334,7 +335,7 @@ class BatteryAlarmState(t.bitmap32):
     Battery_3_Threshold_2 = 0x00400000
     Battery_3_Threshold_3 = 0x00800000
     # Mains power supply
-    Mains_Power_Supply_Lost = 0x04000000
+    Mains_Power_Supply_Lost = 0x40000000
 
 
 class PowerConfiguration(Cluster):
@@ -2109,6 +2110,85 @@ class PartitionAckOptions(t.bitmap8):
     NACKId_Length_16bit = 0x01
 
 
+# Figure 9-8. `partition_indicator` is one octet wide unless the options say otherwise,
+# so the frame cannot be described with a static schema.
+class TransferPartitionedFrameSchema(CommandSchema):
+    fragmentation_options: PartitionFragmentationOptions
+    partition_indicator: t.uint16_t
+    partitioned_frame: t.LVBytes
+
+    @staticmethod
+    def _indicator_type(
+        options: PartitionFragmentationOptions,
+    ) -> type[t.uint8_t | t.uint16_t]:
+        if PartitionFragmentationOptions.Indicator_Length_16bit in options:
+            return t.uint16_t
+        else:
+            return t.uint8_t
+
+    def serialize(self) -> bytes:
+        options = PartitionFragmentationOptions(self.fragmentation_options)
+        indicator_type = self._indicator_type(options)
+
+        return (
+            options.serialize()
+            + indicator_type(self.partition_indicator).serialize()
+            + t.LVBytes(self.partitioned_frame).serialize()
+        )
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
+        options, data = PartitionFragmentationOptions.deserialize(data)
+        indicator, data = cls._indicator_type(options).deserialize(data)
+        frame, data = t.LVBytes.deserialize(data)
+
+        return cls(
+            fragmentation_options=options,
+            partition_indicator=indicator,
+            partitioned_frame=frame,
+        ), data
+
+
+# Figure 9-13. `first_frame_id` and every NACK id are one octet wide unless the ACK
+# options (Figure 9-14) say otherwise.
+class MultipleAckSchema(CommandSchema):
+    ack_options: PartitionAckOptions
+    first_frame_id: t.uint16_t
+    nack_ids: t.List[t.uint16_t]
+
+    @staticmethod
+    def _frame_id_types(
+        options: PartitionAckOptions,
+    ) -> tuple[type[t.uint8_t | t.uint16_t], type[t.List]]:
+        if PartitionAckOptions.NACKId_Length_16bit in options:
+            return t.uint16_t, t.List[t.uint16_t]
+        else:
+            return t.uint8_t, t.List[t.uint8_t]
+
+    def serialize(self) -> bytes:
+        options = PartitionAckOptions(self.ack_options)
+        frame_id_type, nack_ids_type = self._frame_id_types(options)
+
+        return (
+            options.serialize()
+            + frame_id_type(self.first_frame_id).serialize()
+            + nack_ids_type(self.nack_ids).serialize()
+        )
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
+        options, data = PartitionAckOptions.deserialize(data)
+        frame_id_type, nack_ids_type = cls._frame_id_types(options)
+        first_frame_id, data = frame_id_type.deserialize(data)
+        nack_ids, data = nack_ids_type.deserialize(data)
+
+        return cls(
+            ack_options=options,
+            first_frame_id=first_frame_id,
+            nack_ids=nack_ids,
+        ), data
+
+
 class Partition(Cluster):
     PartitionFragmentationOptions: Final = PartitionFragmentationOptions
     PartitionAckOptions: Final = PartitionAckOptions
@@ -2158,12 +2238,7 @@ class Partition(Cluster):
 
     class ServerCommandDefs(BaseCommandDefs):
         transfer_partitioned_frame: Final = ZCLCommandDef(
-            id=0x00,
-            schema={
-                "fragmentation_options": PartitionFragmentationOptions,
-                "partition_indicator": t.uint16_t,
-                "partitioned_frame": t.LVBytes,
-            },
+            id=0x00, schema=TransferPartitionedFrameSchema
         )
         read_handshake_param: Final = ZCLCommandDef(
             id=0x01,
@@ -2181,14 +2256,7 @@ class Partition(Cluster):
         )
 
     class ClientCommandDefs(BaseCommandDefs):
-        multiple_ack: Final = ZCLCommandDef(
-            id=0x00,
-            schema={
-                "ack_options": PartitionAckOptions,
-                "first_frame_id": t.uint16_t,
-                "nack_ids": t.List[t.uint16_t],
-            },
-        )
+        multiple_ack: Final = ZCLCommandDef(id=0x00, schema=MultipleAckSchema)
         read_handshake_param_response: Final = ZCLCommandDef(
             id=0x01,
             schema={

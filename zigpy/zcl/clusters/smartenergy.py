@@ -7,6 +7,7 @@ from zigpy.zcl import Cluster
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
     BaseCommandDefs,
+    CommandSchema,
     DataTypeId,
     ZCLAttributeDef,
     ZCLCommandDef,
@@ -253,11 +254,11 @@ class GenericFlowPressureAlarmMask(t.bitmap16):
 
 
 class WaterSpecificAlarmMask(t.bitmap16):
-    """Water specific alarm mask - bits correspond to alarm codes 0x40-0x4F."""
+    """Water specific alarm mask - bits correspond to alarm codes 0x40-0x4F.
 
-    Water_Pipe_Empty = 0x0001
-    Water_Valve_Fraud = 0x0002
-    Water_Valve_Moving = 0x0004
+    Table D-38 defines the whole Water Specific Alarm Group as reserved, so no bit in
+    this mask has a meaning assigned to it yet.
+    """
 
 
 class HeatCoolingSpecificAlarmMask(t.bitmap16):
@@ -499,6 +500,37 @@ class NotificationFlags5(t.bitmap32):
     Reset_Battery_Counter = 0x00000080
     Update_CIN = 0x00000100
     # Bits 9-31: Reserved
+
+
+class GetProfileResponseSchema(CommandSchema):
+    end_time: t.UTCTime
+    status: t.uint8_t
+    profile_interval_period: t.uint8_t
+    number_of_periods_delivered: t.uint8_t
+    intervals: t.List[t.uint24_t] = t.StructField(
+        length=lambda s: s.number_of_periods_delivered
+    )
+
+
+class GetSampledDataResponseSchema(CommandSchema):
+    sample_id: t.uint16_t
+    sample_start_time: t.UTCTime
+    sample_type: t.uint8_t
+    sample_request_interval: t.uint16_t
+    number_of_samples: t.uint16_t
+    samples: t.List[t.uint24_t] = t.StructField(length=lambda s: s.number_of_samples)
+
+
+class ConfigureNotificationFlagSchema(CommandSchema):
+    issuer_event_id: t.uint32_t
+    notification_scheme: t.uint8_t
+    notification_flag_attribute_id: t.uint16_t
+    cluster_id: t.uint16_t
+    manufacturer_code: t.uint16_t
+    number_of_commands: t.uint8_t
+    command_ids: t.List[t.uint8_t] = t.StructField(
+        length=lambda s: s.number_of_commands
+    )
 
 
 class Metering(Cluster):
@@ -1043,7 +1075,7 @@ class Metering(Cluster):
             id=0x09,
             schema={
                 "notification_scheme": t.uint8_t,
-                "notification_flags": t.LVBytes,
+                "notification_flags": t.List[t.bitmap32],
             },
         )
         reset_load_limit_counter: Final = ZCLCommandDef(
@@ -1094,14 +1126,7 @@ class Metering(Cluster):
 
     class ClientCommandDefs(BaseCommandDefs):
         get_profile_response: Final = ZCLCommandDef(
-            id=0x00,
-            schema={
-                "end_time": t.UTCTime,
-                "status": t.uint8_t,
-                "profile_interval_period": t.uint8_t,
-                "number_of_periods_delivered": t.uint8_t,
-                "intervals": t.LVBytes,
-            },
+            id=0x00, schema=GetProfileResponseSchema
         )
         request_mirror: Final = ZCLCommandDef(id=0x01, schema={})
         remove_mirror: Final = ZCLCommandDef(id=0x02, schema={})
@@ -1140,15 +1165,7 @@ class Metering(Cluster):
             },
         )
         get_sampled_data_response: Final = ZCLCommandDef(
-            id=0x07,
-            schema={
-                "sample_id": t.uint16_t,
-                "sample_start_time": t.UTCTime,
-                "sample_type": t.uint8_t,
-                "sample_request_interval": t.uint16_t,
-                "number_of_samples": t.uint16_t,
-                "samples": t.LVBytes,
-            },
+            id=0x07, schema=GetSampledDataResponseSchema
         )
         configure_mirror: Final = ZCLCommandDef(
             id=0x08,
@@ -1168,16 +1185,7 @@ class Metering(Cluster):
             },
         )
         configure_notification_flag: Final = ZCLCommandDef(
-            id=0x0A,
-            schema={
-                "issuer_event_id": t.uint32_t,
-                "notification_scheme": t.uint8_t,
-                "notification_flag_attribute_id": t.uint16_t,
-                "cluster_id": t.uint16_t,
-                "manufacturer_code": t.uint16_t,
-                "number_of_commands": t.uint8_t,
-                "command_ids": t.LVBytes,
-            },
+            id=0x0A, schema=ConfigureNotificationFlagSchema
         )
         get_notified_message: Final = ZCLCommandDef(
             id=0x0B,
