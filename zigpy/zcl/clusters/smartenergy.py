@@ -962,7 +962,7 @@ class Metering(Cluster):
         extended_generic_alarm_mask: Final = ZCLAttributeDef(
             id=0x0806, type=ExtendedGenericAlarmMask, access="rw"
         )
-        manufacture_alarm_mask: Final = ZCLAttributeDef(
+        manufacturer_alarm_mask: Final = ZCLAttributeDef(
             id=0x0807, type=ManufacturerAlarmMask, access="rw"
         )
         bill_to_date: Final = ZCLAttributeDef(id=0x0A00, type=t.uint32_t, access="r")
