@@ -313,22 +313,11 @@ class GPAttributeRequestOptions(t.IntStruct, t.uint8_t):
     _reserved: t.uint6_t
 
 
-# Figure 145
+# Figure 145 — the attribute list is delimited by its size in octets, so a length that
+# does not cover whole attribute IDs is rejected instead of shifting the records after it
 class GPClusterRecordRequest(t.Struct):
     cluster_id: t.uint16_t
-    # Size of the attribute ID list in octets, not the number of attributes
-    record_list_length: t.uint8_t
-    attribute_ids: t.List[t.uint16_t] = t.StructField(
-        length=lambda s: s.record_list_length // 2
-    )
-
-    def __new__(cls, *args, **kwargs) -> Self:
-        instance = super().__new__(cls, *args, **kwargs)
-
-        if instance.record_list_length is None and instance.attribute_ids is not None:
-            instance.record_list_length = t.uint8_t(2 * len(instance.attribute_ids))
-
-        return instance
+    attribute_ids: t.SizePrefixedList[t.uint16_t, t.uint8_t]
 
 
 # Figure 143
@@ -452,8 +441,8 @@ GPD_COMMAND_SCHEMAS: dict[GPDCommandID, type[t.Struct] | None] = {
     ),
     # Bidirectional operation (sec. A.4.2.6)
     GPDCommandID.RequestAttributes: GPRequestAttributesPayload,
-    # TODO: Figure 147, a cluster record whose Read Attribute records (which are
-    # `foundation.ReadAttributeRecord`) are prefixed by their total size in octets
+    # TODO: Figure 147, a `t.SizePrefixedList[foundation.ReadAttributeRecord, t.uint8_t]`
+    # per cluster record. No known device implements it.
     GPDCommandID.ReadAttributesResponse: None,
     GPDCommandID.ZCLTunneling: GPZCLTunnelingPayload,
     # TODO: unparsable on its own, the layout of its data points is announced by the
@@ -469,12 +458,12 @@ GPD_COMMAND_SCHEMAS: dict[GPDCommandID, type[t.Struct] | None] = {
     GPDCommandID.DecommissioningRequest: GPNoPayload,
     GPDCommandID.SuccessReport: GPNoPayload,
     GPDCommandID.ChannelRequest: GPChannelRequestPayload,
-    # TODO: Figures 122 - 128, report descriptors and their data point descriptors are
-    # both prefixed by their total size in octets
+    # TODO: Figures 122 - 128, nested `t.SizePrefixedList`s for the data point
+    # descriptors of each report descriptor. No known device implements it.
     GPDCommandID.ApplicationDescription: None,
     GPDCommandID.CommissioningReply: GPCommissioningReplyPayload,
-    # TODO: Figure 150, a cluster record whose Write Attribute records (which are
-    # `foundation.Attribute`) are prefixed by their total size in octets
+    # TODO: Figure 150, a `t.SizePrefixedList[foundation.Attribute, t.uint8_t]` per
+    # cluster record. No known device implements it.
     GPDCommandID.WriteAttributes: None,
     GPDCommandID.ReadAttributes: GPRequestAttributesPayload,
     GPDCommandID.ChannelConfiguration: GPChannelConfigurationPayload,

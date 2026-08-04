@@ -702,16 +702,32 @@ def test_request_attributes_records() -> None:
     assert payload.manufacturer_id == 0x1021
     assert len(payload.cluster_records) == 1
     assert payload.cluster_records[0].cluster_id == 0x0402
-    assert payload.cluster_records[0].record_list_length == 4
     assert list(payload.cluster_records[0].attribute_ids) == [0x0000, 0x0001]
 
 
 def test_request_attributes_record_length_derived() -> None:
-    """The octet length of the attribute list is derived from the list itself."""
+    """The octet length of the attribute list comes from the list itself."""
     record = GPClusterRecordRequest(cluster_id=0x0402, attribute_ids=[0x0000, 0x0001])
 
-    assert record.record_list_length == 4
     assert record.serialize() == b"\x02\x04\x04\x00\x00\x01\x00"
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        # A record list length that does not cover whole attribute IDs must not shift
+        # the parse of everything after it: without the size prefix delimiting the
+        # region, this used to yield a bogus second record and no trailing data
+        b"\x00" + b"\x06\x00\x03\x00\x00" + b"\x00\x02\x00",
+        b"\x00" + b"\x06\x00\x03\x00\x00\xff",
+        # A length longer than the data available
+        b"\x00" + b"\x06\x00\x08\x00\x00",
+    ],
+)
+def test_request_attributes_misaligned_record_length(data: bytes) -> None:
+    """A record list length inconsistent with its contents is rejected."""
+    with pytest.raises(ValueError, match="too short"):
+        GPRequestAttributesPayload.deserialize(data)
 
 
 def test_request_attributes_no_manufacturer_id() -> None:
