@@ -10,6 +10,7 @@ __all__ = [
     "DEFAULT_GP_LINK_KEY",
     "DeviceID",
     "GPDCommandID",
+    "SwitchType",
     "FrameType",
     "ApplicationID",
     "SecurityLevel",
@@ -70,11 +71,15 @@ class GPDCommandID(basic.enum8):
     Release = 0x23
 
     # Level Control
-    LevelControlStop = 0x34
     MoveUp = 0x30
     MoveDown = 0x31
     StepUp = 0x32
     StepDown = 0x33
+    LevelControlStop = 0x34
+    MoveUpWithOnOff = 0x35
+    MoveDownWithOnOff = 0x36
+    StepUpWithOnOff = 0x37
+    StepDownWithOnOff = 0x38
 
     # Color Control
     MoveHueStop = 0x40
@@ -105,6 +110,10 @@ class GPDCommandID(basic.enum8):
     ShortPress1of2 = 0x67
     ShortPress2of2 = 0x68
 
+    # Advanced generic switch (Table 55)
+    Press8BitVector = 0x69
+    Release8BitVector = 0x6A
+
     # Attribute Reporting
     AttributeReporting = 0xA0
     ManufacturerSpecificReporting = 0xA1
@@ -112,6 +121,13 @@ class GPDCommandID(basic.enum8):
     # Multi-Cluster Reporting
     MultiClusterReporting = 0xA2
     ManufacturerSpecificMultiClusterReporting = 0xA3
+
+    # Bidirectional operation
+    RequestAttributes = 0xA4
+    ReadAttributesResponse = 0xA5
+    ZCLTunneling = 0xA6
+
+    CompactAttributeReporting = 0xA8
 
     # Commissioning
     CommissioningRequest = 0xE0
@@ -122,12 +138,25 @@ class GPDCommandID(basic.enum8):
     # Application Description
     ApplicationDescription = 0xE4
 
-    # Commands sent to the GPD (sink → GPD)
+    # Commands sent to the GPD (sink → GPD, Table 56)
     CommissioningReply = 0xF0
+    WriteAttributes = 0xF1
+    ReadAttributes = 0xF2
     ChannelConfiguration = 0xF3
+    ZCLTunnelingToGPD = 0xF6
 
-    # Any GPD command
+    # Translation Table pseudo-IDs: these never appear as the CommandID of a GPDF.
+    # 0xAF stands for any of the sensor commands 0xA0 - 0xA3 (but never 0xA8), and
+    # 0xFF for every GPD command. Both only compact Translation Table entries.
+    AnySensorCommand = 0xAF
     AnyCommand = 0xFF
+
+
+# Table 57
+class SwitchType(basic.enum2):
+    Unknown = 0b00
+    Button = 0b01
+    Rocker = 0b10
 
 
 class FrameType(basic.enum2):
