@@ -221,6 +221,46 @@ class ACAlarmsMask(t.bitmap16):
     RMS_Voltage_Swell = 1 << 9
 
 
+class ProfileIntervalPeriod(t.enum8):
+    """Profile interval period timeframes per Figure 4-7.
+
+    Unlike the Metering cluster's equivalent, this one defines no 1 minute timeframe.
+    """
+
+    Daily = 0x00
+    Minutes_60 = 0x01
+    Minutes_30 = 0x02
+    Minutes_15 = 0x03
+    Minutes_10 = 0x04
+    Minutes_7_5 = 0x05
+    Minutes_5 = 0x06
+    Minutes_2_5 = 0x07
+
+
+class GetMeasurementProfileStatus(t.enum8):
+    """Get Measurement Profile Response status values per Table 4-42."""
+
+    Success = 0x00
+    Attribute_Profile_Not_Supported = 0x01
+    Invalid_Start_Time = 0x02
+    More_Intervals_Requested_Than_Can_Be_Returned = 0x03
+    No_Intervals_Available_For_The_Requested_Time = 0x04
+
+
+# Figure 4-8. The interval width really follows the profiled attribute's own type
+# ("For scaling and data type use the respective attribute set"), but the spec also
+# marks invalid intervals as 0xFFFF, so uint16 is used as an approximation.
+class GetMeasurementProfileResponseSchema(foundation.CommandSchema):
+    start_time: t.UTCTime
+    status: GetMeasurementProfileStatus
+    profile_interval_period: ProfileIntervalPeriod
+    number_of_intervals_delivered: t.uint8_t
+    attribute_id: t.uint16_t
+    intervals: t.List[t.uint16_t] = t.StructField(
+        length=lambda s: s.number_of_intervals_delivered
+    )
+
+
 class ElectricalMeasurement(Cluster):
     cluster_id: Final[t.uint16_t] = 0x0B04
     name: Final = "Electrical Measurement"
@@ -229,6 +269,8 @@ class ElectricalMeasurement(Cluster):
     MeasurementType: Final = MeasurementType
     DCOverloadAlarmMark: Final = DCOverloadAlarmMark
     ACAlarmsMask: Final = ACAlarmsMask
+    ProfileIntervalPeriod: Final = ProfileIntervalPeriod
+    GetMeasurementProfileStatus: Final = GetMeasurementProfileStatus
 
     class AttributeDefs(BaseAttributeDefs):
         # Basic Information
@@ -594,25 +636,19 @@ class ElectricalMeasurement(Cluster):
         )
 
     class ClientCommandDefs(BaseCommandDefs):
+        # Figure 4-6. `attributes` runs to the end of the frame: the spec has no count
+        # field for it, despite zigbee-herdsman carrying one.
         get_profile_info_response: Final = ZCLCommandDef(
             id=0x00,
             schema={
                 "profile_count": t.uint8_t,
-                "profile_interval_period": t.enum8,
+                "profile_interval_period": ProfileIntervalPeriod,
                 "max_number_of_intervals": t.uint8_t,
-                "attributes": t.LVList[t.uint16_t],
+                "attributes": t.List[t.uint16_t],
             },
         )
         get_measurement_profile_response: Final = ZCLCommandDef(
-            id=0x01,
-            schema={
-                "start_time": t.UTCTime,
-                "status": t.enum8,
-                "profile_interval_period": t.enum8,
-                "number_of_intervals_delivered": t.uint8_t,
-                "attribute_id": t.uint16_t,
-                "intervals": t.LVList[t.uint16_t],
-            },
+            id=0x01, schema=GetMeasurementProfileResponseSchema
         )
 
 

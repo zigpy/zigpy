@@ -502,6 +502,46 @@ class NotificationFlags5(t.bitmap32):
     # Bits 9-31: Reserved
 
 
+class SnapshotPayloadType(t.enum8):
+    """Snapshot payload type per Table 10-99."""
+
+    TOU_Information_Set_Delivered_Registers = 0x00
+    TOU_Information_Set_Received_Registers = 0x01
+    Block_Tier_Information_Set_Delivered = 0x02
+    Block_Tier_Information_Set_Received = 0x03
+    TOU_Information_Set_Delivered_No_Billing = 0x04
+    TOU_Information_Set_Received_No_Billing = 0x05
+    Block_Tier_Information_Set_Delivered_No_Billing = 0x06
+    Block_Tier_Information_Set_Received_No_Billing = 0x07
+    Data_Unavailable = 0x80
+
+
+class SnapshotScheduleConfirmation(t.enum8):
+    """Snapshot schedule confirmation per Table 10-96."""
+
+    Accepted = 0x00
+    Snapshot_Type_Not_Supported = 0x01
+    Snapshot_Cause_Not_Supported = 0x02
+    Snapshot_Schedule_Not_Currently_Available = 0x03
+    Snapshot_Schedules_Not_Supported_By_Device = 0x04
+    Insufficient_Space_For_Snapshot_Schedule = 0x05
+
+
+# Figure 10-86
+class SnapshotSchedulePayload(t.Struct):
+    snapshot_schedule_id: t.uint8_t
+    snapshot_start_time: t.UTCTime
+    snapshot_schedule: t.uint24_t
+    snapshot_payload_type: SnapshotPayloadType
+    snapshot_cause: SnapshotCause
+
+
+# Figure 10-58
+class SnapshotResponsePayload(t.Struct):
+    snapshot_schedule_id: t.uint8_t
+    snapshot_schedule_confirmation: SnapshotScheduleConfirmation
+
+
 class GetProfileResponseSchema(CommandSchema):
     end_time: t.UTCTime
     status: t.uint8_t
@@ -521,16 +561,22 @@ class GetSampledDataResponseSchema(CommandSchema):
     samples: t.List[t.uint24_t] = t.StructField(length=lambda s: s.number_of_samples)
 
 
-class ConfigureNotificationFlagSchema(CommandSchema):
-    issuer_event_id: t.uint32_t
-    notification_scheme: t.uint8_t
-    notification_flag_attribute_id: t.uint16_t
+# Figure 10-77
+class BitFieldAllocation(t.Struct):
     cluster_id: t.uint16_t
     manufacturer_code: t.uint16_t
     number_of_commands: t.uint8_t
     command_ids: t.List[t.uint8_t] = t.StructField(
         length=lambda s: s.number_of_commands
     )
+
+
+class ConfigureNotificationFlagSchema(CommandSchema):
+    issuer_event_id: t.uint32_t
+    notification_scheme: t.uint8_t
+    notification_flag_attribute_id: t.uint16_t
+    # One sub-payload per notification flag bit, in bit order
+    bit_field_allocations: t.List[BitFieldAllocation]
 
 
 class Metering(Cluster):
@@ -552,6 +598,8 @@ class Metering(Cluster):
     ExtendedStatus: Final = ExtendedStatus
     ExtendedGenericAlarmMask: Final = ExtendedGenericAlarmMask
     ManufacturerAlarmMask: Final = ManufacturerAlarmMask
+    SnapshotPayloadType: Final = SnapshotPayloadType
+    SnapshotScheduleConfirmation: Final = SnapshotScheduleConfirmation
 
     cluster_id: Final[t.uint16_t] = 0x0702
     ep_attribute: Final = "smartenergy_metering"
@@ -1036,7 +1084,7 @@ class Metering(Cluster):
                 "issuer_event_id": t.uint32_t,
                 "command_index": t.uint8_t,
                 "total_number_of_commands": t.uint8_t,
-                "snapshot_schedule_payload": t.LVBytes,
+                "snapshot_schedule_payloads": t.List[SnapshotSchedulePayload],
             },
         )
         take_snapshot: Final = ZCLCommandDef(
@@ -1141,7 +1189,7 @@ class Metering(Cluster):
             id=0x04,
             schema={
                 "issuer_event_id": t.uint32_t,
-                "snapshot_response_payload": t.LVBytes,
+                "snapshot_response_payloads": t.List[SnapshotResponsePayload],
             },
         )
         take_snapshot_response: Final = ZCLCommandDef(
@@ -1160,8 +1208,10 @@ class Metering(Cluster):
                 "command_index": t.uint8_t,
                 "total_number_of_commands": t.uint8_t,
                 "snapshot_cause": SnapshotCause,
-                "snapshot_payload_type": t.uint8_t,
-                "snapshot_payload": t.LVBytes,
+                "snapshot_payload_type": SnapshotPayloadType,
+                # Contents depend on `snapshot_payload_type` (Figures 10-62 onward) and
+                # run to the end of the frame, so it is left opaque for now
+                "snapshot_payload": t.Bytes,
             },
         )
         get_sampled_data_response: Final = ZCLCommandDef(

@@ -1195,6 +1195,19 @@ class Time(Cluster):
     TimeStatus: Final = TimeStatus
 
 
+class CoordinateSystem(t.enum2):
+    Rectangular = 0b00
+
+
+# Table 3-73. The wire type is `data8`, but that is not constructible from an int, so
+# this is modelled as an int struct and the attribute carries an explicit `zcl_type`.
+class LocationType(t.IntStruct, t.uint8_t):
+    absolute: t.uint1_t
+    two_dimensional: t.uint1_t
+    coordinate_system: CoordinateSystem
+    _reserved: t.uint4_t
+
+
 class LocationMethod(t.enum8):
     Lateration = 0x00
     Signposting = 0x01
@@ -1218,6 +1231,8 @@ class RSSILocation(Cluster):
     among devices.
     """
 
+    LocationType: Final = LocationType
+    CoordinateSystem: Final = CoordinateSystem
     LocationMethod: Final = LocationMethod
     NeighborInfo: Final = NeighborInfo
 
@@ -1227,7 +1242,11 @@ class RSSILocation(Cluster):
     class AttributeDefs(BaseAttributeDefs):
         # Location Information
         type: Final = ZCLAttributeDef(
-            id=0x0000, type=t.data8, access="rw", mandatory=True
+            id=0x0000,
+            type=LocationType,
+            zcl_type=foundation.DataTypeId.data8,
+            access="rw",
+            mandatory=True,
         )
         method: Final = ZCLAttributeDef(
             id=0x0001, type=LocationMethod, access="rw", mandatory=True
@@ -1339,7 +1358,7 @@ class RSSILocation(Cluster):
             id=0x01,
             schema={
                 "status": foundation.Status,
-                "location_type?": t.data8,
+                "location_type?": LocationType,
                 "coordinate1?": t.int16s,
                 "coordinate2?": t.int16s,
                 "coordinate3?": t.int16s,
@@ -1354,7 +1373,7 @@ class RSSILocation(Cluster):
         compact_location_data_notification: Final = ZCLCommandDef(id=0x03, schema={})
         rssi_ping: Final = ZCLCommandDef(
             id=0x04,
-            schema={"location_type": t.data8},
+            schema={"location_type": LocationType},
         )
         rssi_req: Final = ZCLCommandDef(id=0x05, schema={})
         report_rssi_measurements: Final = ZCLCommandDef(
@@ -2849,9 +2868,11 @@ class ApplianceControl(Cluster):
             schema={"command_id": ApplianceCommandId},
         )
         signal_state: Final = ZCLCommandDef(id=0x01, schema={})
+        # Figures 15-3 and 15-4: a single record whose function identifier "i.e.,
+        # attribute identifier", data type and data match `foundation.Attribute`
         write_functions: Final = ZCLCommandDef(
             id=0x02,
-            schema={"function_data": t.LVBytes},
+            schema={"function": foundation.Attribute},
         )
         overload_pause_resume: Final = ZCLCommandDef(id=0x03, schema={})
         overload_pause: Final = ZCLCommandDef(id=0x04, schema={})
