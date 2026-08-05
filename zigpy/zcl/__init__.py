@@ -308,6 +308,8 @@ class ClusterCommandReceivedEvent:
     tsn: int
     # `None` when the cluster does not define this command id, so it cannot be decoded
     command: CommandSchema | None
+    # The undecoded payload, provided only when `command` is `None`
+    raw_command: bytes | None = None
 
 
 class AnyCommandType(enum.Enum):
@@ -990,6 +992,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     command_id=hdr.command_id,
                     tsn=hdr.tsn,
                     command=command,
+                    raw_command=None if command is not None else args,
                 ),
             )
             self.handle_cluster_request(hdr, args)
@@ -1048,7 +1051,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         """Register the owner of a received command, responsible for replying to it.
 
         A `default` owner is skipped while any non-default owner is registered for the
-        same command, but stays registered so it resumes if that owner goes away.
+        same command, but stays registered so it resumes if that owner goes away. An
+        owner of a specific command likewise displaces an `ANY_COMMAND` owner.
         """
         key = self._command_key(command)
         owners = self._default_command_owners if default else self._command_owners
@@ -1059,22 +1063,41 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             )
 
         owners[key].append(callback)
+        subscribed = True
 
         def unsubscribe() -> None:
-            if callback in owners[key]:
+            # Tied to this registration, so calling it twice cannot remove a later one
+            nonlocal subscribed
+
+            if subscribed:
+                subscribed = False
                 owners[key].remove(callback)
 
         return unsubscribe
 
+    def _own_command_by_default(
+        self,
+        command: foundation.ZCLCommandDef | AnyCommandType,
+        callback: Callable,
+    ) -> None:
+        """Own a command as the cluster class's own default handler."""
+        # A subclass overriding `handle_cluster_request` has taken over replying, so
+        # answering here too would reply twice to one command
+        if self._takes_over_command_handling:
+            return
+
+        self.respond_to_command(command, callback, default=True)
+
     def _owners_for(self, command: CommandSchema | None) -> list[Callable]:
-        """The owners that will answer a received command, defaults only as a fallback."""
-        keys = self._command_keys(command)
-        owners = [cb for key in keys for cb in self._command_owners[key]]
+        """The most specific owners of a command, defaults only as a fallback."""
+        # Only one registration answers: two would each reply reusing the same TSN
+        for owners in (self._command_owners, self._default_command_owners):
+            for key in self._command_keys(command):
+                if owners[key]:
+                    # Copied so an owner unsubscribing itself cannot mutate it
+                    return list(owners[key])
 
-        if owners:
-            return owners
-
-        return [cb for key in keys for cb in self._default_command_owners[key]]
+        return []
 
     def _dispatch_command_owners(
         self, hdr: foundation.ZCLHeader, command: CommandSchema | None
@@ -1086,7 +1109,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 # the default `ZigbeeException` catch would swallow a DeliveryError
                 self.create_catching_task(callback(hdr, command), exceptions=())
             else:
-                callback(hdr, command)
+                # An async owner fails within its own task, so a sync one cannot either
+                try:
+                    callback(hdr, command)
+                except Exception:  # noqa: BLE001
+                    self.warning(
+                        "Owner of command 0x%02X failed", hdr.command_id, exc_info=True
+                    )
 
     def handle_cluster_request(
         self,

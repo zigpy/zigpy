@@ -134,10 +134,13 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def cluster_added(self, cluster: Cluster) -> None:
         """Take ownership of the commands this device's clusters let us answer."""
         if cluster.cluster_id == PollControl.cluster_id:
+            # Owned as a default so a quirk registering its own check-in owner displaces
+            # us instead of making cluster creation raise
             self._on_remove_callbacks.append(
                 cluster.respond_to_command(
                     PollControl.ClientCommandDefs.checkin,
                     self.poll_control_checkin_callback,
+                    default=True,
                 )
             )
 

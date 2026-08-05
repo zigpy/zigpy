@@ -1,3 +1,4 @@
+import asyncio
 import itertools
 import time
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -72,7 +73,13 @@ FW_IMAGE = zigpy.ota.OtaImageWithMetadata(
 )
 
 
-def make_packet(dev: zigpy.device.Device, cluster: Cluster, cmd_name: str, **kwargs):
+def make_packet(
+    dev: zigpy.device.Device,
+    cluster: Cluster,
+    cmd_name: str,
+    src_ep: int = 1,
+    **kwargs,
+):
     req_hdr, req_cmd = cluster._create_request(
         general=False,
         command_id=cluster.commands_by_name[cmd_name].id,
@@ -85,7 +92,7 @@ def make_packet(dev: zigpy.device.Device, cluster: Cluster, cmd_name: str, **kwa
 
     return t.ZigbeePacket(
         src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
-        src_ep=1,
+        src_ep=src_ep,
         dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
         dst_ep=1,
         tsn=req_hdr.tsn,
@@ -383,6 +390,163 @@ async def test_ota_manager():
     assert result == foundation.Status.SUCCESS
 
     assert bytes(reconstructed_firmware) == FW_IMAGE.firmware.serialize()
+
+
+@pytest.mark.parametrize("device_ep", [1, 2])
+async def test_ota_manager_multiple_ota_endpoints(device_ep: int) -> None:
+    """Test that an update driven from any OTA endpoint of a device is answered."""
+
+    app = make_app({})
+    dev = add_initialized_device(
+        app, nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77")
+    )
+
+    ep2 = dev.add_endpoint(2)
+    ep2.status = zigpy.endpoint.Status.ZDO_INIT
+    ep2.profile_id = 260
+    ep2.device_type = zigpy.profiles.zha.DeviceType.PUMP
+
+    for ep_id in (1, 2):
+        dev.endpoints[ep_id].add_output_cluster(Ota.cluster_id)
+
+    cluster = dev.endpoints[device_ep].out_clusters[Ota.cluster_id]
+
+    reconstructed_firmware = bytearray()
+    reply_endpoints = set()
+
+    async def send_packet(packet: t.ZigbeePacket):
+        if packet.cluster_id != Ota.cluster_id:
+            return
+
+        hdr, cmd = cluster.deserialize(packet.data.serialize())
+        assert FW_IMAGE.firmware is not None
+
+        if isinstance(cmd, Ota.ImageNotifyCommand):
+            # `image_notify` is sent to the first endpoint exposing the cluster
+            assert packet.dst_ep == 1
+
+            dev.application.packet_received(
+                make_packet(
+                    dev,
+                    cluster,
+                    "query_next_image",
+                    src_ep=device_ep,
+                    field_control=Ota.QueryNextImageCommand.FieldControl.HardwareVersion,
+                    manufacturer_code=FW_IMAGE.firmware.header.manufacturer_id,
+                    image_type=FW_IMAGE.firmware.header.image_type,
+                    current_file_version=FW_IMAGE.firmware.header.file_version - 10,
+                    hardware_version=1,
+                )
+            )
+            return
+
+        # Every reply to the device is sent back to the endpoint that asked
+        reply_endpoints.add(packet.dst_ep)
+
+        if isinstance(cmd, Ota.ClientCommandDefs.query_next_image_response.schema):
+            assert cmd.status == foundation.Status.SUCCESS
+
+            dev.application.packet_received(
+                make_packet(
+                    dev,
+                    cluster,
+                    "image_block",
+                    src_ep=device_ep,
+                    field_control=Ota.ImageBlockCommand.FieldControl.RequestNodeAddr,
+                    manufacturer_code=FW_IMAGE.firmware.header.manufacturer_id,
+                    image_type=FW_IMAGE.firmware.header.image_type,
+                    file_version=FW_IMAGE.firmware.header.file_version,
+                    file_offset=0,
+                    maximum_data_size=40,
+                    request_node_addr=dev.ieee,
+                )
+            )
+        elif isinstance(cmd, Ota.ClientCommandDefs.image_block_response.schema):
+            assert cmd.status == foundation.Status.SUCCESS
+
+            reconstructed_firmware[
+                cmd.file_offset : cmd.file_offset + len(cmd.image_data)
+            ] = cmd.image_data
+
+            if cmd.file_offset + len(cmd.image_data) == len(
+                FW_IMAGE.firmware.serialize()
+            ):
+                dev.application.packet_received(
+                    make_packet(
+                        dev,
+                        cluster,
+                        "upgrade_end",
+                        src_ep=device_ep,
+                        status=foundation.Status.SUCCESS,
+                        manufacturer_code=FW_IMAGE.firmware.header.manufacturer_id,
+                        image_type=FW_IMAGE.firmware.header.image_type,
+                        file_version=FW_IMAGE.firmware.header.file_version,
+                    )
+                )
+            else:
+                dev.application.packet_received(
+                    make_packet(
+                        dev,
+                        cluster,
+                        "image_block",
+                        src_ep=device_ep,
+                        field_control=Ota.ImageBlockCommand.FieldControl.RequestNodeAddr,
+                        manufacturer_code=FW_IMAGE.firmware.header.manufacturer_id,
+                        image_type=FW_IMAGE.firmware.header.image_type,
+                        file_version=FW_IMAGE.firmware.header.file_version,
+                        file_offset=cmd.file_offset + 40,
+                        maximum_data_size=40,
+                        request_node_addr=dev.ieee,
+                    )
+                )
+
+    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+    result = await update_firmware(dev, FW_IMAGE)
+
+    assert result == foundation.Status.SUCCESS
+    assert bytes(reconstructed_firmware) == FW_IMAGE.firmware.serialize()
+    assert reply_endpoints == {device_ep}
+
+
+async def test_ota_manager_registration_failure_unwinds() -> None:
+    """Test that a failure to own every OTA command leaves nothing registered."""
+
+    app = make_app({})
+    dev = add_initialized_device(
+        app, nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77")
+    )
+    cluster = dev.endpoints[1].add_output_cluster(Ota.cluster_id)
+
+    # Something else already owns the last command the manager registers
+    unsub = cluster.respond_to_command(
+        Ota.ServerCommandDefs.upgrade_end, AsyncMock(), default=False
+    )
+
+    with pytest.raises(ValueError, match="a non-default owner is already registered"):
+        await update_firmware(dev, FW_IMAGE)
+
+    unsub()
+
+    # The earlier registrations did not leak: the cluster's own defaults answer again
+    cluster.image_block_response = AsyncMock()
+    packet = make_packet(
+        dev,
+        cluster,
+        "image_block",
+        field_control=Ota.ImageBlockCommand.FieldControl.RequestNodeAddr,
+        manufacturer_code=FW_IMAGE.firmware.header.manufacturer_id,
+        image_type=FW_IMAGE.firmware.header.image_type,
+        file_version=FW_IMAGE.firmware.header.file_version,
+        file_offset=0,
+        maximum_data_size=40,
+        request_node_addr=dev.ieee,
+    )
+    dev.packet_received(packet)
+    await asyncio.sleep(0)
+
+    assert cluster.image_block_response.mock_calls == [
+        call(foundation.Status.ABORT, tsn=packet.tsn)
+    ]
 
 
 async def test_ota_manager_image_page():

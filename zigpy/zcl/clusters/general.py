@@ -2033,9 +2033,13 @@ class Ota(Cluster):
         super().__init__(*args, **kwargs)
         self.last_query_cmd: QueryNextImageCommand | None = None
 
+        # If a subclass overrides `handle_cluster_request`, do not interfere. Note: this
+        # will be removed in a future release.
+        if self._takes_over_command_handling:
+            return
+
         # Owned as defaults so that an OTAManager takes over for the duration of an
-        # upgrade and these resume afterwards. Every one of them is answered by its
-        # paired response command, never by a Default Response.
+        # upgrade and then falls back to generic defaults.
         self.respond_to_command(
             self.ServerCommandDefs.query_next_image,
             self._handle_query_next_image,
@@ -2048,7 +2052,7 @@ class Ota(Cluster):
         )
         self.respond_to_command(
             self.ServerCommandDefs.image_page,
-            self._unimplemented_request,
+            self._handle_image_block_req,
             default=True,
         )
         self.respond_to_command(
@@ -2159,14 +2163,10 @@ class Ota(Cluster):
         )
 
     def _unimplemented_request(self, hdr: foundation.ZCLHeader, cmd) -> None:
-        """Claim a request whose paired response zigpy does not implement yet.
-
-        The device is waiting for that response, so a Default Response in its place
-        would only mislead it.
-        """
+        """Claim a request whose paired response zigpy does not implement yet."""
         self.debug("No response implemented for %s, ignoring it", hdr.command_id)
 
-    async def _handle_query_next_image(self, hdr, cmd):
+    async def _handle_query_next_image(self, hdr: foundation.ZCLHeader, cmd: QueryNextImageCommand) -> None:
         # Cache the query command fields for proactive OTA lookups
         self.last_query_cmd = cmd
         self.emit(
