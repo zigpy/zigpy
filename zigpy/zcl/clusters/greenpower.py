@@ -33,7 +33,7 @@ class CommissioningNotificationSchema(foundation.CommandSchema):
     options: CommissioningNotificationOptions
     gpd_id: zgptypes.DeviceID
     frame_counter: t.uint32_t
-    command_id: t.uint8_t
+    command_id: zgptypes.GPDCommandID
     payload: t.LVBytes
     gpp_short_addr: t.uint16_t = StructField(
         requires=lambda s: s.options.proxy_info_present, optional=True
@@ -65,7 +65,7 @@ class ResponseSchema(foundation.CommandSchema):
     temp_master_short_addr: t.uint16_t
     temp_master_tx_channel: TempMasterTxChannel
     gpd_id: zgptypes.DeviceID
-    gpd_command_id: t.uint8_t
+    gpd_command_id: zgptypes.GPDCommandID
     gpd_command_payload: t.LVBytes
 
 
@@ -104,7 +104,7 @@ class NotificationSchema(foundation.CommandSchema):
     options: NotificationOptions
     gpd_id: zgptypes.DeviceID
     frame_counter: t.uint32_t
-    command_id: t.uint8_t
+    command_id: zgptypes.GPDCommandID
     payload: t.LVBytes
     short_addr: t.uint16_t = StructField(
         requires=lambda s: s.options.appoint_temp_master
