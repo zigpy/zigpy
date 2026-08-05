@@ -93,13 +93,12 @@ class GPCommissioningPayload(t.Struct):
     options: GPCommissioningOptions
 
     extended_options: GPCommissioningExtendedOptions = t.StructField(
-        requires=lambda s: s.options.extended_options_present, optional=True
+        requires=lambda s: s.options.extended_options_present
     )
     security_key: t.KeyData = t.StructField(
         requires=lambda s: (
             s.extended_options is not None and s.extended_options.key_present
         ),
-        optional=True,
     )
     # None means the field is absent; 0 is a valid MIC and must not be confused with it.
     key_mic: t.uint32_t = t.StructField(
@@ -108,7 +107,6 @@ class GPCommissioningPayload(t.Struct):
             and s.extended_options.key_present
             and s.extended_options.key_encrypted
         ),
-        optional=True,
     )
     # None means absent; 0 is a valid initial counter value.
     outgoing_counter: t.uint32_t = t.StructField(
@@ -116,28 +114,23 @@ class GPCommissioningPayload(t.Struct):
             s.extended_options is not None
             and s.extended_options.outgoing_counter_present
         ),
-        optional=True,
     )
 
     app_info: GPCommissioningAppInfo = t.StructField(
-        requires=lambda s: s.options.app_info_present, optional=True
+        requires=lambda s: s.options.app_info_present
     )
     manufacturer_id: t.uint16_t = t.StructField(
         requires=lambda s: s.app_info is not None
         and s.app_info.manufacturer_id_present,
-        optional=True,
     )
     model_id: t.uint16_t = t.StructField(
         requires=lambda s: s.app_info is not None and s.app_info.model_id_present,
-        optional=True,
     )
     gpd_commands: t.LVList[t.uint8_t, t.uint8_t] = t.StructField(
         requires=lambda s: s.app_info is not None and s.app_info.gpd_commands_present,
-        optional=True,
     )
     cluster_counts: GPClusterListCount = t.StructField(
         requires=lambda s: s.app_info is not None and s.app_info.cluster_list_present,
-        optional=True,
     )
     server_clusters: t.List[t.uint16_t] = t.StructField(
         requires=lambda s: s.app_info is not None and s.app_info.cluster_list_present,
@@ -149,7 +142,6 @@ class GPCommissioningPayload(t.Struct):
     )
     switch_information: GPSwitchInformation = t.StructField(
         requires=lambda s: s.app_info is not None and s.app_info.switch_info_present,
-        optional=True,
     )
 
     def __new__(cls, *args, **kwargs) -> Self:
@@ -184,15 +176,12 @@ class GPCommissioningReplyPayload(t.Struct):
     """GP Commissioning Reply command (0xF0) payload."""
 
     options: GPCommissioningReplyOptions
-    pan_id: t.PanId = t.StructField(
-        requires=lambda s: s.options.pan_id_present, optional=True
-    )
+    pan_id: t.PanId = t.StructField(requires=lambda s: s.options.pan_id_present)
     security_key: t.KeyData = t.StructField(
-        requires=lambda s: s.options.security_key_present, optional=True
+        requires=lambda s: s.options.security_key_present
     )
     key_mic: t.uint32_t = t.StructField(
         requires=lambda s: (s.options.security_key_present and s.options.key_encrypted),
-        optional=True,
     )
     frame_counter: t.uint32_t = t.StructField(
         requires=lambda s: (
@@ -201,7 +190,6 @@ class GPCommissioningReplyPayload(t.Struct):
             and s.options.security_key_present
             and s.options.key_encrypted
         ),
-        optional=True,
     )
 
 
@@ -326,7 +314,7 @@ class GPRequestAttributesPayload(t.Struct):
 
     options: GPAttributeRequestOptions
     manufacturer_id: t.uint16_t = t.StructField(
-        requires=lambda s: s.options.manufacturer_id_present, optional=True
+        requires=lambda s: s.options.manufacturer_id_present
     )
     cluster_records: t.List[GPClusterRecordRequest]
 
@@ -345,7 +333,7 @@ class GPZCLTunnelingPayload(t.Struct):
 
     options: GPZCLTunnelingOptions
     manufacturer_id: t.uint16_t = t.StructField(
-        requires=lambda s: s.options.manufacturer_id_present, optional=True
+        requires=lambda s: s.options.manufacturer_id_present
     )
     cluster_id: t.uint16_t
     command_id: t.uint8_t

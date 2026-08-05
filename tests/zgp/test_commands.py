@@ -390,6 +390,119 @@ def test_empty_payload():
         GPCommissioningPayload.deserialize(b"")
 
 
+@pytest.mark.parametrize(
+    "data",
+    [
+        # Extended Options announced by the Options field but absent
+        b"\x02\x80",
+        # GPDkey announced but short
+        b"\x02\x80\x23" + b"\xaa" * 15,
+        # GPDkeyMIC announced by GPDkeyEncryption but absent
+        b"\x02\x80\x63" + b"\xaa" * 16,
+        # GPDoutgoingCounter announced but absent
+        b"\x02\x80\x80",
+        # Application information announced by the Options field but absent
+        b"\x02\x04",
+        # ManufacturerID announced but absent
+        b"\x02\x04\x01",
+        # ModelID announced but absent
+        b"\x02\x04\x02",
+        # GPD CommandID list announced but absent
+        b"\x02\x04\x04",
+        # Cluster List announced but absent
+        b"\x02\x04\x08",
+        # Switch information announced but truncated mid-field
+        b"\x02\x04\x10\x02\x22",
+    ],
+)
+def test_commissioning_announced_field_missing(data: bytes) -> None:
+    """A field announced by a control sub-field is mandatory (Figures 107 and 108)."""
+    with pytest.raises(ValueError, match="too short"):
+        GPCommissioningPayload.deserialize(data)
+
+
+def test_commissioning_cluster_count_exceeds_data() -> None:
+    """The cluster lists must hold exactly what the length nibbles announce (Fig. 113)."""
+    # app_info=0x08: cluster list present, announcing one server cluster that is absent
+    with pytest.raises(ValueError, match="Expected 1 items, got 0"):
+        GPCommissioningPayload.deserialize(b"\x02\x04\x08\x01")
+
+
+@pytest.mark.parametrize(
+    ("schema", "data"),
+    [
+        # PANId announced by the Options field but absent (Figure 117)
+        (GPCommissioningReplyPayload, b"\x01"),
+        # GPDsecurityKey announced but absent
+        (GPCommissioningReplyPayload, b"\x02"),
+        # GPDkeyMIC announced by GPDkeyEncryption but absent
+        (GPCommissioningReplyPayload, b"\x06" + b"\xaa" * 16),
+        # Frame Counter announced by SecurityLevel 0b11 + key + encryption but absent
+        (GPCommissioningReplyPayload, b"\x1e" + b"\xaa" * 16 + b"\x01\x02\x03\x04"),
+        # ManufacturerID announced by the Options field but absent (Figure 144)
+        (GPRequestAttributesPayload, b"\x02"),
+        # ManufacturerID announced by the Options field but absent (Figure 137)
+        (GPZCLTunnelingPayload, b"\x04"),
+    ],
+)
+def test_announced_field_missing(schema: type[t.Struct], data: bytes) -> None:
+    """A field announced by a control sub-field cannot be truncated away."""
+    with pytest.raises(ValueError, match="too short"):
+        schema.deserialize(data)
+
+
+@pytest.mark.parametrize(
+    ("payload", "missing"),
+    [
+        (
+            GPCommissioningPayload(
+                device_id=0x02, options=GPCommissioningOptions(0x80)
+            ),
+            "extended_options",
+        ),
+        (
+            GPCommissioningPayload(
+                device_id=0x02,
+                options=GPCommissioningOptions(0x80),
+                extended_options=GPCommissioningExtendedOptions(0x23),
+            ),
+            "security_key",
+        ),
+        (
+            GPCommissioningPayload(
+                device_id=0x02, options=GPCommissioningOptions(0x04)
+            ),
+            "app_info",
+        ),
+        (
+            GPCommissioningPayload(
+                device_id=0x02,
+                options=GPCommissioningOptions(0x04),
+                app_info=GPCommissioningAppInfo(0x01),
+            ),
+            "manufacturer_id",
+        ),
+        (
+            GPCommissioningReplyPayload(options=GPCommissioningReplyOptions(0x01)),
+            "pan_id",
+        ),
+        (
+            GPRequestAttributesPayload(
+                options=0x02,
+                cluster_records=[
+                    GPClusterRecordRequest(cluster_id=0x0402, attribute_ids=[0x0000])
+                ],
+            ),
+            "manufacturer_id",
+        ),
+    ],
+)
+def test_serialize_announced_field_missing(payload: t.Struct, missing: str) -> None:
+    """Announcing a field and leaving it unset must not silently omit it."""
+    with pytest.raises(ValueError, match=f"Value for field {missing!r} is required"):
+        payload.serialize()
+
+
 def test_serialize_with_encrypted_key_and_mic():
     """Serialization must include encrypted key + MIC per Figure 107.
 
