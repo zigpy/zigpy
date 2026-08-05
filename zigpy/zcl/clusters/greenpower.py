@@ -16,6 +16,58 @@ from zigpy.zcl.foundation import (
 import zigpy.zgp.types as zgptypes
 
 
+class GPPFunctionality(t.bitmap24):
+    """Green Power Proxy functionality bitmap."""
+
+    GP_Feature = 0x000001
+    Direct_Communication = 0x000002
+    Derived_Groupcast_Communication = 0x000004
+    Pre_Commissioned_Groupcast_Communication = 0x000008
+    Full_Unicast_Communication = 0x000010
+    Lightweight_Unicast_Communication = 0x000020
+    # b6 Reserved
+    Bidirectional_Operation = 0x000080
+    Proxy_Table_Maintenance = 0x000100
+    # b9 Reserved
+    GP_Commissioning = 0x000400
+    CT_Based_Commissioning = 0x000800
+    Maintenance_Of_GPD = 0x001000
+    GPD_SecurityLevel_0b00 = 0x002000
+    # b14 Deprecated
+    GPD_SecurityLevel_0b10 = 0x008000
+    GPD_SecurityLevel_0b11 = 0x010000
+    # b17-b18 Reserved
+    GPD_IEEE_Address = 0x080000
+    # b20-b23 Reserved
+
+
+class GPSFunctionality(t.bitmap24):
+    """Green Power Sink functionality bitmap."""
+
+    GP_Feature = 0x000001
+    Direct_Communication = 0x000002
+    Derived_Groupcast_Communication = 0x000004
+    Pre_Commissioned_Groupcast_Communication = 0x000008
+    Full_Unicast_Communication = 0x000010
+    Lightweight_Unicast_Communication = 0x000020
+    Proximity_Bidirectional_Operation = 0x000040
+    Multi_Hop_Bidirectional_Operation = 0x000080
+    Proxy_Table_Maintenance = 0x000100
+    Proximity_Commissioning = 0x000200
+    Multi_Hop_Commissioning = 0x000400
+    CT_Based_Commissioning = 0x000800
+    Maintenance_Of_GPD = 0x001000
+    GPD_SecurityLevel_0b00 = 0x002000
+    # b14 Deprecated
+    GPD_SecurityLevel_0b10 = 0x008000
+    GPD_SecurityLevel_0b11 = 0x010000
+    Sink_Table_Based_Groupcast_Forwarding = 0x020000
+    Translation_Table = 0x040000
+    GPD_IEEE_Address = 0x080000
+    Compact_Attribute_Reporting = 0x100000
+    # b21-b23 Reserved
+
+
 # Figure 31 — 16 bits total
 class CommissioningNotificationOptions(t.Struct):
     application_id: zgptypes.ApplicationID
@@ -230,6 +282,8 @@ class GreenPowerProxy(Cluster):
     CommissioningNotificationSchema: Final = CommissioningNotificationSchema
     NotificationResponseSchema: Final = NotificationResponseSchema
     ProxyCommissioningModeSchema: Final = ProxyCommissioningModeSchema
+    GPSFunctionality: Final = GPSFunctionality
+    GPPFunctionality: Final = GPPFunctionality
 
     class AttributeDefs(BaseAttributeDefs):
         max_sink_table_entries: Final = ZCLAttributeDef(
@@ -269,32 +323,56 @@ class GreenPowerProxy(Cluster):
         )
         functionality: Final = ZCLAttributeDef(
             id=0x0006,
-            type=t.bitmap24,
-            access="rw",
+            type=GPSFunctionality,
+            access="r",
             mandatory=True,
         )
         active_functionality: Final = ZCLAttributeDef(
             id=0x0007,
-            type=t.bitmap24,
+            type=GPSFunctionality,
             access="r",
             mandatory=True,
         )
         gpp_max_table_entries: Final = ZCLAttributeDef(
-            id=0x0010, type=t.uint8_t, access="r"
+            id=0x0010,
+            type=t.uint8_t,
+            access="r",
+            mandatory=True,
         )
         gpp_proxy_table: Final = ZCLAttributeDef(
-            id=0x0011, type=t.LongOctetString, access="r"
+            id=0x0011,
+            type=t.LongOctetString,
+            access="r",
+            mandatory=True,
         )
         gpp_functionality: Final = ZCLAttributeDef(
-            id=0x0016, type=t.bitmap24, access="r"
+            id=0x0016,
+            type=GPPFunctionality,
+            access="r",
+            mandatory=True,
         )
         gpp_active_functionality: Final = ZCLAttributeDef(
-            id=0x0017, type=t.bitmap24, access="r"
+            id=0x0017,
+            type=GPPFunctionality,
+            access="r",
+            mandatory=True,
+        )
+        gp_shared_security_key_type: Final = ZCLAttributeDef(
+            id=0x0020,
+            type=t.bitmap8,
+            access="rw",
+            mandatory=True,
+        )
+        gp_shared_security_key: Final = ZCLAttributeDef(
+            id=0x0021,
+            type=t.KeyData,
+            access="rw",
+            mandatory=True,
         )
         link_key: Final = ZCLAttributeDef(
             id=0x0022,
             type=t.KeyData,
-            access="r",
+            access="rw",
             mandatory=True,
         )
 

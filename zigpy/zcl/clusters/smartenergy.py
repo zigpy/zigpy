@@ -7,6 +7,7 @@ from zigpy.zcl import Cluster
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
     BaseCommandDefs,
+    CommandSchema,
     DataTypeId,
     ZCLAttributeDef,
     ZCLCommandDef,
@@ -135,18 +136,477 @@ class MeteringStatus(t.bitmap8):
     Reserved = 0b10000000
 
 
+class CurrentBlock(t.enum8):
+    """Block enumeration for CurrentBlock attribute."""
+
+    No_Blocks_In_Use = 0x00
+    Block1 = 0x01
+    Block2 = 0x02
+    Block3 = 0x03
+    Block4 = 0x04
+    Block5 = 0x05
+    Block6 = 0x06
+    Block7 = 0x07
+    Block8 = 0x08
+    Block9 = 0x09
+    Block10 = 0x0A
+    Block11 = 0x0B
+    Block12 = 0x0C
+    Block13 = 0x0D
+    Block14 = 0x0E
+    Block15 = 0x0F
+    Block16 = 0x10
+
+
+class ProfileIntervalPeriod(t.enum8):
+    """Profile interval period timeframes."""
+
+    Daily = 0x00
+    Minutes_60 = 0x01
+    Minutes_30 = 0x02
+    Minutes_15 = 0x03
+    Minutes_10 = 0x04
+    Minutes_7_5 = 0x05
+    Minutes_5 = 0x06
+    Minutes_2_5 = 0x07
+    Minutes_1 = 0x08
+
+
+class SupplyStatus(t.enum8):
+    """Supply status at customer premises."""
+
+    Supply_Off = 0x00
+    Supply_Off_Armed = 0x01
+    Supply_On = 0x02
+
+
+class AmbientConsumptionIndicator(t.enum8):
+    """Ambient consumption indicator - low/medium/high."""
+
+    Low_Energy_Usage = 0x00
+    Medium_Energy_Usage = 0x01
+    High_Energy_Usage = 0x02
+
+
+class GenericAlarmMask(t.bitmap16):
+    """Generic alarm mask - bits correspond to alarm codes 0x00-0x0F."""
+
+    Check_Meter = 0x0001
+    Low_Battery = 0x0002
+    Tamper_Detect = 0x0004
+    Power_Failure = 0x0008
+    Power_Quality = 0x0010
+    Leak_Detect = 0x0020
+    Service_Disconnect = 0x0040
+    Reserved_0x07 = 0x0080
+    Meter_Cover_Removed = 0x0100
+    Meter_Cover_Closed = 0x0200
+    Strong_Magnetic_Field = 0x0400
+    No_Strong_Magnetic_Field = 0x0800
+    Battery_Failure = 0x1000
+    Program_Memory_Error = 0x2000
+    RAM_Error = 0x4000
+    NV_Memory_Error = 0x8000
+
+
+class ElectricityAlarmMask(t.bitmap32):
+    """Electricity alarm mask - bits correspond to alarm codes 0x10-0x2F."""
+
+    Low_Voltage_L1 = 0x00000001
+    High_Voltage_L1 = 0x00000002
+    Low_Voltage_L2 = 0x00000004
+    High_Voltage_L2 = 0x00000008
+    Low_Voltage_L3 = 0x00000010
+    High_Voltage_L3 = 0x00000020
+    Over_Current_L1 = 0x00000040
+    Over_Current_L2 = 0x00000080
+    Over_Current_L3 = 0x00000100
+    Frequency_Too_Low_L1 = 0x00000200
+    Frequency_Too_High_L1 = 0x00000400
+    Frequency_Too_Low_L2 = 0x00000800
+    Frequency_Too_High_L2 = 0x00001000
+    Frequency_Too_Low_L3 = 0x00002000
+    Frequency_Too_High_L3 = 0x00004000
+    Ground_Fault = 0x00008000
+    Electric_Tamper_Detect = 0x00010000
+    Incorrect_Polarity = 0x00020000
+    Current_No_Voltage = 0x00040000
+    Under_Voltage = 0x00080000
+    Over_Voltage = 0x00100000
+    Normal_Voltage = 0x00200000
+    PF_Below_Threshold = 0x00400000
+    PF_Above_Threshold = 0x00800000
+    Terminal_Cover_Removed = 0x01000000
+    Terminal_Cover_Closed = 0x02000000
+
+
+class GenericFlowPressureAlarmMask(t.bitmap16):
+    """Generic flow/pressure alarm mask - bits correspond to alarm codes 0x30-0x3F."""
+
+    Burst_Detect = 0x0001
+    Pressure_Too_Low = 0x0002
+    Pressure_Too_High = 0x0004
+    Flow_Sensor_Communication_Error = 0x0008
+    Flow_Sensor_Measurement_Fault = 0x0010
+    Flow_Sensor_Reverse_Flow = 0x0020
+    Flow_Sensor_Air_Detect = 0x0040
+    Pipe_Empty = 0x0080
+
+
+class WaterSpecificAlarmMask(t.bitmap16):
+    """Water specific alarm mask - bits correspond to alarm codes 0x40-0x4F.
+
+    Table D-38 defines the whole Water Specific Alarm Group as reserved, so no bit in
+    this mask has a meaning assigned to it yet.
+    """
+
+
+class HeatCoolingSpecificAlarmMask(t.bitmap16):
+    """Heat and cooling specific alarm mask - bits correspond to alarm codes 0x50-0x5F."""
+
+    Inlet_Temperature_Sensor_Fault = 0x0001
+    Outlet_Temperature_Sensor_Fault = 0x0002
+
+
+class GasSpecificAlarmMask(t.bitmap16):
+    """Gas specific alarm mask - bits correspond to alarm codes 0x60-0x6F."""
+
+    Tilt_Tamper = 0x0001
+    Battery_Cover_Removed = 0x0002
+    Battery_Cover_Closed = 0x0004
+    Excess_Flow = 0x0008
+    Tilt_Tamper_Ended = 0x0010
+
+
+class ExtendedStatus(t.bitmap64):
+    """Extended status bitmap for Metering cluster."""
+
+    # General flags (bits 0-13)
+    Meter_Cover_Removed = 0x0000000000000001
+    Strong_Magnetic_Field_Detected = 0x0000000000000002
+    Battery_Failure = 0x0000000000000004
+    Program_Memory_Error = 0x0000000000000008
+    RAM_Error = 0x0000000000000010
+    NV_Memory_Error = 0x0000000000000020
+    Measurement_System_Error = 0x0000000000000040
+    Watchdog_Error = 0x0000000000000080
+    Supply_Disconnect_Failure = 0x0000000000000100
+    Supply_Connect_Failure = 0x0000000000000200
+    Measurement_SW_Changed_Tampered = 0x0000000000000400
+    Clock_Invalid = 0x0000000000000800
+    Temperature_Exceeded = 0x0000000000001000
+    Moisture_Detected = 0x0000000000002000
+    # bits 14-23 Reserved
+    # Electricity-meter specific flags (bits 24-29)
+    Terminal_Cover_Removed = 0x0000000001000000
+    Incorrect_Polarity = 0x0000000002000000
+    Current_With_No_Voltage = 0x0000000004000000
+    Limit_Threshold_Exceeded = 0x0000000008000000
+    Under_Voltage = 0x0000000010000000
+    Over_Voltage = 0x0000000020000000
+    # Gas-meter specific flags (bits 24-26) - shared bit positions with electricity
+    # Battery_Cover_Removed_Gas = 0x0000000001000000  # Same as Terminal_Cover_Removed
+    # Tilt_Tamper_Gas = 0x0000000002000000  # Same as Incorrect_Polarity
+    # Excess_Flow_Gas = 0x0000000004000000  # Same as Current_With_No_Voltage
+
+
+class ExtendedGenericAlarmMask(t.bitmap48):
+    """Extended generic alarm mask - bits for alarm codes 0x70-0x9F.
+
+    Note: Table D-34 defines the Extended Generic Alarm Group range as 0x70-0xAF
+    (64 codes), but the attribute type in Table D-33 is a 48-bit bitmap which can
+    only represent codes 0x70-0x9F. Codes 0xA0-0xAF cannot be represented.
+    """
+
+    Measurement_System_Error = 0x000000000001  # 0x70
+    Watchdog_Error = 0x000000000002  # 0x71
+    Supply_Disconnect_Failure = 0x000000000004  # 0x72
+    Supply_Connect_Failure = 0x000000000008  # 0x73
+    Measurement_Software_Changed = 0x000000000010  # 0x74
+    DST_Enabled = 0x000000000020  # 0x75
+    DST_Disabled = 0x000000000040  # 0x76
+    Clock_Adj_Backward = 0x000000000080  # 0x77
+    Clock_Adj_Forward = 0x000000000100  # 0x78
+    Clock_Invalid = 0x000000000200  # 0x79
+    Communication_Error_HAN = 0x000000000400  # 0x7A
+    Communication_OK_HAN = 0x000000000800  # 0x7B
+    Meter_Fraud_Attempt = 0x000000001000  # 0x7C
+    Power_Loss = 0x000000002000  # 0x7D
+    Unusual_HAN_Traffic = 0x000000004000  # 0x7E
+    Unexpected_Clock_Change = 0x000000008000  # 0x7F
+    Comms_Using_Unauthenticated_Component = 0x000000010000  # 0x80
+    Error_Reg_Clear = 0x000000020000  # 0x81
+    Alarm_Reg_Clear = 0x000000040000  # 0x82
+    Unexpected_HW_Reset = 0x000000080000  # 0x83
+    Unexpected_Program_Execution = 0x000000100000  # 0x84
+    EventLog_Cleared = 0x000000200000  # 0x85
+    Limit_Threshold_Exceeded = 0x000000400000  # 0x86
+    Limit_Threshold_OK = 0x000000800000  # 0x87
+    Limit_Threshold_Changed = 0x000001000000  # 0x88
+    Maximum_Demand_Exceeded = 0x000002000000  # 0x89
+    Profile_Cleared = 0x000004000000  # 0x8A
+    Sampling_Buffer_Cleared = 0x000008000000  # 0x8B
+    Battery_Warning = 0x000010000000  # 0x8C
+    Wrong_Signature = 0x000020000000  # 0x8D
+    No_Signature = 0x000040000000  # 0x8E
+    Unauthorized_Action_From_HAN = 0x000080000000  # 0x8F
+    Fast_Polling_Start = 0x000100000000  # 0x90
+    Fast_Polling_End = 0x000200000000  # 0x91
+    Meter_Reporting_Interval_Changed = 0x000400000000  # 0x92
+    Disconnect_Due_To_Load_Limit = 0x000800000000  # 0x93
+    Meter_Supply_Status_Register_Changed = 0x001000000000  # 0x94
+    Meter_Alarm_Status_Register_Changed = 0x002000000000  # 0x95
+    Extended_Meter_Alarm_Status_Register_Changed = 0x004000000000  # 0x96
+    # 0x97-0x9F Reserved (bits 39-47)
+
+
+class ManufacturerAlarmMask(t.bitmap16):
+    """Manufacturer specific alarm mask - bits for alarm codes 0xB0-0xBF."""
+
+    Manufacturer_Specific_A = 0x0001  # 0xB0
+    Manufacturer_Specific_B = 0x0002  # 0xB1
+    Manufacturer_Specific_C = 0x0004  # 0xB2
+    Manufacturer_Specific_D = 0x0008  # 0xB3
+    Manufacturer_Specific_E = 0x0010  # 0xB4
+    Manufacturer_Specific_F = 0x0020  # 0xB5
+    Manufacturer_Specific_G = 0x0040  # 0xB6
+    Manufacturer_Specific_H = 0x0080  # 0xB7
+    Manufacturer_Specific_I = 0x0100  # 0xB8
+    # 0xB9-0xBF Reserved (bits 9-15)
+
+
+class SnapshotCause(t.bitmap32):
+    """Snapshot cause bitmap per SE 1.4a Table D-52."""
+
+    General = 0x00000001
+    End_Of_Billing_Period = 0x00000002
+    End_Of_Block_Period = 0x00000004
+    Change_Of_Tariff_Information = 0x00000008
+    Change_Of_Price_Matrix = 0x00000010
+    Change_Of_Block_Thresholds = 0x00000020
+    Change_Of_CV = 0x00000040
+    Change_Of_CF = 0x00000080
+    Change_Of_Calendar = 0x00000100
+    Critical_Peak_Pricing = 0x00000200
+    Manually_Triggered_From_Client = 0x00000400
+    End_Of_Resolve_Period = 0x00000800
+    Change_Of_Tenancy = 0x00001000
+    Change_Of_Supplier = 0x00002000
+    Change_Of_Meter_Mode = 0x00004000
+    Debt_Payment = 0x00008000
+    Scheduled_Snapshot = 0x00010000
+    OTA_Firmware_Download = 0x00020000
+    # Bits 18-19: Reserved for Prepayment cluster
+    # Bits 20-31: Reserved
+
+
+class FunctionalNotificationFlags(t.bitmap32):
+    """Functional notification flags bitmap per SE 1.4a Table D-59."""
+
+    New_OTA_Firmware = 0x00000001
+    CBKE_Update_Request = 0x00000002
+    Time_Sync = 0x00000004
+    # Bit 3: Reserved
+    Stay_Awake_Request_HAN = 0x00000010
+    Stay_Awake_Request_WAN = 0x00000020
+    # Bits 6-8: Push Historical Metering Data Attribute Set (3 bits)
+    Push_Historical_Metering_Data_Day = 0x00000040
+    Push_Historical_Metering_Data_Week = 0x00000080
+    Push_Historical_Metering_Data_Month = 0x00000100
+    # Bits 9-11: Push Historical Prepayment Data Attribute Set (3 bits)
+    Push_Historical_Prepayment_Data_Day = 0x00000200
+    Push_Historical_Prepayment_Data_Week = 0x00000400
+    Push_Historical_Prepayment_Data_Month = 0x00000800
+    Push_All_Static_Data_Basic_Cluster = 0x00001000
+    Push_All_Static_Data_Metering_Cluster = 0x00002000
+    Push_All_Static_Data_Prepayment_Cluster = 0x00004000
+    NetworkKeyActive = 0x00008000
+    Display_Message = 0x00010000
+    Cancel_All_Messages = 0x00020000
+    Change_Supply = 0x00040000
+    Local_Change_Supply = 0x00080000
+    Set_Uncontrolled_Flow_Threshold = 0x00100000
+    Tunnel_Message_Pending = 0x00200000
+    Get_Snapshot = 0x00400000
+    Get_Sampled_Data = 0x00800000
+    New_Sub_GHz_Channel_Masks_Available = 0x01000000
+    Energy_Scan_Pending = 0x02000000
+    Channel_Change_Pending = 0x04000000
+    # Bits 27-31: Reserved
+
+
+class NotificationFlags2(t.bitmap32):
+    """Notification flags 2 bitmap (Price cluster) per SE 1.4a Table D-69."""
+
+    Publish_Price = 0x00000001
+    Publish_Block_Period = 0x00000002
+    Publish_Tariff_Information = 0x00000004
+    Publish_Conversion_Factor = 0x00000008
+    Publish_Calorific_Value = 0x00000010
+    Publish_CO2_Value = 0x00000020
+    Publish_Billing_Period = 0x00000040
+    Publish_Consolidated_Bill = 0x00000080
+    Publish_Price_Matrix = 0x00000100
+    Publish_Block_Thresholds = 0x00000200
+    Publish_Currency_Conversion = 0x00000400
+    # Bit 11: Reserved
+    Publish_Credit_Payment_Info = 0x00001000
+    Publish_CPP_Event = 0x00002000
+    Publish_Tier_Labels = 0x00004000
+    Cancel_Tariff = 0x00008000
+    # Bits 16-31: Reserved
+
+
+class NotificationFlags3(t.bitmap32):
+    """Notification flags 3 bitmap (Calendar cluster) per SE 1.4a Table D-70."""
+
+    Publish_Calendar = 0x00000001
+    Publish_Special_Days = 0x00000002
+    Publish_Seasons = 0x00000004
+    Publish_Week = 0x00000008
+    Publish_Day = 0x00000010
+    Cancel_Calendar = 0x00000020
+    # Bits 6-31: Reserved
+
+
+class NotificationFlags4(t.bitmap32):
+    """Notification flags 4 bitmap (Prepayment cluster) per SE 1.4a Table D-71."""
+
+    Select_Available_Emergency_Credit = 0x00000001
+    Change_Debt = 0x00000002
+    Emergency_Credit_Setup = 0x00000004
+    Consumer_Top_Up = 0x00000008
+    Credit_Adjustment = 0x00000010
+    Change_Payment_Mode = 0x00000020
+    Get_Prepay_Snapshot = 0x00000040
+    Get_Top_Up_Log = 0x00000080
+    Set_Low_Credit_Warning_Level = 0x00000100
+    Get_Debt_Repayment_Log = 0x00000200
+    Set_Maximum_Credit_Limit = 0x00000400
+    Set_Overall_Debt_Cap = 0x00000800
+    # Bits 12-31: Reserved
+
+
+class NotificationFlags5(t.bitmap32):
+    """Notification flags 5 bitmap (Device Management cluster) per SE 1.4a Table D-72."""
+
+    Publish_Change_Of_Tenancy = 0x00000001
+    Publish_Change_Of_Supplier = 0x00000002
+    Request_New_Password_1_Response = 0x00000004
+    Request_New_Password_2_Response = 0x00000008
+    Request_New_Password_3_Response = 0x00000010
+    Request_New_Password_4_Response = 0x00000020
+    Update_Site_ID = 0x00000040
+    Reset_Battery_Counter = 0x00000080
+    Update_CIN = 0x00000100
+    # Bits 9-31: Reserved
+
+
+class SnapshotPayloadType(t.enum8):
+    """Snapshot payload type per Table 10-99."""
+
+    TOU_Information_Set_Delivered_Registers = 0x00
+    TOU_Information_Set_Received_Registers = 0x01
+    Block_Tier_Information_Set_Delivered = 0x02
+    Block_Tier_Information_Set_Received = 0x03
+    TOU_Information_Set_Delivered_No_Billing = 0x04
+    TOU_Information_Set_Received_No_Billing = 0x05
+    Block_Tier_Information_Set_Delivered_No_Billing = 0x06
+    Block_Tier_Information_Set_Received_No_Billing = 0x07
+    Data_Unavailable = 0x80
+
+
+class SnapshotScheduleConfirmation(t.enum8):
+    """Snapshot schedule confirmation per Table 10-96."""
+
+    Accepted = 0x00
+    Snapshot_Type_Not_Supported = 0x01
+    Snapshot_Cause_Not_Supported = 0x02
+    Snapshot_Schedule_Not_Currently_Available = 0x03
+    Snapshot_Schedules_Not_Supported_By_Device = 0x04
+    Insufficient_Space_For_Snapshot_Schedule = 0x05
+
+
+# Figure 10-86
+class SnapshotSchedulePayload(t.Struct):
+    snapshot_schedule_id: t.uint8_t
+    snapshot_start_time: t.UTCTime
+    snapshot_schedule: t.uint24_t
+    snapshot_payload_type: SnapshotPayloadType
+    snapshot_cause: SnapshotCause
+
+
+# Figure 10-58
+class SnapshotResponsePayload(t.Struct):
+    snapshot_schedule_id: t.uint8_t
+    snapshot_schedule_confirmation: SnapshotScheduleConfirmation
+
+
+class GetProfileResponseSchema(CommandSchema):
+    end_time: t.UTCTime
+    status: t.uint8_t
+    profile_interval_period: t.uint8_t
+    number_of_periods_delivered: t.uint8_t
+    intervals: t.List[t.uint24_t] = t.StructField(
+        length=lambda s: s.number_of_periods_delivered
+    )
+
+
+class GetSampledDataResponseSchema(CommandSchema):
+    sample_id: t.uint16_t
+    sample_start_time: t.UTCTime
+    sample_type: t.uint8_t
+    sample_request_interval: t.uint16_t
+    number_of_samples: t.uint16_t
+    samples: t.List[t.uint24_t] = t.StructField(length=lambda s: s.number_of_samples)
+
+
+# Figure 10-77
+class BitFieldAllocation(t.Struct):
+    cluster_id: t.uint16_t
+    manufacturer_code: t.uint16_t
+    number_of_commands: t.uint8_t
+    command_ids: t.List[t.uint8_t] = t.StructField(
+        length=lambda s: s.number_of_commands
+    )
+
+
+class ConfigureNotificationFlagSchema(CommandSchema):
+    issuer_event_id: t.uint32_t
+    notification_scheme: t.uint8_t
+    notification_flag_attribute_id: t.uint16_t
+    # One sub-payload per notification flag bit, in bit order
+    bit_field_allocations: t.List[BitFieldAllocation]
+
+
 class Metering(Cluster):
     RegisteredTier: Final = RegisteredTier
     MeteringDeviceType: Final = MeteringDeviceType
     MeteringUnitofMeasure: Final = MeteringUnitofMeasure
     NumberFormatting: Final = NumberFormatting
+    MeteringStatus: Final = MeteringStatus
+    CurrentBlock: Final = CurrentBlock
+    ProfileIntervalPeriod: Final = ProfileIntervalPeriod
+    SupplyStatus: Final = SupplyStatus
+    AmbientConsumptionIndicator: Final = AmbientConsumptionIndicator
+    GenericAlarmMask: Final = GenericAlarmMask
+    ElectricityAlarmMask: Final = ElectricityAlarmMask
+    GenericFlowPressureAlarmMask: Final = GenericFlowPressureAlarmMask
+    WaterSpecificAlarmMask: Final = WaterSpecificAlarmMask
+    HeatCoolingSpecificAlarmMask: Final = HeatCoolingSpecificAlarmMask
+    GasSpecificAlarmMask: Final = GasSpecificAlarmMask
+    ExtendedStatus: Final = ExtendedStatus
+    ExtendedGenericAlarmMask: Final = ExtendedGenericAlarmMask
+    ManufacturerAlarmMask: Final = ManufacturerAlarmMask
+    SnapshotPayloadType: Final = SnapshotPayloadType
+    SnapshotScheduleConfirmation: Final = SnapshotScheduleConfirmation
 
     cluster_id: Final[t.uint16_t] = 0x0702
     ep_attribute: Final = "smartenergy_metering"
 
     class AttributeDefs(BaseAttributeDefs):
         current_summ_delivered: Final = ZCLAttributeDef(
-            id=0x0000, type=t.uint48_t, access="r"
+            id=0x0000, type=t.uint48_t, access="r", mandatory=True
         )
         current_summ_received: Final = ZCLAttributeDef(
             id=0x0001, type=t.uint48_t, access="r"
@@ -183,19 +643,19 @@ class Metering(Cluster):
         daily_consumption_target: Final = ZCLAttributeDef(
             id=0x000D, type=t.uint24_t, access="r"
         )
-        current_block: Final = ZCLAttributeDef(id=0x000E, type=t.enum8, access="r")
+        current_block: Final = ZCLAttributeDef(id=0x000E, type=CurrentBlock, access="r")
         profile_interval_period: Final = ZCLAttributeDef(
-            id=0x000F, type=t.enum8, access="r"
+            id=0x000F, type=ProfileIntervalPeriod, access="r"
         )
         # 0x0010: ('interval_read_reporting_period', UNKNOWN), # Deprecated
         preset_reading_time: Final = ZCLAttributeDef(
             id=0x0011, type=t.uint16_t, access="r"
         )
-        volume_per_report: Final = ZCLAttributeDef(
+        summation_delivered_per_report: Final = ZCLAttributeDef(
             id=0x0012, type=t.uint16_t, access="r"
         )
         flow_restriction: Final = ZCLAttributeDef(id=0x0013, type=t.uint8_t, access="r")
-        supply_status: Final = ZCLAttributeDef(id=0x0014, type=t.enum8, access="r")
+        supply_status: Final = ZCLAttributeDef(id=0x0014, type=SupplyStatus, access="r")
         current_in_energy_carrier_summ: Final = ZCLAttributeDef(
             id=0x0015, type=t.uint48_t, access="r"
         )
@@ -215,11 +675,14 @@ class Metering(Cluster):
         current_out_energy_carrier_demand: Final = ZCLAttributeDef(
             id=0x001B, type=t.int24s, access="r"
         )
+        previous_block_period_consumption_delivered: Final = ZCLAttributeDef(
+            id=0x001C, type=t.uint48_t, access="r"
+        )
         current_block_period_consumption_received: Final = ZCLAttributeDef(
             id=0x001D, type=t.uint48_t, access="r"
         )
         current_block_received: Final = ZCLAttributeDef(
-            id=0x001E, type=t.uint48_t, access="r"
+            id=0x001E, type=CurrentBlock, access="r"
         )
         dft_summation_received: Final = ZCLAttributeDef(
             id=0x001F, type=t.uint48_t, access="r"
@@ -324,7 +787,9 @@ class Metering(Cluster):
         current_tier15_summ_received: Final = ZCLAttributeDef(
             id=0x011D, type=t.uint48_t, access="r"
         )
-        status: Final = ZCLAttributeDef(id=0x0200, type=MeteringStatus, access="r")
+        status: Final = ZCLAttributeDef(
+            id=0x0200, type=MeteringStatus, access="r", mandatory=True
+        )
         remaining_battery_life: Final = ZCLAttributeDef(
             id=0x0201, type=t.uint8_t, access="r"
         )
@@ -332,16 +797,18 @@ class Metering(Cluster):
             id=0x0202, type=t.uint24_t, access="r"
         )
         hours_in_fault: Final = ZCLAttributeDef(id=0x0203, type=t.uint24_t, access="r")
-        extended_status: Final = ZCLAttributeDef(id=0x0204, type=t.bitmap64, access="r")
+        extended_status: Final = ZCLAttributeDef(
+            id=0x0204, type=ExtendedStatus, access="r"
+        )
         remaining_battery_life_days: Final = ZCLAttributeDef(
             id=0x0205, type=t.uint16_t, access="r"
         )
         current_meter_id: Final = ZCLAttributeDef(id=0x0206, type=t.LVBytes, access="r")
         iambient_consumption_indicator: Final = ZCLAttributeDef(
-            id=0x0207, type=t.enum8, access="r"
+            id=0x0207, type=AmbientConsumptionIndicator, access="r"
         )
         unit_of_measure: Final = ZCLAttributeDef(
-            id=0x0300, type=MeteringUnitofMeasure, access="r"
+            id=0x0300, type=MeteringUnitofMeasure, access="r", mandatory=True
         )
         multiplier: Final = ZCLAttributeDef(id=0x0301, type=t.uint24_t, access="r")
         divisor: Final = ZCLAttributeDef(id=0x0302, type=t.uint24_t, access="r")
@@ -354,7 +821,11 @@ class Metering(Cluster):
         # • DFTSummation
         # • Block Information attributes
         summation_formatting: Final = ZCLAttributeDef(
-            id=0x0303, zcl_type=DataTypeId.map8, type=NumberFormatting, access="r"
+            id=0x0303,
+            zcl_type=DataTypeId.map8,
+            type=NumberFormatting,
+            access="r",
+            mandatory=True,
         )
 
         # This attribute shall be used against the following attributes:
@@ -397,6 +868,7 @@ class Metering(Cluster):
             # be treated like an enum
             zcl_type=DataTypeId.map8,
             access="r",
+            mandatory=True,
         )
         site_id: Final = ZCLAttributeDef(
             id=0x0307, type=t.LimitedLVBytes(32), access="r"
@@ -480,10 +952,10 @@ class Metering(Cluster):
             id=0x0404, type=t.uint24_t, access="r"
         )
         cur_part_profile_int_start_time_delivered: Final = ZCLAttributeDef(
-            id=0x0405, type=t.uint32_t, access="r"
+            id=0x0405, type=t.UTCTime, access="r"
         )
         cur_part_profile_int_start_time_received: Final = ZCLAttributeDef(
-            id=0x0406, type=t.uint32_t, access="r"
+            id=0x0406, type=t.UTCTime, access="r"
         )
         cur_part_profile_int_value_delivered: Final = ZCLAttributeDef(
             id=0x0407, type=t.uint24_t, access="r"
@@ -550,53 +1022,242 @@ class Metering(Cluster):
             id=0x0604, type=t.uint16_t, access="r"
         )
         generic_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0800, type=t.bitmap16, access="r"
+            id=0x0800, type=GenericAlarmMask, access="rw"
         )
         electricity_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0801, type=t.bitmap32, access="r"
+            id=0x0801, type=ElectricityAlarmMask, access="rw"
         )
         gen_flow_pressure_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0802, type=t.bitmap16, access="r"
+            id=0x0802, type=GenericFlowPressureAlarmMask, access="rw"
         )
         water_specific_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0803, type=t.bitmap16, access="r"
+            id=0x0803, type=WaterSpecificAlarmMask, access="rw"
         )
         heat_cool_specific_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0804, type=t.bitmap16, access="r"
+            id=0x0804, type=HeatCoolingSpecificAlarmMask, access="rw"
         )
         gas_specific_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0805, type=t.bitmap16, access="r"
+            id=0x0805, type=GasSpecificAlarmMask, access="rw"
         )
         extended_generic_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0806, type=t.bitmap48, access="r"
+            id=0x0806, type=ExtendedGenericAlarmMask, access="rw"
         )
-        manufacture_alarm_mask: Final = ZCLAttributeDef(
-            id=0x0807, type=t.bitmap16, access="r"
+        manufacturer_alarm_mask: Final = ZCLAttributeDef(
+            id=0x0807, type=ManufacturerAlarmMask, access="rw"
         )
         bill_to_date: Final = ZCLAttributeDef(id=0x0A00, type=t.uint32_t, access="r")
         bill_to_date_time_stamp: Final = ZCLAttributeDef(
-            id=0x0A01, type=t.uint32_t, access="r"
+            id=0x0A01, type=t.UTCTime, access="r"
         )
         projected_bill: Final = ZCLAttributeDef(id=0x0A02, type=t.uint32_t, access="r")
         projected_bill_time_stamp: Final = ZCLAttributeDef(
-            id=0x0A03, type=t.uint32_t, access="r"
+            id=0x0A03, type=t.UTCTime, access="r"
         )
 
     class ServerCommandDefs(BaseCommandDefs):
-        get_profile: Final = ZCLCommandDef(id=0x00, schema={})
-        req_mirror: Final = ZCLCommandDef(id=0x01, schema={})
-        mirror_rem: Final = ZCLCommandDef(id=0x02, schema={})
-        req_fast_poll_mode: Final = ZCLCommandDef(id=0x03, schema={})
-        get_snapshot: Final = ZCLCommandDef(id=0x04, schema={})
-        take_snapshot: Final = ZCLCommandDef(id=0x05, schema={})
-        mirror_report_attr_response: Final = ZCLCommandDef(id=0x06, schema={})
+        get_profile: Final = ZCLCommandDef(
+            id=0x00,
+            schema={
+                "interval_channel": t.uint8_t,
+                "end_time": t.UTCTime,
+                "number_of_periods": t.uint8_t,
+            },
+        )
+        request_mirror_response: Final = ZCLCommandDef(
+            id=0x01,
+            schema={"endpoint_id": t.uint16_t},
+        )
+        mirror_removed: Final = ZCLCommandDef(
+            id=0x02,
+            schema={"removed_endpoint_id": t.uint16_t},
+        )
+        request_fast_poll_mode: Final = ZCLCommandDef(
+            id=0x03,
+            schema={
+                "fast_poll_update_period": t.uint8_t,
+                "duration": t.uint8_t,
+            },
+        )
+        schedule_snapshot: Final = ZCLCommandDef(
+            id=0x04,
+            schema={
+                "issuer_event_id": t.uint32_t,
+                "command_index": t.uint8_t,
+                "total_number_of_commands": t.uint8_t,
+                "snapshot_schedule_payloads": t.List[SnapshotSchedulePayload],
+            },
+        )
+        take_snapshot: Final = ZCLCommandDef(
+            id=0x05,
+            schema={"snapshot_cause": SnapshotCause},
+        )
+        get_snapshot: Final = ZCLCommandDef(
+            id=0x06,
+            schema={
+                "earliest_start_time": t.UTCTime,
+                "latest_end_time": t.UTCTime,
+                "snapshot_offset": t.uint8_t,
+                "snapshot_cause": SnapshotCause,
+            },
+        )
+        start_sampling: Final = ZCLCommandDef(
+            id=0x07,
+            schema={
+                "issuer_event_id": t.uint32_t,
+                "start_sampling_time": t.UTCTime,
+                "sample_type": t.uint8_t,
+                "sample_request_interval": t.uint16_t,
+                "max_number_of_samples": t.uint16_t,
+            },
+        )
+        get_sampled_data: Final = ZCLCommandDef(
+            id=0x08,
+            schema={
+                "sample_id": t.uint16_t,
+                "earliest_sample_time": t.UTCTime,
+                "sample_type": t.uint8_t,
+                "number_of_samples": t.uint16_t,
+            },
+        )
+        mirror_report_attribute_response: Final = ZCLCommandDef(
+            id=0x09,
+            schema={
+                "notification_scheme": t.uint8_t,
+                "notification_flags": t.List[t.bitmap32],
+            },
+        )
+        reset_load_limit_counter: Final = ZCLCommandDef(
+            id=0x0A,
+            schema={
+                "provider_id": t.uint32_t,
+                "issuer_event_id": t.uint32_t,
+            },
+        )
+        change_supply: Final = ZCLCommandDef(
+            id=0x0B,
+            schema={
+                "provider_id": t.uint32_t,
+                "issuer_event_id": t.uint32_t,
+                "request_date_time": t.UTCTime,
+                "implementation_date_time": t.UTCTime,
+                "proposed_supply_status": t.uint8_t,
+                "supply_control_bits": t.bitmap8,
+            },
+        )
+        local_change_supply: Final = ZCLCommandDef(
+            id=0x0C,
+            schema={"proposed_supply_status": t.uint8_t},
+        )
+        set_supply_status: Final = ZCLCommandDef(
+            id=0x0D,
+            schema={
+                "issuer_event_id": t.uint32_t,
+                "supply_tamper_state": t.uint8_t,
+                "supply_depletion_state": t.uint8_t,
+                "supply_uncontrolled_flow_state": t.uint8_t,
+                "load_limit_supply_state": t.uint8_t,
+            },
+        )
+        set_uncontrolled_flow_threshold: Final = ZCLCommandDef(
+            id=0x0E,
+            schema={
+                "provider_id": t.uint32_t,
+                "issuer_event_id": t.uint32_t,
+                "uncontrolled_flow_threshold": t.uint16_t,
+                "unit_of_measure": t.uint8_t,
+                "multiplier": t.uint16_t,
+                "divisor": t.uint16_t,
+                "stabilisation_period": t.uint8_t,
+                "measurement_period": t.uint16_t,
+            },
+        )
 
     class ClientCommandDefs(BaseCommandDefs):
-        get_profile_response: Final = ZCLCommandDef(id=0x00, schema={})
-        req_mirror_response: Final = ZCLCommandDef(id=0x01, schema={})
-        mirror_rem_response: Final = ZCLCommandDef(id=0x02, schema={})
-        req_fast_poll_mode_response: Final = ZCLCommandDef(id=0x03, schema={})
-        get_snapshot_response: Final = ZCLCommandDef(id=0x04, schema={})
+        get_profile_response: Final = ZCLCommandDef(
+            id=0x00, schema=GetProfileResponseSchema
+        )
+        request_mirror: Final = ZCLCommandDef(id=0x01, schema={})
+        remove_mirror: Final = ZCLCommandDef(id=0x02, schema={})
+        request_fast_poll_mode_response: Final = ZCLCommandDef(
+            id=0x03,
+            schema={
+                "applied_update_period": t.uint8_t,
+                "fast_poll_mode_end_time": t.UTCTime,
+            },
+        )
+        schedule_snapshot_response: Final = ZCLCommandDef(
+            id=0x04,
+            schema={
+                "issuer_event_id": t.uint32_t,
+                "snapshot_response_payloads": t.List[SnapshotResponsePayload],
+            },
+        )
+        take_snapshot_response: Final = ZCLCommandDef(
+            id=0x05,
+            schema={
+                "snapshot_id": t.uint32_t,
+                "snapshot_confirmation": t.uint8_t,
+            },
+        )
+        publish_snapshot: Final = ZCLCommandDef(
+            id=0x06,
+            schema={
+                "snapshot_id": t.uint32_t,
+                "snapshot_time": t.UTCTime,
+                "total_snapshots_found": t.uint8_t,
+                "command_index": t.uint8_t,
+                "total_number_of_commands": t.uint8_t,
+                "snapshot_cause": SnapshotCause,
+                "snapshot_payload_type": SnapshotPayloadType,
+                # Contents depend on `snapshot_payload_type` (Figures 10-62 onward) and
+                # run to the end of the frame, so it is left opaque for now
+                "snapshot_payload": t.Bytes,
+            },
+        )
+        get_sampled_data_response: Final = ZCLCommandDef(
+            id=0x07, schema=GetSampledDataResponseSchema
+        )
+        configure_mirror: Final = ZCLCommandDef(
+            id=0x08,
+            schema={
+                "issuer_event_id": t.uint32_t,
+                "reporting_interval": t.uint24_t,
+                "mirror_notification_reporting": t.Bool,
+                "notification_scheme": t.uint8_t,
+            },
+        )
+        configure_notification_scheme: Final = ZCLCommandDef(
+            id=0x09,
+            schema={
+                "issuer_event_id": t.uint32_t,
+                "notification_scheme": t.uint8_t,
+                "notification_flag_order": t.bitmap32,
+            },
+        )
+        configure_notification_flag: Final = ZCLCommandDef(
+            id=0x0A, schema=ConfigureNotificationFlagSchema
+        )
+        get_notified_message: Final = ZCLCommandDef(
+            id=0x0B,
+            schema={
+                "notification_scheme": t.uint8_t,
+                "notification_flag_attribute_id": t.uint16_t,
+                "notification_flags": FunctionalNotificationFlags,
+            },
+        )
+        supply_status_response: Final = ZCLCommandDef(
+            id=0x0C,
+            schema={
+                "provider_id": t.uint32_t,
+                "issuer_event_id": t.uint32_t,
+                "implementation_date_time": t.UTCTime,
+                "supply_status": t.uint8_t,
+            },
+        )
+        start_sampling_response: Final = ZCLCommandDef(
+            id=0x0D,
+            schema={"sample_id": t.uint16_t},
+        )
 
 
 class Messaging(Cluster):
