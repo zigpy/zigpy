@@ -19,23 +19,17 @@ from zigpy.zgp.events import CommandReceived, DeviceJoined
 from zigpy.zgp.manager import GreenPowerManager
 from zigpy.zgp.types import SecurityLevel
 
+# -- Commissioning -----------------------------------------------------------
 
-async def _commission(manager: GreenPowerManager) -> None:
-    """Open the window and push the real commissioning payload through."""
+
+async def test_real_commissioning_succeeds(manager, gp_events) -> None:
+    """The captured 0xE0 frame unwraps its key and registers the device."""
     await manager.permit_join(time_s=60)
     await manager._process_commissioning(
         source_id=BJ6716U_SOURCE_ID,
         frame_counter=0xFFFFFFFF,
         payload=BJ6716U_COMMISSIONING_PAYLOAD,
     )
-
-
-# -- Commissioning -----------------------------------------------------------
-
-
-async def test_real_commissioning_succeeds(manager, gp_events) -> None:
-    """The captured 0xE0 frame unwraps its key and registers the device."""
-    await _commission(manager)
 
     device = manager.get_device(BJ6716U_SOURCE_ID)
     assert device is not None
@@ -53,7 +47,12 @@ async def test_real_commissioning_succeeds(manager, gp_events) -> None:
 
 async def test_stores_all_17_gpd_commands(manager) -> None:
     """The device exposes every button/scene command it advertised."""
-    await _commission(manager)
+    await manager.permit_join(time_s=60)
+    await manager._process_commissioning(
+        source_id=BJ6716U_SOURCE_ID,
+        frame_counter=0xFFFFFFFF,
+        payload=BJ6716U_COMMISSIONING_PAYLOAD,
+    )
 
     device = manager.get_device(BJ6716U_SOURCE_ID)
     assert device is not None

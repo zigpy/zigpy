@@ -45,6 +45,9 @@ from zigpy.zcl import (
 from zigpy.zcl.clusters.general import Basic, Identify, OnOff, Ota
 from zigpy.zcl.foundation import Status as ZCLStatus, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
+from zigpy.zgp.device import GPDevice
+from zigpy.zgp.events import CommandReceived, DeviceJoined, DeviceLeft
+from zigpy.zgp.types import GPDCommandID
 
 pytestmark = pytest.mark.usefixtures("auto_kill_aiosqlite")
 
@@ -2087,9 +2090,6 @@ async def test_get_last_ota_query_cmd_returns_none(tmp_path):
 
 async def test_gp_device_round_trip(tmp_path):
     """Emit DeviceJoined, shutdown, reopen - device restored with all fields intact."""
-    from zigpy.zgp.device import GPDevice
-    from zigpy.zgp.events import DeviceJoined
-
     SOURCE_ID = 0x0040F4E4
     KEY = bytes(range(16))
 
@@ -2120,10 +2120,6 @@ async def test_gp_frame_counter_persists_per_press(tmp_path):
     Without it, the stored counter is frozen at the join-time value and the
     replay-protection baseline reverts to stale on every restart.
     """
-    from zigpy.zgp.device import GPDevice
-    from zigpy.zgp.events import CommandReceived, DeviceJoined
-    from zigpy.zgp.types import GPDCommandID
-
     SOURCE_ID = 0x0040F4E4
 
     db = tmp_path / "test.db"
@@ -2149,9 +2145,6 @@ async def test_gp_frame_counter_persists_per_press(tmp_path):
 
 async def test_gp_device_decommission(tmp_path):
     """DeviceJoined then DeviceLeft -> device absent after reopen."""
-    from zigpy.zgp.device import GPDevice
-    from zigpy.zgp.events import DeviceJoined, DeviceLeft
-
     SOURCE_ID = 0x0040F4E4
 
     db = tmp_path / "test.db"
@@ -2169,9 +2162,6 @@ async def test_gp_device_decommission(tmp_path):
 
 async def test_gp_device_recommission_updates_security_key(tmp_path):
     """Re-commissioning (second DeviceJoined) must update the stored security key."""
-    from zigpy.zgp.device import GPDevice
-    from zigpy.zgp.events import DeviceJoined
-
     SOURCE_ID = 0x0040F4E4
     OLD_KEY = bytes(range(16))
     NEW_KEY = bytes(range(16, 32))
