@@ -28,7 +28,13 @@ from zigpy.zcl.clusters.greenpower import (
     ResponseSchema,
     TempMasterTxChannel,
 )
-from zigpy.zgp.commands import GPChannelRequestPayload, GPCommissioningPayload
+from zigpy.zgp.commands import (
+    GPChannelConfigurationPayload,
+    GPChannelRequestPayload,
+    GPCommissioningPayload,
+    GPCommissioningReplyOptions,
+    GPCommissioningReplyPayload,
+)
 from zigpy.zgp.crypto import decrypt_security_key, encrypt_security_key
 from zigpy.zgp.device import GPDevice
 from zigpy.zgp.events import CommandReceived, DeviceJoined, DeviceLeft
@@ -435,16 +441,16 @@ class GreenPowerManager(EventBase):
             channel,
         )
 
-        # GP Channel Configuration payload (1 byte):
-        # Bits 0-3: operational channel (offset from 11)
-        # Bit 4: basic (1 = basic operation, 0 = enhanced)
-        # Bits 5-7: reserved
-        channel_config_byte = ((channel - 11) & 0x0F) | 0x10  # basic=1
+        channel_config = GPChannelConfigurationPayload(
+            operational_channel=channel - 11,
+            basic=1,
+            _reserved=0,
+        )
 
         await self._send_gp_response(
             source_id=source_id,
             gpd_command_id=GPDCommandID.ChannelConfiguration,
-            gpd_command_payload=bytes([channel_config_byte]),
+            gpd_command_payload=channel_config.serialize(),
             proxy_nwk=proxy_nwk,
         )
 
@@ -771,15 +777,20 @@ class GreenPowerManager(EventBase):
             source_id,
         )
 
-        # Commissioning Reply payload (cmd 0xF0):
-        # 1 byte options: 0x00 = no PAN ID, no key, no key encryption,
-        #                 no security level
-        commissioning_reply_payload = bytes([0x00])
+        commissioning_reply = GPCommissioningReplyPayload(
+            options=GPCommissioningReplyOptions(
+                pan_id_present=0,
+                security_key_present=0,
+                key_encrypted=0,
+                security_level=SecurityLevel.NoSecurity,
+                key_type=SecurityKeyType.NoKey,
+            )
+        )
 
         await self._send_gp_response(
             source_id=source_id,
             gpd_command_id=GPDCommandID.CommissioningReply,
-            gpd_command_payload=commissioning_reply_payload,
+            gpd_command_payload=commissioning_reply.serialize(),
             proxy_nwk=proxy_nwk,
         )
 
