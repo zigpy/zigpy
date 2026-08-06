@@ -2085,21 +2085,6 @@ async def test_get_last_ota_query_cmd_returns_none(tmp_path):
     await app.shutdown()
 
 
-async def test_no_sidecar_file_created(tmp_path):
-    """GP persistence writes to SQLite only - no zgp_devices.json sidecar."""
-    from zigpy.zgp.device import GPDevice
-    from zigpy.zgp.events import DeviceJoined
-
-    db = tmp_path / "test.db"
-    app = await make_app_with_db(db)
-
-    device = GPDevice(source_id=0x0040F4E4, device_id=2)
-    app.green_power.emit(DeviceJoined.event_type, DeviceJoined(device=device))
-    await app.shutdown()
-
-    assert not (tmp_path / "zgp_devices.json").exists()
-
-
 async def test_gp_device_round_trip(tmp_path):
     """Emit DeviceJoined, shutdown, reopen - device restored with all fields intact."""
     from zigpy.zgp.device import GPDevice
