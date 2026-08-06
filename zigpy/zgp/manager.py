@@ -1,7 +1,7 @@
 """Green Power Manager: processes GP frames on cluster 0x0021, endpoint 242.
 
 Manages GP device lifecycle (commissioning, decommissioning) and dispatches
-GP commands to listeners. Equivalent to zigbee-herdsman's greenPower.ts.
+GP commands to listeners.
 """
 
 from __future__ import annotations
@@ -62,7 +62,7 @@ class GreenPowerManager(EventBase):
     """Central manager for Green Power protocol handling, attached to the app.
 
     Limitation: only ApplicationID.SrcID (0b000) is supported. GPDs using
-    ApplicationID.IEEE (0b010) are not handled, matching zigbee-herdsman.
+    ApplicationID.IEEE (0b010) are not handled.
     """
 
     # Duplicate filtering window per ZGP spec A.3.6.1.2
@@ -617,7 +617,10 @@ class GreenPowerManager(EventBase):
         """Broadcast a GP Pairing command telling proxies to add or remove a GPD.
 
         Uses UnicastLightweight when a proxy forwarded the commissioning
-        notification, else GroupcastForwardToDGroup, matching zigbee-herdsman.
+        notification, since that proxy is a known unicast target; otherwise
+        falls back to GroupcastForwardToDGroup. Table 27 lists the possible
+        gpsCommunicationMode values; choosing between them per pairing is
+        this sink's own policy, not spec-mandated.
         """
         coordinator_ieee = self._application.state.node_info.ieee
         coordinator_nwk = self._application.state.node_info.nwk
@@ -662,9 +665,8 @@ class GreenPowerManager(EventBase):
             schema_kwargs["frame_counter"] = t.uint32_t(device.frame_counter)
 
             if device.security_key is not None:
-                # Encrypt the key for transport in the GP Pairing, matching
-                # zigbee-herdsman's sendPairingCommand() behavior. Proxies
-                # receive the encrypted key and can decrypt it with the GP
+                # Encrypt the key for transport in the GP Pairing (A.3.7.1.2.3).
+                # Proxies receive the encrypted key and decrypt it with the GP
                 # link key to populate their proxy tables.
                 encrypted_key, _ = encrypt_security_key(
                     device.source_id, bytes(device.security_key)
@@ -769,8 +771,8 @@ class GreenPowerManager(EventBase):
     ) -> None:
         """Send a GP Commissioning Reply (0xF0) to an RX-capable GPD.
 
-        Minimal reply without a security key (options=0x00), matching
-        zigbee-herdsman; the GPD must use a pre-shared key or no security.
+        This sink does not provision a security key in the Commissioning
+        Reply; the GPD must already hold a pre-shared key or use no security.
         """
         LOGGER.info(
             "Sending GP Commissioning Reply to RX-capable GPD 0x%08X",

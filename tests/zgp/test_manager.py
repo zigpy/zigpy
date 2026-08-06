@@ -449,11 +449,10 @@ async def test_decommission_unknown_device(manager, gp_events):
 
 
 async def test_pairing_encrypts_security_key(app, manager):
-    """GP Pairing must encrypt the security key before sending.
+    """GP Pairing must encrypt the security key before sending (A.3.7.1.2.3).
 
-    The key in the GP Pairing should NOT be the plaintext key.
-    It should be encrypted via encrypt_security_key(sourceID, key)
-    matching zigbee-herdsman's behavior.
+    The key in the GP Pairing should NOT be the plaintext key; it must be
+    encrypted via encrypt_security_key(sourceID, key).
     """
 
     source_id = 0x12345678
