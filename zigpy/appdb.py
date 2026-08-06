@@ -132,6 +132,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self._callback_handlers: asyncio.Queue = asyncio.Queue()
         self.running = False
         self._worker_task = asyncio.create_task(self._worker())
+        self._gp_unsubs: list = []
 
     async def initialize_tables(self) -> None:
         async with self.execute("PRAGMA integrity_check") as cursor:
@@ -736,7 +737,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         ]
 
     def unsubscribe_from_green_power(self) -> None:
-        for unsub in getattr(self, "_gp_unsubs", []):
+        for unsub in self._gp_unsubs:
             unsub()
         self._gp_unsubs = []
 
@@ -1237,8 +1238,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         break
 
     async def _load_gp_devices(self) -> None:
-        if not hasattr(self._application, "green_power"):
-            return
         async with self.execute(
             f"SELECT source_id, device_id, security_key, security_level, "
             f"security_key_type, frame_counter, manufacturer_id, model_id, "
