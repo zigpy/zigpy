@@ -66,7 +66,7 @@ DEFAULT_REQUEST_RETRY_DELAY = 0.1
 AFTER_OTA_ATTR_READ_DELAY = 10
 
 # Marks a synthetic EUI64 built from a 32-bit GPD SrcID
-GP_SYNTHETIC_IEEE_MARKER = b"\xff\xff\xff\xfe"
+GP_SYNTHETIC_IEEE_MARKER = b"\x00\x00\x00\x00"
 
 
 @dataclass(frozen=True, slots=True)
