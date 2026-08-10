@@ -645,7 +645,6 @@ class ZigbeePacket(BaseDataclassMixin):
     def __hash__(self) -> int:
         return hash(
             (
-                self.timestamp,
                 self.src,
                 self.src_ep,
                 self.dst,
@@ -698,7 +697,6 @@ class ZigbeeGpPacket(BaseDataclassMixin):
     def __hash__(self) -> int:
         return hash(
             (
-                self.timestamp,
                 self.application_id,
                 self.src_id,
                 self.ieee,
