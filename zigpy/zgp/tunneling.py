@@ -29,11 +29,28 @@ TUNNELED_GPDF_COMMANDS: dict[
 
 
 def is_gp_tunnel_packet(packet: t.ZigbeePacket) -> bool:
-    """Check whether a packet is a Green Power cluster frame sent by a proxy."""
-    return (
+    """Check whether a packet is a GPDF tunneled over ZCL by a proxy.
+
+    Only the two notification commands are tunnels. All other Green Power cluster
+    traffic (pairing, commissioning mode, attribute reads, ...) is normal ZCL and
+    flows through regular device dispatch.
+    """
+    if not (
         packet.profile_id == zigpy.profiles.zgp.PROFILE_ID
         and packet.cluster_id == GP_CLUSTER_ID
         and packet.src_ep == GP_ENDPOINT
+    ):
+        return False
+
+    try:
+        hdr, _ = foundation.ZCLHeader.deserialize(packet.data.serialize())
+    except ValueError:
+        return False
+
+    return (
+        hdr.frame_control.is_cluster
+        and hdr.frame_control.direction == foundation.Direction.Client_to_Server
+        and hdr.command_id in TUNNELED_GPDF_COMMANDS
     )
 
 
@@ -43,6 +60,11 @@ def gp_packet_from_zcl(packet: t.ZigbeePacket) -> t.ZigbeeGpPacket:
 
     if not hdr.frame_control.is_cluster:
         raise ValueError(f"Not a cluster-specific command: {hdr}")
+
+    # The notification and notification response commands share a command ID and
+    # are only distinguished by direction
+    if hdr.frame_control.direction != foundation.Direction.Client_to_Server:
+        raise ValueError(f"Not a client-to-server command: {hdr}")
 
     if hdr.command_id not in TUNNELED_GPDF_COMMANDS:
         raise ValueError(f"Not a tunneled GPDF command: {hdr}")

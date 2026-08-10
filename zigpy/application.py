@@ -37,6 +37,9 @@ import zigpy.util
 import zigpy.zcl
 import zigpy.zdo
 import zigpy.zdo.types as zdo_types
+import zigpy.zgp.tunneling
+import zigpy.zgp.types
+import zigpy.zgp.util
 
 DEFAULT_ENDPOINT_ID = 1
 LOGGER = logging.getLogger(__name__)
@@ -1307,6 +1310,21 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         assert packet.src is not None
         assert packet.dst is not None
 
+        # Tunneled GP notifications arrive with the GPD's alias (or the forwarding
+        # proxy's own address) as the NWK source, so they must be diverted before
+        # the source device is resolved
+        if zigpy.zgp.tunneling.is_gp_tunnel_packet(packet):
+            try:
+                gp_packet = zigpy.zgp.tunneling.gp_packet_from_zcl(packet)
+            except ValueError:
+                LOGGER.warning(
+                    "Failed to convert tunneled GP packet %r", packet, exc_info=True
+                )
+            else:
+                self.gp_packet_received(gp_packet)
+
+            return None
+
         # Peek into ZDO packets to handle possible ZDO notifications
         if zigpy.zdo.ZDO_ENDPOINT in (packet.src_ep, packet.dst_ep):
             self._maybe_parse_zdo(packet)
@@ -1388,6 +1406,34 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         # If the quirk did not fast-initialize the device, start initialization
         if not device.initializing and not device.is_initialized:
             device.schedule_initialize()
+
+    def gp_packet_received(self, packet: t.ZigbeeGpPacket) -> None:
+        """Notify zigpy of a received Green Power packet.
+
+        Radio libraries with a local GP stub call this directly with decoded GPDFs;
+        GP notifications tunneled over ZCL by remote proxies also converge here.
+        """
+        LOGGER.debug("Received a GP packet: %r", packet)
+
+        if packet.application_id is zigpy.zgp.types.ApplicationID.SrcID:
+            ieee = zigpy.zgp.util.synthetic_ieee(packet.src_id)
+        else:
+            ieee = packet.ieee
+
+        if ieee not in self.devices:
+            # Commissioning is what registers a GPD, and is not implemented yet
+            LOGGER.warning("Received a GP packet from an unknown device: %r", packet)
+            return
+
+        device = self.devices[ieee]
+
+        if not isinstance(device, zigpy.device.GreenPowerDevice):
+            LOGGER.warning(
+                "Received a GP packet for non-GP device %s: %r", device, packet
+            )
+            return
+
+        device.packet_received(packet)
 
     def handle_message(
         self,

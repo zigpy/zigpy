@@ -1778,7 +1778,7 @@ async def test_callback_wrapping(
             "zigpy.application",
             logging.WARNING,
             (
-                "Device <Device model=None manuf=None nwk=0x1234 "
+                "Device <ZigbeeDevice model=None manuf=None nwk=0x1234 "
                 "ieee=07:06:05:04:03:02:01:00 is_initialized=False> "
                 "callback failed - ValueError('Boom!')"
             ),
@@ -1807,7 +1807,7 @@ async def test_callback_wrapping_async(
             "zigpy.application",
             logging.WARNING,
             (
-                "Device <Device model=None manuf=None nwk=0x1234 "
+                "Device <ZigbeeDevice model=None manuf=None nwk=0x1234 "
                 "ieee=07:06:05:04:03:02:01:00 is_initialized=False> "
                 "callback failed - ValueError('Boom!')"
             ),

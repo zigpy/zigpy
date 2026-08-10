@@ -4,6 +4,14 @@ from __future__ import annotations
 
 import zigpy.types as t
 
+# Marks a synthetic EUI64 built from a 32-bit GPD SrcID
+GP_SYNTHETIC_IEEE_MARKER = b"\x00\x00\x00\x00"
+
+
+def synthetic_ieee(src_id: int) -> t.EUI64:
+    """Build the synthetic EUI64 under which a SrcID-addressed GPD is registered."""
+    return t.EUI64(int(src_id).to_bytes(4, "little") + GP_SYNTHETIC_IEEE_MARKER)
+
 
 def derive_alias(gpd_id: int | t.EUI64) -> t.NWK:
     """Derive the alias NWK source address from a GPD ID (spec A.3.6.3.3.1).

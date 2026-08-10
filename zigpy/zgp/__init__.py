@@ -43,4 +43,4 @@ from .types import (  # noqa: F401
     GP_ENDPOINT,
     GP_GROUP_ID,
 )
-from .util import derive_alias  # noqa: F401
+from .util import derive_alias, synthetic_ieee  # noqa: F401

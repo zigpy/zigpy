@@ -40,6 +40,7 @@ import zigpy.util
 from zigpy.zcl import Cluster, ClusterType, OtaQueryCacheClearedEvent, foundation
 from zigpy.zcl.clusters.general import Ota, PollControl, QueryNextImageCommand
 import zigpy.zdo.types as zdo_t
+from zigpy.zgp.commands import GPD_COMMAND_SCHEMAS
 from zigpy.zgp.types import (
     ApplicationID,
     DeviceID,
@@ -47,7 +48,7 @@ from zigpy.zgp.types import (
     SecurityKeyType,
     SecurityLevel,
 )
-from zigpy.zgp.util import derive_alias
+from zigpy.zgp.util import derive_alias, synthetic_ieee
 
 if typing.TYPE_CHECKING:
     _R = TypeVar("_R")
@@ -66,8 +67,9 @@ DEFAULT_REQUEST_RETRY_DELAY = 0.1
 
 AFTER_OTA_ATTR_READ_DELAY = 10
 
-# Marks a synthetic EUI64 built from a 32-bit GPD SrcID
-GP_SYNTHETIC_IEEE_MARKER = b"\x00\x00\x00\x00"
+# zgpDuplicateTimeout: unprotected GPDFs repeating the last MAC sequence number
+# within this many seconds are duplicates
+GP_DUPLICATE_TIMEOUT = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,7 +180,7 @@ class GreenPowerDevice(BaseDevice):
     ) -> None:
         if application_id is ApplicationID.SrcID:
             assert src_id is not None
-            ieee = self._synthetic_ieee(src_id)
+            ieee = synthetic_ieee(src_id)
             gpd_id = src_id
         else:
             assert ieee is not None
@@ -209,10 +211,6 @@ class GreenPowerDevice(BaseDevice):
         self.security_level: SecurityLevel | None = None
         self.frame_counter: t.uint32_t | None = None
 
-    @staticmethod
-    def _synthetic_ieee(src_id: int) -> t.EUI64:
-        return t.EUI64(int(src_id).to_bytes(4, "little") + GP_SYNTHETIC_IEEE_MARKER)
-
     @property
     def src_id(self) -> DeviceID | None:
         """The 32-bit GPD SrcID, or None for IEEE-addressed GPDs."""
@@ -234,12 +232,59 @@ class GreenPowerDevice(BaseDevice):
         args = (self.name, *args)
         LOGGER.log(lvl, msg, *args, **kwargs)
 
+    def _is_duplicate(self, packet: t.ZigbeeGpPacket) -> bool:
+        if self.frame_counter is None or packet.frame_counter is None:
+            return False
+
+        if packet.security_level in (
+            SecurityLevel.FullFrameCounterAndMIC,
+            SecurityLevel.Encrypted,
+        ):
+            # The security frame counter increments monotonically over the GPD's
+            # lifetime, so anything at or below the last value is a replay
+            return packet.frame_counter <= self.frame_counter
+
+        # Unprotected GPDFs carry the 8-bit MAC sequence number instead, which both
+        # wraps and may be random: only an identical value shortly after the last
+        # frame counts as the same GPDF forwarded again
+        return (
+            packet.frame_counter == self.frame_counter
+            and self._last_seen is not None
+            and (packet.timestamp - self._last_seen).total_seconds()
+            < GP_DUPLICATE_TIMEOUT
+        )
+
     def packet_received(self, packet: t.ZigbeeGpPacket) -> None:
-        # Both GP ingress paths converge here as a decoded, decrypted frame: a
-        # tunneled GP Notification parsed out of a ZigbeePacket, or (later) a GPDF
-        # decrypted by the local GP stub. Duplicate filtering (by frame counter)
-        # and command dispatch land here.
-        raise NotImplementedError("GPDF handling is not yet implemented")
+        """Process a decoded, decrypted GPDF.
+
+        Both GP ingress paths converge here: a GP Notification tunneled over ZCL by
+        a remote proxy, or a GPDF decoded by the radio's local GP stub.
+        """
+        if self._is_duplicate(packet):
+            self.debug("Filtering duplicate packet")
+            return
+
+        self.frame_counter = packet.frame_counter
+        self.last_seen = packet.timestamp
+        self.radio_details(lqi=packet.lqi, rssi=packet.rssi)
+
+        if packet.command_id in GPD_COMMAND_SCHEMAS:
+            schema = GPD_COMMAND_SCHEMAS[packet.command_id]
+        else:
+            schema = None
+
+        if schema is None:
+            # Unknown command or a payload parser that is not implemented yet
+            self.listener_event("gp_command_received", packet, None)
+            return
+
+        try:
+            payload, _ = schema.deserialize(packet.payload.serialize())
+        except Exception:  # noqa: BLE001
+            self.debug("Failed to parse GPDF payload %r", packet, exc_info=True)
+            return
+
+        self.listener_event("gp_command_received", packet, payload)
 
 
 class ZigbeeDevice(BaseDevice):
