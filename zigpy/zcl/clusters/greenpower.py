@@ -31,14 +31,22 @@ class CommissioningNotificationOptions(t.Struct):
 # Figure 30
 class CommissioningNotificationSchema(foundation.CommandSchema):
     options: CommissioningNotificationOptions
-    gpd_id: zgptypes.DeviceID
+    gpd_id: zgptypes.DeviceID = StructField(
+        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.SrcID
+    )
+    gpd_ieee: t.EUI64 = StructField(
+        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.IEEE
+    )
+    gpd_endpoint: t.uint8_t = StructField(
+        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.IEEE
+    )
     frame_counter: t.uint32_t
     command_id: zgptypes.GPDCommandID
-    payload: t.LVBytes
+    payload: zgptypes.GPDCommandPayload
     gpp_short_addr: t.uint16_t = StructField(
         requires=lambda s: s.options.proxy_info_present, optional=True
     )
-    gpp_gpd_link: t.uint8_t = StructField(
+    gpp_gpd_link: zgptypes.GPPGPDLink = StructField(
         requires=lambda s: s.options.proxy_info_present, optional=True
     )
     mic: t.uint32_t = StructField(
@@ -86,7 +94,7 @@ class PairingSearchSchema(foundation.CommandSchema):
     gpd_id: zgptypes.DeviceID
 
 
-# Figure 24
+# Figures 25 and 26 — 16 bits total
 class NotificationOptions(t.Struct):
     application_id: zgptypes.ApplicationID
     also_unicast: t.uint1_t
@@ -94,22 +102,34 @@ class NotificationOptions(t.Struct):
     also_commissioned_group: t.uint1_t
     security_level: zgptypes.SecurityLevel
     security_key_type: zgptypes.SecurityKeyType
-    appoint_temp_master: t.uint1_t
+    rx_after_tx: t.uint1_t
     tx_queue_full: t.uint1_t
-    _reserved: t.uint3_t
+    bidirectional_cap: t.uint1_t
+    proxy_info_present: t.uint1_t
+    _reserved: t.uint1_t
 
 
-# Figure 23
+# Figure 24
 class NotificationSchema(foundation.CommandSchema):
     options: NotificationOptions
-    gpd_id: zgptypes.DeviceID
+    gpd_id: zgptypes.DeviceID = StructField(
+        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.SrcID
+    )
+    gpd_ieee: t.EUI64 = StructField(
+        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.IEEE
+    )
+    gpd_endpoint: t.uint8_t = StructField(
+        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.IEEE
+    )
     frame_counter: t.uint32_t
     command_id: zgptypes.GPDCommandID
-    payload: t.LVBytes
-    short_addr: t.uint16_t = StructField(
-        requires=lambda s: s.options.appoint_temp_master
+    payload: zgptypes.GPDCommandPayload
+    gpp_short_addr: t.uint16_t = StructField(
+        requires=lambda s: s.options.proxy_info_present, optional=True
     )
-    distance: t.uint8_t = StructField(requires=lambda s: s.options.appoint_temp_master)
+    gpp_gpd_link: zgptypes.GPPGPDLink = StructField(
+        requires=lambda s: s.options.proxy_info_present, optional=True
+    )
 
 
 # Figure 40, 41

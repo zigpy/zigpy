@@ -2179,6 +2179,7 @@ async def test_reinterview_during_ota(dev):
     dev._application._device_reinterviewed.assert_not_called()
 
 
+@patch("zigpy.device.AFTER_OTA_ATTR_READ_DELAY", 0.01)
 async def test_update_firmware_triggers_reinterview(monkeypatch, dev):
     """Test that successful OTA triggers reinterview."""
     ep = dev.add_endpoint(1)

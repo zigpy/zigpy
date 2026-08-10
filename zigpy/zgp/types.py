@@ -18,6 +18,9 @@ __all__ = [
     "ProxyCommissioningModeExitMode",
     "CommunicationMode",
     "CommunicationDirection",
+    "GPLinkQuality",
+    "GPPGPDLink",
+    "GPDCommandPayload",
 ]
 
 # Green Power endpoint as defined in the ZGP specification
@@ -208,3 +211,33 @@ class CommunicationMode(basic.enum2):
 class CommunicationDirection(basic.enum1):
     GPDtoGPP = 0
     GPPtoGPD = 1
+
+
+# Table 32
+class GPLinkQuality(basic.enum2):
+    Poor = 0b00
+    Moderate = 0b01
+    High = 0b10
+    Excellent = 0b11
+
+
+# Figure 27 — GPP-GPD link field appended to notifications by the forwarding proxy
+class GPPGPDLink(t.IntStruct, basic.uint8_t):
+    rssi: basic.uint6_t
+    link_quality: GPLinkQuality
+
+    @property
+    def rssi_dbm(self) -> int:
+        # The proxy caps RSSI to [-109, +8] dBm, adds 110, and halves it
+        return self.rssi * 2 - 110
+
+
+class GPDCommandPayload(basic.LVBytes):
+    """GPD command payload; a length byte of 0xff means unspecified/no payload."""
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> tuple[GPDCommandPayload, bytes]:
+        if data[:1] == b"\xff":
+            return cls(b""), data[1:]
+
+        return super().deserialize(data)
