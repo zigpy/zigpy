@@ -44,14 +44,12 @@ class CommissioningNotificationSchema(foundation.CommandSchema):
     command_id: zgptypes.GPDCommandID
     payload: zgptypes.GPDCommandPayload
     gpp_short_addr: t.uint16_t = StructField(
-        requires=lambda s: s.options.proxy_info_present, optional=True
+        requires=lambda s: s.options.proxy_info_present
     )
     gpp_gpd_link: zgptypes.GPPGPDLink = StructField(
-        requires=lambda s: s.options.proxy_info_present, optional=True
+        requires=lambda s: s.options.proxy_info_present
     )
-    mic: t.uint32_t = StructField(
-        requires=lambda s: s.options.security_failed, optional=True
-    )
+    mic: t.uint32_t = StructField(requires=lambda s: s.options.security_failed)
 
 
 # Figure 59
@@ -125,10 +123,10 @@ class NotificationSchema(foundation.CommandSchema):
     command_id: zgptypes.GPDCommandID
     payload: zgptypes.GPDCommandPayload
     gpp_short_addr: t.uint16_t = StructField(
-        requires=lambda s: s.options.proxy_info_present, optional=True
+        requires=lambda s: s.options.proxy_info_present
     )
     gpp_gpd_link: zgptypes.GPPGPDLink = StructField(
-        requires=lambda s: s.options.proxy_info_present, optional=True
+        requires=lambda s: s.options.proxy_info_present
     )
 
 

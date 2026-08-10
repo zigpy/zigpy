@@ -47,6 +47,7 @@ from zigpy.zgp.types import (
     SecurityKeyType,
     SecurityLevel,
 )
+from zigpy.zgp.util import derive_alias
 
 if typing.TYPE_CHECKING:
     _R = TypeVar("_R")
@@ -91,12 +92,15 @@ class Status(enum.IntEnum):
 
 
 class BaseDevice(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
-    """Base class shared by all device types, keyed on an `ieee` address."""
+    """Base class shared by all device types, keyed on `ieee` and `nwk` addresses."""
 
-    def __init__(self, application: ControllerApplication, ieee: t.EUI64) -> None:
+    def __init__(
+        self, application: ControllerApplication, ieee: t.EUI64, nwk: t.NWK
+    ) -> None:
         super().__init__()
         self._application: ControllerApplication = application
         self._ieee: t.EUI64 = ieee
+        self.nwk: t.NWK = t.NWK(nwk)
 
         self.lqi: int | None = None
         self.rssi: int | None = None
@@ -175,10 +179,15 @@ class GreenPowerDevice(BaseDevice):
         if application_id is ApplicationID.SrcID:
             assert src_id is not None
             ieee = self._synthetic_ieee(src_id)
+            gpd_id = src_id
         else:
             assert ieee is not None
+            gpd_id = ieee
 
-        super().__init__(application, ieee)
+        # The alias is the NWK address the GPD occupies on the air: proxies send on
+        # its behalf using it as the NWK source address (spec A.3.6.3.3). Distinct
+        # GPD IDs can derive the same alias; the spec tolerates the collision.
+        super().__init__(application, ieee, derive_alias(gpd_id))
 
         self.application_id = application_id
         self._src_id = src_id
@@ -239,8 +248,7 @@ class ZigbeeDevice(BaseDevice):
     manufacturer_id_override = None
 
     def __init__(self, application: ControllerApplication, ieee: t.EUI64, nwk: t.NWK):
-        super().__init__(application, ieee)
-        self.nwk: t.NWK = t.NWK(nwk)
+        super().__init__(application, ieee, nwk)
         self.zdo: zdo.ZDO = zdo.ZDO(self)
         self.endpoints: dict[int, zdo.ZDO | zigpy.endpoint.Endpoint] = {0: self.zdo}
 
