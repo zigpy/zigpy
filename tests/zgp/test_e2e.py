@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import patch
 
-from tests.conftest import make_app
 from tests.zgp.fixtures.busch_jaeger_6716u import (
     BJ6716U_COMMISSIONING_PAYLOAD,
     BJ6716U_EXPECTED,
@@ -325,53 +324,6 @@ async def test_proxy_table_cleaned_on_decommission(app):
     await gp._process_decommissioning(source_id)
 
     assert len(gp.proxy_table) == 0
-
-
-def test_persist_and_restore(app):
-    """Devices should survive a save/load cycle."""
-    gp = app.green_power
-
-    # Commission two devices
-    dev1 = GPDevice(
-        source_id=0x11111111,
-        device_id=0x02,
-        security_key=bytes(range(16)),
-        security_level=SecurityLevel.Encrypted,
-        frame_counter=42,
-        gpd_commands=[0x20, 0x21, 0x22],
-    )
-    dev2 = GPDevice(
-        source_id=0x22222222,
-        device_id=0x07,
-        frame_counter=100,
-    )
-    gp.add_device(dev1)
-    gp.add_device(dev2)
-
-    # Save
-    data = gp.get_devices_data()
-    assert len(data) == 2
-
-    # Create new manager (simulating restart)
-    app2 = make_app({})
-    gp2 = app2.green_power
-
-    # Load
-    gp2.load_devices(data)
-
-    # Verify
-    restored1 = gp2.get_device(0x11111111)
-    assert restored1 is not None
-    assert restored1.device_id == 0x02
-    assert bytes(restored1.security_key) == bytes(range(16))
-    assert restored1.security_level == SecurityLevel.Encrypted
-    assert restored1.frame_counter == 42
-    assert restored1.gpd_commands == [0x20, 0x21, 0x22]
-
-    restored2 = gp2.get_device(0x22222222)
-    assert restored2 is not None
-    assert restored2.device_id == 0x07
-    assert restored2.frame_counter == 100
 
 
 async def test_commission_then_operational_full_flow(app, gp_events):

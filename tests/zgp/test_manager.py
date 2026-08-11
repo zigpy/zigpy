@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import struct
 
-from tests.async_mock import AsyncMock, MagicMock
+from tests.async_mock import AsyncMock
 from zigpy.profiles import zgp as zgp_profile
 import zigpy.types as t
 from zigpy.zcl.clusters.greenpower import NotificationOptions, NotificationSchema
@@ -478,90 +478,6 @@ async def test_pairing_encrypts_security_key(app, manager):
     # The encrypted key MUST appear instead
     encrypted_key, _ = encrypt_security_key(source_id, plaintext_key)
     assert bytes(encrypted_key) in sent_data
-
-
-def test_load_devices(manager):
-    """Loading persisted device data."""
-    data = [
-        {
-            "source_id": 0x12345678,
-            "device_id": 0x02,
-            "security_key": "00" * 16,
-            "security_level": 3,
-            "security_key_type": 4,
-            "frame_counter": 100,
-        },
-        {
-            "source_id": 0xAABBCCDD,
-            "device_id": 0x07,
-        },
-    ]
-
-    manager.load_devices(data)
-
-    assert len(manager.devices) == 2
-    dev1 = manager.get_device(0x12345678)
-    assert dev1 is not None
-    assert dev1.device_id == 0x02
-    assert dev1.frame_counter == 100
-    assert dev1.security_level == SecurityLevel.Encrypted
-
-    dev2 = manager.get_device(0xAABBCCDD)
-    assert dev2 is not None
-    assert dev2.device_id == 0x07
-
-
-def test_get_devices_data(manager):
-    """Serializing devices for persistence."""
-    dev1 = GPDevice(source_id=0x12345678, device_id=0x02, frame_counter=10)
-    dev2 = GPDevice(source_id=0xAABBCCDD, device_id=0x07)
-    manager.add_device(dev1)
-    manager.add_device(dev2)
-
-    data = manager.get_devices_data()
-
-    assert len(data) == 2
-    source_ids = {d["source_id"] for d in data}
-    assert source_ids == {0x12345678, 0xAABBCCDD}
-
-
-def test_load_save_roundtrip(manager):
-    """Saving and loading should preserve all data."""
-    dev = GPDevice(
-        source_id=0x12345678,
-        device_id=0x02,
-        security_key=bytes(range(16)),
-        security_level=SecurityLevel.Encrypted,
-        security_key_type=SecurityKeyType.IndividualKey,
-        frame_counter=42,
-        gpd_commands=[0x20, 0x21, 0x22],
-    )
-    manager.add_device(dev)
-
-    data = manager.get_devices_data()
-
-    manager2 = GreenPowerManager(MagicMock())
-    manager2.load_devices(data)
-
-    restored = manager2.get_device(0x12345678)
-    assert restored is not None
-    assert restored.source_id == dev.source_id
-    assert restored.device_id == dev.device_id
-    assert restored.security_key == dev.security_key
-    assert restored.security_level == dev.security_level
-    assert restored.frame_counter == dev.frame_counter
-    assert restored.gpd_commands == dev.gpd_commands
-
-
-def test_load_invalid_data_skipped(manager):
-    """Invalid device data should be skipped without crashing."""
-    data = [
-        {"invalid": "data"},
-        {"source_id": 0x12345678, "device_id": 0x02},
-    ]
-
-    manager.load_devices(data)
-    assert len(manager.devices) == 1
 
 
 def test_client_frame():

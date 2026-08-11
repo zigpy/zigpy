@@ -820,23 +820,3 @@ class GreenPowerManager(EventBase):
         )
 
         return hdr.serialize() + payload
-
-    # --- Persistence ---
-
-    def load_devices(self, devices_data: list[dict]) -> None:
-        """Load GP devices from persisted data (as produced by get_devices_data)."""
-        for data in devices_data:
-            try:
-                device = GPDevice.from_dict(data)
-                self._devices[device.source_id] = device
-                LOGGER.debug("Loaded GP device: %r", device)
-            except (KeyError, ValueError, TypeError):
-                LOGGER.warning(
-                    "Failed to load GP device from data: %s",
-                    data,
-                    exc_info=True,
-                )
-
-    def get_devices_data(self) -> list[dict]:
-        """Serialize all GP devices for persistence."""
-        return [device.as_dict() for device in self._devices.values()]

@@ -39,7 +39,9 @@ from zigpy.zcl import (
 from zigpy.zcl.clusters.general import Basic, Ota
 from zigpy.zcl.foundation import Status
 from zigpy.zdo import types as zdo_t
+from zigpy.zgp.device import GPDevice
 from zigpy.zgp.events import CommandReceived, DeviceJoined, DeviceLeft
+from zigpy.zgp.types import SecurityKeyType, SecurityLevel
 
 if TYPE_CHECKING:
     from zigpy.application import ControllerApplication
@@ -761,8 +763,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             device.last_seen.isoformat() if device.last_seen else None,
         )
 
-    async def _save_gp_device(self, device) -> None:
-        d = device.as_dict()
+    async def _save_gp_device(self, device: GPDevice) -> None:
         q = f"""INSERT INTO gp_devices{DB_V} VALUES (
             :source_id, :device_id, :security_key, :security_level,
             :security_key_type, :frame_counter, :manufacturer_id, :model_id,
@@ -786,10 +787,25 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self.execute(
             q,
             {
-                **d,
-                "gpd_commands": json.dumps(d["gpd_commands"]),
-                "server_clusters": json.dumps(d["server_clusters"]),
-                "client_clusters": json.dumps(d["client_clusters"]),
+                "source_id": device.source_id,
+                "device_id": device.device_id,
+                "security_key": (
+                    bytes(device.security_key).hex() if device.security_key else None
+                ),
+                "security_level": int(device.security_level),
+                "security_key_type": int(device.security_key_type),
+                "frame_counter": device.frame_counter,
+                "manufacturer_id": device.manufacturer_id,
+                "model_id": device.model_id,
+                "gpd_commands": json.dumps(device.gpd_commands),
+                "server_clusters": json.dumps(device.server_clusters),
+                "client_clusters": json.dumps(device.client_clusters),
+                "mac_seq_num_capability": device.mac_seq_num_capability,
+                "rx_on_capability": device.rx_on_capability,
+                "fixed_location": device.fixed_location,
+                "last_seen": (
+                    device.last_seen.isoformat() if device.last_seen else None
+                ),
             },
         )
         await self._db.commit()
@@ -1238,6 +1254,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         break
 
     async def _load_gp_devices(self) -> None:
+        green_power = self._application.green_power
+        num_devices = 0
+
         async with self.execute(
             f"SELECT source_id, device_id, security_key, security_level, "
             f"security_key_type, frame_counter, manufacturer_id, model_id, "
@@ -1245,26 +1264,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             f"mac_seq_num_capability, rx_on_capability, fixed_location, last_seen "
             f"FROM gp_devices{DB_V}"
         ) as cursor:
-            rows = await cursor.fetchall()
-        devices_data = [
-            {
-                "source_id": source_id,
-                "device_id": device_id,
-                "security_key": security_key,
-                "security_level": security_level,
-                "security_key_type": security_key_type,
-                "frame_counter": frame_counter,
-                "manufacturer_id": manufacturer_id,
-                "model_id": model_id,
-                "gpd_commands": json.loads(gpd_commands),
-                "server_clusters": json.loads(server_clusters),
-                "client_clusters": json.loads(client_clusters),
-                "mac_seq_num_capability": bool(mac_seq_num_capability),
-                "rx_on_capability": bool(rx_on_capability),
-                "fixed_location": bool(fixed_location),
-                "last_seen": last_seen,
-            }
-            for (
+            async for (
                 source_id,
                 device_id,
                 security_key,
@@ -1280,10 +1280,32 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 rx_on_capability,
                 fixed_location,
                 last_seen,
-            ) in rows
-        ]
-        self._application.green_power.load_devices(devices_data)
-        LOGGER.info("Restored %d GP device(s) from database", len(devices_data))
+            ) in cursor:
+                device = GPDevice(
+                    source_id=source_id,
+                    device_id=device_id,
+                    security_key=(
+                        t.KeyData(bytes.fromhex(security_key)) if security_key else None
+                    ),
+                    security_level=SecurityLevel(security_level),
+                    security_key_type=SecurityKeyType(security_key_type),
+                    frame_counter=frame_counter,
+                    manufacturer_id=manufacturer_id,
+                    model_id=model_id,
+                    gpd_commands=json.loads(gpd_commands),
+                    server_clusters=json.loads(server_clusters),
+                    client_clusters=json.loads(client_clusters),
+                    mac_seq_num_capability=bool(mac_seq_num_capability),
+                    rx_on_capability=bool(rx_on_capability),
+                    fixed_location=bool(fixed_location),
+                    last_seen=(
+                        datetime.fromisoformat(last_seen) if last_seen else None
+                    ),
+                )
+                green_power.add_device(device)
+                num_devices += 1
+
+        LOGGER.info("Restored %d GP device(s) from database", num_devices)
 
     async def _register_device_listeners(self) -> None:
         for dev in self._application.devices.values():
