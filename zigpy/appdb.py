@@ -39,8 +39,13 @@ from zigpy.zcl import (
 from zigpy.zcl.clusters.general import Basic, Ota
 from zigpy.zcl.foundation import Status
 from zigpy.zdo import types as zdo_t
-from zigpy.zgp.device import GPDevice
-from zigpy.zgp.events import CommandReceived, DeviceJoined, DeviceLeft
+from zigpy.zgp.device import GPDevice, ieee_to_source_id
+from zigpy.zgp.events import (
+    CommandReceived,
+    DeviceJoined,
+    DeviceLeft,
+    RawCommandReceived,
+)
 from zigpy.zgp.types import SecurityKeyType, SecurityLevel
 
 if TYPE_CHECKING:
@@ -736,6 +741,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             green_power.on_event(
                 CommandReceived.event_type, self._on_gp_command_received
             ),
+            green_power.on_event(
+                RawCommandReceived.event_type, self._on_gp_command_received
+            ),
         ]
 
     def unsubscribe_from_green_power(self) -> None:
@@ -743,19 +751,38 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             unsub()
         self._gp_unsubs = []
 
-    def _on_gp_device_joined(self, event) -> None:
-        self.enqueue("_save_gp_device", event.device)
+    def _gp_device(self, device_ieee: str) -> GPDevice | None:
+        source_id = ieee_to_source_id(t.EUI64.convert(device_ieee))
+        if source_id is None:
+            return None
+        return self._application.green_power.get_device(source_id)
 
-    def _on_gp_device_left(self, event) -> None:
-        self.enqueue("_remove_gp_device", event.device.source_id)
+    def _on_gp_device_joined(self, event: DeviceJoined) -> None:
+        device = self._gp_device(event.device_ieee)
+        if device is not None:
+            self.enqueue("_save_gp_device", device)
 
-    def _on_gp_command_received(self, event) -> None:
+    def _on_gp_device_left(self, event: DeviceLeft) -> None:
+        # The manager removes the device from its registry before emitting
+        # DeviceLeft, so the source ID is derived from the IEEE directly
+        # rather than through a now-stale lookup.
+        source_id = ieee_to_source_id(t.EUI64.convert(event.device_ieee))
+        if source_id is not None:
+            self.enqueue("_remove_gp_device", source_id)
+
+    def _on_gp_command_received(
+        self, event: CommandReceived | RawCommandReceived
+    ) -> None:
         # Each operational frame advances the device's frame counter (replay
         # protection, set in the manager before this event fires).  Persist it
         # with a lightweight single-row UPDATE so the replay baseline survives a
         # restart, rather than the full-row rewrite _save_gp_device does - the
-        # join-time row already holds the static fields.
-        device = event.device
+        # join-time row already holds the static fields.  A RawCommandReceived
+        # still advanced the counter, so it is handled the same as CommandReceived.
+        device = self._gp_device(event.device_ieee)
+        if device is None:
+            return
+
         self.enqueue(
             "_update_gp_frame_counter",
             device.source_id,

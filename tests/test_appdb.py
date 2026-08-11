@@ -45,6 +45,7 @@ from zigpy.zcl import (
 from zigpy.zcl.clusters.general import Basic, Identify, OnOff, Ota
 from zigpy.zcl.foundation import Status as ZCLStatus, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
+from zigpy.zgp.commands import GPNoPayload
 from zigpy.zgp.device import GPDevice
 from zigpy.zgp.events import CommandReceived, DeviceJoined, DeviceLeft
 from zigpy.zgp.types import GPDCommandID
@@ -2106,7 +2107,10 @@ async def test_gp_device_round_trip(tmp_path):
     )
     device.last_seen = datetime.now(UTC)
     last_seen = device.last_seen
-    app.green_power.emit(DeviceJoined.event_type, DeviceJoined(device=device))
+    app.green_power.add_device(device)
+    app.green_power.emit(
+        DeviceJoined.event_type, DeviceJoined(device_ieee=str(device.ieee))
+    )
     await app.shutdown()
 
     app2 = await make_app_with_db(db)
@@ -2136,14 +2140,21 @@ async def test_gp_frame_counter_persists_per_press(tmp_path):
     app = await make_app_with_db(db)
 
     device = GPDevice(source_id=SOURCE_ID, device_id=2, frame_counter=99)
-    app.green_power.emit(DeviceJoined.event_type, DeviceJoined(device=device))
+    app.green_power.add_device(device)
+    app.green_power.emit(
+        DeviceJoined.event_type, DeviceJoined(device_ieee=str(device.ieee))
+    )
 
     # Simulate a button press: the manager advances the counter (replay
     # protection) before emitting CommandReceived (manager.py _dispatch_gp_command).
     assert device.update_frame_counter(150)
     app.green_power.emit(
         CommandReceived.event_type,
-        CommandReceived(device=device, command_id=GPDCommandID(0x22), payload=b""),
+        CommandReceived(
+            device_ieee=str(device.ieee),
+            command_id=GPDCommandID(0x22),
+            payload=GPNoPayload(),
+        ),
     )
     await app.shutdown()
 
@@ -2161,8 +2172,13 @@ async def test_gp_device_decommission(tmp_path):
     app = await make_app_with_db(db)
 
     device = GPDevice(source_id=SOURCE_ID, device_id=2)
-    app.green_power.emit(DeviceJoined.event_type, DeviceJoined(device=device))
-    app.green_power.emit(DeviceLeft.event_type, DeviceLeft(device=device))
+    app.green_power.add_device(device)
+    app.green_power.emit(
+        DeviceJoined.event_type, DeviceJoined(device_ieee=str(device.ieee))
+    )
+    app.green_power.emit(
+        DeviceLeft.event_type, DeviceLeft(device_ieee=str(device.ieee))
+    )
     await app.shutdown()
 
     app2 = await make_app_with_db(db)
@@ -2180,7 +2196,10 @@ async def test_gp_device_recommission_updates_security_key(tmp_path):
     app = await make_app_with_db(db)
 
     device = GPDevice(source_id=SOURCE_ID, device_id=2, security_key=t.KeyData(OLD_KEY))
-    app.green_power.emit(DeviceJoined.event_type, DeviceJoined(device=device))
+    app.green_power.add_device(device)
+    app.green_power.emit(
+        DeviceJoined.event_type, DeviceJoined(device_ieee=str(device.ieee))
+    )
     await app.shutdown()
 
     # Re-commission with a different key (same source_id).
@@ -2188,7 +2207,11 @@ async def test_gp_device_recommission_updates_security_key(tmp_path):
     recommissioned = GPDevice(
         source_id=SOURCE_ID, device_id=2, security_key=t.KeyData(NEW_KEY)
     )
-    app2.green_power.emit(DeviceJoined.event_type, DeviceJoined(device=recommissioned))
+    app2.green_power.add_device(recommissioned)
+    app2.green_power.emit(
+        DeviceJoined.event_type,
+        DeviceJoined(device_ieee=str(recommissioned.ieee)),
+    )
     await app2.shutdown()
 
     app3 = await make_app_with_db(db)

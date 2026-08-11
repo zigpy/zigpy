@@ -42,7 +42,7 @@ async def test_real_commissioning_succeeds(manager, gp_events) -> None:
 
     joined = [e for _, e in gp_events if isinstance(e, DeviceJoined)]
     assert len(joined) == 1
-    assert joined[0].device.source_id == BJ6716U_SOURCE_ID
+    assert joined[0].device_ieee == str(device.ieee)
 
 
 async def test_stores_all_17_gpd_commands(manager) -> None:

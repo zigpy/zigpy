@@ -19,6 +19,7 @@ from tests.zgp.fixtures.busch_jaeger_6716u import (
 from zigpy.profiles import zgp as zgp_profile
 import zigpy.types as t
 from zigpy.zcl.clusters.greenpower import NotificationOptions, NotificationSchema
+from zigpy.zgp.commands import GPNoPayload
 from zigpy.zgp.device import GPDevice
 from zigpy.zgp.events import CommandReceived, DeviceJoined, DeviceLeft
 import zigpy.zgp.types as zgptypes
@@ -107,7 +108,7 @@ async def test_commission_receive_command_decommission(app, gp_events):
     assert dev.source_id == source_id
 
     joined = [e for _, e in gp_events if isinstance(e, DeviceJoined)]
-    assert joined == [DeviceJoined(device=dev)]
+    assert joined == [DeviceJoined(device_ieee=str(dev.ieee))]
 
     # GP Pairing should have been sent
     assert app.send_packet.call_count >= 1
@@ -124,7 +125,11 @@ async def test_commission_receive_command_decommission(app, gp_events):
 
     commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
     assert commands == [
-        CommandReceived(device=dev, command_id=GPDCommandID.Toggle, payload=b"")
+        CommandReceived(
+            device_ieee=str(dev.ieee),
+            command_id=GPDCommandID.Toggle,
+            payload=GPNoPayload(),
+        )
     ]
 
     # Frame counter should be updated
@@ -136,7 +141,7 @@ async def test_commission_receive_command_decommission(app, gp_events):
 
     assert gp.get_device(source_id) is None
     left = [e for _, e in gp_events if isinstance(e, DeviceLeft)]
-    assert left == [DeviceLeft(device=dev)]
+    assert left == [DeviceLeft(device_ieee=str(dev.ieee))]
     # GP Pairing (remove) should be sent
     assert app.send_packet.call_count >= 1
 
@@ -205,7 +210,11 @@ async def test_gp_notification_through_app(app, gp_events):
 
     commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
     assert commands == [
-        CommandReceived(device=dev, command_id=GPDCommandID.Toggle, payload=b"")
+        CommandReceived(
+            device_ieee=str(dev.ieee),
+            command_id=GPDCommandID.Toggle,
+            payload=GPNoPayload(),
+        )
     ]
 
     # Frame counter should be updated
@@ -234,7 +243,11 @@ async def test_gp_packet_from_unknown_proxy(app, gp_events):
 
     commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
     assert commands == [
-        CommandReceived(device=dev, command_id=GPDCommandID.On, payload=b"")
+        CommandReceived(
+            device_ieee=str(dev.ieee),
+            command_id=GPDCommandID.On,
+            payload=GPNoPayload(),
+        )
     ]
 
 
@@ -349,7 +362,7 @@ async def test_commission_then_operational_full_flow(app, gp_events):
     assert bytes(dev.security_key) == _FAKE_DECRYPTED_KEY
     assert dev.frame_counter == BJ6716U_EXPECTED.outgoing_counter
     joined = [e for _, e in gp_events if isinstance(e, DeviceJoined)]
-    assert joined == [DeviceJoined(device=dev)]
+    assert joined == [DeviceJoined(device_ieee=str(dev.ieee))]
 
     # Feed the first captured operational frame (counter 0x1DED, cmd 0x68).
     gp_events.clear()
@@ -363,9 +376,9 @@ async def test_commission_then_operational_full_flow(app, gp_events):
 
     commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
     assert len(commands) == 1
-    assert commands[0].device is dev
+    assert commands[0].device_ieee == str(dev.ieee)
     assert commands[0].command_id == frame.command_id
-    assert commands[0].payload == b""
+    assert commands[0].payload == GPNoPayload()
     assert dev.frame_counter == frame.frame_counter
 
 

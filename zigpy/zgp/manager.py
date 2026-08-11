@@ -29,6 +29,7 @@ from zigpy.zcl.clusters.greenpower import (
     TempMasterTxChannel,
 )
 from zigpy.zgp.commands import (
+    GPD_COMMAND_SCHEMAS,
     GPChannelConfigurationPayload,
     GPChannelRequestPayload,
     GPCommissioningPayload,
@@ -37,7 +38,12 @@ from zigpy.zgp.commands import (
 )
 from zigpy.zgp.crypto import decrypt_security_key, encrypt_security_key
 from zigpy.zgp.device import GPDevice
-from zigpy.zgp.events import CommandReceived, DeviceJoined, DeviceLeft
+from zigpy.zgp.events import (
+    CommandReceived,
+    DeviceJoined,
+    DeviceLeft,
+    RawCommandReceived,
+)
 from zigpy.zgp.proxy import GPProxyTable
 import zigpy.zgp.types as zgptypes
 from zigpy.zgp.types import (
@@ -391,7 +397,7 @@ class GreenPowerManager(EventBase):
 
         await self.send_pairing(device, add_sink=True, proxy_nwk=proxy_nwk)
 
-        self.emit(DeviceJoined.event_type, DeviceJoined(device=device))
+        self.emit(DeviceJoined.event_type, DeviceJoined(device_ieee=str(device.ieee)))
 
         LOGGER.info(
             "GP device commissioned: %r",
@@ -405,7 +411,7 @@ class GreenPowerManager(EventBase):
         if device is not None:
             self.proxy_table.remove_by_source_id(source_id)
             await self.send_pairing(device, add_sink=False)
-            self.emit(DeviceLeft.event_type, DeviceLeft(device=device))
+            self.emit(DeviceLeft.event_type, DeviceLeft(device_ieee=str(device.ieee)))
 
             LOGGER.info(
                 "GP device decommissioned: source_id=0x%08X",
@@ -489,12 +495,7 @@ class GreenPowerManager(EventBase):
         command_id: int,
         payload: bytes,
     ) -> None:
-        """Dispatch a GP data command: verify the counter, emit CommandReceived.
-
-        The payload is emitted as the forwarding GPP security-processed it: a
-        GP Notification carries neither the MIC nor the RxAfterTx bit (Figures
-        23/24), so the CCM* header of the original GPDF cannot be rebuilt here.
-        """
+        """Dispatch a GP data command: verify the device and the counter, then emit."""
         device = self.get_device(source_id)
 
         if device is None:
@@ -508,19 +509,69 @@ class GreenPowerManager(EventBase):
         if not device.update_frame_counter(frame_counter):
             return
 
-        LOGGER.debug(
-            "GP command from 0x%08X: cmd=0x%02X, payload=%s",
-            source_id,
-            command_id,
-            payload.hex() if payload else "empty",
-        )
+        self._emit_gp_command(device, GPDCommandID(command_id), payload)
+
+    def _emit_gp_command(
+        self, device: GPDevice, command_id: GPDCommandID, payload: bytes
+    ) -> None:
+        """Parse a GP command payload, emitting CommandReceived or RawCommandReceived.
+
+        The payload is whatever the forwarding GPP security-processed: a GP
+        Notification carries neither the MIC nor the RxAfterTx bit (Figures
+        23/24), so the CCM* header of the original GPDF cannot be rebuilt here.
+        """
+        device_ieee = str(device.ieee)
+        schema = GPD_COMMAND_SCHEMAS.get(command_id)
+
+        if schema is None:
+            LOGGER.debug(
+                "No payload schema for GP command 0x%02X from 0x%08X",
+                command_id,
+                device.source_id,
+            )
+            self.emit(
+                RawCommandReceived.event_type,
+                RawCommandReceived(
+                    device_ieee=device_ieee,
+                    command_id=command_id,
+                    payload=payload,
+                ),
+            )
+            return
+
+        try:
+            parsed, rest = schema.deserialize(payload)
+        except (ValueError, KeyError, IndexError):
+            LOGGER.warning(
+                "Failed to parse GP command 0x%02X from 0x%08X with %s",
+                command_id,
+                device.source_id,
+                schema.__name__,
+                exc_info=True,
+            )
+            self.emit(
+                RawCommandReceived.event_type,
+                RawCommandReceived(
+                    device_ieee=device_ieee,
+                    command_id=command_id,
+                    payload=payload,
+                ),
+            )
+            return
+
+        if rest:
+            LOGGER.debug(
+                "Data remains after deserializing GP command 0x%02X: %r",
+                command_id,
+                rest,
+            )
 
         self.emit(
             CommandReceived.event_type,
             CommandReceived(
-                device=device,
-                command_id=GPDCommandID(command_id),
-                payload=payload,
+                device_ieee=device_ieee,
+                command_id=command_id,
+                payload=parsed,
             ),
         )
 

@@ -8,10 +8,21 @@ import struct
 from tests.async_mock import AsyncMock
 from zigpy.profiles import zgp as zgp_profile
 import zigpy.types as t
+from zigpy.zcl import foundation
 from zigpy.zcl.clusters.greenpower import NotificationOptions, NotificationSchema
+from zigpy.zgp.commands import (
+    GPAttributeReportingPayload,
+    GPContactStatusPayload,
+    GPNoPayload,
+)
 from zigpy.zgp.crypto import encrypt_security_key
 from zigpy.zgp.device import GPDevice
-from zigpy.zgp.events import CommandReceived, DeviceJoined, DeviceLeft
+from zigpy.zgp.events import (
+    CommandReceived,
+    DeviceJoined,
+    DeviceLeft,
+    RawCommandReceived,
+)
 from zigpy.zgp.manager import GreenPowerManager
 import zigpy.zgp.types as zgptypes
 from zigpy.zgp.types import (
@@ -166,9 +177,9 @@ async def test_dispatch_known_device(manager, gp_events):
 
     commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
     assert len(commands) == 1
-    assert commands[0].device is dev
+    assert commands[0].device_ieee == str(dev.ieee)
     assert commands[0].command_id is GPDCommandID.Toggle
-    assert commands[0].payload == b""
+    assert commands[0].payload == GPNoPayload()
 
 
 async def test_dispatch_unknown_device_ignored(manager, gp_events):
@@ -321,7 +332,7 @@ async def test_process_commissioning_creates_device(app, manager, gp_events):
     assert dev.source_id == 0xAABBCCDD
 
     joined = [e for _, e in gp_events if isinstance(e, DeviceJoined)]
-    assert joined == [DeviceJoined(device=dev)]
+    assert joined == [DeviceJoined(device_ieee=str(dev.ieee))]
 
     # GP Pairing should be sent
     assert app.send_packet.call_count >= 1
@@ -437,7 +448,7 @@ async def test_decommission_known_device(app, manager, gp_events):
 
     assert manager.get_device(0x12345678) is None
     left = [e for _, e in gp_events if isinstance(e, DeviceLeft)]
-    assert left == [DeviceLeft(device=dev)]
+    assert left == [DeviceLeft(device_ieee=str(dev.ieee))]
     # GP Pairing (remove) should be sent
     assert app.send_packet.call_count >= 1
 
@@ -692,14 +703,17 @@ async def test_gp_response_send_failure(app, manager):
 
 
 async def test_dispatch_secured_payload_is_not_truncated(manager, gp_events):
-    """A secured GPD's payload must reach listeners byte for byte.
+    """A secured GPD's payload must reach listeners in full, byte for byte.
 
     The GP Notification has no MIC field (Figure 23), so the trailing bytes of
-    the payload are command data, never a MIC to strip.
+    the payload are command data, never a MIC to strip: here they are the
+    4-byte value of the reported attribute, and must survive intact in the
+    parsed struct rather than being dropped.
     """
 
     source_id = 0xAABBCCDD
-    payload = bytes([0x00, 0x00, 0x21, 0x30, 0x02, 0x00, 0x01])
+    # cluster_id=0x0000, one attribute: attrid=0x0021, type=uint32, value=0x01020304
+    payload = bytes([0x00, 0x00, 0x21, 0x00, 0x23, 0x04, 0x03, 0x02, 0x01])
 
     dev = GPDevice(
         source_id=source_id,
@@ -720,9 +734,154 @@ async def test_dispatch_secured_payload_is_not_truncated(manager, gp_events):
     commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
     assert commands == [
         CommandReceived(
-            device=dev,
+            device_ieee=str(dev.ieee),
             command_id=GPDCommandID.AttributeReporting,
-            payload=payload,
+            payload=GPAttributeReportingPayload(
+                cluster_id=0x0000,
+                attributes=[
+                    foundation.Attribute(
+                        attrid=0x0021,
+                        value=foundation.TypeValue(
+                            type=0x23, value=t.uint32_t(0x01020304)
+                        ),
+                    )
+                ],
+            ),
+        )
+    ]
+
+
+async def test_dispatch_unmapped_command_id_emits_raw(manager, gp_events):
+    """A command ID with no GPD_COMMAND_SCHEMAS entry falls back to RawCommandReceived.
+
+    GPDCommandID.AnyCommand (0xFF) is a Translation-Table pseudo-ID: it is
+    never a real GPD command, so it has no schema entry.
+    """
+    dev = GPDevice(source_id=0x12345678, device_id=0x02, frame_counter=0)
+    manager.add_device(dev)
+
+    await manager._dispatch_gp_command(
+        source_id=0x12345678,
+        frame_counter=1,
+        command_id=GPDCommandID.AnyCommand,
+        payload=b"\x01\x02",
+    )
+
+    assert gp_events == [
+        (
+            RawCommandReceived.event_type,
+            RawCommandReceived(
+                device_ieee=str(dev.ieee),
+                command_id=GPDCommandID.AnyCommand,
+                payload=b"\x01\x02",
+            ),
+        )
+    ]
+
+
+async def test_dispatch_explicit_none_schema_emits_raw(manager, gp_events):
+    """A command mapped to an explicit None schema falls back to RawCommandReceived.
+
+    GPDCommandID.WriteAttributes is a known command whose payload parser is
+    not implemented yet (see the TODO in GPD_COMMAND_SCHEMAS).
+    """
+    dev = GPDevice(source_id=0x12345678, device_id=0x02, frame_counter=0)
+    manager.add_device(dev)
+
+    await manager._dispatch_gp_command(
+        source_id=0x12345678,
+        frame_counter=1,
+        command_id=GPDCommandID.WriteAttributes,
+        payload=b"\x00",
+    )
+
+    assert gp_events == [
+        (
+            RawCommandReceived.event_type,
+            RawCommandReceived(
+                device_ieee=str(dev.ieee),
+                command_id=GPDCommandID.WriteAttributes,
+                payload=b"\x00",
+            ),
+        )
+    ]
+
+
+async def test_dispatch_deserialize_failure_emits_raw(manager, gp_events):
+    """A covered command whose payload fails to parse falls back to RawCommandReceived.
+
+    Attribute type ID 0x02 is not a valid ZCL data type, so
+    DataType.from_type_id raises KeyError while parsing the attribute record.
+    """
+    dev = GPDevice(source_id=0x12345678, device_id=0x02, frame_counter=0)
+    manager.add_device(dev)
+
+    payload = bytes([0x00, 0x00, 0x21, 0x00, 0x02])
+
+    await manager._dispatch_gp_command(
+        source_id=0x12345678,
+        frame_counter=1,
+        command_id=GPDCommandID.AttributeReporting,
+        payload=payload,
+    )
+
+    assert gp_events == [
+        (
+            RawCommandReceived.event_type,
+            RawCommandReceived(
+                device_ieee=str(dev.ieee),
+                command_id=GPDCommandID.AttributeReporting,
+                payload=payload,
+            ),
+        )
+    ]
+
+
+async def test_dispatch_trailing_remainder_is_still_parsed(manager, gp_events):
+    """Bytes left over after a successful parse do not block the event.
+
+    GPNoPayload consumes nothing, so a non-empty payload for a payloadless
+    command like Toggle is entirely a trailing remainder; being strict about
+    it would drop real button presses from vendor-extended frames.
+    """
+    dev = GPDevice(source_id=0x12345678, device_id=0x02, frame_counter=0)
+    manager.add_device(dev)
+
+    await manager._dispatch_gp_command(
+        source_id=0x12345678,
+        frame_counter=1,
+        command_id=GPDCommandID.Toggle,
+        payload=b"\xaa\xbb",
+    )
+
+    commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
+    assert commands == [
+        CommandReceived(
+            device_ieee=str(dev.ieee),
+            command_id=GPDCommandID.Toggle,
+            payload=GPNoPayload(),
+        )
+    ]
+
+
+async def test_dispatch_fielded_payload_happy_path(manager, gp_events):
+    """A command with a fielded payload parses into its structured type."""
+    dev = GPDevice(source_id=0x12345678, device_id=0x02, frame_counter=0)
+    manager.add_device(dev)
+
+    await manager._dispatch_gp_command(
+        source_id=0x12345678,
+        frame_counter=1,
+        command_id=GPDCommandID.Press8BitVector,
+        payload=bytes([0x05]),
+    )
+
+    commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
+    assert commands == [
+        CommandReceived(
+            device_ieee=str(dev.ieee),
+            command_id=GPDCommandID.Press8BitVector,
+            payload=GPContactStatusPayload(contact_status=0x05),
         )
     ]
 
@@ -915,7 +1074,7 @@ async def test_dedup_in_notification_flow(manager, gp_events):
 
     commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
     assert len(commands) == 1
-    assert commands[0].device is dev
+    assert commands[0].device_ieee == str(dev.ieee)
 
 
 async def test_notification_with_corrupt_payload(manager, gp_events):
