@@ -94,6 +94,17 @@ def test_update_frame_counter_accepts_higher():
     assert dev.last_seen is not None
 
 
+def test_last_seen_defaults_to_none():
+    dev = GPDevice(source_id=0x12345678, device_id=0x02)
+    assert dev.last_seen is None
+
+
+def test_last_seen_setter_accepts_timestamp():
+    dev = GPDevice(source_id=0x12345678, device_id=0x02)
+    dev.last_seen = 1700000000.0
+    assert dev.last_seen == 1700000000.0
+
+
 def test_update_frame_counter_rejects_same():
     dev = GPDevice(source_id=0x12345678, device_id=0x02, frame_counter=10)
     assert dev.update_frame_counter(10) is False

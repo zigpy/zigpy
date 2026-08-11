@@ -2101,7 +2101,11 @@ async def test_gp_device_round_trip(tmp_path):
         device_id=2,
         security_key=t.KeyData(KEY),
         frame_counter=99,
+        manufacturer_id=0x1021,
+        model_id=0x0002,
     )
+    device.last_seen = datetime.now(UTC)
+    last_seen = device.last_seen
     app.green_power.emit(DeviceJoined.event_type, DeviceJoined(device=device))
     await app.shutdown()
 
@@ -2111,6 +2115,12 @@ async def test_gp_device_round_trip(tmp_path):
     assert restored.source_id == SOURCE_ID
     assert bytes(restored.security_key) == KEY
     assert restored.frame_counter == 99
+    assert isinstance(restored.last_seen, float)
+    assert abs(restored.last_seen - last_seen) < 0.01
+    assert restored.manufacturer_id == 0x1021
+    assert isinstance(restored.manufacturer_id, int)
+    assert restored.model_id == 0x0002
+    assert isinstance(restored.model_id, int)
     await app2.shutdown()
 
 

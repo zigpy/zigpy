@@ -227,15 +227,15 @@ CREATE TABLE gp_devices_v16 (
     security_level INTEGER NOT NULL,
     security_key_type INTEGER NOT NULL,
     frame_counter INTEGER NOT NULL,
-    manufacturer_id TEXT,
-    model_id TEXT,
+    manufacturer_id INTEGER,
+    model_id INTEGER,
     gpd_commands TEXT NOT NULL,
     server_clusters TEXT NOT NULL,
     client_clusters TEXT NOT NULL,
     mac_seq_num_capability INTEGER NOT NULL,
     rx_on_capability INTEGER NOT NULL,
     fixed_location INTEGER NOT NULL,
-    last_seen TEXT
+    last_seen REAL NOT NULL
 );
 
 CREATE UNIQUE INDEX gp_devices_idx_v16

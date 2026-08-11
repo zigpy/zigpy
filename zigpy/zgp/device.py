@@ -69,7 +69,7 @@ class GPDevice:
     fixed_location: bool = False
 
     # Timestamps
-    last_seen: datetime | None = None
+    _last_seen: datetime | None = None
 
     def __post_init__(self) -> None:
         """Normalize the security key to :class:`zigpy.types.KeyData`."""
@@ -82,6 +82,17 @@ class GPDevice:
     def ieee(self) -> t.EUI64:
         """Synthetic IEEE address derived from sourceID."""
         return source_id_to_ieee(self.source_id)
+
+    @property
+    def last_seen(self) -> float | None:
+        return self._last_seen.timestamp() if self._last_seen is not None else None
+
+    @last_seen.setter
+    def last_seen(self, value: datetime | float | None):
+        if isinstance(value, int | float):
+            value = datetime.fromtimestamp(value, UTC)
+
+        self._last_seen = value
 
     def update_frame_counter(self, counter: int) -> bool:
         """Update the frame counter, accepting only strictly greater values.

@@ -760,7 +760,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             "_update_gp_frame_counter",
             device.source_id,
             device.frame_counter,
-            device.last_seen.isoformat() if device.last_seen else None,
+            (device._last_seen or UNIX_EPOCH).timestamp(),
         )
 
     async def _save_gp_device(self, device: GPDevice) -> None:
@@ -803,15 +803,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "mac_seq_num_capability": device.mac_seq_num_capability,
                 "rx_on_capability": device.rx_on_capability,
                 "fixed_location": device.fixed_location,
-                "last_seen": (
-                    device.last_seen.isoformat() if device.last_seen else None
-                ),
+                "last_seen": (device._last_seen or UNIX_EPOCH).timestamp(),
             },
         )
         await self._db.commit()
 
     async def _update_gp_frame_counter(
-        self, source_id: int, frame_counter: int, last_seen: str | None
+        self, source_id: int, frame_counter: int, last_seen: float
     ) -> None:
         await self.execute(
             f"UPDATE gp_devices{DB_V} SET frame_counter=?, last_seen=? "
@@ -1298,10 +1296,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     mac_seq_num_capability=bool(mac_seq_num_capability),
                     rx_on_capability=bool(rx_on_capability),
                     fixed_location=bool(fixed_location),
-                    last_seen=(
-                        datetime.fromisoformat(last_seen) if last_seen else None
-                    ),
                 )
+                if last_seen > 0:
+                    device.last_seen = last_seen
                 green_power.add_device(device)
                 num_devices += 1
 
