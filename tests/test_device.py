@@ -227,20 +227,6 @@ def test_skip_configuration(dev):
     assert dev.skip_configuration is True
 
 
-def test_radio_details(dev):
-    dev.radio_details(1, 2)
-    assert dev.lqi == 1
-    assert dev.rssi == 2
-
-    dev.radio_details(lqi=3)
-    assert dev.lqi == 3
-    assert dev.rssi == 2
-
-    dev.radio_details(rssi=4)
-    assert dev.lqi == 3
-    assert dev.rssi == 4
-
-
 async def test_handle_message_deserialize_error(dev):
     ep = dev.add_endpoint(3)
     ep.deserialize = MagicMock(side_effect=ValueError)

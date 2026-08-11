@@ -5,14 +5,14 @@ from asyncio import timeout as asyncio_timeout
 from collections.abc import Callable, Coroutine
 import contextlib
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import enum
 import itertools
 import logging
 import math
 import time
 import typing
-from typing import Any, TypeVar
+from typing import Any, Final, TypeVar
 import warnings
 
 from zigpy import zdo
@@ -30,6 +30,7 @@ from zigpy.const import (
 )
 import zigpy.datastructures
 import zigpy.endpoint
+from zigpy.event import EventBase
 import zigpy.exceptions
 from zigpy.exceptions import DeliveryError
 import zigpy.listeners
@@ -69,7 +70,7 @@ AFTER_OTA_ATTR_READ_DELAY = 10
 
 # zgpDuplicateTimeout: unprotected GPDFs repeating the last MAC sequence number
 # within this many seconds are duplicates
-GP_DUPLICATE_TIMEOUT = 2
+GP_DUPLICATE_TIMEOUT = timedelta(seconds=2)
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +81,18 @@ class ResponseKey:
     cluster_id: int
     direction: foundation.Direction | None
     tsn: int
+
+
+@dataclass(kw_only=True, frozen=True)
+class GreenPowerCommandReceived:
+    """Event generated when a Green Power command is received."""
+
+    event_type: Final[str] = "gp_command_received"
+
+    device_ieee: str
+    endpoint_id: int
+    command_id: int
+    command: t.Struct | None
 
 
 class Status(enum.IntEnum):
@@ -93,7 +106,7 @@ class Status(enum.IntEnum):
     ENDPOINTS_INIT = 2
 
 
-class BaseDevice(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
+class BaseDevice(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin, EventBase):
     """Base class shared by all device types, keyed on `ieee` and `nwk` addresses."""
 
     def __init__(
@@ -150,12 +163,6 @@ class BaseDevice(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
         self._last_seen = value
         self.listener_event("device_last_seen_updated", self._last_seen)
-
-    def radio_details(self, lqi=None, rssi=None) -> None:
-        if lqi is not None:
-            self.lqi = lqi
-        if rssi is not None:
-            self.rssi = rssi
 
     @property
     def application(self) -> ControllerApplication:
@@ -232,7 +239,7 @@ class GreenPowerDevice(BaseDevice):
         args = (self.name, *args)
         LOGGER.log(lvl, msg, *args, **kwargs)
 
-    def _is_duplicate(self, packet: t.ZigbeeGpPacket) -> bool:
+    def _is_packet_duplicate(self, packet: t.ZigbeeGpPacket) -> bool:
         if self.frame_counter is None or packet.frame_counter is None:
             return False
 
@@ -250,8 +257,7 @@ class GreenPowerDevice(BaseDevice):
         return (
             packet.frame_counter == self.frame_counter
             and self._last_seen is not None
-            and (packet.timestamp - self._last_seen).total_seconds()
-            < GP_DUPLICATE_TIMEOUT
+            and ((packet.timestamp - self._last_seen) < GP_DUPLICATE_TIMEOUT)
         )
 
     def packet_received(self, packet: t.ZigbeeGpPacket) -> None:
@@ -260,31 +266,42 @@ class GreenPowerDevice(BaseDevice):
         Both GP ingress paths converge here: a GP Notification tunneled over ZCL by
         a remote proxy, or a GPDF decoded by the radio's local GP stub.
         """
-        if self._is_duplicate(packet):
+        self.last_seen = packet.timestamp
+
+        if packet.lqi is not None:
+            self.lqi = packet.lqi
+
+        if packet.rssi is not None:
+            self.rssi = packet.rssi
+
+        if self._is_packet_duplicate(packet):
             self.debug("Filtering duplicate packet")
             return
 
         self.frame_counter = packet.frame_counter
-        self.last_seen = packet.timestamp
-        self.radio_details(lqi=packet.lqi, rssi=packet.rssi)
+
+        command: t.Struct | None
 
         if packet.command_id in GPD_COMMAND_SCHEMAS:
             schema = GPD_COMMAND_SCHEMAS[packet.command_id]
+
+            try:
+                command, _ = schema.deserialize(packet.payload.serialize())
+            except Exception:  # noqa: BLE001
+                self.debug("Failed to parse GPDF payload %r", packet, exc_info=True)
+                command = None
         else:
-            schema = None
+            command = None
 
-        if schema is None:
-            # Unknown command or a payload parser that is not implemented yet
-            self.listener_event("gp_command_received", packet, None)
-            return
-
-        try:
-            payload, _ = schema.deserialize(packet.payload.serialize())
-        except Exception:  # noqa: BLE001
-            self.debug("Failed to parse GPDF payload %r", packet, exc_info=True)
-            return
-
-        self.listener_event("gp_command_received", packet, payload)
+        self.emit(
+            GreenPowerCommandReceived.event_type,
+            GreenPowerCommandReceived(
+                device_ieee=str(self.ieee),
+                endpoint_id=packet.endpoint,
+                command_id=packet.command_id,
+                command=command,
+            ),
+        )
 
 
 class ZigbeeDevice(BaseDevice):
