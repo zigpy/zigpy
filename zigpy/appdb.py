@@ -211,21 +211,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _commit(self, force: bool = False) -> None:
         """Commit changes to the database, optionally deferring the operation.
 
-        When deferred, the actual ``commit()`` is *not* performed by the timer
-        task. Instead, the timer only enqueues ``_flush_commit`` onto the worker
-        queue, so the commit always lands at a handler boundary and never
-        interleaves with an in-flight handler. This preserves the pre-existing
-        per-handler transaction atomicity: a crash rolls back the entire
-        in-flight handler rather than persisting a partial set of statements.
-
-        It also eliminates the bookkeeping race where ``_has_pending_commits``
-        could be cleared by the timer task while a newer write arrived from the
-        worker (the worker is the only place that touches the flag now).
+        When deferred, the timer task only enqueues ``_flush_commit`` onto the
+        worker queue: the actual ``commit()`` runs on the worker, so it always
+        lands at a handler boundary instead of interleaving with an in-flight
+        handler. A crash therefore rolls back the entire in-flight handler
+        rather than persisting a partial set of its statements.
         """
         if force or self._commit_interval <= 0:
             # Cancel any pending delayed commit and commit immediately on the
             # worker task. This is the synchronous-write path.
-            if self._commit_task is not None and not self._commit_task.done():
+            if self._commit_task is not None:
                 self._commit_task.cancel()
                 self._commit_task = None
             await self._db.commit()
@@ -235,22 +230,22 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         # Deferred path: arm the timer once. When it fires, it enqueues a flush
         # through `_callback_handlers` so the commit serializes with handlers.
         self._has_pending_commits = True
-        if self._commit_task is None:
+        self._arm_commit_timer()
+
+    def _arm_commit_timer(self) -> None:
+        """Start the deferred commit timer, unless one is already running."""
+        if self._commit_task is None or self._commit_task.done():
             self._commit_task = asyncio.create_task(self._delayed_commit())
 
     async def _delayed_commit(self) -> None:
-        """Arm a deferred flush through the worker queue.
+        """Wait out the commit interval, then queue a flush on the worker.
 
-        The actual ``commit()`` happens inside ``_flush_commit`` on the worker
-        task, so it never interleaves with a handler in progress and only ever
-        lands at a handler boundary.
+        Cancelling this task is the caller's business: both cancellation sites
+        clear ``_commit_task`` themselves, and ``_arm_commit_timer`` replaces a
+        task that is already done, so the timer never clears a reference that
+        may since have been re-armed by someone else.
         """
-        try:
-            await asyncio.sleep(self._commit_interval)
-        except asyncio.CancelledError:
-            # Ensure `shutdown` can re-arm or force-commit cleanly.
-            self._commit_task = None
-            raise
+        await asyncio.sleep(self._commit_interval)
 
         # The timer has elapsed. Clear the reference so a subsequent `_commit()`
         # call (from a handler that runs before `_flush_commit` does) can re-arm
@@ -262,13 +257,22 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         """Flush pending commits, invoked by the worker after the delay expires.
 
         Running on the worker task guarantees commits land only at handler
-        boundaries, preserving per-handler transaction atomicity. If a handler
-        ran after the timer fired but before this method, ``_has_pending_commits``
-        will still be ``True`` and its writes will be included in this commit.
+        boundaries. If a handler ran after the timer fired but before this
+        method, ``_has_pending_commits`` will still be ``True`` and its writes
+        will be included in this commit.
         """
         if not self._has_pending_commits:
             return
-        await self._db.commit()
+
+        try:
+            await self._db.commit()
+        except Exception:
+            # Re-arm so the pending writes are retried after another interval,
+            # instead of waiting for the next write or for shutdown.
+            LOGGER.exception("Failed to flush pending database commits")
+            self._arm_commit_timer()
+            return
+
         self._has_pending_commits = False
 
     async def shutdown(self) -> None:
@@ -278,7 +282,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         if not self._worker_task.done():
             self._worker_task.cancel()
 
-        if self._commit_task and not self._commit_task.done():
+        if self._commit_task is not None:
             self._commit_task.cancel()
             self._commit_task = None
 
