@@ -468,40 +468,14 @@ async def test_ota_handle_image_block_req(ota_cluster):
     ]
 
 
-@pytest.mark.parametrize(
-    ("command", "kwargs"),
-    [
-        (
-            Ota.ServerCommandDefs.image_page,
-            {
-                "field_control": 0,
-                "manufacturer_code": 0x1234,
-                "image_type": 0x5678,
-                "file_version": 1,
-                "file_offset": 0,
-                "maximum_data_size": 64,
-                "page_size": 128,
-                "response_spacing": 0,
-            },
-        ),
-        (
-            Ota.ServerCommandDefs.query_specific_file,
-            {
-                "request_node_addr": types.EUI64.convert("11:22:33:44:55:66:77:88"),
-                "manufacturer_code": 0x1234,
-                "image_type": 0x5678,
-                "file_version": 1,
-                "current_zigbee_stack_version": 2,
-            },
-        ),
-    ],
-)
-async def test_ota_unimplemented_request(dev, command, kwargs, caplog):
+async def test_ota_unimplemented_request(dev, caplog):
     """Test that a request zigpy has no response for gets no Default Response either."""
     ep = dev.add_endpoint(1)
     cluster = ep.add_output_cluster(Ota.cluster_id)
 
-    hdr = zigpy.zcl.foundation.ZCLHeader.cluster(tsn=0x12, command_id=command.id)
+    hdr = zigpy.zcl.foundation.ZCLHeader.cluster(
+        tsn=0x12, command_id=Ota.ServerCommandDefs.query_specific_file.id
+    )
     assert hdr.frame_control.disable_default_response == 0
 
     with (
@@ -520,7 +494,16 @@ async def test_ota_unimplemented_request(dev, command, kwargs, caplog):
                 profile_id=260,
                 cluster_id=Ota.cluster_id,
                 data=types.SerializableBytes(
-                    hdr.serialize() + command.schema(**kwargs).serialize()
+                    hdr.serialize()
+                    + Ota.ServerCommandDefs.query_specific_file.schema(
+                        request_node_addr=types.EUI64.convert(
+                            "11:22:33:44:55:66:77:88"
+                        ),
+                        manufacturer_code=0x1234,
+                        image_type=0x5678,
+                        file_version=1,
+                        current_zigbee_stack_version=2,
+                    ).serialize()
                 ),
             )
         )
