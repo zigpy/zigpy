@@ -65,6 +65,13 @@ clwJRVSsq8EApeFREenCkRM0EIk=
 OTA_PROVIDER_TYPES: dict[str, type[BaseOtaProvider]] = {}
 
 
+class IndexUnchanged(Exception):
+    """Signal raised by `_load_index` when the remote index has not changed.
+
+    The previously-cached images are kept, as if the index had not expired.
+    """
+
+
 def register_provider(provider: type[BaseOtaProvider]) -> type[BaseOtaProvider]:
     """Register a new OTA provider."""
     OTA_PROVIDER_TYPES[provider.NAME] = provider
@@ -234,7 +241,10 @@ class BaseOtaProvider:
                 headers={"accept": "application/json"},
                 raise_for_status=True,
             ) as session:
-                return [meta async for meta in self._load_index(session)]
+                try:
+                    return [meta async for meta in self._load_index(session)]
+                except IndexUnchanged:
+                    return None
         finally:
             self._index_last_updated = now
 
@@ -676,6 +686,9 @@ class ZigpyOtaProvider(BaseZigpyProvider):
 
         super().__init__(url=url, **kwargs)
 
+        # The version file's `zigpy_v2` entry of the last successful index load
+        self._loaded_version_data: dict | None = None
+
     async def _load_index(
         self, session: aiohttp.ClientSession
     ) -> typing.AsyncIterator[BaseOtaImageMetadata]:
@@ -685,7 +698,17 @@ class ZigpyOtaProvider(BaseZigpyProvider):
 
         # Extract the index URL from the version file
         # Format: {"schemas": {"zigpy_v2": {"version": "...", "url": "..."}}}
-        index_url = version_data["schemas"]["zigpy_v2"]["url"]
+        version_info = version_data["schemas"]["zigpy_v2"]
+
+        # The version file is tiny compared to the index it points to and the
+        # index URL is release-tag-pinned, so an unchanged entry means the
+        # index itself is unchanged as well
+        if self._loaded_version_data is not None and (
+            version_info == self._loaded_version_data
+        ):
+            raise IndexUnchanged
+
+        index_url = version_info["url"]
 
         # Now fetch the actual OTA index
         async with session.get(index_url) as rsp:
@@ -696,6 +719,9 @@ class ZigpyOtaProvider(BaseZigpyProvider):
         for img in self._load_zigpy_index(fw_lst, ssl_ctx=self.SSL_CTX):
             channel_name = self.channel or "custom"
             yield img.replace(source=f"zigpy-ota provider ({channel_name} channel)")
+
+        # Only remember the version info once the index was fully loaded
+        self._loaded_version_data = version_info
 
     def __eq__(self, other: object) -> bool:
         if (
