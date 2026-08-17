@@ -735,6 +735,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         If the device does not respond, existing state is preserved.
         """
         dev = self.get_device(ieee=ieee)
+        assert isinstance(dev, ZigbeeDevice)
         await dev.reinterview()
 
     async def remove(
@@ -748,6 +749,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         dev = self.devices.get(ieee)
         if not dev:
             LOGGER.debug("Device not found for removal: %s", ieee)
+            return
+
+        if not isinstance(dev, ZigbeeDevice):
+            # A GPD is not on the network so there is nothing to notify
+            LOGGER.info("Removing device 0x%04x (%s)", dev.nwk, ieee)
+            self.devices.pop(ieee, None)
+            self.listener_event("device_removed", dev)
             return
 
         dev.cancel_initialization()
@@ -785,7 +793,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     async def _remove_device(
         self,
-        device: BaseDevice,
+        device: ZigbeeDevice,
         remove_children: bool = True,
         rejoin: bool = False,
     ) -> None:
@@ -804,7 +812,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     def deserialize(
         self,
-        sender: BaseDevice,
+        sender: ZigbeeDevice,
         endpoint_id: t.uint8_t,
         cluster_id: t.uint16_t,
         data: bytes,
@@ -830,6 +838,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             LOGGER.info("New device 0x%04x (%s) joined the network", nwk, ieee)
             new_join = True
         else:
+            if not isinstance(dev, ZigbeeDevice):
+                LOGGER.warning(
+                    "Ignoring join announcement for non-Zigbee device %s", dev
+                )
+                return
+
             if handle_rejoin:
                 LOGGER.info("Device 0x%04x (%s) joined the network", nwk, ieee)
 
@@ -866,6 +880,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         try:
             dev = self.get_device(ieee=ieee)
         except KeyError:
+            return
+
+        if not isinstance(dev, ZigbeeDevice):
+            LOGGER.warning("Ignoring leave announcement for non-Zigbee device %s", dev)
             return
 
         dev._concurrent_requests_semaphore.cancel_waiting(
@@ -1342,6 +1360,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
             return None
 
+        if not isinstance(device, ZigbeeDevice):
+            LOGGER.warning(
+                "Received a Zigbee packet from non-Zigbee device %s: %r", device, packet
+            )
+            return None
+
         self.listener_event(
             "handle_message",
             device,
@@ -1436,7 +1460,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     def handle_message(
         self,
-        sender: BaseDevice,
+        sender: ZigbeeDevice,
         profile: int,
         cluster: int,
         src_ep: int,
@@ -1795,7 +1819,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         # Unlike its IEEE address, a device's NWK address can change at runtime so this
         # is not as simple as building a second mapping
         for dev in self.devices.values():
-            if dev.nwk == nwk:
+            # NWK addressing is Zigbee-only: a GPD's derived NWK alias may collide
+            # with a real device's address (the spec tolerates this)
+            if isinstance(dev, ZigbeeDevice) and dev.nwk == nwk:
                 return dev
 
         raise KeyError(f"Device not found: nwk={nwk!r}, ieee={ieee!r}")

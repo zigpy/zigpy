@@ -121,6 +121,9 @@ class BaseDevice(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin, EventBase
         self.rssi: int | None = None
         self._last_seen: datetime | None = None
 
+        # Persist the original signature for the device, before quirks are applied
+        self._original_signature: dict[str, Any] | None = None
+
         self._on_remove_callbacks: list[typing.Callable[[], None]] = []
         self._tasks: set[asyncio.Future[Any]] = set()
 
@@ -171,6 +174,20 @@ class BaseDevice(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin, EventBase
     @property
     def ieee(self) -> t.EUI64:
         return self._ieee
+
+    @property
+    def original_signature(self) -> dict[str, Any] | None:
+        return self._original_signature
+
+    @original_signature.setter
+    def original_signature(self, value: dict[str, Any] | None) -> None:
+        if self._original_signature is not None:
+            return
+
+        self._original_signature = value
+
+    def get_signature(self) -> dict[str, Any]:
+        raise NotImplementedError
 
 
 class GreenPowerDevice(BaseDevice):
@@ -226,6 +243,24 @@ class GreenPowerDevice(BaseDevice):
     @property
     def manufacturer_id(self) -> int | None:
         return self.gpd_manufacturer_id
+
+    @property
+    def is_initialized(self) -> bool:
+        """Commissioning fully describes a GPD, there is no separate interview."""
+        return True
+
+    def get_signature(self) -> dict[str, Any]:
+        return {
+            "application_id": self.application_id,
+            "src_id": self._src_id,
+            "endpoint": self.endpoint,
+            "device_id": self.device_id,
+            "manufacturer_id": self.gpd_manufacturer_id,
+            "model_id": self.gpd_model_id,
+            "commands": list(self.commands),
+            "server_cluster_ids": list(self.server_cluster_ids),
+            "client_cluster_ids": list(self.client_cluster_ids),
+        }
 
     @property
     def name(self) -> str:
@@ -313,9 +348,6 @@ class ZigbeeDevice(BaseDevice):
         super().__init__(application, ieee, nwk)
         self.zdo: zdo.ZDO = zdo.ZDO(self)
         self.endpoints: dict[int, zdo.ZDO | zigpy.endpoint.Endpoint] = {0: self.zdo}
-
-        # Persist the original signature for the device, before quirks are applied
-        self._original_signature: dict[str, Any] | None = None
 
         self.ota_in_progress: bool = False
 
@@ -1288,17 +1320,6 @@ class ZigbeeDevice(BaseDevice):
     def model(self, value) -> None:
         if isinstance(value, str):
             self._model = value
-
-    @property
-    def original_signature(self) -> dict[str, Any] | None:
-        return self._original_signature
-
-    @original_signature.setter
-    def original_signature(self, value: dict[str, Any] | None) -> None:
-        if self._original_signature is not None:
-            return
-
-        self._original_signature = value
 
     @property
     def skip_configuration(self) -> bool:

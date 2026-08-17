@@ -216,7 +216,7 @@ class BaseOtaProvider:
 
         self.override_previous = override_previous
 
-    def compatible_with_device(self, device: zigpy.device.Device) -> bool:
+    def compatible_with_device(self, device: zigpy.device.ZigbeeDevice) -> bool:
         if not self.manufacturer_ids:
             return True
 

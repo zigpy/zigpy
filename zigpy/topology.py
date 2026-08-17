@@ -158,8 +158,8 @@ class Topology(zigpy.util.ListenableMixin):
                 "Scanning topology (%d/%d) of %s", index + 1, len(devices), device
             )
 
-            # Only ZCL devices can have their topology scanned
-            if isinstance(device, ZigbeeDevice):
+            # Only Zigbee devices can have their topology scanned
+            if not isinstance(device, ZigbeeDevice):
                 continue
 
             # Ignore devices that aren't routers
