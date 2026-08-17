@@ -979,27 +979,40 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         self.debug(
             "Received command 0x%02X (TSN %d): %s", hdr.command_id, hdr.tsn, args
         )
-        if hdr.frame_control.is_cluster:
-            command = args if isinstance(args, CommandSchema) else None
-            self._dispatch_command_owners(hdr, command)
-            self.emit(
-                ClusterCommandReceivedEvent.event_type,
-                ClusterCommandReceivedEvent(
-                    device_ieee=str(self.endpoint.device.ieee),
-                    endpoint_id=self.endpoint.endpoint_id,
-                    cluster_type=self._type,
-                    cluster_id=self.cluster_id,
-                    command_id=hdr.command_id,
-                    tsn=hdr.tsn,
-                    command=command,
-                    raw_command=None if command is not None else args,
-                ),
-            )
-            self.handle_cluster_request(hdr, args)
-            self.listener_event("cluster_command", hdr.tsn, hdr.command_id, args)
+        if not hdr.frame_control.is_cluster:
+            self.listener_event("general_command", hdr, args)
+            self.handle_cluster_general_request(hdr, args)
             return
-        self.listener_event("general_command", hdr, args)
-        self.handle_cluster_general_request(hdr, args)
+
+        command = args if isinstance(args, CommandSchema) else None
+
+        for callback in self._command_owners_for(command):
+            if iscoroutinefunction(callback):
+                self.create_catching_task(callback(hdr, command), exceptions=())
+            else:
+                # An async owner fails within its own task, so a sync one cannot either
+                try:
+                    callback(hdr, command)
+                except Exception:  # noqa: BLE001
+                    self.warning(
+                        "Owner of command 0x%02X failed", hdr.command_id, exc_info=True
+                    )
+
+        self.emit(
+            ClusterCommandReceivedEvent.event_type,
+            ClusterCommandReceivedEvent(
+                device_ieee=str(self.endpoint.device.ieee),
+                endpoint_id=self.endpoint.endpoint_id,
+                cluster_type=self._type,
+                cluster_id=self.cluster_id,
+                command_id=hdr.command_id,
+                tsn=hdr.tsn,
+                command=command,
+                raw_command=None if command is not None else args,
+            ),
+        )
+        self.handle_cluster_request(hdr, args)
+        self.listener_event("cluster_command", hdr.tsn, hdr.command_id, args)
 
     @staticmethod
     def _command_key(
@@ -1075,22 +1088,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         return unsubscribe
 
-    def _own_command_by_default(
-        self,
-        command: foundation.ZCLCommandDef | AnyCommandType,
-        callback: Callable,
-    ) -> None:
-        """Own a command as the cluster class's own default handler."""
-        # A subclass overriding `handle_cluster_request` has taken over replying, so
-        # answering here too would reply twice to one command
-        if self._takes_over_command_handling:
-            return
-
-        self.respond_to_command(command, callback, default=True)
-
-    def _owners_for(self, command: CommandSchema | None) -> list[Callable]:
+    def _command_owners_for(self, command: CommandSchema | None) -> list[Callable]:
         """The most specific owners of a command, defaults only as a fallback."""
-        # Only one registration answers: two would each reply reusing the same TSN
         for owners in (self._command_owners, self._default_command_owners):
             for key in self._command_keys(command):
                 if owners[key]:
@@ -1098,24 +1097,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     return list(owners[key])
 
         return []
-
-    def _dispatch_command_owners(
-        self, hdr: foundation.ZCLHeader, command: CommandSchema | None
-    ) -> None:
-        """Hand a received command to its owner, or to the default owner if it has none."""
-        for callback in self._owners_for(command):
-            if iscoroutinefunction(callback):
-                # `exceptions=()` because an owner failing to reply must stay visible:
-                # the default `ZigbeeException` catch would swallow a DeliveryError
-                self.create_catching_task(callback(hdr, command), exceptions=())
-            else:
-                # An async owner fails within its own task, so a sync one cannot either
-                try:
-                    callback(hdr, command)
-                except Exception:  # noqa: BLE001
-                    self.warning(
-                        "Owner of command 0x%02X failed", hdr.command_id, exc_info=True
-                    )
 
     def handle_cluster_request(
         self,
@@ -1142,7 +1123,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         # An owner answers the command with a specific response, reusing its TSN, so a
         # Default Response would be a second reply to the same transaction. A default
         # owner counts: it is still the one answering when no other owner exists.
-        if self._owners_for(command):
+        if self._command_owners_for(command):
             return
 
         if not hdr.frame_control.disable_default_response:
