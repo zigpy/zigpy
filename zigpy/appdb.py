@@ -783,6 +783,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         # Clear the attribute cache to ensure the quirked state is correct
         for device in self._application.devices.values():
+            assert isinstance(device, Device)
+
             for ep in device.non_zdo_endpoints:
                 for cluster in ep.in_clusters.values():
                     cluster._attr_cache.clear()
@@ -808,6 +810,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         await self._register_device_listeners()
 
+    def _get_zigbee_device(self, ieee: t.EUI64) -> Device:
+        device = self._application.get_device(ieee)
+        assert isinstance(device, Device)
+        return device
+
     async def _populate_attribute_cache(
         self,
         rows: list[AttributeCacheRow],
@@ -821,7 +828,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         updated to match.
         """
         for row in rows:
-            dev = self._application.get_device(row.ieee)
+            dev = self._get_zigbee_device(row.ieee)
 
             LOGGER.debug(
                 "[0x%04x:%s:0x%04x] Loading attribute %s=%r status=%r mfg_code=%r",
@@ -1032,14 +1039,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _load_node_descriptors(self) -> None:
         async with self.execute(f"SELECT * FROM node_descriptors{DB_V}") as cursor:
             async for ieee, *fields in cursor:
-                dev = self._application.get_device(ieee)
+                dev = self._get_zigbee_device(ieee)
                 dev.node_desc = zdo_t.NodeDescriptor(*fields)
                 assert dev.node_desc.is_valid
 
     async def _load_endpoints(self) -> None:
         async with self.execute(f"SELECT * FROM endpoints{DB_V}") as cursor:
             async for ieee, epid, profile_id, device_type, status in cursor:
-                dev = self._application.get_device(ieee)
+                dev = self._get_zigbee_device(ieee)
                 ep = dev.add_endpoint(epid)
                 ep.profile_id = profile_id
                 ep.status = EndpointStatus(status)
@@ -1054,7 +1061,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _load_clusters(self) -> None:
         async with self.execute(f"SELECT * FROM clusters{DB_V}") as cursor:
             async for ieee, endpoint_id, cluster_type, cluster_id in cursor:
-                dev = self._application.get_device(ieee)
+                dev = self._get_zigbee_device(ieee)
                 ep = dev.endpoints[endpoint_id]
 
                 if ClusterType(cluster_type) == ClusterType.Server:
@@ -1070,14 +1077,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _load_group_members(self) -> None:
         async with self.execute(f"SELECT * FROM group_members{DB_V}") as cursor:
             async for group_id, ieee, ep_id in cursor:
-                dev = self._application.get_device(ieee)
+                dev = self._get_zigbee_device(ieee)
                 group = self._application.groups[group_id]
                 group.add_member(dev.endpoints[ep_id], suppress_event=True)
 
     async def _load_relays(self) -> None:
         async with self.execute(f"SELECT * FROM relays{DB_V}") as cursor:
             async for ieee, value in cursor:
-                dev = self._application.get_device(ieee)
+                dev = self._get_zigbee_device(ieee)
                 relays, _ = t.Relays.deserialize(value)
                 dev.relays = zigpy.util.filter_relays(relays)
 
@@ -1122,7 +1129,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 _last_updated,
             ) in cursor:
                 try:
-                    dev = self._application.get_device(ieee)
+                    dev = self._get_zigbee_device(ieee)
                     ep = dev.endpoints[endpoint_id]
                 except KeyError:
                     # Quirks or firmware updates can remove endpoints/clusters
