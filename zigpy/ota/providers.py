@@ -242,11 +242,22 @@ class BaseOtaProvider:
                 raise_for_status=True,
             ) as session:
                 try:
-                    return [meta async for meta in self._load_index(session)]
+                    index = [meta async for meta in self._load_index(session)]
                 except IndexUnchanged:
                     return None
         finally:
             self._index_last_updated = now
+
+        # There are no suspension points between here and the caller receiving
+        # the index, so provider-side freshness state committed now cannot get
+        # out of sync with the caller's image cache (e.g. by the fetch timeout
+        # cancelling the load while the HTTP session is being closed)
+        self._index_loaded()
+
+        return index
+
+    def _index_loaded(self) -> None:
+        """Hook called once a fully-loaded index is about to be returned."""
 
     async def _load_index(
         self, session: aiohttp.ClientSession
@@ -686,8 +697,10 @@ class ZigpyOtaProvider(BaseZigpyProvider):
 
         super().__init__(url=url, **kwargs)
 
-        # The version file's `zigpy_v2` entry of the last successful index load
+        # The version file's `zigpy_v2` entry of the last successful index load,
+        # and the one staged by an in-progress load
         self._loaded_version_data: dict | None = None
+        self._pending_version_data: dict | None = None
 
     async def _load_index(
         self, session: aiohttp.ClientSession
@@ -708,6 +721,10 @@ class ZigpyOtaProvider(BaseZigpyProvider):
         ):
             raise IndexUnchanged
 
+        # Stage the version info: it is only remembered by `_index_loaded()`,
+        # once the whole index has been loaded and returned
+        self._pending_version_data = version_info
+
         index_url = version_info["url"]
 
         # Now fetch the actual OTA index
@@ -720,8 +737,8 @@ class ZigpyOtaProvider(BaseZigpyProvider):
             channel_name = self.channel or "custom"
             yield img.replace(source=f"zigpy-ota provider ({channel_name} channel)")
 
-        # Only remember the version info once the index was fully loaded
-        self._loaded_version_data = version_info
+    def _index_loaded(self) -> None:
+        self._loaded_version_data = self._pending_version_data
 
     def __eq__(self, other: object) -> bool:
         if (
