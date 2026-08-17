@@ -2166,7 +2166,11 @@ class Ota(Cluster):
         """Claim a request whose paired response zigpy does not implement yet."""
         self.debug("No response implemented for %s, ignoring it", hdr.command_id)
 
-    async def _handle_query_next_image(self, hdr: foundation.ZCLHeader, cmd: QueryNextImageCommand) -> None:
+    async def _handle_query_next_image(
+        self,
+        hdr: foundation.ZCLHeader,
+        cmd: QueryNextImageCommand,  # type:ignore[valid-type]
+    ) -> None:
         # Cache the query command fields for proactive OTA lookups
         self.last_query_cmd = cmd
         self.emit(
