@@ -29,6 +29,7 @@ from zigpy.config import (
     CONF_OTA_Z2M_LOCAL_INDEX,
     CONF_OTA_Z2M_REMOTE_INDEX,
 )
+from zigpy.exceptions import OtaImageWithdrawn
 from zigpy.ota.image import BaseOTAImage
 import zigpy.ota.providers
 import zigpy.profiles.zha
@@ -46,6 +47,12 @@ _LOGGER = logging.getLogger(__name__)
 OTA_FETCH_TIMEOUT = 20
 MAX_DEVICES_CHECKING_IN_PER_BROADCAST = 15
 BROADCAST_SETTLE_DELAY = 60
+
+# Maximum age of a provider's cached index when an installation is started. The
+# index is re-checked right before installing (rate-limited to this age) so that
+# an image withdrawn by its provider (e.g. a release that bricks devices) is
+# caught even if it was offered from an index cached up to 24 hours earlier.
+INSTALL_TIME_INDEX_MAX_AGE = datetime.timedelta(minutes=5)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -247,6 +254,11 @@ class OTA:
 
         self._broadcast_loop_task = None
 
+        # Images that were offered by a provider at some point but have since
+        # disappeared from its index
+        self._withdrawn_images: set[zigpy.ota.providers.BaseOtaImageMetadata] = set()
+        self._recheck_task: asyncio.Task | None = None
+
         if config[CONF_OTA_ENABLED]:
             self._register_providers(self._config)
 
@@ -283,10 +295,14 @@ class OTA:
         )
 
     def stop_periodic_broadcasts(self) -> None:
-        """Stop the periodic OTA broadcasts."""
+        """Stop the periodic OTA broadcasts and any background device re-check."""
         if self._broadcast_loop_task is not None:
             self._broadcast_loop_task.cancel()
             self._broadcast_loop_task = None
+
+        if self._recheck_task is not None:
+            self._recheck_task.cancel()
+            self._recheck_task = None
 
     def invalidate_provider_caches(self) -> None:
         """Invalidate all provider index caches, forcing a refresh on next check.
@@ -517,12 +533,93 @@ class OTA:
         # index are revoked
         self._image_cache[provider] = new_images
 
+        # Track withdrawn images so that an installation attempt can distinguish
+        # a withdrawn image from one that never came from a registered provider
+        self._withdrawn_images |= old_images.keys() - new_images.keys()
+        self._withdrawn_images -= new_images.keys()
+
     @zigpy.util.combine_concurrent_calls
     async def _fetch_image(self, image: OtaImageWithMetadata) -> OtaImageWithMetadata:
         """Fetch an OTA image."""
 
         async with asyncio_timeout(OTA_FETCH_TIMEOUT):
             return await image.fetch()
+
+    async def verify_image_offered(self, image: OtaImageWithMetadata) -> None:
+        """Verify that an image is still offered by a provider before installing.
+
+        A provider can withdraw a published image (e.g. one that bricks devices)
+        but a consumer may hold on to an image offered from an index cached up
+        to `BaseOtaProvider.INDEX_EXPIRATION_TIME` ago. Re-check the indexes of
+        the providers still
+        offering the image, rate-limited to `INSTALL_TIME_INDEX_MAX_AGE`, and
+        raise `OtaImageWithdrawn` if the image has disappeared from all of them.
+
+        Images that never came from a registered provider (e.g. manually
+        constructed ones) are not checked.
+        """
+        offering_providers = [
+            provider
+            for provider in self._providers
+            if image.metadata in self._image_cache.get(provider, {})
+        ]
+
+        if offering_providers:
+            # Expire the offering providers' indexes early, rate-limited, and
+            # re-check them. A failed refresh also stamps the index as fresh,
+            # so a provider outage rate-limits the next re-check attempt too.
+            for provider in offering_providers:
+                provider.expire_index(INSTALL_TIME_INDEX_MAX_AGE)
+
+            # `asyncio.gather` wraps each call in a task, so the combined-call
+            # wrapper runs on a later event loop step and cannot join a
+            # completed refresh that has not yet been evicted from its cache
+            await asyncio.gather(
+                *(
+                    self._refresh_provider_index(provider)
+                    for provider in offering_providers
+                )
+            )
+
+            if any(
+                image.metadata in self._image_cache.get(provider, {})
+                for provider in self._providers
+            ):
+                return
+        elif image.metadata not in self._withdrawn_images:
+            # The image never came from a registered provider
+            return
+
+        # Re-check all devices in the background so that consumers stop
+        # offering the withdrawn image everywhere else, too
+        if self._application is not None and (
+            self._recheck_task is None or self._recheck_task.done()
+        ):
+            self._recheck_task = asyncio.create_task(self._recheck_all_devices())
+
+        _LOGGER.warning(
+            "Image version 0x%08X (%s) is no longer offered by any provider,"
+            " not installing it",
+            image.metadata.file_version,
+            image.metadata.source,
+        )
+        _LOGGER.debug("Withdrawn image metadata: %r", image.metadata)
+
+        raise OtaImageWithdrawn(
+            f"Image version 0x{image.metadata.file_version:08X} is no longer"
+            " offered by any provider and will not be installed"
+        )
+
+    async def _recheck_all_devices(self) -> None:
+        """Check all devices for OTA images, logging failures.
+
+        Runs as a fire-and-forget background task, so failures cannot be
+        propagated to a caller.
+        """
+        try:
+            await self.check_all_devices_for_ota()
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("Background OTA image re-check failed", exc_info=True)
 
     async def get_ota_images(
         self,

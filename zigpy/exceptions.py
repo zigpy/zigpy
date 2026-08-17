@@ -80,6 +80,10 @@ class CorruptDatabase(ZigbeeException):
     """The SQLite database is corrupt or otherwise inconsistent"""
 
 
+class OtaImageWithdrawn(ZigbeeException):
+    """The OTA image is no longer offered by the provider it came from"""
+
+
 class QuirksException(Exception):
     """Base exception class"""
 

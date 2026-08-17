@@ -3,18 +3,23 @@ from __future__ import annotations
 import asyncio
 import datetime
 import hashlib
+import json
 import logging
 import typing
-from unittest.mock import ANY, AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import aiohttp
+from aioresponses import aioresponses
 import attrs
 import pytest
+from yarl import URL
 
 from tests.conftest import add_initialized_device, make_app
+from tests.ota.conftest import FILES_DIR
 from tests.ota.test_ota_providers import SelfContainedOtaImageMetadata, make_device
 from zigpy import config
 import zigpy.device
+import zigpy.exceptions
 import zigpy.ota
 from zigpy.ota.image import FieldControl
 from zigpy.ota.providers import (
@@ -23,6 +28,7 @@ from zigpy.ota.providers import (
     BaseOtaProvider,
     LocalZ2MProvider,
     LocalZigpyProvider,
+    ZigpyOtaProvider,
 )
 import zigpy.types
 from zigpy.zcl import ClusterType, OtaImageAvailableEvent
@@ -687,6 +693,286 @@ async def test_check_all_devices_for_ota_tolerates_failure(query_cmd) -> None:
 
     # device2 should still get checked even though device1 failed
     assert len(events2) == 1
+
+
+async def test_verify_image_offered(query_cmd, ota_image) -> None:
+    """verify_image_offered re-checks the index and detects withdrawn images."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    meta = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 1,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=ota_image.serialize(),
+    )
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    provider = SelfContainedProvider([meta])
+    ota.register_provider(provider)
+
+    images = await ota.get_ota_images(device, query_cmd)
+    img = images.upgrades[0]
+
+    # The image is still offered: no exception, and the index was just
+    # refreshed so the re-check is rate-limited and does not hit the provider
+    with patch.object(provider, "_load_index") as load_index_mock:
+        await ota.verify_image_offered(img)
+
+    assert load_index_mock.call_count == 0
+
+    # The image is withdrawn from the index
+    provider._index = []
+    provider._index_last_updated -= 2 * zigpy.ota.INSTALL_TIME_INDEX_MAX_AGE
+
+    with pytest.raises(zigpy.exceptions.OtaImageWithdrawn):
+        await ota.verify_image_offered(img)
+
+    # The image is gone from the cache as well
+    images2 = await ota.get_ota_images(device, query_cmd)
+    assert not images2.upgrades
+
+    # Once the image is re-published, a check that happens before the index is
+    # refreshed still refuses the stale image object
+    provider._index = [meta]
+
+    with pytest.raises(zigpy.exceptions.OtaImageWithdrawn):
+        await ota.verify_image_offered(img)
+
+    # After a regular index refresh re-offers the image, the check passes again
+    provider._index_last_updated = datetime.datetime.fromtimestamp(0, tz=datetime.UTC)
+    await ota.get_ota_images(device, query_cmd)
+
+    await ota.verify_image_offered(img)
+
+    # An image that never came from a registered provider is not checked
+    unknown_image = zigpy.ota.OtaImageWithMetadata(
+        metadata=SelfContainedOtaImageMetadata(
+            file_version=123,
+            manufacturer_id=0x9876,
+            test_data=ota_image.serialize(),
+        ),
+        firmware=ota_image,
+    )
+    await ota.verify_image_offered(unknown_image)
+
+
+async def test_verify_image_offered_provider_outage(query_cmd, ota_image) -> None:
+    """A provider outage during the install-time re-check does not block it."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    meta = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 1,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=ota_image.serialize(),
+    )
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    provider = SelfContainedProvider([meta])
+    ota.register_provider(provider)
+
+    images = await ota.get_ota_images(device, query_cmd)
+    img = images.upgrades[0]
+
+    provider._index_last_updated -= 2 * zigpy.ota.INSTALL_TIME_INDEX_MAX_AGE
+
+    with patch.object(provider, "_load_index", side_effect=RuntimeError("offline")):
+        await ota.verify_image_offered(img)
+
+
+async def test_verify_image_offered_multiple_providers(query_cmd, ota_image) -> None:
+    """An image withdrawn by one provider but still offered by another is kept."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    meta = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 1,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=ota_image.serialize(),
+    )
+
+    class SecondProvider(SelfContainedProvider):
+        """Different type, so provider deduplication does not reject it."""
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    provider1 = SelfContainedProvider([meta])
+    provider2 = SecondProvider([meta])
+    ota.register_provider(provider1)
+    ota.register_provider(provider2)
+
+    images = await ota.get_ota_images(device, query_cmd)
+    img = images.upgrades[0]
+
+    # The first provider withdraws the image but the second still offers it
+    provider1._index = []
+    provider1._index_last_updated -= 2 * zigpy.ota.INSTALL_TIME_INDEX_MAX_AGE
+    provider2._index_last_updated -= 2 * zigpy.ota.INSTALL_TIME_INDEX_MAX_AGE
+
+    await ota.verify_image_offered(img)
+
+    # Once the second provider withdraws it as well, the image is refused
+    provider2._index = []
+    provider2._index_last_updated -= 2 * zigpy.ota.INSTALL_TIME_INDEX_MAX_AGE
+
+    with pytest.raises(zigpy.exceptions.OtaImageWithdrawn):
+        await ota.verify_image_offered(img)
+
+
+async def test_update_firmware_refuses_withdrawn_image(query_cmd, ota_image) -> None:
+    """Device.update_firmware refuses an image withdrawn by a live provider."""
+    app = make_app({})
+    # Drop the default providers, which would hit the network
+    app.ota._providers.clear()
+
+    meta = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 1,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=ota_image.serialize(),
+    )
+    provider = SelfContainedProvider([meta])
+    app.ota.register_provider(provider)
+
+    device = add_initialized_device(
+        app, nwk=0x1234, ieee=zigpy.types.EUI64.convert("00:11:22:33:44:55:66:77")
+    )
+
+    images = await app.ota.get_ota_images(device, query_cmd)
+    img = images.upgrades[0]
+
+    provider._index = []
+    provider._index_last_updated -= 2 * zigpy.ota.INSTALL_TIME_INDEX_MAX_AGE
+
+    with pytest.raises(zigpy.exceptions.OtaImageWithdrawn):
+        await device.update_firmware(img)
+
+    assert not device.ota_in_progress
+
+    # The background device re-check was spawned and completes cleanly
+    assert app.ota._recheck_task is not None
+    await app.ota._recheck_task
+
+
+async def test_verify_image_offered_zigpy_ota_version_probe() -> None:
+    """The install-time re-check costs only a version-file download."""
+    version_json = (FILES_DIR / "zigpy_ota_version_stable.json").read_text()
+    version_obj = json.loads(version_json)
+    index_json = (FILES_DIR / "zigpy_ota_index.json").read_text()
+
+    # Match the first image in the index
+    query_cmd = Ota.ServerCommandDefs.query_next_image.schema(
+        field_control=FieldControl.HARDWARE_VERSIONS_PRESENT,
+        manufacturer_code=1234,
+        image_type=12,
+        current_file_version=1,
+        hardware_version=1,
+    )
+    device = make_device(model="device model", manufacturer_id=1234)
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    provider = ZigpyOtaProvider()
+    ota.register_provider(provider)
+
+    version_url = (
+        "https://raw.githubusercontent.com/zigpy/zigpy-ota/release/version/stable.json"
+    )
+    index_url = version_obj["schemas"]["zigpy_v2"]["url"]
+
+    with aioresponses() as mock_http:
+        mock_http.get(version_url, body=version_json, content_type="application/json")
+        mock_http.get(index_url, body=index_json, content_type="application/json")
+
+        images = await ota.get_ota_images(device, query_cmd)
+
+    img = images.upgrades[0]
+
+    # A re-check after the rate limit downloads only the version file. An
+    # unmocked index request would NOT fail the test (the refresh swallows the
+    # resulting connection error and keeps the cache), so assert on the
+    # actually-recorded requests instead.
+    provider._index_last_updated -= 2 * zigpy.ota.INSTALL_TIME_INDEX_MAX_AGE
+
+    with aioresponses() as mock_http:
+        mock_http.get(version_url, body=version_json, content_type="application/json")
+
+        await ota.verify_image_offered(img)
+
+    assert ("GET", URL(version_url)) in mock_http.requests
+    assert ("GET", URL(index_url)) not in mock_http.requests
+
+    # Once a new zigpy-ota release withdraws the image, the re-check refuses it
+    new_version_obj = json.loads(version_json)
+    new_version_obj["schemas"]["zigpy_v2"]["version"] = "9999.99.99"
+    new_index_obj = json.loads(index_json)
+    del new_index_obj["firmwares"][0]
+
+    provider._index_last_updated -= 2 * zigpy.ota.INSTALL_TIME_INDEX_MAX_AGE
+
+    with aioresponses() as mock_http:
+        mock_http.get(
+            version_url,
+            body=json.dumps(new_version_obj),
+            content_type="application/json",
+        )
+        mock_http.get(
+            index_url,
+            body=json.dumps(new_index_obj),
+            content_type="application/json",
+        )
+
+        with pytest.raises(zigpy.exceptions.OtaImageWithdrawn):
+            await ota.verify_image_offered(img)
+
+
+async def test_verify_image_offered_rechecks_devices(query_cmd, ota_image) -> None:
+    """Detecting a withdrawn image triggers a background re-check of all devices."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    meta = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 1,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=ota_image.serialize(),
+    )
+
+    ota = zigpy.ota.OTA(
+        config={config.CONF_OTA_ENABLED: False}, application=MagicMock()
+    )
+    ota.check_all_devices_for_ota = AsyncMock()
+    provider = SelfContainedProvider([meta])
+    ota.register_provider(provider)
+
+    images = await ota.get_ota_images(device, query_cmd)
+    img = images.upgrades[0]
+
+    provider._index = []
+    provider._index_last_updated -= 2 * zigpy.ota.INSTALL_TIME_INDEX_MAX_AGE
+
+    with pytest.raises(zigpy.exceptions.OtaImageWithdrawn):
+        await ota.verify_image_offered(img)
+
+    await asyncio.sleep(0)
+    assert ota.check_all_devices_for_ota.await_count == 1
+
+
+async def test_recheck_all_devices_logs_failures(caplog) -> None:
+    """The background device re-check logs failures instead of raising."""
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    ota.check_all_devices_for_ota = AsyncMock(side_effect=RuntimeError("boom"))
+
+    with caplog.at_level(logging.DEBUG):
+        await ota._recheck_all_devices()
+
+    assert "Background OTA image re-check failed" in caplog.text
+
+
+async def test_stop_periodic_broadcasts_cancels_recheck() -> None:
+    """Stopping the periodic broadcasts also cancels a pending device re-check."""
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    ota._recheck_task = asyncio.get_running_loop().create_task(asyncio.sleep(60))
+    task = ota._recheck_task
+
+    ota.stop_periodic_broadcasts()
+
+    assert ota._recheck_task is None
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
 
 
 async def test_invalidate_provider_caches(query_cmd) -> None:

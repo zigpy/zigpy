@@ -1,3 +1,4 @@
+import asyncio
 import itertools
 import time
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -115,6 +116,82 @@ def test_image_block_size_for_manufacturer(
         _image_block_size_for_manufacturer(manufacturer_code, requested_size)
         == expected_size
     )
+
+
+async def test_update_firmware_withdrawn_image(
+    image_with_metadata: OtaImageWithMetadata,
+) -> None:
+    """A withdrawn image is refused before any radio traffic happens."""
+    img = image_with_metadata
+
+    app = make_app({})
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+    dev.model = "model1"
+    dev.manufacturer = "manufacturer1"
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = zigpy.profiles.zha.DeviceType.PUMP
+    ep.add_output_cluster(Ota.cluster_id)
+
+    dev.application.send_packet = AsyncMock()
+
+    # The image was offered by a provider at some point but has been withdrawn
+    app.ota._providers.clear()
+    app.ota._withdrawn_images.add(img.metadata)
+
+    with pytest.raises(zigpy.exceptions.OtaImageWithdrawn):
+        await dev.update_firmware(img)
+
+    assert dev.application.send_packet.call_count == 0
+    assert not dev.ota_in_progress
+
+    # The background device re-check was spawned and completes cleanly
+    assert app.ota._recheck_task is not None
+    await app.ota._recheck_task
+
+
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
+async def test_update_firmware_concurrent_calls_guarded(
+    image_with_metadata: OtaImageWithMetadata,
+) -> None:
+    """A second install started while the first is verifying is rejected."""
+    img = image_with_metadata
+
+    app = make_app({})
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+    dev.model = "model1"
+    dev.manufacturer = "manufacturer1"
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = zigpy.profiles.zha.DeviceType.PUMP
+    ep.add_output_cluster(Ota.cluster_id)
+
+    # The device never responds, so the first install eventually stalls
+    dev.application.send_packet = AsyncMock()
+
+    verify_started = asyncio.Event()
+
+    async def slow_verify(image: OtaImageWithMetadata) -> None:
+        verify_started.set()
+        await asyncio.sleep(0.05)
+
+    app.ota.verify_image_offered = slow_verify
+
+    task = asyncio.create_task(dev.update_firmware(img))
+    await verify_started.wait()
+
+    # The first install is still verifying but already owns the OTA lock
+    assert dev.ota_in_progress
+    assert await dev.update_firmware(img) is None
+
+    status = await task
+    assert status == foundation.Status.TIMEOUT
 
 
 @patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)

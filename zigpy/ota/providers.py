@@ -229,6 +229,19 @@ class BaseOtaProvider:
 
         return device.manufacturer_id in self.manufacturer_ids
 
+    def expire_index(self, max_age: datetime.timedelta) -> None:
+        """Expire the cached index if it is older than `max_age`.
+
+        The next `load_index()` call will then refresh it, before the normal
+        `INDEX_EXPIRATION_TIME` has passed.
+        """
+        now = datetime.datetime.now(datetime.UTC)
+
+        if now - self._index_last_updated >= max_age:
+            self._index_last_updated = datetime.datetime.fromtimestamp(
+                0, tz=datetime.UTC
+            )
+
     async def load_index(self) -> list[BaseOtaImageMetadata] | None:
         now = datetime.datetime.now(datetime.UTC)
 

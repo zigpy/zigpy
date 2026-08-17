@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import hashlib
 import json
 import pathlib
@@ -801,6 +802,22 @@ async def test_zigpy_ota_provider_failed_index_load_is_retried():
         index = await provider.load_index()
 
     assert index is not None
+
+
+async def test_expire_index():
+    provider = providers.ZigpyOtaProvider()
+    last_updated = datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=6)
+    provider._index_last_updated = last_updated
+
+    # A newer index than `max_age` is left alone
+    provider.expire_index(max_age=datetime.timedelta(minutes=10))
+    assert provider._index_last_updated == last_updated
+
+    # An older one is expired, so the next `load_index()` call refreshes it
+    provider.expire_index(max_age=datetime.timedelta(minutes=5))
+    assert provider._index_last_updated == datetime.datetime.fromtimestamp(
+        0, tz=datetime.UTC
+    )
 
 
 @pytest.mark.parametrize(

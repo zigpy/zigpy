@@ -1022,6 +1022,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self.ota_in_progress = True
 
         try:
+            # Abort if the image was withdrawn by its provider since it was offered
+            await self.application.ota.verify_image_offered(image)
+
             result = await update_firmware(
                 device=self,
                 image=image,
