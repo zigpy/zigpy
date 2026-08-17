@@ -353,7 +353,7 @@ class GPManufacturerDefinedPayload(t.Struct):
 
 
 # Tables 54, 55 and 56. `GPNoPayload` marks a command that the specification defines
-# as payloadless, `None` one whose payload parser is not implemented yet.
+# as payloadless.
 GPD_COMMAND_SCHEMAS: dict[GPDCommandID, type[t.Struct]] = {
     # Identify (Table 54)
     GPDCommandID.Identify: GPNoPayload,
