@@ -9,7 +9,13 @@ from typing import Self
 
 import zigpy.types as t
 from zigpy.zcl import foundation
-from zigpy.zgp.types import GPDCommandID, SecurityKeyType, SecurityLevel, SwitchType
+from zigpy.zgp.types import (
+    DeviceID,
+    GPDCommandID,
+    SecurityKeyType,
+    SecurityLevel,
+    SwitchType,
+)
 
 
 class GPNoPayload(t.Struct):
@@ -89,7 +95,7 @@ class GPSwitchInformation(t.Struct):
 class GPCommissioningPayload(t.Struct):
     """GP Commissioning command (0xE0) payload."""
 
-    device_id: t.uint8_t
+    device_id: DeviceID
     options: GPCommissioningOptions
 
     extended_options: GPCommissioningExtendedOptions = t.StructField(

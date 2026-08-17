@@ -15,10 +15,10 @@ if typing.TYPE_CHECKING:
 
     from zigpy.zgp.types import (
         ApplicationID,
-        DeviceID,
         GPDCommandID,
         SecurityKeyType,
         SecurityLevel,
+        SrcID,
     )
 
 
@@ -676,7 +676,7 @@ class ZigbeeGpPacket(BaseDataclassMixin):
     application_id: ApplicationID | None = dataclasses.field(default=None)
 
     # Only set when ApplicationID is 0b000
-    src_id: DeviceID | None = dataclasses.field(default=None)
+    src_id: SrcID | None = dataclasses.field(default=None)
 
     # Only set when ApplicationID is 0b010
     ieee: EUI64 | None = dataclasses.field(default=None)

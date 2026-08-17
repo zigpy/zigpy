@@ -48,6 +48,7 @@ from zigpy.zgp.types import (
     GPDCommandID,
     SecurityKeyType,
     SecurityLevel,
+    SrcID,
 )
 from zigpy.zgp.util import derive_alias, synthetic_ieee
 
@@ -198,7 +199,7 @@ class GreenPowerDevice(BaseDevice):
         application: ControllerApplication,
         *,
         application_id: ApplicationID,
-        src_id: DeviceID | None = None,
+        src_id: SrcID | None = None,
         ieee: t.EUI64 | None = None,
         endpoint: t.uint8_t | None = None,
     ) -> None:
@@ -222,7 +223,7 @@ class GreenPowerDevice(BaseDevice):
 
         # Commissioning-derived signature (the quirk match input). All optional:
         # cheap GPDs commonly advertise only `device_id`.
-        self.device_id: t.uint8_t | None = None  # GPD device type
+        self.device_id: DeviceID | None = None  # GPD device type
         self.gpd_manufacturer_id: t.uint16_t | None = None
         self.gpd_model_id: t.uint16_t | None = None
         self.commands: list[GPDCommandID] = []
@@ -236,7 +237,7 @@ class GreenPowerDevice(BaseDevice):
         self.frame_counter: t.uint32_t | None = None
 
     @property
-    def src_id(self) -> DeviceID | None:
+    def src_id(self) -> SrcID | None:
         """The 32-bit GPD SrcID, or None for IEEE-addressed GPDs."""
         return self._src_id
 

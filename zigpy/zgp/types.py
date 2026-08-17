@@ -8,6 +8,7 @@ __all__ = [
     "GP_CLUSTER_ID",
     "GP_GROUP_ID",
     "DEFAULT_GP_LINK_KEY",
+    "SrcID",
     "DeviceID",
     "GPDCommandID",
     "SwitchType",
@@ -38,8 +39,30 @@ GP_GROUP_ID: int = 0x0B84
 DEFAULT_GP_LINK_KEY = t.KeyData(b"ZigBeeAlliance09")
 
 
-class DeviceID(basic.uint32_t, repr="hex"):
+class SrcID(basic.uint32_t, repr="hex"):
     pass
+
+
+# GPD DeviceIDs, defined in the "List of Green Power Device Definitions"
+# (CSA document 13-0166, normative reference [13] of the ZGP specification)
+class DeviceID(basic.enum8):
+    SimpleGenericOneStateSwitch = 0x00
+    SimpleGenericTwoStateSwitch = 0x01
+    OnOffSwitch = 0x02
+    LevelControlSwitch = 0x03
+    SimpleSensor = 0x04
+    AdvancedGenericOneStateSwitch = 0x05
+    AdvancedGenericTwoStateSwitch = 0x06
+    GenericSwitch = 0x07
+    ColorDimmerSwitch = 0x10
+    LightSensor = 0x11
+    OccupancySensor = 0x12
+    DoorLockController = 0x20
+    TemperatureSensor = 0x30
+    PressureSensor = 0x31
+    FlowSensor = 0x32
+    IndoorEnvironmentSensor = 0x33
+    Undefined = 0xFE
 
 
 # GPD Command IDs (Tables 54-56 in the ZGP specification)

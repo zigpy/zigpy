@@ -7,8 +7,8 @@ from zigpy.zgp.types import (
     GP_CLUSTER_ID,
     GP_ENDPOINT,
     GP_GROUP_ID,
-    DeviceID,
     ProxyCommissioningModeExitMode,
+    SrcID,
 )
 
 
@@ -30,12 +30,12 @@ def test_default_link_key():
 
 
 def test_device_id_is_uint32():
-    d = DeviceID(0x12345678)
+    d = SrcID(0x12345678)
     assert int(d) == 0x12345678
 
 
 def test_device_id_hex_repr():
-    d = DeviceID(0x02)
+    d = SrcID(0x02)
     assert "0x" in repr(d).lower()
 
 
