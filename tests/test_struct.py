@@ -620,7 +620,9 @@ def test_bitstruct_misaligned():
         baz: t.uint7_t
 
     s = TestStruct(foo=0b1, bar=0b10101010, baz=0b1110111)
-    assert s.serialize() == bytes([0b1110111_1, 0b0101010_1])
+
+    # The segment spans two bytes, so the first byte holds the first-declared fields
+    assert s.serialize() == bytes([0b0101010_1, 0b1110111_1])
 
     s2, remaining = TestStruct.deserialize(s.serialize() + b"asd")
     assert s == s2
@@ -630,9 +632,9 @@ def test_bitstruct_misaligned():
 
 
 def test_bitstruct_multi_byte_segment():
-    """A bitfield segment wider than one byte can be laid out little-endian."""
+    """A bitfield segment wider than one byte is little-endian."""
 
-    class TestStruct(t.Struct, bitfield_endianness="little"):
+    class TestStruct(t.Struct):
         foo: t.uint3_t
         bar: t.uint1_t
         baz: t.uint2_t
@@ -660,7 +662,7 @@ def test_bitstruct_multi_byte_segment_enums(expose_global):
         BAR = 0b000010
         BAZ = 0b100000
 
-    class TestStruct(t.Struct, bitfield_endianness="little"):
+    class TestStruct(t.Struct):
         first: TestEnum
         second: t.uint4_t
         # Straddles the byte boundary
@@ -680,9 +682,9 @@ def test_bitstruct_multi_byte_segment_enums(expose_global):
 
 
 def test_bitstruct_three_byte_segment():
-    """Segments wider than two bytes can be little-endian as well."""
+    """Segments wider than two bytes are little-endian as well."""
 
-    class TestStruct(t.Struct, bitfield_endianness="little"):
+    class TestStruct(t.Struct):
         foo: t.uint7_t
         # Byte-serializable but misaligned, like every field after it
         bar: t.uint8_t
@@ -694,55 +696,6 @@ def test_bitstruct_three_byte_segment():
 
     assert s.serialize() == t.uint24_t(value).serialize()
     assert TestStruct.deserialize(s.serialize() + b"asd") == (s, b"asd")
-
-
-def test_bitstruct_endianness_default_is_big():
-    """Without the class keyword a multi-byte segment stays big-endian."""
-
-    class BigStruct(t.Struct):
-        foo: t.uint4_t
-        bar: t.uint8_t
-        baz: t.uint4_t
-
-    class LittleStruct(t.Struct, bitfield_endianness="little"):
-        foo: t.uint4_t
-        bar: t.uint8_t
-        baz: t.uint4_t
-
-    big = BigStruct(foo=0b0001, bar=0b00100011, baz=0b0100)
-    little = LittleStruct(foo=0b0001, bar=0b00100011, baz=0b0100)
-
-    assert big.serialize() == little.serialize()[::-1]
-    assert BigStruct.deserialize(big.serialize()) == (big, b"")
-    assert LittleStruct.deserialize(little.serialize()) == (little, b"")
-
-
-def test_bitstruct_endianness_inherited(expose_global):
-    """Subclasses keep the endianness of their parent unless they override it."""
-
-    @expose_global
-    class LittleStruct(t.Struct, bitfield_endianness="little"):
-        foo: t.uint4_t
-        bar: t.uint8_t
-        baz: t.uint4_t
-
-    class Inherited(LittleStruct):
-        pass
-
-    class Overridden(LittleStruct, bitfield_endianness="big"):
-        pass
-
-    kwargs = {"foo": 0b0001, "bar": 0b00100011, "baz": 0b0100}
-    assert Inherited(**kwargs).serialize() == LittleStruct(**kwargs).serialize()
-    assert Overridden(**kwargs).serialize() == LittleStruct(**kwargs).serialize()[::-1]
-
-
-def test_bitstruct_endianness_invalid():
-    with pytest.raises(ValueError):
-
-        class TestStruct(t.Struct, bitfield_endianness="middle"):
-            foo: t.uint4_t
-            bar: t.uint4_t
 
 
 def test_non_byte_sized_struct():
