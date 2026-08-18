@@ -8,6 +8,7 @@ into `ZigbeeGpPacket`s.
 
 from __future__ import annotations
 
+from zigpy.exceptions import GPSecurityProcessingFailed
 import zigpy.profiles.zgp
 import zigpy.types as t
 from zigpy.zcl import foundation
@@ -78,7 +79,11 @@ def gp_packet_from_zcl(packet: t.ZigbeePacket) -> t.ZigbeeGpPacket:
         isinstance(command, CommissioningNotificationSchema)
         and command.options.security_failed
     ):
-        raise ValueError(f"Security processing of the tunneled GPDF failed: {command}")
+        # TODO: reconstruct the frame control fields and decrypt the GPDF here, as
+        # A.3.6.5.2 requires of a sink. The MIC needed for it is already parsed.
+        raise GPSecurityProcessingFailed(
+            f"Security processing of the tunneled GPDF failed: {command}"
+        )
 
     lqi = rssi = None
 
