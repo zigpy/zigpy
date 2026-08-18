@@ -318,9 +318,7 @@ class GreenPowerDevice(BaseDevice):
         a remote proxy, or a GPDF decoded by the radio's local GP stub.
         """
 
-        # The duplicate window is measured against the previous packet
         last_seen = self._last_seen
-
         self.last_seen = packet.timestamp
 
         if packet.lqi is not None:
