@@ -3,7 +3,7 @@ from __future__ import annotations
 import dataclasses
 import inspect
 import typing
-from typing import TYPE_CHECKING, Any, ClassVar, Self, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, cast
 
 import zigpy.types as t
 
@@ -83,14 +83,31 @@ else:
 class Struct:
     fields: ClassVar[list[ResolvedStructField]]
 
+    # Byte order of a bitfield segment spanning more than one byte. A segment of a
+    # single byte is unaffected by it.
+    _bitfield_endianness: ClassVar[Literal["big", "little"]] = "big"
+
     @classmethod
     def _real_cls(cls) -> type:
         # The "Optional" subclass is dynamically created and breaks types.
         # We have to use a little introspection to find our real class.
         return next(c for c in cls.__mro__ if c.__name__ != "Optional")
 
-    def __init_subclass__(cls) -> None:
-        super().__init_subclass__()
+    def __init_subclass__(
+        cls,
+        bitfield_endianness: Literal["big", "little"] | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init_subclass__(**kwargs)
+
+        if bitfield_endianness is not None:
+            if bitfield_endianness not in ("big", "little"):
+                raise ValueError(
+                    f"Invalid bitfield endianness: {bitfield_endianness!r}."
+                    f" Must be either 'big' or 'little'"
+                )
+
+            cls._bitfield_endianness = bitfield_endianness
 
         # We generate fields up here to fail early and cache it
         cls.fields = cls._real_cls()._get_fields()
@@ -307,7 +324,12 @@ class Struct:
 
                 # Serialize the current segment of bitfields once we reach a boundary
                 if bit_offset % 8 == 0:
-                    chunks.append(t.Bits.from_bitfields(bitfields).serialize())
+                    segment = t.Bits.from_bitfields(bitfields).serialize()
+
+                    if self._bitfield_endianness == "little":
+                        segment = segment[::-1]
+
+                    chunks.append(segment)
                     bitfields = []
 
                 continue
@@ -327,9 +349,9 @@ class Struct:
 
         return b"".join(chunks)
 
-    @staticmethod
+    @classmethod
     def _deserialize_internal(
-        fields: list[ResolvedStructField], data: bytes
+        cls, fields: list[ResolvedStructField], data: bytes
     ) -> tuple[dict[str, typing.Any], bytes]:
         bit_length = 0
         bitfields = []
@@ -358,8 +380,13 @@ class Struct:
                     if len(data) < bit_length // 8:
                         raise ValueError(f"Data is too short to contain {bitfields}")
 
-                    bits, _ = t.Bits.deserialize(data[: bit_length // 8])
+                    segment = data[: bit_length // 8]
                     data = data[bit_length // 8 :]
+
+                    if cls._bitfield_endianness == "little":
+                        segment = segment[::-1]
+
+                    bits, _ = t.Bits.deserialize(segment)
 
                     for f in bitfields:
                         value, bits = f.type.from_bits(bits)
@@ -523,8 +550,8 @@ class Struct:
 
 
 class IntStruct(Struct, IntMixin):
-    def __init_subclass__(cls) -> None:
-        super().__init_subclass__()
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
 
         try:
             cls._int_type: type[t.FixedIntType] = next(

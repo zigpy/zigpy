@@ -16,8 +16,9 @@ from zigpy.zcl.foundation import (
 import zigpy.zgp.types as zgptypes
 
 
-# Figure 31 — 16 bits total
-class CommissioningNotificationOptions(t.Struct):
+# Figure 31 — 16 bits total. `security_key_type` straddles the byte boundary, so all
+# 16 bits are a single segment, which ZCL lays out little-endian like any `bitmap16`
+class CommissioningNotificationOptions(t.Struct, bitfield_endianness="little"):
     application_id: zgptypes.ApplicationID
     rx_after_tx: t.uint1_t
     security_level: zgptypes.SecurityLevel
