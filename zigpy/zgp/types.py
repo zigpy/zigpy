@@ -258,9 +258,22 @@ class GPPGPDLink(t.IntStruct, basic.uint8_t):
 class GPDCommandPayload(basic.LVBytes):
     """GPD command payload; a length byte of 0xff means unspecified/no payload."""
 
+    # An unspecified payload is empty, but it is not the same as an explicitly empty
+    # one, so it round-trips back to the 0xff marker rather than to a zero length
+    unspecified: bool = False
+
     @classmethod
     def deserialize(cls, data: bytes) -> tuple[GPDCommandPayload, bytes]:
         if data[:1] == b"\xff":
-            return cls(b""), data[1:]
+            instance = cls(b"")
+            instance.unspecified = True
+
+            return instance, data[1:]
 
         return super().deserialize(data)
+
+    def serialize(self) -> bytes:
+        if self.unspecified:
+            return b"\xff"
+
+        return super().serialize()
