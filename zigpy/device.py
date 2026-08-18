@@ -149,6 +149,19 @@ class BaseDevice(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin, EventBase
 
         self._tasks.clear()
 
+    def radio_details(self, lqi: int | None = None, rssi: int | None = None) -> None:
+        """Set the link quality and signal strength of the last received packet."""
+        warnings.warn(
+            "`radio_details` is deprecated, assign to `lqi` and `rssi` instead",
+            DeprecationWarning,
+        )
+
+        if lqi is not None:
+            self.lqi = lqi
+
+        if rssi is not None:
+            self.rssi = rssi
+
     def update_last_seen(self) -> None:
         """Update the `last_seen` attribute to the current time and emit an event."""
         warnings.warn(
