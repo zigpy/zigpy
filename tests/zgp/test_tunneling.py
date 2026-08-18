@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from zigpy.exceptions import GPSecurityProcessingFailed
 import zigpy.profiles.zgp
 import zigpy.types as t
 from zigpy.zcl import foundation
@@ -179,7 +180,7 @@ def test_commissioning_notification_security_failed():
     )
     packet = make_tunnel_packet(COMMISSIONING_NOTIFICATION_ID, command.serialize())
 
-    with pytest.raises(ValueError, match="Security processing"):
+    with pytest.raises(GPSecurityProcessingFailed, match="Security processing"):
         gp_packet_from_zcl(packet)
 
 
