@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Self
+
 import zigpy.types as t
 from zigpy.types import basic
 
@@ -259,11 +261,20 @@ class GPDCommandPayload(basic.LVBytes):
     """GPD command payload; a length byte of 0xff means unspecified/no payload."""
 
     # An unspecified payload is empty, but it is not the same as an explicitly empty
-    # one, so it round-trips back to the 0xff marker rather than to a zero length
+    # one, so it round-trips back to the 0xff marker rather than to a zero length.
+    # Note that `==` and `hash` compare only the bytes content, not the marker.
     unspecified: bool = False
 
+    def __new__(cls, *args) -> Self:
+        instance = super().__new__(cls, *args)
+
+        if args and isinstance(args[0], cls):
+            instance.unspecified = args[0].unspecified
+
+        return instance
+
     @classmethod
-    def deserialize(cls, data: bytes) -> tuple[GPDCommandPayload, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
         if data[:1] == b"\xff":
             instance = cls(b"")
             instance.unspecified = True

@@ -7,6 +7,7 @@ from zigpy.zgp.types import (
     GP_CLUSTER_ID,
     GP_ENDPOINT,
     GP_GROUP_ID,
+    DeviceID,
     GPDCommandPayload,
     ProxyCommissioningModeExitMode,
     SrcID,
@@ -30,14 +31,19 @@ def test_default_link_key():
     assert len(DEFAULT_GP_LINK_KEY) == 16
 
 
-def test_device_id_is_uint32():
-    d = SrcID(0x12345678)
-    assert int(d) == 0x12345678
+def test_src_id_is_uint32():
+    s = SrcID(0x12345678)
+    assert int(s) == 0x12345678
 
 
-def test_device_id_hex_repr():
-    d = SrcID(0x02)
-    assert "0x" in repr(d).lower()
+def test_src_id_hex_repr():
+    s = SrcID(0x02)
+    assert "0x" in repr(s).lower()
+
+
+def test_device_id_enum():
+    assert DeviceID(0x02) is DeviceID.OnOffSwitch
+    assert DeviceID.Undefined == 0xFE
 
 
 def test_combined_exit_modes():
@@ -83,3 +89,14 @@ def test_command_payload_unspecified_is_not_empty():
 
     assert unspecified == empty
     assert unspecified.serialize() != empty.serialize()
+
+
+def test_command_payload_copy_keeps_unspecified():
+    unspecified, _ = GPDCommandPayload.deserialize(b"\xff")
+    empty, _ = GPDCommandPayload.deserialize(b"\x00")
+
+    assert GPDCommandPayload(unspecified).unspecified
+    assert GPDCommandPayload(unspecified).serialize() == b"\xff"
+    assert not GPDCommandPayload(empty).unspecified
+    assert GPDCommandPayload(empty).serialize() == b"\x00"
+    assert not GPDCommandPayload(b"").unspecified

@@ -814,7 +814,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     def _get_zigbee_device(self, ieee: t.EUI64) -> Device:
         device = self._application.get_device(ieee)
-        assert isinstance(device, Device)
+
+        if not isinstance(device, Device):
+            raise TypeError(f"Device {device} is not a Zigbee device")
+
         return device
 
     async def _populate_attribute_cache(

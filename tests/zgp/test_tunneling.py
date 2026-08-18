@@ -221,6 +221,27 @@ def test_notification_without_proxy_info():
 
     assert gp_packet.lqi is None
     assert gp_packet.rssi is None
+    assert gp_packet.gpp_distance is None
+
+
+def test_notification_from_legacy_proxy():
+    """A Green Power 1.0 proxy sends a Distance byte instead of the GPP-GPD link."""
+    command = NotificationSchema(
+        options=make_notification_options(proxy_info_present=0, rx_after_tx=1),
+        gpd_id=0x12345678,
+        frame_counter=1,
+        command_id=GPDCommandID.Off,
+        payload=GPDCommandPayload(b""),
+        gpp_short_addr=0xAABB,
+        gpp_distance=0x42,
+    )
+    packet = make_tunnel_packet(NOTIFICATION_ID, command.serialize())
+
+    gp_packet = gp_packet_from_zcl(packet)
+
+    assert gp_packet.lqi is None
+    assert gp_packet.rssi is None
+    assert gp_packet.gpp_distance == 0x42
 
 
 @pytest.mark.parametrize(
