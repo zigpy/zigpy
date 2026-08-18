@@ -44,10 +44,13 @@ class CommissioningNotificationSchema(foundation.CommandSchema):
     command_id: zgptypes.GPDCommandID
     payload: zgptypes.GPDCommandPayload
     gpp_short_addr: t.uint16_t = StructField(
-        requires=lambda s: s.options.proxy_info_present
+        requires=lambda s: s.options.proxy_info_present or s.options.rx_after_tx
     )
     gpp_gpd_link: zgptypes.GPPGPDLink = StructField(
         requires=lambda s: s.options.proxy_info_present
+    )
+    gpp_distance: t.uint8_t = StructField(
+        requires=lambda s: not s.options.proxy_info_present and s.options.rx_after_tx
     )
     mic: t.uint32_t = StructField(requires=lambda s: s.options.security_failed)
 
@@ -75,7 +78,7 @@ class ResponseSchema(foundation.CommandSchema):
     gpd_command_payload: t.LVBytes
 
 
-# Figure 26
+# Figure 29
 class PairingSearchOptions(t.Struct):
     application_id: zgptypes.ApplicationID
     request_unicast_sink: t.uint1_t
@@ -86,7 +89,7 @@ class PairingSearchOptions(t.Struct):
     _reserved: t.uint8_t
 
 
-# Figure 25
+# Figure 28
 class PairingSearchSchema(foundation.CommandSchema):
     options: PairingSearchOptions
     gpd_id: zgptypes.SrcID
@@ -123,10 +126,13 @@ class NotificationSchema(foundation.CommandSchema):
     command_id: zgptypes.GPDCommandID
     payload: zgptypes.GPDCommandPayload
     gpp_short_addr: t.uint16_t = StructField(
-        requires=lambda s: s.options.proxy_info_present
+        requires=lambda s: s.options.proxy_info_present or s.options.rx_after_tx
     )
     gpp_gpd_link: zgptypes.GPPGPDLink = StructField(
         requires=lambda s: s.options.proxy_info_present
+    )
+    gpp_distance: t.uint8_t = StructField(
+        requires=lambda s: not s.options.proxy_info_present and s.options.rx_after_tx
     )
 
 
