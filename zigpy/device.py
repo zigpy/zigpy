@@ -288,7 +288,9 @@ class GreenPowerDevice(BaseDevice):
         args = (self.name, *args)
         LOGGER.log(lvl, msg, *args, **kwargs)
 
-    def _is_packet_duplicate(self, packet: t.ZigbeeGpPacket) -> bool:
+    def _is_packet_duplicate(
+        self, packet: t.ZigbeeGpPacket, last_seen: datetime | None
+    ) -> bool:
         if self.frame_counter is None or packet.frame_counter is None:
             return False
 
@@ -305,8 +307,8 @@ class GreenPowerDevice(BaseDevice):
         # frame counts as the same GPDF forwarded again
         return (
             packet.frame_counter == self.frame_counter
-            and self._last_seen is not None
-            and ((packet.timestamp - self._last_seen) < GP_DUPLICATE_TIMEOUT)
+            and last_seen is not None
+            and ((packet.timestamp - last_seen) < GP_DUPLICATE_TIMEOUT)
         )
 
     def packet_received(self, packet: t.ZigbeeGpPacket) -> None:
@@ -316,12 +318,8 @@ class GreenPowerDevice(BaseDevice):
         a remote proxy, or a GPDF decoded by the radio's local GP stub.
         """
 
-        # A GP device's packets can be relayed by multiple routers so the same GPDF can
-        # be received multiple times without indicating any new liveness from the
-        # device.
-        if self._is_packet_duplicate(packet):
-            self.debug("Filtering duplicate packet")
-            return
+        # The duplicate window is measured against the previous packet
+        last_seen = self._last_seen
 
         self.last_seen = packet.timestamp
 
@@ -330,6 +328,12 @@ class GreenPowerDevice(BaseDevice):
 
         if packet.rssi is not None:
             self.rssi = packet.rssi
+
+        # A GP device's packets can be relayed by multiple routers so the same GPDF can
+        # be received multiple times
+        if self._is_packet_duplicate(packet, last_seen):
+            self.debug("Filtering duplicate packet")
+            return
 
         self.frame_counter = packet.frame_counter
 
