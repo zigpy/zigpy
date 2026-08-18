@@ -307,7 +307,8 @@ class Struct:
 
                 # Serialize the current segment of bitfields once we reach a boundary
                 if bit_offset % 8 == 0:
-                    chunks.append(t.Bits.from_bitfields(bitfields).serialize())
+                    segment = t.Bits.from_bitfields(bitfields).serialize()[::-1]
+                    chunks.append(segment)
                     bitfields = []
 
                 continue
@@ -358,7 +359,7 @@ class Struct:
                     if len(data) < bit_length // 8:
                         raise ValueError(f"Data is too short to contain {bitfields}")
 
-                    bits, _ = t.Bits.deserialize(data[: bit_length // 8])
+                    bits, _ = t.Bits.deserialize(data[: bit_length // 8][::-1])
                     data = data[bit_length // 8 :]
 
                     for f in bitfields:
