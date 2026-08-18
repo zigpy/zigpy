@@ -315,6 +315,14 @@ class GreenPowerDevice(BaseDevice):
         Both GP ingress paths converge here: a GP Notification tunneled over ZCL by
         a remote proxy, or a GPDF decoded by the radio's local GP stub.
         """
+
+        # A GP device's packets can be relayed by multiple routers so the same GPDF can
+        # be received multiple times without indicating any new liveness from the
+        # device.
+        if self._is_packet_duplicate(packet):
+            self.debug("Filtering duplicate packet")
+            return
+
         self.last_seen = packet.timestamp
 
         if packet.lqi is not None:
@@ -322,10 +330,6 @@ class GreenPowerDevice(BaseDevice):
 
         if packet.rssi is not None:
             self.rssi = packet.rssi
-
-        if self._is_packet_duplicate(packet):
-            self.debug("Filtering duplicate packet")
-            return
 
         self.frame_counter = packet.frame_counter
 
