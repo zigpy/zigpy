@@ -698,7 +698,7 @@ def test_bitstruct_three_byte_segment():
     assert TestStruct.deserialize(s.serialize() + b"asd") == (s, b"asd")
 
 
-def test_bitstruct_multi_byte_segment() -> None:
+def test_bitstruct_gp_commissioning_notification_options() -> None:
     """The GP commissioning notification options round trip."""
 
     class CommissioningNotificationOptions(t.Struct):
