@@ -694,6 +694,10 @@ class ZigbeeGpPacket(BaseDataclassMixin):
     lqi: basic.uint8_t | None = dataclasses.field(default=None)
     rssi: basic.int8s | None = dataclasses.field(default=None)
 
+    # Only set by a Green Power 1.0 proxy, in place of `lqi` and `rssi`. The higher
+    # the value, the worse the link; interpretation is otherwise application-specific
+    gpp_distance: basic.uint8_t | None = dataclasses.field(default=None)
+
     def __hash__(self) -> int:
         return hash(
             (
@@ -708,6 +712,7 @@ class ZigbeeGpPacket(BaseDataclassMixin):
                 self.security_key_type,
                 self.lqi,
                 self.rssi,
+                self.gpp_distance,
             )
         )
 

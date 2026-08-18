@@ -92,9 +92,6 @@ def gp_packet_from_zcl(packet: t.ZigbeePacket) -> t.ZigbeeGpPacket:
         lqi = t.uint8_t(int(command.gpp_gpd_link.link_quality) * 85)
         rssi = t.int8s(command.gpp_gpd_link.rssi_dbm)
 
-    # A Green Power 1.0 proxy sends a `Distance` byte instead of the GPP-GPD link.
-    # How to interpret it is explicitly application-specific, so it is dropped.
-
     return t.ZigbeeGpPacket(
         timestamp=packet.timestamp,
         application_id=command.options.application_id,
@@ -108,4 +105,6 @@ def gp_packet_from_zcl(packet: t.ZigbeePacket) -> t.ZigbeeGpPacket:
         security_key_type=command.options.security_key_type,
         lqi=lqi,
         rssi=rssi,
+        # A Green Power 1.0 proxy sends a `Distance` byte instead of the GPP-GPD link
+        gpp_distance=command.gpp_distance,
     )
