@@ -16,8 +16,7 @@ from zigpy.zcl.foundation import (
 import zigpy.zgp.types as zgptypes
 
 
-# Figure 31 — 16 bits total. `security_key_type` straddles the byte boundary, so all
-# 16 bits are packed as a single segment
+# Figure 31
 class CommissioningNotificationOptions(t.Struct):
     application_id: zgptypes.ApplicationID
     rx_after_tx: t.uint1_t

@@ -307,8 +307,6 @@ class Struct:
 
                 # Serialize the current segment of bitfields once we reach a boundary
                 if bit_offset % 8 == 0:
-                    # A segment is laid out like the little-endian integer of the same
-                    # width, so its bytes are reversed
                     segment = t.Bits.from_bitfields(bitfields).serialize()[::-1]
                     chunks.append(segment)
                     bitfields = []

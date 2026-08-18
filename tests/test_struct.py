@@ -698,6 +698,41 @@ def test_bitstruct_three_byte_segment():
     assert TestStruct.deserialize(s.serialize() + b"asd") == (s, b"asd")
 
 
+def test_bitstruct_multi_byte_segment() -> None:
+    """The GP commissioning notification options round trip."""
+
+    class CommissioningNotificationOptions(t.Struct):
+        application_id: t.uint3_t
+        rx_after_tx: t.uint1_t
+        security_level: t.uint2_t
+        security_key_type: t.uint3_t
+        security_failed: t.uint1_t
+        bidirectional_cap: t.uint1_t
+        proxy_info_present: t.uint1_t
+        _reserved: t.uint4_t
+
+    options = CommissioningNotificationOptions(
+        application_id=0b010,
+        rx_after_tx=1,
+        security_level=0b11,
+        security_key_type=0b111,
+        security_failed=1,
+        bidirectional_cap=0,
+        proxy_info_present=1,
+        _reserved=0,
+    )
+
+    value = (
+        0b010 | (1 << 3) | (0b11 << 4) | (0b111 << 6) | (1 << 9) | (0 << 10) | (1 << 11)
+    )
+    assert value == 0x0BFA
+    assert options.serialize() == b"\xfa\x0b"
+    assert options.serialize() == t.uint16_t(value).serialize()
+    assert CommissioningNotificationOptions.deserialize(
+        options.serialize() + b"asd"
+    ) == (options, b"asd")
+
+
 def test_non_byte_sized_struct():
     class TestStruct(t.Struct):
         foo: t.uint1_t
