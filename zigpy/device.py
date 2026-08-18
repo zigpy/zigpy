@@ -91,7 +91,7 @@ class GreenPowerCommandReceived:
     event_type: Final[str] = "gp_command_received"
 
     device_ieee: str
-    endpoint_id: int
+    endpoint_id: int | None
     command_id: int
     command: t.Struct | None
 

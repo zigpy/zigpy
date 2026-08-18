@@ -783,7 +783,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         # Clear the attribute cache to ensure the quirked state is correct
         for device in self._application.devices.values():
-            assert isinstance(device, Device)
+            # Only Zigbee devices have endpoints with an attribute cache
+            if not isinstance(device, Device):
+                continue
 
             for ep in device.non_zdo_endpoints:
                 for cluster in ep.in_clusters.values():

@@ -15,7 +15,7 @@ import os
 import random
 import time
 import typing
-from typing import Any, ClassVar, ParamSpec, TypeVar
+from typing import Any, ClassVar, ParamSpec, Protocol, TypeVar
 import warnings
 
 import zigpy.appdb
@@ -55,6 +55,13 @@ _R = TypeVar("_R")
 _DeviceT = TypeVar("_DeviceT", bound=BaseDevice)
 _P = ParamSpec("_P")
 
+
+class DeviceResolver(Protocol):
+    """Turns a freshly-constructed device into its final object, e.g. a quirk."""
+
+    def __call__(self, device: _DeviceT) -> _DeviceT: ...
+
+
 CHANNEL_CHANGE_BROADCAST_DELAY_S = 1.0
 CHANNEL_CHANGE_SETTINGS_RELOAD_DELAY_S = 1.0
 
@@ -84,7 +91,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._send_sequence = 0
         self._tasks: set[asyncio.Future[Any]] = set()
 
-        self._device_resolver: Callable[[_DeviceT], _DeviceT] | None = None
+        self._device_resolver: DeviceResolver | None = None
         self._uninitialized_packet_handler: Callable[..., None] | None = None
 
         self._watchdog_task: asyncio.Task | None = None
@@ -348,7 +355,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         config: dict,
         auto_form: bool = False,
         start_radio: bool = True,
-        device_resolver: Callable[[_DeviceT], _DeviceT] | None = None,
+        device_resolver: DeviceResolver | None = None,
         uninitialized_packet_handler: Callable[..., None] | None = None,
     ) -> ControllerApplication:
         """Create new instance of application controller."""
@@ -645,10 +652,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             return self._device_resolver(device)
         return device
 
-    def register_device_resolver(
-        self,
-        resolver: Callable[[_DeviceT], _DeviceT],
-    ) -> None:
+    def register_device_resolver(self, resolver: DeviceResolver) -> None:
         """Replace the callable that turns a raw device into its final object."""
         self._device_resolver = resolver
 
