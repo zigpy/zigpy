@@ -16,7 +16,7 @@ from zigpy.zcl.foundation import (
 import zigpy.zgp.types as zgptypes
 
 
-# Figure 31 — 16 bits total
+# Figure 31
 class CommissioningNotificationOptions(t.Struct):
     application_id: zgptypes.ApplicationID
     rx_after_tx: t.uint1_t

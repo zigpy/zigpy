@@ -620,13 +620,117 @@ def test_bitstruct_misaligned():
         baz: t.uint7_t
 
     s = TestStruct(foo=0b1, bar=0b10101010, baz=0b1110111)
-    assert s.serialize() == bytes([0b1110111_1, 0b0101010_1])
+
+    # The segment spans two bytes, so the first byte holds the first-declared fields
+    assert s.serialize() == bytes([0b0101010_1, 0b1110111_1])
 
     s2, remaining = TestStruct.deserialize(s.serialize() + b"asd")
     assert s == s2
 
     with pytest.raises(ValueError):
         TestStruct.deserialize(b"\xff")
+
+
+def test_bitstruct_multi_byte_segment():
+    """A bitfield segment wider than one byte is little-endian."""
+
+    class TestStruct(t.Struct):
+        foo: t.uint3_t
+        bar: t.uint1_t
+        baz: t.uint2_t
+        # This field straddles the byte boundary, so the whole struct is one segment
+        qux: t.uint3_t
+        quux: t.uint7_t
+
+    s = TestStruct(foo=0b101, bar=0b1, baz=0b10, qux=0b111, quux=0b1010101)
+    value = 0b101 | (0b1 << 3) | (0b10 << 4) | (0b111 << 6) | (0b1010101 << 9)
+
+    # A segment is laid out exactly like the integer of the same width would be
+    assert s.serialize() == t.uint16_t(value).serialize()
+    assert TestStruct.deserialize(s.serialize() + b"asd") == (s, b"asd")
+
+
+def test_bitstruct_multi_byte_segment_enums(expose_global):
+    """Sub-byte enums and bitmaps pack like the plain integers they derive from."""
+
+    @expose_global
+    class TestEnum(t.enum3):
+        FOO = 0b101
+
+    @expose_global
+    class TestBitmap(t.bitmap6):
+        BAR = 0b000010
+        BAZ = 0b100000
+
+    class TestStruct(t.Struct):
+        first: TestEnum
+        second: t.uint4_t
+        # Straddles the byte boundary
+        third: TestBitmap
+        fourth: t.uint3_t
+
+    s = TestStruct(
+        first=TestEnum.FOO,
+        second=0b1001,
+        third=TestBitmap.BAR | TestBitmap.BAZ,
+        fourth=0b110,
+    )
+    value = 0b101 | (0b1001 << 3) | (0b100010 << 7) | (0b110 << 13)
+
+    assert s.serialize() == t.uint16_t(value).serialize()
+    assert TestStruct.deserialize(s.serialize() + b"asd") == (s, b"asd")
+
+
+def test_bitstruct_three_byte_segment():
+    """Segments wider than two bytes are little-endian as well."""
+
+    class TestStruct(t.Struct):
+        foo: t.uint7_t
+        # Byte-serializable but misaligned, like every field after it
+        bar: t.uint8_t
+        baz: t.uint4_t
+        qux: t.uint5_t
+
+    s = TestStruct(foo=0b1010101, bar=0b11110000, baz=0b1001, qux=0b11011)
+    value = 0b1010101 | (0b11110000 << 7) | (0b1001 << 15) | (0b11011 << 19)
+
+    assert s.serialize() == t.uint24_t(value).serialize()
+    assert TestStruct.deserialize(s.serialize() + b"asd") == (s, b"asd")
+
+
+def test_bitstruct_multi_byte_segment() -> None:
+    """The GP commissioning notification options round trip."""
+
+    class CommissioningNotificationOptions(t.Struct):
+        application_id: t.uint3_t
+        rx_after_tx: t.uint1_t
+        security_level: t.uint2_t
+        security_key_type: t.uint3_t
+        security_failed: t.uint1_t
+        bidirectional_cap: t.uint1_t
+        proxy_info_present: t.uint1_t
+        _reserved: t.uint4_t
+
+    options = CommissioningNotificationOptions(
+        application_id=0b010,
+        rx_after_tx=1,
+        security_level=0b11,
+        security_key_type=0b111,
+        security_failed=1,
+        bidirectional_cap=0,
+        proxy_info_present=1,
+        _reserved=0,
+    )
+
+    value = (
+        0b010 | (1 << 3) | (0b11 << 4) | (0b111 << 6) | (1 << 9) | (0 << 10) | (1 << 11)
+    )
+    assert value == 0x0BFA
+    assert options.serialize() == b"\xfa\x0b"
+    assert options.serialize() == t.uint16_t(value).serialize()
+    assert CommissioningNotificationOptions.deserialize(
+        options.serialize() + b"asd"
+    ) == (options, b"asd")
 
 
 def test_non_byte_sized_struct():
