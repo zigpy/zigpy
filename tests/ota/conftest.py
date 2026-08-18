@@ -68,13 +68,14 @@ def image_with_metadata() -> OtaImageWithMetadata:
         ),
         subelements=[zigpy.ota.image.SubElement(tag_id=0x0000, data=b"fw_image")],
     )
+    firmware_bytes = firmware.serialize()
 
     metadata = BaseOtaImageMetadata(
         file_version=0x12345678,
         manufacturer_id=0x1234,
         image_type=0x5678,
-        checksum="sha256:" + hashlib.sha256(firmware.serialize()).hexdigest(),
-        file_size=len(firmware.serialize()),
+        checksum="sha256:" + hashlib.sha256(firmware_bytes).hexdigest(),
+        file_size=len(firmware_bytes),
         manufacturer_names=("manufacturer1", "manufacturer2"),
         model_names=("model1", "model2"),
         changelog="Some simple changelog",
