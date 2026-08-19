@@ -266,6 +266,37 @@ def test_is_gp_tunnel_packet(kwargs, expected):
     assert is_gp_tunnel_packet(packet) == expected
 
 
+def test_is_gp_tunnel_packet_undecodable_header():
+    packet = make_tunnel_packet(NOTIFICATION_ID, b"")
+    packet = packet.replace(data=t.SerializableBytes(b"\x01"))
+
+    assert not is_gp_tunnel_packet(packet)
+
+
+def test_notification_response_direction():
+    """GP Notification Response shares an ID with GP Notification: not a tunnel."""
+    command = NotificationSchema(
+        options=make_notification_options(proxy_info_present=0),
+        gpd_id=0x12345678,
+        frame_counter=1,
+        command_id=GPDCommandID.Toggle,
+        payload=GPDCommandPayload(b""),
+    )
+    hdr = foundation.ZCLHeader.cluster(
+        tsn=0x12,
+        command_id=NOTIFICATION_ID,
+        direction=foundation.Direction.Server_to_Client,
+    )
+    packet = make_tunnel_packet(NOTIFICATION_ID, b"").replace(
+        data=t.SerializableBytes(hdr.serialize() + command.serialize())
+    )
+
+    assert not is_gp_tunnel_packet(packet)
+
+    with pytest.raises(ValueError, match="Not a client-to-server command"):
+        gp_packet_from_zcl(packet)
+
+
 def test_non_cluster_command():
     hdr = foundation.ZCLHeader.general(
         tsn=0x12, command_id=foundation.GeneralCommand.Read_Attributes

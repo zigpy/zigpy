@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
+import zigpy.types as t
 from zigpy.zgp.types import (
     DEFAULT_GP_LINK_KEY,
     GP_CLUSTER_ID,
     GP_ENDPOINT,
     GP_GROUP_ID,
+    ApplicationID,
     DeviceID,
+    GPDCommandID,
     GPDCommandPayload,
     ProxyCommissioningModeExitMode,
     SrcID,
@@ -100,3 +105,20 @@ def test_command_payload_copy_keeps_unspecified():
     assert not GPDCommandPayload(empty).unspecified
     assert GPDCommandPayload(empty).serialize() == b"\x00"
     assert not GPDCommandPayload(b"").unspecified
+
+
+def test_gp_packet_hash():
+    packet = t.ZigbeeGpPacket(
+        application_id=ApplicationID.SrcID,
+        src_id=SrcID(0x12345678),
+        command_id=GPDCommandID.Toggle,
+        frame_counter=t.uint32_t(1),
+    )
+
+    # The timestamp is excluded from the hash and from comparisons
+    later = packet.replace(timestamp=datetime(2030, 1, 1, tzinfo=UTC))
+    assert hash(packet) == hash(later)
+    assert packet == later
+
+    assert hash(packet) != hash(packet.replace(frame_counter=t.uint32_t(2)))
+    assert hash(packet) != hash(packet.replace(gpp_distance=t.uint8_t(0x42)))
