@@ -224,10 +224,7 @@ class NotificationResponseSchema(foundation.CommandSchema):
 class ProxyCommissioningModeOptions(t.Struct):
     enter: t.uint1_t
     commissioning_window_present: t.uint1_t
-    # Exit-mode sub-field (Figure 57): bit 0 = on first pairing, bit 1 = on
-    # explicit exit. Only 2 bits here, unlike the 3-bit gpsCommissioningExitMode
-    # attribute (Figure 22).
-    exit_mode: t.uint2_t
+    exit_mode: zgptypes.ProxyCommissioningModeExitMode
     channel_present: t.uint1_t
     unicast: t.uint1_t
     _reserved: t.uint2_t
@@ -276,7 +273,7 @@ class GreenPowerProxy(Cluster):
         )
         commissioning_exit_mode: Final = ZCLAttributeDef(
             id=0x0003,
-            type=zgptypes.ProxyCommissioningModeExitMode,
+            type=zgptypes.SinkCommissioningExitMode,
             access="rw",
             mandatory=True,
         )

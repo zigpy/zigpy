@@ -19,6 +19,7 @@ __all__ = [
     "SecurityLevel",
     "SecurityKeyType",
     "SecurityStatus",
+    "SinkCommissioningExitMode",
     "ProxyCommissioningModeExitMode",
     "CommunicationMode",
     "CommunicationDirection",
@@ -232,13 +233,22 @@ class SecurityKeyType(basic.enum3):
     DerivedIndividual = 0b111
 
 
-# ZGP spec Figure 22 — each bit is an independent exit condition and
-# can be combined with the others.
-class ProxyCommissioningModeExitMode(basic.bitmap3):
+# Figure 22, the `gpsCommissioningExitMode` attribute of a sink. Each bit is an
+# independent exit condition and can be combined with the others.
+class SinkCommissioningExitMode(basic.bitmap3):
     NotDefined = 0b000
     OnExpire = 0b001
     OnFirstPairing = 0b010
     OnExplicitExit = 0b100
+
+
+# Figure 57, the Exit mode sub-field of the GP Proxy Commissioning Mode command. The
+# sink attribute's conditions minus "on expiration", which proxies track themselves
+# through the CommissioningWindow field, so the remaining bits are shifted down one.
+class ProxyCommissioningModeExitMode(basic.bitmap2):
+    NotDefined = 0b00
+    OnFirstPairing = 0b01
+    OnExplicitExit = 0b10
 
 
 # Table 27
