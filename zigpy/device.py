@@ -203,6 +203,18 @@ class BaseDevice(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin, EventBase
     def get_signature(self) -> dict[str, Any]:
         raise NotImplementedError
 
+    @property
+    def name(self) -> str:
+        raise NotImplementedError
+
+    @property
+    def is_initialized(self) -> bool:
+        raise NotImplementedError
+
+    @property
+    def manufacturer_id(self) -> int | None:
+        raise NotImplementedError
+
 
 class GreenPowerDevice(BaseDevice):
     """A Green Power Device (GPD)."""
@@ -286,6 +298,19 @@ class GreenPowerDevice(BaseDevice):
             return f"GreenPowerDevice 0x{self._src_id:08X}"
 
         return f"GreenPowerDevice {self._ieee}"
+
+    def __repr__(self) -> str:
+        return (
+            f"<"
+            f"{type(self).__name__}"
+            f" application_id={self.application_id!r}"
+            f" src_id={self.src_id!r}"
+            f" ieee={self.ieee!r}"
+            f" endpoint={self.endpoint!r}"
+            f" device_id={self.device_id!r}"
+            f" nwk={self.nwk!r}"
+            f">"
+        )
 
     def log(self, lvl: int, msg: str, *args, **kwargs) -> None:
         msg = "[%s] " + msg
