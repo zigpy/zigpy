@@ -28,6 +28,7 @@ from zigpy.zgp.types import (
     GPPGPDLink,
     SecurityKeyType,
     SecurityLevel,
+    SecurityStatus,
 )
 
 TIMESTAMP = datetime(2026, 8, 10, 12, 0, 0, tzinfo=UTC)
@@ -134,6 +135,8 @@ def test_notification(gpd_kwargs, expected_src_id, expected_ieee, expected_endpo
     assert gp_packet.frame_counter == 1000
     assert gp_packet.security_level == SecurityLevel.FullFrameCounterAndMIC
     assert gp_packet.security_key_type == SecurityKeyType.NWKKey
+    # The proxy did the security processing, so the key type it echoes is trustworthy
+    assert gp_packet.security_status == SecurityStatus.SecuritySuccess
     # GPPGPDLink 20 * 2 - 110 = -70 dBm, High spread over the 0-255 LQI range
     assert gp_packet.rssi == -70
     assert gp_packet.lqi == 170
@@ -330,3 +333,24 @@ def test_trailing_data():
 
     with pytest.raises(ValueError, match="Trailing data"):
         gp_packet_from_zcl(packet)
+
+
+def test_unprotected_notification_status() -> None:
+    """An unprotected tunneled frame is reported as such rather than as verified."""
+    command = NotificationSchema(
+        options=make_notification_options(
+            security_level=SecurityLevel.NoSecurity,
+            security_key_type=SecurityKeyType.NoKey,
+        ),
+        gpd_id=0x01020304,
+        frame_counter=1000,
+        command_id=GPDCommandID.Toggle,
+        payload=GPDCommandPayload(b""),
+        gpp_short_addr=0xAABB,
+        gpp_gpd_link=GPPGPDLink(rssi=20, link_quality=GPLinkQuality.High),
+    )
+    gp_packet = gp_packet_from_zcl(
+        make_tunnel_packet(NOTIFICATION_ID, command.serialize())
+    )
+
+    assert gp_packet.security_status == SecurityStatus.NoSecurity

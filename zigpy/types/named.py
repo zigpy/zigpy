@@ -18,6 +18,7 @@ if typing.TYPE_CHECKING:
         GPDCommandID,
         SecurityKeyType,
         SecurityLevel,
+        SecurityStatus,
         SrcID,
     )
 
@@ -689,7 +690,13 @@ class ZigbeeGpPacket(BaseDataclassMixin):
 
     frame_counter: basic.uint32_t | None = dataclasses.field(default=None)
     security_level: SecurityLevel | None = dataclasses.field(default=None)
+
+    # Only meaningful when `security_status` says security processing succeeded: the
+    # radio has no key type to report for a frame it did not process
     security_key_type: SecurityKeyType | None = dataclasses.field(default=None)
+
+    # The outcome of GPDF security processing, `None` if the radio does not report it
+    security_status: SecurityStatus | None = dataclasses.field(default=None)
 
     lqi: basic.uint8_t | None = dataclasses.field(default=None)
     rssi: basic.int8s | None = dataclasses.field(default=None)
@@ -710,6 +717,7 @@ class ZigbeeGpPacket(BaseDataclassMixin):
                 self.frame_counter,
                 self.security_level,
                 self.security_key_type,
+                self.security_status,
                 self.lqi,
                 self.rssi,
                 self.gpp_distance,

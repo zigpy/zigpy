@@ -48,6 +48,7 @@ from zigpy.zgp.types import (
     GPDCommandID,
     SecurityKeyType,
     SecurityLevel,
+    SecurityStatus,
     SrcID,
 )
 from zigpy.zgp.util import derive_alias, synthetic_ieee
@@ -341,9 +342,18 @@ class GreenPowerDevice(BaseDevice):
     def packet_received(self, packet: t.ZigbeeGpPacket) -> None:
         """Process a decoded, decrypted GPDF."""
 
-        # The frame's security level and key type must match the commissioned values or
-        # it is silently dropped (spec A.3.5.2.4.2): an unprotected frame must not
-        # reset the anti-replay frame counter
+        # An encrypted GPDF carries its command ID inside the ciphertext (A.1.5.3.4),
+        # so nothing can be decoded from one the radio did not decrypt
+        if (
+            packet.security_level is SecurityLevel.Encrypted
+            and packet.security_status is SecurityStatus.Unprocessed
+        ):
+            self.debug("Dropping encrypted packet that was not decrypted")
+            return
+
+        # The frame's security level and key type must match the commissioned values
+        # or it is silently dropped. Checked before anything is stored, so that an
+        # unprotected frame cannot reset the anti-replay counter (spec A.3.5.2.4)
         if self.security_level is not None and (
             packet.security_level != self.security_level
             or packet.security_key_type != self.security_key_type

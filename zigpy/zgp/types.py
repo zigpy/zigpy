@@ -18,6 +18,7 @@ __all__ = [
     "ApplicationID",
     "SecurityLevel",
     "SecurityKeyType",
+    "SecurityStatus",
     "ProxyCommissioningModeExitMode",
     "CommunicationMode",
     "CommunicationDirection",
@@ -204,6 +205,21 @@ class SecurityLevel(basic.enum2):
     Reserved = 0b01
     FullFrameCounterAndMIC = 0b10
     Encrypted = 0b11
+
+
+# Table 5, the `Status` parameter of the GP-DATA.indication primitive: the outcome of
+# GPDF security processing, which is what makes the other security fields meaningful
+class SecurityStatus(basic.enum8):
+    SecuritySuccess = 0x00
+    NoSecurity = 0x01
+    CounterFailure = 0x02
+    AuthFailure = 0x03
+    Unprocessed = 0x04
+
+    @property
+    def is_trusted(self) -> bool:
+        """Whether the frame was verified, and its key type and payload usable."""
+        return self in (SecurityStatus.SecuritySuccess, SecurityStatus.NoSecurity)
 
 
 # Table 53
