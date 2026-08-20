@@ -1456,7 +1456,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         if ieee not in self.devices:
             # Commissioning is what registers a GPD, and is not implemented yet
-            LOGGER.warning("Received a GP packet from an unknown device: %r", packet)
+            LOGGER.debug("Received a GP packet from an unknown device: %r", packet)
             return
 
         device = self.devices[ieee]
