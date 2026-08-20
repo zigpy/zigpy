@@ -740,7 +740,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         If the device does not respond, existing state is preserved.
         """
         dev = self.get_device(ieee=ieee)
-        assert isinstance(dev, ZigbeeDevice)
+
+        if not isinstance(dev, ZigbeeDevice):
+            raise TypeError(f"Device {dev} is not a Zigbee device")
+
         await dev.reinterview()
 
     async def remove(
@@ -1868,7 +1871,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     def _device(self) -> ZigbeeDevice:
         """The device being controlled."""
         dev = self.get_device(ieee=self.state.node_info.ieee)
-        assert isinstance(dev, ZigbeeDevice)
+
+        if not isinstance(dev, ZigbeeDevice):
+            raise TypeError(f"Coordinator {dev} is not a Zigbee device")
+
         return dev
 
     def _persist_coordinator_model_strings_in_db(self) -> None:
