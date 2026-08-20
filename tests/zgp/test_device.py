@@ -235,7 +235,7 @@ def test_security_mismatch_is_dropped(
 
 
 def test_unprotected_frame_cannot_reset_frame_counter(device, events) -> None:
-    """An unprotected inject must not break the anti-replay counter (A.3.5.2.4.2)."""
+    """An unprotected inject must not break the anti-replay counter (A.3.5.2.4)."""
     commission_security(device)
 
     device.packet_received(make_packet(5000))
