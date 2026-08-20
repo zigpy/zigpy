@@ -5,7 +5,6 @@ import logging
 import pytest
 
 from tests.async_mock import AsyncMock
-from tests.conftest import app  # noqa: F401
 import zigpy.backups
 import zigpy.state as app_state
 import zigpy.types as t
