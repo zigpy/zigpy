@@ -41,7 +41,7 @@ import zigpy.util
 from zigpy.zcl import Cluster, ClusterType, OtaQueryCacheClearedEvent, foundation
 from zigpy.zcl.clusters.general import Ota, PollControl, QueryNextImageCommand
 import zigpy.zdo.types as zdo_t
-from zigpy.zgp.commands import GPD_COMMAND_SCHEMAS
+from zigpy.zgp.commands import GPD_COMMAND_SCHEMAS, GPGenericSwitchConfiguration
 from zigpy.zgp.types import (
     ApplicationID,
     DeviceID,
@@ -260,6 +260,9 @@ class GreenPowerDevice(BaseDevice):
         self.server_cluster_ids: list[t.uint16_t] = []
         self.client_cluster_ids: list[t.uint16_t] = []
 
+        # The only application description a `GenericSwitch` sends
+        self.switch_configuration: GPGenericSwitchConfiguration | None = None
+
         # Security material for decoding subsequent data frames.
         self.security_key: t.KeyData | None = None
         self.security_key_type: SecurityKeyType | None = None
@@ -291,6 +294,7 @@ class GreenPowerDevice(BaseDevice):
             "commands": list(self.commands),
             "server_cluster_ids": list(self.server_cluster_ids),
             "client_cluster_ids": list(self.client_cluster_ids),
+            "switch_configuration": self.switch_configuration,
         }
 
     @property

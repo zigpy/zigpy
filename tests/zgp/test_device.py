@@ -8,17 +8,19 @@ import pytest
 
 from zigpy.device import GreenPowerDevice
 import zigpy.types as t
-from zigpy.zgp.commands import GPStepPayload
+from zigpy.zgp.commands import GPGenericSwitchConfiguration, GPStepPayload
 from zigpy.zgp.types import (
     ApplicationID,
     GPDCommandID,
     SecurityKeyType,
     SecurityLevel,
     SrcID,
+    SwitchType,
 )
 from zigpy.zgp.util import derive_alias
 
 TIMESTAMP = datetime(2026, 8, 10, 12, 0, 0, tzinfo=UTC)
+IEEE = t.EUI64.convert("11:22:33:44:55:66:77:88")
 
 
 @pytest.fixture
@@ -45,11 +47,15 @@ def make_packet(
     offset: timedelta = timedelta(0),
     lqi: int = 200,
     rssi: int = -50,
+    application_id: ApplicationID = ApplicationID.SrcID,
+    endpoint: int | None = None,
 ) -> t.ZigbeeGpPacket:
     return t.ZigbeeGpPacket(
         timestamp=TIMESTAMP + offset,
-        application_id=ApplicationID.SrcID,
-        src_id=SrcID(0x12345678),
+        application_id=application_id,
+        src_id=SrcID(0x12345678) if application_id is ApplicationID.SrcID else None,
+        ieee=IEEE if application_id is ApplicationID.IEEE else None,
+        endpoint=None if endpoint is None else t.uint8_t(endpoint),
         command_id=command_id,
         payload=t.SerializableBytes(payload),
         frame_counter=t.uint32_t(frame_counter),
@@ -74,16 +80,15 @@ def test_missing_gpd_id() -> None:
 
 
 def test_ieee_addressed_gpd() -> None:
-    ieee = t.EUI64.convert("11:22:33:44:55:66:77:88")
     device = GreenPowerDevice(
-        None, application_id=ApplicationID.IEEE, ieee=ieee, endpoint=t.uint8_t(3)
+        None, application_id=ApplicationID.IEEE, ieee=IEEE, endpoint=t.uint8_t(3)
     )
 
-    assert device.ieee == ieee
-    assert device.nwk == derive_alias(ieee)
+    assert device.ieee == IEEE
+    assert device.nwk == derive_alias(IEEE)
     assert device.src_id is None
     assert device.endpoint == 3
-    assert device.name == f"GreenPowerDevice {ieee}"
+    assert device.name == f"GreenPowerDevice {IEEE}"
 
 
 def test_device_properties(device) -> None:
@@ -94,6 +99,9 @@ def test_device_properties(device) -> None:
     assert device.manufacturer_id is None
 
     device.gpd_manufacturer_id = t.uint16_t(0x1234)
+    device.switch_configuration = GPGenericSwitchConfiguration(
+        num_contacts=2, switch_type=SwitchType.Rocker, _reserved=0
+    )
 
     assert device.manufacturer_id == 0x1234
     assert device.get_signature() == {
@@ -106,6 +114,7 @@ def test_device_properties(device) -> None:
         "commands": [],
         "server_cluster_ids": [],
         "client_cluster_ids": [],
+        "switch_configuration": GPGenericSwitchConfiguration(0x22),
     }
 
 
@@ -252,3 +261,21 @@ def test_unprotected_frame_cannot_reset_frame_counter(device, events) -> None:
 
     assert len(events) == 1
     assert device.frame_counter == 5000
+
+
+@pytest.mark.parametrize("endpoint", [3, 5, 0x00, 0xFF])
+def test_ieee_frame_endpoint_passthrough(endpoint) -> None:
+    """IEEE addressing delivers the frame's endpoint, wildcards included."""
+    device = GreenPowerDevice(
+        None, application_id=ApplicationID.IEEE, ieee=IEEE, endpoint=t.uint8_t(3)
+    )
+
+    events = []
+    device.on_event("gp_command_received", events.append)
+
+    device.packet_received(
+        make_packet(1000, application_id=ApplicationID.IEEE, endpoint=endpoint)
+    )
+
+    assert len(events) == 1
+    assert events[0].endpoint_id == endpoint
