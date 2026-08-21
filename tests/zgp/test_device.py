@@ -102,6 +102,7 @@ def test_device_properties(device) -> None:
     device.switch_configuration = GPGenericSwitchConfiguration(
         num_contacts=2, switch_type=SwitchType.Rocker, _reserved=0
     )
+    device.mac_seq_num_capability = True
 
     assert device.manufacturer_id == 0x1234
     assert device.get_signature() == {
@@ -115,6 +116,7 @@ def test_device_properties(device) -> None:
         "server_cluster_ids": [],
         "client_cluster_ids": [],
         "switch_configuration": GPGenericSwitchConfiguration(0x22),
+        "mac_seq_num_capability": True,
     }
 
 

@@ -15,6 +15,7 @@ from zigpy.zgp.types import (
     GPDCommandID,
     GPDCommandPayload,
     ProxyCommissioningModeExitMode,
+    SinkCommissioningExitMode,
     SrcID,
 )
 
@@ -53,12 +54,24 @@ def test_device_id_enum():
 
 def test_combined_exit_modes():
     """Flags compose via bitwise OR since the type is a bitmap."""
-    on_expire = ProxyCommissioningModeExitMode.OnExpire
-    on_first = ProxyCommissioningModeExitMode.OnFirstPairing
-    on_explicit = ProxyCommissioningModeExitMode.OnExplicitExit
+    on_expire = SinkCommissioningExitMode.OnExpire
+    on_first = SinkCommissioningExitMode.OnFirstPairing
+    on_explicit = SinkCommissioningExitMode.OnExplicitExit
 
     assert (on_expire | on_first) == 0b011
     assert (on_expire | on_explicit) == 0b101
+
+
+def test_proxy_exit_mode_is_shifted():
+    """The command's sub-field drops "on expiration", shifting the other bits down."""
+    assert (
+        ProxyCommissioningModeExitMode.OnFirstPairing
+        == SinkCommissioningExitMode.OnFirstPairing >> 1
+    )
+    assert (
+        ProxyCommissioningModeExitMode.OnExplicitExit
+        == SinkCommissioningExitMode.OnExplicitExit >> 1
+    )
 
 
 def test_command_payload():

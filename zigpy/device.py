@@ -263,6 +263,11 @@ class GreenPowerDevice(BaseDevice):
         # The only application description a `GenericSwitch` sends
         self.switch_configuration: GPGenericSwitchConfiguration | None = None
 
+        # Whether the GPD uses an incremental (rather than random) MAC sequence
+        # number. For unprotected GPDs this governs duplicate filtering; it is also
+        # echoed in the GP Pairing command sent to proxies.
+        self.mac_seq_num_capability: bool = False
+
         # Security material for decoding subsequent data frames.
         self.security_key: t.KeyData | None = None
         self.security_key_type: SecurityKeyType | None = None
@@ -295,6 +300,7 @@ class GreenPowerDevice(BaseDevice):
             "server_cluster_ids": list(self.server_cluster_ids),
             "client_cluster_ids": list(self.client_cluster_ids),
             "switch_configuration": self.switch_configuration,
+            "mac_seq_num_capability": self.mac_seq_num_capability,
         }
 
     @property
