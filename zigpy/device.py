@@ -227,7 +227,6 @@ class GreenPowerDevice(BaseDevice):
         application_id: ApplicationID,
         src_id: SrcID | None = None,
         ieee: t.EUI64 | None = None,
-        endpoint: t.uint8_t | None = None,
     ) -> None:
         if application_id is ApplicationID.SrcID:
             if src_id is None:
@@ -248,8 +247,6 @@ class GreenPowerDevice(BaseDevice):
 
         self.application_id = application_id
         self._src_id = src_id
-        # The GPD endpoint (IEEE addressing only); part of identity when present.
-        self.endpoint = endpoint
 
         # Commissioning-derived signature (the quirk match input). All optional:
         # cheap GPDs commonly advertise only `device_id`.
@@ -292,7 +289,6 @@ class GreenPowerDevice(BaseDevice):
         return {
             "application_id": self.application_id,
             "src_id": self._src_id,
-            "endpoint": self.endpoint,
             "device_id": self.device_id,
             "manufacturer_id": self.gpd_manufacturer_id,
             "model_id": self.gpd_model_id,
@@ -317,7 +313,6 @@ class GreenPowerDevice(BaseDevice):
             f" application_id={self.application_id!r}"
             f" src_id={self.src_id!r}"
             f" ieee={self.ieee!r}"
-            f" endpoint={self.endpoint!r}"
             f" device_id={self.device_id!r}"
             f" nwk={self.nwk!r}"
             f">"

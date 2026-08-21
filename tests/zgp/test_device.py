@@ -80,14 +80,11 @@ def test_missing_gpd_id() -> None:
 
 
 def test_ieee_addressed_gpd() -> None:
-    device = GreenPowerDevice(
-        None, application_id=ApplicationID.IEEE, ieee=IEEE, endpoint=t.uint8_t(3)
-    )
+    device = GreenPowerDevice(None, application_id=ApplicationID.IEEE, ieee=IEEE)
 
     assert device.ieee == IEEE
     assert device.nwk == derive_alias(IEEE)
     assert device.src_id is None
-    assert device.endpoint == 3
     assert device.name == f"GreenPowerDevice {IEEE}"
 
 
@@ -108,7 +105,6 @@ def test_device_properties(device) -> None:
     assert device.get_signature() == {
         "application_id": ApplicationID.SrcID,
         "src_id": 0x12345678,
-        "endpoint": None,
         "device_id": None,
         "manufacturer_id": 0x1234,
         "model_id": None,
@@ -268,9 +264,7 @@ def test_unprotected_frame_cannot_reset_frame_counter(device, events) -> None:
 @pytest.mark.parametrize("endpoint", [3, 5, 0x00, 0xFF])
 def test_ieee_frame_endpoint_passthrough(endpoint) -> None:
     """IEEE addressing delivers the frame's endpoint, wildcards included."""
-    device = GreenPowerDevice(
-        None, application_id=ApplicationID.IEEE, ieee=IEEE, endpoint=t.uint8_t(3)
-    )
+    device = GreenPowerDevice(None, application_id=ApplicationID.IEEE, ieee=IEEE)
 
     events = []
     device.on_event("gp_command_received", events.append)
