@@ -217,11 +217,6 @@ class SecurityStatus(basic.enum8):
     AuthFailure = 0x03
     Unprocessed = 0x04
 
-    @property
-    def is_trusted(self) -> bool:
-        """Whether the frame was verified, and its key type and payload usable."""
-        return self in (SecurityStatus.SecuritySuccess, SecurityStatus.NoSecurity)
-
 
 # Table 53
 class SecurityKeyType(basic.enum3):
