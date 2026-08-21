@@ -395,6 +395,9 @@ class GreenPowerDevice(BaseDevice):
                 self.debug("Failed to parse GPDF payload %r", packet, exc_info=True)
                 command = None
         else:
+            self.debug(
+                "No schema for GPD command %s, dropping payload", packet.command_id
+            )
             command = None
 
         self.emit(
