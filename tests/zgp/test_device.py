@@ -14,6 +14,7 @@ from zigpy.zgp.types import (
     GPDCommandID,
     SecurityKeyType,
     SecurityLevel,
+    SecurityStatus,
     SrcID,
     SwitchType,
 )
@@ -44,6 +45,7 @@ def make_packet(
     payload: bytes = b"",
     security_level: SecurityLevel = SecurityLevel.Encrypted,
     security_key_type: SecurityKeyType = SecurityKeyType.GPDGroupKey,
+    security_status: SecurityStatus | None = None,
     offset: timedelta = timedelta(0),
     lqi: int = 200,
     rssi: int = -50,
@@ -61,6 +63,7 @@ def make_packet(
         frame_counter=t.uint32_t(frame_counter),
         security_level=security_level,
         security_key_type=security_key_type,
+        security_status=security_status,
         lqi=t.uint8_t(lqi),
         rssi=t.int8s(rssi),
     )
@@ -230,9 +233,26 @@ def test_security_mismatch_is_dropped(
     device.packet_received(make_packet(5000))
     device.packet_received(
         make_packet(
-            42,
+            6000,
             security_level=security_level,
             security_key_type=security_key_type,
+            offset=timedelta(seconds=10),
+        )
+    )
+
+    assert len(events) == 1
+    assert device.frame_counter == 5000
+
+
+def test_undecrypted_frame_is_dropped(device, events) -> None:
+    """An encrypted GPDF the radio did not decrypt has no readable command ID."""
+    commission_security(device)
+
+    device.packet_received(make_packet(5000))
+    device.packet_received(
+        make_packet(
+            6000,
+            security_status=SecurityStatus.Unprocessed,
             offset=timedelta(seconds=10),
         )
     )

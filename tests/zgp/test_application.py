@@ -158,6 +158,14 @@ async def test_remove_gpd(app, gpd):
     assert call("device_removed", gpd) in app.listener_event.mock_calls
 
 
+async def test_reinterview_gpd(app, gpd):
+    """Commissioning fully describes a GPD, so re-interviewing it does nothing."""
+    await app.reinterview_device(gpd.ieee)
+
+    assert app.devices[gpd.ieee] is gpd
+    assert call("device_reinterviewed", gpd) not in app.listener_event.mock_calls
+
+
 async def test_handle_join_gpd(app, gpd, caplog):
     app.handle_join(0x1234, gpd.ieee, None)
 
