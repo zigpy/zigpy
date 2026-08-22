@@ -216,6 +216,9 @@ class BaseDevice(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin, EventBase
     def manufacturer_id(self) -> int | None:
         raise NotImplementedError
 
+    async def reinterview(self) -> None:
+        raise NotImplementedError
+
 
 class GreenPowerDevice(BaseDevice):
     """A Green Power Device (GPD)."""
@@ -284,6 +287,9 @@ class GreenPowerDevice(BaseDevice):
     def is_initialized(self) -> bool:
         """Commissioning fully describes a GPD, there is no separate interview."""
         return True
+
+    async def reinterview(self) -> None:
+        """A GPD cannot be queried, so there is nothing to re-interview."""
 
     def get_signature(self) -> dict[str, Any]:
         return {
