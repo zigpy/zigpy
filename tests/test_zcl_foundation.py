@@ -478,6 +478,16 @@ def test_ptype_to_datatype_notype():
     assert foundation.DataType.from_python_type(ZigpyUnknown) == foundation.DataType.unk
 
 
+def test_datatype_from_unknown_type_id():
+    """Test an unmapped ZCL data type ID raises ValueError, not KeyError."""
+
+    with pytest.raises(ValueError, match="Unknown ZCL data type ID: 0x8A"):
+        foundation.DataType.from_type_id(0x8A)
+
+    with pytest.raises(ValueError):
+        foundation.Attribute.deserialize(b"\x01\x00\x8a\x05")
+
+
 def test_write_attrs_response_deserialize():
     """Test deserialization."""
 
