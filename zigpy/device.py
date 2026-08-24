@@ -30,8 +30,15 @@ from zigpy.const import (
 )
 import zigpy.datastructures
 import zigpy.endpoint
-import zigpy.exceptions
-from zigpy.exceptions import DeliveryError, InvalidDefaultResponse
+from zigpy.exceptions import (
+    ControllerException,
+    DeliveryError,
+    InvalidDefaultResponse,
+    InvalidResponse,
+    ParsingError,
+    ResponseError,
+    ZigbeeException,
+)
 import zigpy.listeners
 from zigpy.ota.manager import update_firmware
 from zigpy.profiles import zha, zll
@@ -359,9 +366,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         status, _, node_desc = await self.zdo.Node_Desc_req(self.nwk)
 
         if status != zdo_t.Status.SUCCESS:
-            raise zigpy.exceptions.InvalidResponse(
-                f"Requesting Node Descriptor failed: {status}"
-            )
+            raise InvalidResponse(f"Requesting Node Descriptor failed: {status}")
 
         self.node_desc = node_desc
         self.info("Got Node Descriptor: %s", node_desc)
@@ -373,7 +378,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             # Perform initialization with critical priority
             async with self._application.request_priority(t.PacketPriority.CRITICAL):
                 await self._initialize()
-        except (TimeoutError, zigpy.exceptions.ZigbeeException):
+        except (TimeoutError, ZigbeeException):
             self.application.listener_event("device_init_failure", self)
         except Exception:  # noqa: BLE001
             LOGGER.warning(
@@ -503,9 +508,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             status, _, endpoints = await self.zdo.Active_EP_req(self.nwk)
 
             if status != zdo_t.Status.SUCCESS:
-                raise zigpy.exceptions.InvalidResponse(
-                    f"Endpoint request failed: {status}"
-                )
+                raise InvalidResponse(f"Endpoint request failed: {status}")
 
             self.info("Discovered endpoints: %s", endpoints)
 
@@ -660,9 +663,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     rsp_key,
                     self._requests,
                 )
-                raise zigpy.exceptions.ControllerException(
-                    f"Duplicate request key: {rsp_key}"
-                )
+                raise ControllerException(f"Duplicate request key: {rsp_key}")
         else:
             rsp_key = None
 
@@ -708,7 +709,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                         if not future.done():
                             future.cancel()
                         self._requests.pop(rsp_key, None)
-            except zigpy.exceptions.ResponseError:
+            except ResponseError:
                 # The device responded, it was just not with something we can use.
                 # Retrying will only repeat the same exchange.
                 raise
@@ -922,7 +923,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             # `error` and `cmd` cannot both be provided so this can never shadow `error`
             assert error is None
             error = InvalidDefaultResponse(
-                f"Invalid default response {cmd.status} for command 0x{cmd.command_id:#02x}",
+                f"Invalid default response {cmd.status} for command {cmd.command_id:#04x}",
                 command_id=cmd.command_id,
                 status=cmd.status,
             )
@@ -971,7 +972,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             cmd = self._parse_packet_command(packet, endpoint, zcl_cluster)
         except Exception as exc:  # noqa: BLE001
             cmd = None
-            error = zigpy.exceptions.ParsingError()
+            error = ParsingError()
             error.__cause__ = exc
             self.debug("Failed to parse packet %r", packet, exc_info=error)
         else:
