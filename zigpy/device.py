@@ -12,7 +12,7 @@ import logging
 import math
 import time
 import typing
-from typing import Any, TypeVar
+from typing import Any, TypeVar, overload
 import warnings
 
 from zigpy import zdo
@@ -883,6 +883,16 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             _, cmd = zcl_cluster.deserialize(data)
 
         return cmd
+
+    @overload
+    def _maybe_match_response(
+        self, rsp_key: ResponseKey, cmd: typing.Any, error: None
+    ) -> bool: ...
+
+    @overload
+    def _maybe_match_response(
+        self, rsp_key: ResponseKey, cmd: None, error: Exception
+    ) -> bool: ...
 
     def _maybe_match_response(
         self, rsp_key: ResponseKey, cmd: typing.Any | None, error: Exception | None
