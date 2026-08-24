@@ -708,7 +708,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                         if not future.done():
                             future.cancel()
                         self._requests.pop(rsp_key, None)
-            except zigpy.exceptions.ParsingError:
+            except zigpy.exceptions.ResponseError:
+                # The device responded, it was just not with something we can use.
+                # Retrying will only repeat the same exchange.
                 raise
             except Exception:
                 LOGGER.debug(

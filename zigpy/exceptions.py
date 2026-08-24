@@ -11,7 +11,11 @@ class ZigbeeException(Exception):
     """Base exception class"""
 
 
-class ParsingError(ZigbeeException):
+class ResponseError(ZigbeeException):
+    """A response was received but cannot be used"""
+
+
+class ParsingError(ResponseError):
     """Failed to parse a frame"""
 
 
@@ -43,7 +47,7 @@ class SendError(DeliveryError):
     """Message could not be enqueued."""
 
 
-class InvalidResponse(ZigbeeException):
+class InvalidResponse(ResponseError):
     """A ZDO or ZCL response has an unsuccessful status code"""
 
 
