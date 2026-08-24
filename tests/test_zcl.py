@@ -2629,7 +2629,10 @@ async def test_configure_reporting_multiple_chunked_by_size(app_mock) -> None:
         cluster,
         "_configure_reporting",
         new_callable=AsyncMock,
-        side_effect=[[cfg_success], [cfg_success]],
+        side_effect=[
+            zcl.foundation.ConfigureReportingResponseSchema(status_records=cfg_success),
+            zcl.foundation.ConfigureReportingResponseSchema(status_records=cfg_success),
+        ],
     ) as mock_configure:
         results = await cluster.configure_reporting_multiple(dict.fromkeys(attrs, cfg))
 
