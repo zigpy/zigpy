@@ -1724,10 +1724,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
                     continue
 
-                # A device should never send back a successful default response
+                # If a device replies with a successful default response, assume the
+                # whole chunk has been configured correctly.
                 if isinstance(rsp, foundation.DefaultResponse):
                     for attr_def, _cfg in chunk:
-                        group_results[attr_def] = foundation.Status.FAILURE
+                        group_results[attr_def] = rsp.status
 
                     continue
 
