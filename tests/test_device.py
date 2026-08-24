@@ -2475,3 +2475,58 @@ async def test_request_retry_delay_releases_concurrency(app) -> None:
         # Tear down the still-pending requests so the task group can exit
         for task in tasks:
             task.cancel()
+
+
+async def test_request_error_default_response(app) -> None:
+    """An unsuccessful default response is raised to the caller."""
+    tsn = 0x12
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+    ep.add_input_cluster(Basic.cluster_id)
+
+    def send_packet(*args, **kwargs) -> None:
+        asyncio.get_running_loop().call_soon(
+            dev.packet_received,
+            t.ZigbeePacket(
+                profile_id=260,
+                cluster_id=Basic.cluster_id,
+                src_ep=1,
+                dst_ep=1,
+                data=t.SerializableBytes(
+                    foundation.ZCLHeader(
+                        frame_control=foundation.FrameControl(
+                            frame_type=foundation.FrameType.GLOBAL_COMMAND,
+                            is_manufacturer_specific=False,
+                            direction=foundation.Direction.Server_to_Client,
+                            disable_default_response=True,
+                            reserved=0,
+                        ),
+                        tsn=tsn,
+                        command_id=foundation.GeneralCommand.Default_Response,
+                        manufacturer=None,
+                    ).serialize()
+                    + foundation.DefaultResponse(
+                        command_id=Basic.ServerCommandDefs.reset_fact_default.id,
+                        status=foundation.Status.UNSUP_GENERAL_COMMAND,
+                    ).serialize()
+                ),
+                src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+                dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+            ),
+        )
+
+    app.send_packet.side_effect = send_packet
+    dev.get_sequence = MagicMock(return_value=tsn)
+
+    with pytest.raises(zigpy.exceptions.InvalidDefaultResponse) as exc_info:
+        await dev.endpoints[1].basic.reset_fact_default()
+
+    assert exc_info.value.status == foundation.Status.UNSUP_GENERAL_COMMAND
+    assert exc_info.value.command_id == Basic.ServerCommandDefs.reset_fact_default.id
+
+    # A definitive error response from the device must not be retried
+    assert len(app.send_packet.mock_calls) == 1

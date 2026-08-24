@@ -917,7 +917,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             isinstance(cmd, foundation.DefaultResponse)
             and cmd.status != foundation.Status.SUCCESS
         ):
-            raise InvalidDefaultResponse(
+            # `error` and `cmd` cannot both be provided so this can never shadow `error`
+            assert error is None
+            error = InvalidDefaultResponse(
                 f"Invalid default response {cmd.status} for command 0x{cmd.command_id:#02x}",
                 command_id=cmd.command_id,
                 status=cmd.status,
