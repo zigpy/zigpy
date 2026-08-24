@@ -7,6 +7,7 @@ from collections.abc import Callable, Generator
 import contextlib
 from contextvars import ContextVar
 import dataclasses
+import functools
 from inspect import iscoroutinefunction
 import logging
 from typing import Any
@@ -75,6 +76,33 @@ class EventBase:
 
         return unsubscribe
 
+    def _handle_event_task_done(
+        self, event_name: str, callback: Callable, task: asyncio.Task
+    ) -> None:
+        """Drop a finished listener task, logging an exception instead of losing it."""
+        self._event_tasks.remove(task)
+
+        if task.cancelled():
+            return
+
+        if (exc := task.exception()) is not None:
+            _LOGGER.error(
+                "Error handling event %s in listener %r",
+                event_name,
+                callback,
+                exc_info=exc,
+            )
+
+    def _create_event_task(
+        self, event_name: str, callback: Callable, coro: Any
+    ) -> None:
+        """Run a listener coroutine, keeping a reference until it finishes."""
+        task = asyncio.create_task(coro)
+        self._event_tasks.append(task)
+        task.add_done_callback(
+            functools.partial(self._handle_event_task_done, event_name, callback)
+        )
+
     def once(
         self, event_name: str, callback: Callable, with_context: bool = False
     ) -> Callable:
@@ -83,9 +111,7 @@ class EventBase:
 
             async def async_event_listener(*args, **kwargs) -> None:
                 unsub()
-                task = asyncio.create_task(callback(*args, **kwargs))
-                self._event_tasks.append(task)
-                task.add_done_callback(self._event_tasks.remove)
+                self._create_event_task(event_name, callback, callback(*args, **kwargs))
 
             unsub = self.on_event(
                 event_name, async_event_listener, with_context=with_context
@@ -116,15 +142,23 @@ class EventBase:
         )
 
         for listener in listeners:
-            if listener.with_context:
-                call = listener.callback(event_name, data)
-            else:
-                call = listener.callback(data)
+            # A listener that raises must not stop the remaining listeners from
+            # running, nor propagate back into the code that emitted the event.
+            try:
+                if listener.with_context:
+                    call = listener.callback(event_name, data)
+                else:
+                    call = listener.callback(data)
+            except Exception:
+                _LOGGER.exception(
+                    "Error handling event %s in listener %r",
+                    event_name,
+                    listener.callback,
+                )
+                continue
 
             if iscoroutinefunction(listener.callback):
-                task = asyncio.create_task(call)
-                self._event_tasks.append(task)
-                task.add_done_callback(self._event_tasks.remove)
+                self._create_event_task(event_name, listener.callback, call)
 
     def _handle_event_protocol(self, event) -> None:
         """Process an event based on event protocol."""
@@ -136,8 +170,6 @@ class EventBase:
             _LOGGER.warning("Received unknown event: %s", event)
             return
         if iscoroutinefunction(handler):
-            task = asyncio.create_task(handler(event))
-            self._event_tasks.append(task)
-            task.add_done_callback(self._event_tasks.remove)
+            self._create_event_task(event.event, handler, handler(event))
         else:
             handler(event)

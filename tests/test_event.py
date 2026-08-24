@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
@@ -236,3 +237,93 @@ def test_handle_event_protocol_no_event(caplog: pytest.LogCaptureFixture):
     event_handler.emit("not_test", event)
 
     assert "Received unknown event:" in caplog.text
+
+
+def test_emit_sync_listener_error_does_not_stop_others(
+    caplog: pytest.LogCaptureFixture,
+):
+    """A raising sync listener is contained instead of aborting the emit."""
+    event = EventGenerator()
+    raising_callback = MagicMock(side_effect=RuntimeError("boom"))
+    later_callback = MagicMock()
+    global_callback = MagicMock()
+
+    event.on_event("test", raising_callback)
+    event.on_event("test", later_callback)
+    event.on_all_events(global_callback)
+
+    event.emit("test", "data")
+
+    assert raising_callback.mock_calls == [call("data")]
+    # The listeners registered after the raising one still run, and the error
+    # does not propagate back to the caller of `emit()`.
+    assert later_callback.mock_calls == [call("data")]
+    assert global_callback.mock_calls == [call("data")]
+    assert "Error handling event test in listener" in caplog.text
+    assert "RuntimeError: boom" in caplog.text
+
+
+async def test_emit_async_listener_error_is_logged(caplog: pytest.LogCaptureFixture):
+    """A raising async listener is logged rather than lost with its task."""
+    event = EventGenerator()
+    raising_callback = AsyncMock(side_effect=RuntimeError("boom"))
+    later_callback = AsyncMock()
+
+    event.on_event("test", raising_callback)
+    event.on_event("test", later_callback)
+
+    event.emit("test", "data")
+    await asyncio.gather(*list(event._event_tasks), return_exceptions=True)
+
+    assert raising_callback.await_count == 1
+    assert later_callback.await_count == 1
+    assert not event._event_tasks
+    assert "Error handling event test in listener" in caplog.text
+    assert "RuntimeError: boom" in caplog.text
+
+
+async def test_handle_event_protocol_async_handler_error_is_logged(
+    caplog: pytest.LogCaptureFixture,
+):
+    """An async event-protocol handler that raises is logged, not swallowed."""
+    event_handler = EventGenerator()
+    event_handler.handle_test = AsyncMock(side_effect=RuntimeError("boom"))
+    event_handler.on_event("test", event_handler._handle_event_protocol)
+
+    event = Event()
+    event_handler.emit(event.event, event)
+    await asyncio.gather(*list(event_handler._event_tasks), return_exceptions=True)
+
+    assert event_handler.handle_test.await_count == 1
+    assert not event_handler._event_tasks
+    assert "Error handling event test in listener" in caplog.text
+    assert "RuntimeError: boom" in caplog.text
+
+
+async def test_emit_async_listener_cancelled_is_not_logged(
+    caplog: pytest.LogCaptureFixture,
+):
+    """A cancelled listener task is dropped quietly, not reported as an error."""
+    started = asyncio.Event()
+
+    async def never_finishes(data):
+        started.set()
+        await asyncio.sleep(3600)
+
+    event = EventGenerator()
+    event.on_event("test", never_finishes)
+
+    event.emit("test", "data")
+    await started.wait()
+
+    (task,) = event._event_tasks
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+
+    assert task.cancelled()
+    assert not event._event_tasks
+    # Nothing at all should be reported: neither our own error log, nor asyncio
+    # complaining that the done callback itself blew up on `task.exception()`.
+    assert [
+        record for record in caplog.records if record.levelno >= logging.ERROR
+    ] == []
