@@ -12,12 +12,13 @@ import functools
 import itertools
 import logging
 import types
-from typing import TYPE_CHECKING, Any, Final, TypeVar
+from typing import TYPE_CHECKING, Any, Final, TypeVar, cast
 import warnings
 
 from zigpy import util
 from zigpy.const import APS_REPLY_TIMEOUT
 from zigpy.event import EventBase
+from zigpy.exceptions import InvalidDefaultResponse
 import zigpy.types as t
 from zigpy.typing import UNDEFINED, UndefinedType
 from zigpy.zcl import foundation
@@ -413,7 +414,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         # and cannot represent two same-ID attributes (e.g. a standard and a
         # manufacturer-specific one), so rebuilding from it would drop one of them
         if cls.__dict__.get("attributes") and "AttributeDefs" not in cls.__dict__:
-            cls.AttributeDefs = types.new_class(
+            cls.AttributeDefs = types.new_class(  # type: ignore[misc]
                 name="AttributeDefs",
                 bases=(BaseAttributeDefs,),
             )
@@ -425,7 +426,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             cls.__dict__.get("server_commands")
             and "ServerCommandDefs" not in cls.__dict__
         ):
-            cls.ServerCommandDefs = types.new_class(
+            cls.ServerCommandDefs = types.new_class(  # type: ignore[misc]
                 name="ServerCommandDefs",
                 bases=(BaseCommandDefs,),
             )
@@ -437,7 +438,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             cls.__dict__.get("client_commands")
             and "ClientCommandDefs" not in cls.__dict__
         ):
-            cls.ClientCommandDefs = types.new_class(
+            cls.ClientCommandDefs = types.new_class(  # type: ignore[misc]
                 name="ClientCommandDefs",
                 bases=(BaseCommandDefs,),
             )
@@ -1066,11 +1067,15 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 foundation.Status.SUCCESS,
             )
 
-    def read_attributes_raw(
+    async def read_attributes_raw(
         self, attributes: list[int], manufacturer: int | None = None, **kwargs
-    ):
-        return self._read_attributes(
+    ) -> foundation.ReadAttributesResponse | foundation.DefaultResponse:
+        result = await self._read_attributes(
             [t.uint16_t(a) for a in attributes], manufacturer=manufacturer, **kwargs
+        )
+
+        return cast(
+            foundation.ReadAttributesResponse | foundation.DefaultResponse, result
         )
 
     def _get_effective_manufacturer_code(
@@ -1181,11 +1186,19 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
             for i in range(0, len(attribute_group), MAX_READ_ATTRIBUTES_PER_REQ):
                 chunk = attribute_group[i : i + MAX_READ_ATTRIBUTES_PER_REQ]
-                result = await self.read_attributes_raw(
-                    [attr_def.id for attr_def in chunk],
-                    manufacturer=manufacturer_code,
-                    **kwargs,
-                )
+
+                try:
+                    result = await self.read_attributes_raw(
+                        [attr_def.id for attr_def in chunk],
+                        manufacturer=manufacturer_code,
+                        **kwargs,
+                    )
+                except InvalidDefaultResponse as exc:
+                    # If we get back a default response, all reads in the chunk failed
+                    for attr_def in chunk:
+                        failure[attribute_map[attr_def]] = exc.status
+
+                    continue
 
                 retry_attrs.extend(
                     self._process_read_attributes_response(
@@ -1206,11 +1219,15 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             # at a time, giving each value the whole frame (ZCL R8 §2.5.2.3). An
             # attribute that still does not fit when read alone is a terminal failure.
             for attr_def in retry_attrs:
-                result = await self.read_attributes_raw(
-                    [attr_def.id],
-                    manufacturer=manufacturer_code,
-                    **kwargs,
-                )
+                try:
+                    result = await self.read_attributes_raw(
+                        [attr_def.id],
+                        manufacturer=manufacturer_code,
+                        **kwargs,
+                    )
+                except InvalidDefaultResponse as exc:
+                    failure[attribute_map[attr_def]] = exc.status
+                    continue
 
                 self._process_read_attributes_response(
                     result,
@@ -1226,7 +1243,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
     def _process_read_attributes_response(
         self,
-        result: Any,
+        result: foundation.ReadAttributesResponse | foundation.DefaultResponse,
         chunk: list[foundation.ZCLAttributeDef],
         attribute_map: dict[
             foundation.ZCLAttributeDef, int | str | foundation.ZCLAttributeDef
@@ -1239,10 +1256,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     ) -> list[foundation.ZCLAttributeDef]:
         """Process a Read Attributes Response, updating `success`/`failure` in place."""
 
-        # If we get back a single response status, all reads failed
-        if not isinstance(result[0], list):
+        # A device should never send back a successful default response
+        if isinstance(result, foundation.DefaultResponse):
             for attr_def in chunk:
-                failure[attribute_map[attr_def]] = result[0]
+                failure[attribute_map[attr_def]] = foundation.Status.FAILURE
 
             return []
 
@@ -1253,7 +1270,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         potential_attributes = {attr_def.id: attr_def for attr_def in chunk}
         insufficient_space_attrs: list[foundation.ZCLAttributeDef] = []
 
-        for record in result[0]:
+        for record in result.status_records:
             attr_def = potential_attributes[record.attrid]
             seen_attr_ids.add(record.attrid)
 
@@ -1442,8 +1459,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         **kwargs,
     ) -> foundation.WriteAttributesResponseSchema | foundation.DefaultResponse:
         """Write attributes to the device without any validation or caching."""
-        return await self._write_attributes(
+        result = await self._write_attributes(
             attributes, manufacturer=manufacturer_code, **kwargs
+        )
+
+        return cast(
+            foundation.WriteAttributesResponseSchema | foundation.DefaultResponse,
+            result,
         )
 
     async def write_attributes(
@@ -1488,16 +1510,32 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             for chunk in _chunk_records_by_size(
                 zcl_attrs, lambda a: len(a.serialize())
             ):
-                result = await self.write_attributes_raw(
-                    chunk, manufacturer_code=manufacturer_code, **kwargs
-                )
-
-                if isinstance(result[0], list):
+                try:
+                    result = await self.write_attributes_raw(
+                        chunk, manufacturer_code=manufacturer_code, **kwargs
+                    )
+                except InvalidDefaultResponse as exc:
+                    # If we get back a default response, all writes failed
+                    records_group.extend(
+                        foundation.WriteAttributesStatusRecord(
+                            status=exc.status, attrid=zcl_attr.attrid
+                        )
+                        for zcl_attr in chunk
+                    )
+                else:
+                    # A device should never send back a successful default response
+                    if isinstance(result, foundation.DefaultResponse):
+                        records_group.extend(
+                            foundation.WriteAttributesStatusRecord(
+                                status=foundation.Status.FAILURE, attrid=zcl_attr.attrid
+                            )
+                            for zcl_attr in chunk
+                        )
                     # Check for global success (status=SUCCESS, attrid=None)
-                    if (
-                        len(result[0]) == 1
-                        and result[0][0].status == foundation.Status.SUCCESS
-                        and result[0][0].attrid is None
+                    elif (
+                        len(result.status_records) == 1
+                        and result.status_records[0].status == foundation.Status.SUCCESS
+                        and result.status_records[0].attrid is None
                     ):
                         # Global success: all attributes succeeded
                         records_group.extend(
@@ -1510,11 +1548,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     else:
                         # Only failed writes are in the response. Attributes not
                         # present implicitly succeeded.
-                        failed_attrids = {r.attrid for r in result[0]}
+                        failed_attrids = {r.attrid for r in result.status_records}
                         for zcl_attr in chunk:
                             if zcl_attr.attrid in failed_attrids:
                                 records_group.extend(
-                                    r for r in result[0] if r.attrid == zcl_attr.attrid
+                                    r
+                                    for r in result.status_records
+                                    if r.attrid == zcl_attr.attrid
                                 )
                             else:
                                 records_group.append(
@@ -1523,15 +1563,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                                         attrid=zcl_attr.attrid,
                                     )
                                 )
-                else:
-                    # Default response: apply status to all attributes in this group
-                    status = result[0]
-                    records_group.extend(
-                        foundation.WriteAttributesStatusRecord(
-                            status=status, attrid=zcl_attr.attrid
-                        )
-                        for zcl_attr in chunk
-                    )
 
             results.extend(records_group)
 
@@ -1627,6 +1658,23 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             }
         )
 
+    async def configure_reporting_raw(
+        self,
+        config_records: list[foundation.AttributeReportingConfig],
+        manufacturer_code: int | None = None,
+        **kwargs,
+    ) -> foundation.ConfigureReportingResponseSchema | foundation.DefaultResponse:
+        result = await self._configure_reporting(
+            config_records,
+            manufacturer=manufacturer_code,
+            **kwargs,
+        )
+
+        return cast(
+            foundation.ConfigureReportingResponseSchema | foundation.DefaultResponse,
+            result,
+        )
+
     async def configure_reporting_multiple(
         self, config: dict[foundation.ZCLAttributeDef, ReportingConfig]
     ) -> dict[foundation.ZCLAttributeDef, foundation.Status]:
@@ -1664,37 +1712,46 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             for chunk in _chunk_records_by_size(
                 reporting_configs, lambda pair: len(pair[1].serialize())
             ):
-                rsp = await self._configure_reporting(
-                    [cfg for _attr_def, cfg in chunk],
-                    manufacturer=manufacturer_code,
-                )
-
-                if isinstance(rsp[0], list):
-                    records = rsp[0]
-
-                    # Check for global success (status=SUCCESS, attrid=None)
-                    if (
-                        len(records) == 1
-                        and records[0].status == foundation.Status.SUCCESS
-                        and records[0].attrid is None
-                    ):
-                        # Global success: all attributes succeeded
-                        for attr_def, _cfg in chunk:
-                            group_results[attr_def] = foundation.Status.SUCCESS
-                    else:
-                        # Only failed reports are in the response. Attributes not
-                        # present implicitly succeeded.
-                        failed_attrids = {r.attrid: r.status for r in records}
-                        for attr_def, _cfg in chunk:
-                            if attr_def.id in failed_attrids:
-                                group_results[attr_def] = failed_attrids[attr_def.id]
-                            else:
-                                group_results[attr_def] = foundation.Status.SUCCESS
-                else:
-                    # Default response: apply status to all attributes in this group
-                    status = rsp[1]
+                try:
+                    rsp = await self.configure_reporting_raw(
+                        [cfg for _attr_def, cfg in chunk],
+                        manufacturer_code=manufacturer_code,
+                    )
+                except InvalidDefaultResponse as exc:
+                    # If we get back a default response, all reports failed
                     for attr_def, _cfg in chunk:
-                        group_results[attr_def] = status
+                        group_results[attr_def] = exc.status
+
+                    continue
+
+                # If a device replies with a successful default response, assume the
+                # whole chunk has been configured correctly.
+                if isinstance(rsp, foundation.DefaultResponse):
+                    for attr_def, _cfg in chunk:
+                        group_results[attr_def] = rsp.status
+
+                    continue
+
+                records = rsp.status_records
+
+                # Check for global success (status=SUCCESS, attrid=None)
+                if (
+                    len(records) == 1
+                    and records[0].status == foundation.Status.SUCCESS
+                    and records[0].attrid is None
+                ):
+                    # Global success: all attributes succeeded
+                    for attr_def, _cfg in chunk:
+                        group_results[attr_def] = foundation.Status.SUCCESS
+                else:
+                    # Only failed reports are in the response. Attributes not
+                    # present implicitly succeeded.
+                    failed_attrids = {r.attrid: r.status for r in records}
+                    for attr_def, _cfg in chunk:
+                        if attr_def.id in failed_attrids:
+                            group_results[attr_def] = failed_attrids[attr_def.id]
+                        else:
+                            group_results[attr_def] = foundation.Status.SUCCESS
 
             for attr_def, status in group_results.items():
                 if status == foundation.Status.SUCCESS:

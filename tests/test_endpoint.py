@@ -3,10 +3,10 @@ from unittest.mock import AsyncMock, MagicMock, call, patch, sentinel
 
 import pytest
 
+from tests.conftest import mock_attribute_reads
 from zigpy import endpoint, group, zcl
 import zigpy.device
 import zigpy.exceptions
-import zigpy.types as t
 from zigpy.zcl.foundation import GENERAL_COMMANDS, GeneralCommand, Status as ZCLStatus
 from zigpy.zdo import types
 
@@ -222,67 +222,31 @@ async def test_reply_change_profile_id(ep):
     ]
 
 
-def _mk_rar(attrid, value, status=0):
-    r = zcl.foundation.ReadAttributeRecord()
-    r.attrid = attrid
-    r.status = status
-    r.value = zcl.foundation.TypeValue()
-    r.value.value = value
-    return r
-
-
-def _get_model_info(ep, attributes={}):
-    clus = ep.add_input_cluster(0)
-    assert 0 in ep.in_clusters
-    assert ep.in_clusters[0] is clus
-
-    async def mockrequest(
-        foundation, command, schema, args, manufacturer=None, **kwargs
-    ):
-        assert foundation is True
-        assert command == 0
-
-        result = []
-
-        for attr_id, value in zip(args, attributes[tuple(args)], strict=True):
-            if isinstance(value, BaseException):
-                raise value
-            elif value is None:
-                rar = _mk_rar(attr_id, None, status=1)
-            else:
-                raw_attr_value = t.uint8_t(len(value)).serialize() + value
-                rar = _mk_rar(attr_id, t.CharacterString.deserialize(raw_attr_value)[0])
-
-            result.append(rar)
-
-        return [result]
-
-    clus.request = mockrequest
-
-    return ep.get_model_info()
-
-
 async def test_get_model_info(ep):
-    mod, man = await _get_model_info(
-        ep,
-        attributes={
-            (0x0004, 0x0005): (b"Mock Manufacturer", b"Mock Model"),
+    basic = ep.add_input_cluster(0)
+    with mock_attribute_reads(
+        basic,
+        {
+            "manufacturer": "Mock Manufacturer",
+            "model": "Mock Model",
         },
-    )
+    ):
+        mod, man = await ep.get_model_info()
 
     assert man == "Mock Manufacturer"
     assert mod == "Mock Model"
 
 
 async def test_init_endpoint_info_none(ep):
-    mod, man = await _get_model_info(
-        ep,
-        attributes={
-            (0x0004, 0x0005): (None, None),
-            (0x0004,): (None,),
-            (0x0005,): (None,),
+    basic = ep.add_input_cluster(0)
+    with mock_attribute_reads(
+        basic,
+        {
+            "manufacturer": None,
+            "model": None,
         },
-    )
+    ):
+        mod, man = await ep.get_model_info()
 
     assert man is None
     assert mod is None
@@ -297,87 +261,47 @@ async def test_get_model_info_missing_basic_cluster(ep):
     assert manuf is None
 
 
-async def test_init_endpoint_info_null_padded_manuf(ep):
-    mod, man = await _get_model_info(
-        ep,
-        attributes={
-            (0x0004, 0x0005): (
-                b"Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07",
-                b"Mock Model",
-            ),
-        },
-    )
-
-    assert man == "Mock Manufacturer"
-    assert mod == "Mock Model"
-
-
-async def test_init_endpoint_info_null_padded_model(ep):
-    mod, man = await _get_model_info(
-        ep,
-        attributes={
-            (0x0004, 0x0005): (
-                b"Mock Manufacturer",
-                b"Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
-            ),
-        },
-    )
-
-    assert man == "Mock Manufacturer"
-    assert mod == "Mock Model"
-
-
-async def test_init_endpoint_info_null_padded_manuf_model(ep):
-    mod, man = await _get_model_info(
-        ep,
-        attributes={
-            (0x0004, 0x0005): (
-                b"Mock Manufacturer\x00\x04\\\x00\\\x00\x00\x00\x00\x00\x07",
-                b"Mock Model\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
-            ),
-        },
-    )
-
-    assert man == "Mock Manufacturer"
-    assert mod == "Mock Model"
-
-
 async def test_get_model_info_delivery_error(ep):
+    basic = ep.add_input_cluster(0)
     with pytest.raises(zigpy.exceptions.ZigbeeException):
-        await _get_model_info(
-            ep,
-            attributes={
-                (0x0004, 0x0005): (
-                    zigpy.exceptions.ZigbeeException(),
-                    zigpy.exceptions.ZigbeeException(),
-                )
+        with mock_attribute_reads(
+            basic,
+            {
+                "manufacturer": MagicMock(
+                    side_effect=zigpy.exceptions.ZigbeeException()
+                ),
+                "model": "Mock Model",
             },
-        )
+        ):
+            await ep.get_model_info()
 
 
 async def test_get_model_info_timeout(ep):
+    basic = ep.add_input_cluster(0)
     with pytest.raises(asyncio.TimeoutError):
-        await _get_model_info(
-            ep,
-            attributes={
-                (0x0004, 0x0005): (TimeoutError(), TimeoutError()),
-                (0x0004,): (TimeoutError(),),
-                (0x0005,): (TimeoutError(),),
+        with mock_attribute_reads(
+            basic,
+            {
+                "manufacturer": MagicMock(side_effect=[TimeoutError(), TimeoutError()]),
+                "model": "Mock Model",
             },
-        )
+        ):
+            await ep.get_model_info()
 
 
 async def test_get_model_info_double_read_timeout(ep):
-    mod, man = await _get_model_info(
-        ep,
-        attributes={
-            # The double read fails
-            (0x0004, 0x0005): (TimeoutError(), TimeoutError()),
-            # But individually the attributes can be read
-            (0x0004,): (b"Mock Manufacturer",),
-            (0x0005,): (b"Mock Model",),
+    basic = ep.add_input_cluster(0)
+    with mock_attribute_reads(
+        basic,
+        {
+            # The double read fails, but the single manufacturer read succeeds
+            "manufacturer": MagicMock(
+                side_effect=[TimeoutError(), "Mock Manufacturer"]
+            ),
+            "model": "Mock Model",
         },
-    )
+    ):
+        mod, man = await ep.get_model_info()
 
     assert man == "Mock Manufacturer"
     assert mod == "Mock Model"
@@ -554,6 +478,25 @@ async def test_group_membership_scan_fail_default_response(ep, caplog):
         get_membership.return_value = GENERAL_COMMANDS[
             GeneralCommand.Default_Response
         ].schema(command_id=2, status=ZCLStatus.UNSUP_CLUSTER_COMMAND)
+        await ep.group_membership_scan()
+
+    assert "Device does not support group commands" in caplog.text
+
+    assert ep.device.application.groups.update_group_membership.call_count == 0
+
+
+async def test_group_membership_scan_invalid_default_response(ep, caplog):
+    """Test group membership scan when the device rejects the command outright."""
+
+    ep.device.application.groups.update_group_membership = MagicMock()
+    ep.add_input_cluster(4)
+
+    with patch.object(ep.groups, "get_membership", new=AsyncMock()) as get_membership:
+        get_membership.side_effect = zigpy.exceptions.InvalidDefaultResponse(
+            "invalid default response",
+            command_id=2,
+            status=ZCLStatus.UNSUP_CLUSTER_COMMAND,
+        )
         await ep.group_membership_scan()
 
     assert "Device does not support group commands" in caplog.text

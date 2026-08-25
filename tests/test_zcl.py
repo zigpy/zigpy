@@ -19,12 +19,14 @@ from tests.conftest import (
 from zigpy import zcl
 import zigpy.device
 import zigpy.endpoint
+from zigpy.exceptions import InvalidDefaultResponse
 import zigpy.profiles.zha
 import zigpy.types as t
 from zigpy.zcl import (
     MAX_ATTRIBUTE_RECORDS_BYTES,
     AttributeReadEvent,
     AttributeReportedEvent,
+    AttributeReportingConfiguredEvent,
     AttributeUpdatedEvent,
     AttributeWrittenEvent,
     _chunk_records_by_size,
@@ -423,7 +425,9 @@ async def test_read_attributes_uncached(cluster):
         rar1 = _mk_rar(1, None, foundation.Status.HARDWARE_FAILURE)
         rar5 = _mk_rar(5, "Model")
         rar16 = _mk_rar(0x0010, None, zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE)
-        return [[rar0, rar4, rar1, rar5, rar16]]
+        return foundation.ReadAttributesResponse(
+            status_records=[rar0, rar4, rar1, rar5, rar16]
+        )
 
     cluster.request = mockrequest
     success, failure = await cluster.read_attributes(
@@ -454,7 +458,11 @@ async def test_read_attributes_cached(cluster):
 async def test_read_attributes_mixed_cached(cluster):
     """Reading cached and uncached attributes."""
 
-    cluster.request = AsyncMock(return_value=[[_mk_rar(5, "Model")]])
+    cluster.request = AsyncMock(
+        return_value=foundation.ReadAttributesResponse(
+            status_records=[_mk_rar(5, "Model")]
+        )
+    )
     cluster._attr_cache.set_value(Basic.AttributeDefs.zcl_version, 99)
     cluster._attr_cache.set_value(Basic.AttributeDefs.manufacturer, "Manufacturer")
     cluster.add_unsupported_attribute("location_desc")
@@ -475,14 +483,43 @@ async def test_read_attributes_default_response(cluster):
     ):
         assert foundation is True
         assert command == 0
-        return [0xC1]
+        raise InvalidDefaultResponse(
+            "invalid default response",
+            command_id=command,
+            status=zcl.foundation.Status.SOFTWARE_FAILURE,
+        )
 
     cluster.request = mockrequest
     success, failure = await cluster.read_attributes(
         ["zcl_version", "model", "hw_version"], allow_cache=False
     )
     assert success == {}
-    assert failure == {"zcl_version": 0xC1, "model": 0xC1, "hw_version": 0xC1}
+    assert failure == {
+        "zcl_version": zcl.foundation.Status.SOFTWARE_FAILURE,
+        "model": zcl.foundation.Status.SOFTWARE_FAILURE,
+        "hw_version": zcl.foundation.Status.SOFTWARE_FAILURE,
+    }
+
+
+async def test_read_attributes_success_default_response(cluster):
+    """A successful default response carries no attribute values, so nothing was read."""
+    with mock_attribute_reads(
+        cluster,
+        {},
+        rsp=zcl.foundation.DefaultResponse(
+            command_id=zcl.foundation.GeneralCommand.Read_Attributes,
+            status=zcl.foundation.Status.SUCCESS,
+        ),
+    ):
+        success, failure = await cluster.read_attributes(
+            ["zcl_version", "model"], allow_cache=False
+        )
+
+    assert success == {}
+    assert failure == {
+        "zcl_version": zcl.foundation.Status.FAILURE,
+        "model": zcl.foundation.Status.FAILURE,
+    }
 
 
 async def test_item_access_attributes(cluster):
@@ -522,9 +559,11 @@ async def test_item_access_attributes(cluster):
 
 
 async def test_write_attributes(cluster):
-    success_response = [
-        [foundation.WriteAttributesStatusRecord(status=foundation.Status.SUCCESS)]
-    ]
+    success_response = foundation.WriteAttributesResponseSchema(
+        status_records=[
+            foundation.WriteAttributesStatusRecord(status=foundation.Status.SUCCESS)
+        ]
+    )
     with patch.object(
         cluster, "_write_attributes", new=AsyncMock(return_value=success_response)
     ):
@@ -562,9 +601,11 @@ async def test_write_attribute_types(
     cluster_id: int, attr: str, value: Any, serialized: bytes, cluster_by_id
 ):
     cluster = cluster_by_id(cluster_id)
-    success_response = [
-        [foundation.WriteAttributesStatusRecord(status=foundation.Status.SUCCESS)]
-    ]
+    success_response = foundation.WriteAttributesResponseSchema(
+        status_records=[
+            foundation.WriteAttributesStatusRecord(status=foundation.Status.SUCCESS)
+        ]
+    )
     with patch.object(
         cluster.endpoint, "request", new=AsyncMock(return_value=success_response)
     ):
@@ -575,16 +616,39 @@ async def test_write_attribute_types(
 
 
 @pytest.mark.parametrize(
-    "status", [foundation.Status.SUCCESS, foundation.Status.UNSUPPORTED_ATTRIBUTE]
+    ("status", "expected_status"),
+    [
+        (foundation.Status.SUCCESS, foundation.Status.FAILURE),
+        (
+            foundation.Status.UNSUPPORTED_ATTRIBUTE,
+            foundation.Status.UNSUPPORTED_ATTRIBUTE,
+        ),
+    ],
 )
-async def test_write_attributes_cache_default_response(cluster, status):
-    write_mock = AsyncMock(
-        return_value=[foundation.GeneralCommand.Write_Attributes, status]
-    )
+async def test_write_attributes_cache_default_response(
+    cluster, status, expected_status
+):
+    if status == foundation.Status.SUCCESS:
+        write_mock = AsyncMock(
+            return_value=foundation.DefaultResponse(
+                command_id=foundation.GeneralCommand.Write_Attributes,
+                status=status,
+            )
+        )
+    else:
+        write_mock = AsyncMock(
+            side_effect=InvalidDefaultResponse(
+                "invalid default response",
+                command_id=foundation.GeneralCommand.Write_Attributes,
+                status=status,
+            )
+        )
+
     with patch.object(cluster, "_write_attributes", write_mock):
         attributes = {4: "manufacturer", 5: "model", 12: 12}
-        await cluster.write_attributes(attributes)
+        records = (await cluster.write_attributes(attributes))[0]
         assert cluster._write_attributes.call_count == 1
+        assert {record.status for record in records} == {expected_status}
         for attr_id in attributes:
             assert attr_id not in cluster._attr_cache
 
@@ -601,8 +665,8 @@ async def test_write_attributes_cache_success(cluster, attributes, result):
     event_listener = MagicMock()
     cluster.on_event(AttributeWrittenEvent.event_type, event_listener)
 
-    rsp_type = t.List[foundation.WriteAttributesStatusRecord]
-    write_mock = AsyncMock(return_value=[rsp_type.deserialize(result)[0]])
+    rsp_type = foundation.WriteAttributesResponseSchema
+    write_mock = AsyncMock(return_value=rsp_type.deserialize(result)[0])
     with patch.object(cluster, "_write_attributes", write_mock):
         await cluster.write_attributes(attributes)
         assert cluster._write_attributes.call_count == 1
@@ -643,8 +707,8 @@ async def test_write_attributes_cache_failure(cluster, attributes, result, faile
     event_listener = MagicMock()
     cluster.on_event(AttributeWrittenEvent.event_type, event_listener)
 
-    rsp_type = foundation.WriteAttributesResponse
-    write_mock = AsyncMock(return_value=[rsp_type.deserialize(result)[0]])
+    rsp_type = foundation.WriteAttributesResponseSchema
+    write_mock = AsyncMock(return_value=rsp_type.deserialize(result)[0])
 
     with patch.object(cluster, "_write_attributes", write_mock):
         await cluster.write_attributes(attributes)
@@ -707,9 +771,15 @@ async def test_configure_reporting_wrong_attrid(cluster):
 async def test_configure_reporting_manuf():
     ep = MagicMock()
     cluster = zcl.Cluster.from_id(ep, 6)
-    success_response = [
-        [foundation.ConfigureReportingResponseRecord(status=foundation.Status.SUCCESS)]
-    ]
+    success_response = foundation.ConfigureReportingResponseSchema(
+        status_records=foundation.ConfigureReportingResponse(
+            [
+                foundation.ConfigureReportingResponseRecord(
+                    status=foundation.Status.SUCCESS
+                )
+            ]
+        )
+    )
     cluster.request = AsyncMock(name="request", return_value=success_response)
     await cluster.configure_reporting(0, 10, 20, 1)
     assert cluster.request.mock_calls == [
@@ -893,7 +963,9 @@ async def test_configure_reporting_multiple(cluster):
     cfg_response = zcl.foundation.ConfigureReportingResponse(
         [zcl.foundation.ConfigureReportingResponseRecord(zcl.foundation.Status.SUCCESS)]
     )
-    cluster.endpoint.request.return_value = [cfg_response]
+    cluster.endpoint.request.return_value = (
+        zcl.foundation.ConfigureReportingResponseSchema(status_records=cfg_response)
+    )
 
     await cluster.configure_reporting(
         attribute=3,
@@ -919,9 +991,10 @@ async def test_configure_reporting_multiple(cluster):
 
 async def test_configure_reporting_multiple_def_rsp(cluster):
     """Configure reporting returned a default response. May happen."""
-    cluster.endpoint.request.return_value = (
-        zcl.foundation.GeneralCommand.Configure_Reporting,
-        zcl.foundation.Status.UNSUP_GENERAL_COMMAND,
+    cluster.endpoint.request.side_effect = InvalidDefaultResponse(
+        "invalid default response",
+        command_id=zcl.foundation.GeneralCommand.Configure_Reporting,
+        status=zcl.foundation.Status.UNSUP_GENERAL_COMMAND,
     )
     results = await cluster.configure_reporting_multiple(
         {
@@ -940,6 +1013,37 @@ async def test_configure_reporting_multiple_def_rsp(cluster):
     )
 
 
+async def test_configure_reporting_multiple_success_default_response(cluster):
+    """Some devices confirm reporting with a bare default response. Trust it."""
+    cluster.endpoint.request.return_value = zcl.foundation.DefaultResponse(
+        command_id=zcl.foundation.GeneralCommand.Configure_Reporting,
+        status=zcl.foundation.Status.SUCCESS,
+    )
+
+    events = []
+    cluster.on_event(AttributeReportingConfiguredEvent.event_type, events.append)
+
+    results = await cluster.configure_reporting_multiple(
+        {
+            Basic.AttributeDefs.hw_version: ReportingConfig(
+                min_interval=5, max_interval=15, reportable_change=20
+            ),
+            Basic.AttributeDefs.manufacturer: ReportingConfig(
+                min_interval=6, max_interval=16, reportable_change=26
+            ),
+        }
+    )
+
+    assert results == {
+        Basic.AttributeDefs.hw_version: zcl.foundation.Status.SUCCESS,
+        Basic.AttributeDefs.manufacturer: zcl.foundation.Status.SUCCESS,
+    }
+    assert [event.attribute_name for event in events] == [
+        Basic.AttributeDefs.hw_version.name,
+        Basic.AttributeDefs.manufacturer.name,
+    ]
+
+
 def _mk_cfg_rsp(responses: dict[int, zcl.foundation.Status]):
     """A helper to create a configure response record."""
     cfg_response = zcl.foundation.ConfigureReportingResponse()
@@ -949,7 +1053,7 @@ def _mk_cfg_rsp(responses: dict[int, zcl.foundation.Status]):
                 status, zcl.foundation.ReportingDirection.ReceiveReports, attrid
             )
         )
-    return [cfg_response]
+    return zcl.foundation.ConfigureReportingResponseSchema(status_records=cfg_response)
 
 
 async def test_configure_reporting_multiple_single_success(cluster):
@@ -957,7 +1061,9 @@ async def test_configure_reporting_multiple_single_success(cluster):
     cfg_response = zcl.foundation.ConfigureReportingResponse(
         [zcl.foundation.ConfigureReportingResponseRecord(zcl.foundation.Status.SUCCESS)]
     )
-    cluster.endpoint.request.return_value = [cfg_response]
+    cluster.endpoint.request.return_value = (
+        zcl.foundation.ConfigureReportingResponseSchema(status_records=cfg_response)
+    )
 
     results = await cluster.configure_reporting_multiple(
         {
@@ -2487,7 +2593,10 @@ async def test_configure_reporting_multiple_manufacturer_groups(app_mock) -> Non
         cluster,
         "_configure_reporting",
         new_callable=AsyncMock,
-        side_effect=[[cfg_fail], [cfg_success]],
+        side_effect=[
+            zcl.foundation.ConfigureReportingResponseSchema(status_records=cfg_fail),
+            zcl.foundation.ConfigureReportingResponseSchema(status_records=cfg_success),
+        ],
     ) as mock_configure:
         results = await cluster.configure_reporting_multiple(
             {
@@ -2573,7 +2682,10 @@ async def test_configure_reporting_multiple_chunked_by_size(app_mock) -> None:
         cluster,
         "_configure_reporting",
         new_callable=AsyncMock,
-        side_effect=[[cfg_success], [cfg_success]],
+        side_effect=[
+            zcl.foundation.ConfigureReportingResponseSchema(status_records=cfg_success),
+            zcl.foundation.ConfigureReportingResponseSchema(status_records=cfg_success),
+        ],
     ) as mock_configure:
         results = await cluster.configure_reporting_multiple(dict.fromkeys(attrs, cfg))
 
@@ -2726,6 +2838,36 @@ async def test_read_attributes_insufficient_space_retry_success(app_mock) -> Non
             value=20,
         ),
     ]
+
+
+async def test_read_attributes_insufficient_space_retry_default_response(cluster):
+    """A solo re-read of an attribute that did not fit can itself fail."""
+    with mock_attribute_reads(
+        cluster,
+        {
+            "zcl_version": 1,
+            "model": mock.Mock(
+                side_effect=[
+                    zcl.foundation.Status.INSUFFICIENT_SPACE,
+                    InvalidDefaultResponse(
+                        "invalid default response",
+                        command_id=zcl.foundation.GeneralCommand.Read_Attributes,
+                        status=zcl.foundation.Status.SOFTWARE_FAILURE,
+                    ),
+                ]
+            ),
+        },
+    ) as (mock_read, _):
+        success, failure = await cluster.read_attributes(
+            ["zcl_version", "model"], allow_cache=False
+        )
+
+    assert success == {"zcl_version": 1}
+    assert failure == {"model": zcl.foundation.Status.SOFTWARE_FAILURE}
+
+    # The batched read, then a solo re-read of the attribute that did not fit
+    chunks = [call_obj.args[0] for call_obj in mock_read.call_args_list]
+    assert chunks == [[0x0000, 0x0005], [0x0005]]
 
 
 async def test_read_attributes_insufficient_space_retry_persistent(app_mock) -> None:

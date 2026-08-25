@@ -4,13 +4,18 @@ import typing
 
 if typing.TYPE_CHECKING:
     import zigpy.backups
+    from zigpy.zcl import foundation
 
 
 class ZigbeeException(Exception):
     """Base exception class"""
 
 
-class ParsingError(ZigbeeException):
+class ResponseError(ZigbeeException):
+    """A response was received but cannot be used"""
+
+
+class ParsingError(ResponseError):
     """Failed to parse a frame"""
 
 
@@ -42,8 +47,19 @@ class SendError(DeliveryError):
     """Message could not be enqueued."""
 
 
-class InvalidResponse(ZigbeeException):
+class InvalidResponse(ResponseError):
     """A ZDO or ZCL response has an unsuccessful status code"""
+
+
+class InvalidDefaultResponse(InvalidResponse):
+    """A ZCL default response has an unsuccessful status code"""
+
+    def __init__(
+        self, message: str, command_id: int, status: foundation.Status
+    ) -> None:
+        super().__init__(message)
+        self.command_id = command_id
+        self.status = status
 
 
 class RadioException(Exception):
