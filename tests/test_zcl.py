@@ -26,6 +26,7 @@ from zigpy.zcl import (
     MAX_ATTRIBUTE_RECORDS_BYTES,
     AttributeReadEvent,
     AttributeReportedEvent,
+    AttributeReportingConfiguredEvent,
     AttributeUpdatedEvent,
     AttributeWrittenEvent,
     _chunk_records_by_size,
@@ -497,6 +498,27 @@ async def test_read_attributes_default_response(cluster):
         "zcl_version": zcl.foundation.Status.SOFTWARE_FAILURE,
         "model": zcl.foundation.Status.SOFTWARE_FAILURE,
         "hw_version": zcl.foundation.Status.SOFTWARE_FAILURE,
+    }
+
+
+async def test_read_attributes_success_default_response(cluster):
+    """A successful default response carries no attribute values, so nothing was read."""
+    with mock_attribute_reads(
+        cluster,
+        {},
+        rsp=zcl.foundation.DefaultResponse(
+            command_id=zcl.foundation.GeneralCommand.Read_Attributes,
+            status=zcl.foundation.Status.SUCCESS,
+        ),
+    ):
+        success, failure = await cluster.read_attributes(
+            ["zcl_version", "model"], allow_cache=False
+        )
+
+    assert success == {}
+    assert failure == {
+        "zcl_version": zcl.foundation.Status.FAILURE,
+        "model": zcl.foundation.Status.FAILURE,
     }
 
 
@@ -989,6 +1011,37 @@ async def test_configure_reporting_multiple_def_rsp(cluster):
     assert all(
         s == zcl.foundation.Status.UNSUP_GENERAL_COMMAND for s in results.values()
     )
+
+
+async def test_configure_reporting_multiple_success_default_response(cluster):
+    """Some devices confirm reporting with a bare default response. Trust it."""
+    cluster.endpoint.request.return_value = zcl.foundation.DefaultResponse(
+        command_id=zcl.foundation.GeneralCommand.Configure_Reporting,
+        status=zcl.foundation.Status.SUCCESS,
+    )
+
+    events = []
+    cluster.on_event(AttributeReportingConfiguredEvent.event_type, events.append)
+
+    results = await cluster.configure_reporting_multiple(
+        {
+            Basic.AttributeDefs.hw_version: ReportingConfig(
+                min_interval=5, max_interval=15, reportable_change=20
+            ),
+            Basic.AttributeDefs.manufacturer: ReportingConfig(
+                min_interval=6, max_interval=16, reportable_change=26
+            ),
+        }
+    )
+
+    assert results == {
+        Basic.AttributeDefs.hw_version: zcl.foundation.Status.SUCCESS,
+        Basic.AttributeDefs.manufacturer: zcl.foundation.Status.SUCCESS,
+    }
+    assert [event.attribute_name for event in events] == [
+        Basic.AttributeDefs.hw_version.name,
+        Basic.AttributeDefs.manufacturer.name,
+    ]
 
 
 def _mk_cfg_rsp(responses: dict[int, zcl.foundation.Status]):
@@ -2785,6 +2838,36 @@ async def test_read_attributes_insufficient_space_retry_success(app_mock) -> Non
             value=20,
         ),
     ]
+
+
+async def test_read_attributes_insufficient_space_retry_default_response(cluster):
+    """A solo re-read of an attribute that did not fit can itself fail."""
+    with mock_attribute_reads(
+        cluster,
+        {
+            "zcl_version": 1,
+            "model": mock.Mock(
+                side_effect=[
+                    zcl.foundation.Status.INSUFFICIENT_SPACE,
+                    InvalidDefaultResponse(
+                        "invalid default response",
+                        command_id=zcl.foundation.GeneralCommand.Read_Attributes,
+                        status=zcl.foundation.Status.SOFTWARE_FAILURE,
+                    ),
+                ]
+            ),
+        },
+    ) as (mock_read, _):
+        success, failure = await cluster.read_attributes(
+            ["zcl_version", "model"], allow_cache=False
+        )
+
+    assert success == {"zcl_version": 1}
+    assert failure == {"model": zcl.foundation.Status.SOFTWARE_FAILURE}
+
+    # The batched read, then a solo re-read of the attribute that did not fit
+    chunks = [call_obj.args[0] for call_obj in mock_read.call_args_list]
+    assert chunks == [[0x0000, 0x0005], [0x0005]]
 
 
 async def test_read_attributes_insufficient_space_retry_persistent(app_mock) -> None:
