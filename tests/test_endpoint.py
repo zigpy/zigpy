@@ -485,6 +485,25 @@ async def test_group_membership_scan_fail_default_response(ep, caplog):
     assert ep.device.application.groups.update_group_membership.call_count == 0
 
 
+async def test_group_membership_scan_invalid_default_response(ep, caplog):
+    """Test group membership scan when the device rejects the command outright."""
+
+    ep.device.application.groups.update_group_membership = MagicMock()
+    ep.add_input_cluster(4)
+
+    with patch.object(ep.groups, "get_membership", new=AsyncMock()) as get_membership:
+        get_membership.side_effect = zigpy.exceptions.InvalidDefaultResponse(
+            "invalid default response",
+            command_id=2,
+            status=ZCLStatus.UNSUP_CLUSTER_COMMAND,
+        )
+        await ep.group_membership_scan()
+
+    assert "Device does not support group commands" in caplog.text
+
+    assert ep.device.application.groups.update_group_membership.call_count == 0
+
+
 def test_endpoint_manufacturer_id(ep):
     """Test manufacturer id."""
     ep.device.manufacturer_id = sentinel.manufacturer_id
