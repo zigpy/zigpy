@@ -2640,6 +2640,47 @@ async def test_read_attributes_chunked_by_count(app_mock) -> None:
     }
 
 
+async def test_read_attributes_unsplit(app_mock) -> None:
+    """Read_attributes sends a single request when splitting is disabled."""
+
+    class TestCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            attr_0 = foundation.ZCLAttributeDef(id=0xFF00, type=t.uint8_t)
+            attr_1 = foundation.ZCLAttributeDef(id=0xFF01, type=t.uint8_t)
+            attr_2 = foundation.ZCLAttributeDef(id=0xFF02, type=t.uint8_t)
+            attr_3 = foundation.ZCLAttributeDef(id=0xFF03, type=t.uint8_t)
+            attr_4 = foundation.ZCLAttributeDef(id=0xFF04, type=t.uint8_t)
+            attr_5 = foundation.ZCLAttributeDef(id=0xFF05, type=t.uint8_t)
+            attr_6 = foundation.ZCLAttributeDef(id=0xFF06, type=t.uint8_t)
+            attr_7 = foundation.ZCLAttributeDef(id=0xFF07, type=t.uint8_t)
+            attr_8 = foundation.ZCLAttributeDef(id=0xFF08, type=t.uint8_t)
+            attr_9 = foundation.ZCLAttributeDef(id=0xFF09, type=t.uint8_t)
+            attr_10 = foundation.ZCLAttributeDef(id=0xFF0A, type=t.uint8_t)
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    attrs = [getattr(TestCluster.AttributeDefs, f"attr_{i}") for i in range(11)]
+
+    # Exclude 2 and 7 so the mock returns UNSUPPORTED
+    supported = {attr: i for i, attr in enumerate(attrs) if i not in (2, 7)}
+    with mock_attribute_reads(cluster, supported) as (mock_read, _):
+        success, failure = await cluster.read_attributes(attrs, split_requests=False)
+
+    # All 11 attributes are requested in a single request, in order
+    chunks = [call_obj.args[0] for call_obj in mock_read.call_args_list]
+    assert chunks == [[attr.id for attr in attrs]]
+
+    assert success == supported
+    assert failure == {
+        attrs[2]: foundation.Status.UNSUPPORTED_ATTRIBUTE,
+        attrs[7]: foundation.Status.UNSUPPORTED_ATTRIBUTE,
+    }
+
+
 async def test_read_attributes_insufficient_space_retry_success(app_mock) -> None:
     """An INSUFFICIENT_SPACE record is re-read individually and can then succeed."""
 
