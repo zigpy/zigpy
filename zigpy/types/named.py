@@ -13,6 +13,15 @@ from .struct import Struct
 if typing.TYPE_CHECKING:
     from typing import Self
 
+    from zigpy.zgp.types import (
+        ApplicationID,
+        GPDCommandID,
+        SecurityKeyType,
+        SecurityLevel,
+        SecurityStatus,
+        SrcID,
+    )
+
 
 class Bytes(bytes):
     """A serializable type to consume all remaining bytes."""
@@ -637,7 +646,6 @@ class ZigbeePacket(BaseDataclassMixin):
     def __hash__(self) -> int:
         return hash(
             (
-                self.timestamp,
                 self.src,
                 self.src_ep,
                 self.dst,
@@ -654,6 +662,65 @@ class ZigbeePacket(BaseDataclassMixin):
                 self.lqi,
                 self.rssi,
                 self.priority,
+            )
+        )
+
+
+@dataclasses.dataclass
+class ZigbeeGpPacket(BaseDataclassMixin):
+    """A decoded, decrypted Green Power frame."""
+
+    timestamp: datetime = dataclasses.field(
+        compare=False, default_factory=lambda: datetime.now(UTC)
+    )
+
+    application_id: ApplicationID | None = dataclasses.field(default=None)
+
+    # Only set when ApplicationID is 0b000
+    src_id: SrcID | None = dataclasses.field(default=None)
+
+    # Only set when ApplicationID is 0b010
+    ieee: EUI64 | None = dataclasses.field(default=None)
+    endpoint: basic.uint8_t | None = dataclasses.field(default=None)
+
+    command_id: GPDCommandID | None = dataclasses.field(default=None)
+    payload: basic.SerializableBytes = dataclasses.field(
+        default_factory=basic.SerializableBytes
+    )
+
+    frame_counter: basic.uint32_t | None = dataclasses.field(default=None)
+    security_level: SecurityLevel | None = dataclasses.field(default=None)
+
+    # Only meaningful when `security_status` says security processing succeeded: the
+    # radio has no key type to report for a frame it did not process
+    security_key_type: SecurityKeyType | None = dataclasses.field(default=None)
+
+    # The outcome of GPDF security processing, `None` if the radio does not report it
+    security_status: SecurityStatus | None = dataclasses.field(default=None)
+
+    lqi: basic.uint8_t | None = dataclasses.field(default=None)
+    rssi: basic.int8s | None = dataclasses.field(default=None)
+
+    # Only set by a Green Power 1.0 proxy, in place of `lqi` and `rssi`. The higher
+    # the value, the worse the link; interpretation is otherwise application-specific
+    gpp_distance: basic.uint8_t | None = dataclasses.field(default=None)
+
+    def __hash__(self) -> int:
+        return hash(
+            (
+                self.application_id,
+                self.src_id,
+                self.ieee,
+                self.endpoint,
+                self.command_id,
+                self.payload,
+                self.frame_counter,
+                self.security_level,
+                self.security_key_type,
+                self.security_status,
+                self.lqi,
+                self.rssi,
+                self.gpp_distance,
             )
         )
 

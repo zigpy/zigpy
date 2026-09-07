@@ -227,20 +227,6 @@ def test_skip_configuration(dev):
     assert dev.skip_configuration is True
 
 
-def test_radio_details(dev):
-    dev.radio_details(1, 2)
-    assert dev.lqi == 1
-    assert dev.rssi == 2
-
-    dev.radio_details(lqi=3)
-    assert dev.lqi == 3
-    assert dev.rssi == 2
-
-    dev.radio_details(rssi=4)
-    assert dev.lqi == 3
-    assert dev.rssi == 4
-
-
 async def test_handle_message_deserialize_error(dev):
     ep = dev.add_endpoint(3)
     ep.deserialize = MagicMock(side_effect=ValueError)
@@ -2179,6 +2165,7 @@ async def test_reinterview_during_ota(dev):
     dev._application._device_reinterviewed.assert_not_called()
 
 
+@patch("zigpy.device.AFTER_OTA_ATTR_READ_DELAY", 0.01)
 async def test_update_firmware_triggers_reinterview(monkeypatch, dev):
     """Test that successful OTA triggers reinterview."""
     ep = dev.add_endpoint(1)
@@ -2475,3 +2462,32 @@ async def test_request_retry_delay_releases_concurrency(app) -> None:
         # Tear down the still-pending requests so the task group can exit
         for task in tasks:
             task.cancel()
+
+
+async def test_radio_details_deprecated(dev) -> None:
+    with pytest.deprecated_call():
+        dev.radio_details(lqi=120, rssi=-45)
+
+    assert dev.lqi == 120
+    assert dev.rssi == -45
+
+    with pytest.deprecated_call():
+        dev.radio_details(lqi=99)
+
+    assert dev.lqi == 99
+    assert dev.rssi == -45
+
+    with pytest.deprecated_call():
+        dev.radio_details(rssi=-80)
+
+    assert dev.lqi == 99
+    assert dev.rssi == -80
+
+
+async def test_update_last_seen_deprecated(dev) -> None:
+    assert dev.last_seen is None
+
+    with pytest.deprecated_call():
+        dev.update_last_seen()
+
+    assert dev.last_seen is not None

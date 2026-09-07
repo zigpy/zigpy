@@ -32,7 +32,7 @@ from zigpy.const import (
     SIG_MODEL,
     SIG_NODE_DESC,
 )
-from zigpy.device import Device, Status
+from zigpy.device import Device, GreenPowerDevice, Status
 import zigpy.endpoint
 import zigpy.ota
 import zigpy.types as t
@@ -45,6 +45,7 @@ from zigpy.zcl import (
 from zigpy.zcl.clusters.general import Basic, Identify, OnOff, Ota
 from zigpy.zcl.foundation import Status as ZCLStatus, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
+from zigpy.zgp.types import ApplicationID, SrcID
 
 pytestmark = pytest.mark.usefixtures("auto_kill_aiosqlite")
 
@@ -2081,5 +2082,21 @@ async def test_get_last_ota_query_cmd_returns_none(tmp_path):
     app.device_initialized(dev)
 
     assert dev.get_last_ota_query_cmd() is None
+
+    await app.shutdown()
+
+
+async def test_load_with_green_power_device(tmp_path):
+    """A GPD in `app.devices` has no endpoints whose attribute cache needs clearing."""
+    db = tmp_path / "test.db"
+    app = make_app({conf.CONF_DATABASE: str(db)})
+    gpd = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+    app.devices[gpd.ieee] = gpd
+
+    await app._load_db()
+
+    assert app.devices[gpd.ieee] is gpd
 
     await app.shutdown()

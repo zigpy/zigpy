@@ -9,7 +9,7 @@ import contextlib
 from typing import TYPE_CHECKING
 
 import zigpy.datastructures
-from zigpy.ota import OTA_FETCH_TIMEOUT
+import zigpy.ota
 import zigpy.types as t
 from zigpy.zcl import ClusterType, foundation
 from zigpy.zcl.clusters.general import (
@@ -22,7 +22,7 @@ from zigpy.zcl.clusters.general import (
 if TYPE_CHECKING:
     from typing import Self
 
-    from zigpy.device import Device
+    from zigpy.device import ZigbeeDevice
     from zigpy.ota.providers import OtaImageWithMetadata
 
 
@@ -54,7 +54,7 @@ class OTAManager:
 
     def __init__(
         self,
-        device: Device,
+        device: ZigbeeDevice,
         image: OtaImageWithMetadata,
         progress_callback=None,
         force: bool = False,
@@ -328,7 +328,7 @@ class OTAManager:
 
 
 async def update_firmware(
-    device: Device,
+    device: ZigbeeDevice,
     image: OtaImageWithMetadata,
     progress_callback: Callable[[int, int, float], None] | None = None,
     force: bool = False,
@@ -336,7 +336,7 @@ async def update_firmware(
     """Update the firmware on a Zigbee device."""
     # Fetch firmware if not already downloaded (deferred download for trusted providers)
     if image.firmware is None:
-        async with asyncio_timeout(OTA_FETCH_TIMEOUT):
+        async with asyncio_timeout(zigpy.ota.OTA_FETCH_TIMEOUT):
             image = await image.fetch()
 
     if force:

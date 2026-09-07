@@ -9,7 +9,13 @@ from typing import Self
 
 import zigpy.types as t
 from zigpy.zcl import foundation
-from zigpy.zgp.types import GPDCommandID, SecurityKeyType, SecurityLevel, SwitchType
+from zigpy.zgp.types import (
+    DeviceID,
+    GPDCommandID,
+    SecurityKeyType,
+    SecurityLevel,
+    SwitchType,
+)
 
 
 class GPNoPayload(t.Struct):
@@ -89,7 +95,7 @@ class GPSwitchInformation(t.Struct):
 class GPCommissioningPayload(t.Struct):
     """GP Commissioning command (0xE0) payload."""
 
-    device_id: t.uint8_t
+    device_id: DeviceID
     options: GPCommissioningOptions
 
     extended_options: GPCommissioningExtendedOptions = t.StructField(
@@ -353,8 +359,8 @@ class GPManufacturerDefinedPayload(t.Struct):
 
 
 # Tables 54, 55 and 56. `GPNoPayload` marks a command that the specification defines
-# as payloadless, `None` one whose payload parser is not implemented yet.
-GPD_COMMAND_SCHEMAS: dict[GPDCommandID, type[t.Struct] | None] = {
+# as payloadless.
+GPD_COMMAND_SCHEMAS: dict[GPDCommandID, type[t.Struct]] = {
     # Identify (Table 54)
     GPDCommandID.Identify: GPNoPayload,
     # Scenes (Table 54): the sink fills in the GroupID itself, see sec. A.4.2.7
@@ -431,11 +437,11 @@ GPD_COMMAND_SCHEMAS: dict[GPDCommandID, type[t.Struct] | None] = {
     GPDCommandID.RequestAttributes: GPRequestAttributesPayload,
     # TODO: Figure 147, a `t.SizePrefixedList[foundation.ReadAttributeRecord, t.uint8_t]`
     # per cluster record. No known device implements it.
-    GPDCommandID.ReadAttributesResponse: None,
+    # GPDCommandID.ReadAttributesResponse: None,
     GPDCommandID.ZCLTunneling: GPZCLTunnelingPayload,
     # TODO: unparsable on its own, the layout of its data points is announced by the
     # Application Description command (0xE4) during commissioning
-    GPDCommandID.CompactAttributeReporting: None,
+    # GPDCommandID.CompactAttributeReporting: None,
     # Manufacturer-defined commands (sec. A.4.2.8)
     **{
         GPDCommandID(command_id): GPManufacturerDefinedPayload
@@ -448,11 +454,11 @@ GPD_COMMAND_SCHEMAS: dict[GPDCommandID, type[t.Struct] | None] = {
     GPDCommandID.ChannelRequest: GPChannelRequestPayload,
     # TODO: Figures 122 - 128, nested `t.SizePrefixedList`s for the data point
     # descriptors of each report descriptor. No known device implements it.
-    GPDCommandID.ApplicationDescription: None,
+    # GPDCommandID.ApplicationDescription: None,
     GPDCommandID.CommissioningReply: GPCommissioningReplyPayload,
     # TODO: Figure 150, a `t.SizePrefixedList[foundation.Attribute, t.uint8_t]` per
     # cluster record. No known device implements it.
-    GPDCommandID.WriteAttributes: None,
+    # GPDCommandID.WriteAttributes: None,
     GPDCommandID.ReadAttributes: GPRequestAttributesPayload,
     GPDCommandID.ChannelConfiguration: GPChannelConfigurationPayload,
     GPDCommandID.ZCLTunnelingToGPD: GPZCLTunnelingPayload,

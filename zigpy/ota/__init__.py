@@ -29,6 +29,7 @@ from zigpy.config import (
     CONF_OTA_Z2M_LOCAL_INDEX,
     CONF_OTA_Z2M_REMOTE_INDEX,
 )
+import zigpy.device
 from zigpy.ota.image import BaseOTAImage
 import zigpy.ota.providers
 import zigpy.profiles.zha
@@ -39,7 +40,6 @@ from zigpy.zcl.clusters.general import Ota, QueryNextImageCommand
 
 if typing.TYPE_CHECKING:
     import zigpy.application
-    import zigpy.device
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -164,7 +164,7 @@ class OtaImageWithMetadata(t.BaseDataclassMixin):
 
     def check_compatibility(
         self,
-        device: zigpy.device.Device,
+        device: zigpy.device.ZigbeeDevice,
         query_cmd: QueryNextImageCommand,
     ) -> bool:
         """Check if an OTA image and its metadata is compatible with a device."""
@@ -328,7 +328,7 @@ class OTA:
 
     async def check_device_for_ota(
         self,
-        device: zigpy.device.Device,
+        device: zigpy.device.ZigbeeDevice,
     ) -> None:
         """Check OTA image availability for a single device.
 
@@ -358,6 +358,9 @@ class OTA:
         for user-initiated "check for updates" after invalidate_provider_caches().
         """
         for device in self._application.devices.values():
+            if not isinstance(device, zigpy.device.ZigbeeDevice):
+                continue
+
             try:
                 await self.check_device_for_ota(device)
             except Exception:  # noqa: BLE001
@@ -524,7 +527,7 @@ class OTA:
 
     async def get_ota_images(
         self,
-        device: zigpy.device.Device,
+        device: zigpy.device.ZigbeeDevice,
         query_cmd: QueryNextImageCommand,
     ) -> OtaImagesResult:
         """Get OTA images compatible with the device."""

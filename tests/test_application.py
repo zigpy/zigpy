@@ -121,8 +121,10 @@ async def _remove(
         else:
             raise TimeoutError
 
-    device = MagicMock()
+    device = MagicMock(spec=zigpy.device.ZigbeeDevice)
     device.ieee = ieee
+    device.nwk = 0x1234
+    device.zdo = MagicMock()
     device.zdo.leave.side_effect = leave
 
     if has_node_desc:
@@ -805,9 +807,10 @@ async def test_request_concurrency():
 
 @pytest.fixture
 def device():
-    device = MagicMock()
+    device = MagicMock(spec=zigpy.device.ZigbeeDevice)
     device.nwk = 0xABCD
     device.ieee = t.EUI64.convert("aa:bb:cc:dd:11:22:33:44")
+    device._concurrent_requests_semaphore = MagicMock()
 
     return device
 
@@ -1778,7 +1781,7 @@ async def test_callback_wrapping(
             "zigpy.application",
             logging.WARNING,
             (
-                "Device <Device model=None manuf=None nwk=0x1234 "
+                "Device <ZigbeeDevice model=None manuf=None nwk=0x1234 "
                 "ieee=07:06:05:04:03:02:01:00 is_initialized=False> "
                 "callback failed - ValueError('Boom!')"
             ),
@@ -1807,7 +1810,7 @@ async def test_callback_wrapping_async(
             "zigpy.application",
             logging.WARNING,
             (
-                "Device <Device model=None manuf=None nwk=0x1234 "
+                "Device <ZigbeeDevice model=None manuf=None nwk=0x1234 "
                 "ieee=07:06:05:04:03:02:01:00 is_initialized=False> "
                 "callback failed - ValueError('Boom!')"
             ),
