@@ -1119,6 +1119,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         split_requests: bool = True,
         **kwargs,
     ) -> Any:
+        """Read attributes from the device.
+
+        Setting ``split_requests`` to ``False`` disables fixed-size chunking, but
+        attributes with different manufacturer codes are still read separately.
+        Attributes omitted from a response or reported as ``INSUFFICIENT_SPACE`` are
+        also re-read individually.
+        """
         # Find definition objects for every attribute
         attribute_defs: list[foundation.ZCLAttributeDef] = []
 

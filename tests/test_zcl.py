@@ -1932,7 +1932,8 @@ def test_find_attributes() -> None:
         TestCluster.find_attributes(0x0002, manufacturer_code=0xABCD)
 
 
-async def test_read_attributes_complex() -> None:
+@pytest.mark.parametrize("split_requests", [True, False])
+async def test_read_attributes_complex(split_requests: bool) -> None:
     """Test reading attributes, complex scenario."""
 
     class TestCluster(zcl.Cluster):
@@ -2032,7 +2033,8 @@ async def test_read_attributes_complex() -> None:
                 TestCluster.AttributeDefs.attribute2,  # Batch 1  (no code)
                 TestCluster.AttributeDefs.attribute4,  # Batch 2  (0x5678)
                 TestCluster.AttributeDefs.attribute6,  # Batch 3  (0x1234)
-            ]
+            ],
+            split_requests=split_requests,
         )
 
     assert success == {
@@ -2842,8 +2844,9 @@ async def test_read_attributes_insufficient_space_single_chunk_no_retry(
 
 
 @pytest.mark.parametrize("omitted_again", [False, True])
+@pytest.mark.parametrize("split_requests", [True, False])
 async def test_read_attributes_omitted_record_retry(
-    app_mock, omitted_again: bool
+    app_mock, omitted_again: bool, split_requests: bool
 ) -> None:
     """Records omitted from a response are re-read individually (ZCL R8 §2.5.2.3)."""
 
@@ -2868,7 +2871,9 @@ async def test_read_attributes_omitted_record_retry(
     }
 
     with mock_attribute_reads(cluster, supported) as (mock_read, _):
-        success, failure = await cluster.read_attributes(attrs)
+        success, failure = await cluster.read_attributes(
+            attrs, split_requests=split_requests
+        )
 
     if omitted_again:
         assert success == {TestCluster.AttributeDefs.attr_0: 10}
