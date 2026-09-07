@@ -1116,6 +1116,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         allow_cache: bool = False,
         only_cache: bool = False,
         manufacturer: int | UndefinedType | None = UNDEFINED,
+        *,
         split_requests: bool = True,
         **kwargs,
     ) -> Any:

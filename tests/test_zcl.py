@@ -1945,6 +1945,14 @@ async def test_read_attributes_complex(split_requests: bool) -> None:
             attribute1 = foundation.ZCLAttributeDef(id=0x0001, type=t.uint8_t)
             attribute2 = foundation.ZCLAttributeDef(id=0x0002, type=t.uint8_t)
 
+            # Six attributes without a manufacturer code in total, so that group spans
+            # two requests with splitting enabled (MAX_READ_ATTRIBUTES_PER_REQ is 5)
+            # and exactly one with it disabled
+            attribute7 = foundation.ZCLAttributeDef(id=0x0003, type=t.uint8_t)
+            attribute8 = foundation.ZCLAttributeDef(id=0x0004, type=t.uint8_t)
+            attribute9 = foundation.ZCLAttributeDef(id=0x0005, type=t.uint8_t)
+            attribute10 = foundation.ZCLAttributeDef(id=0x0006, type=t.uint8_t)
+
             # These two can be read together
             attribute3 = foundation.ZCLAttributeDef(
                 id=0x0001, type=t.uint8_t, manufacturer_code=0x1234
@@ -1967,54 +1975,71 @@ async def test_read_attributes_complex(split_requests: bool) -> None:
     async def mock_read_attributes(
         attribute_ids: list[int], manufacturer: int | None = None, **kwargs
     ):
-        status_records = {
-            (None, (0x0001, 0x0002)): [
-                # One is supported
-                foundation.ReadAttributeRecord(
-                    attrid=0x0001,
+        # The attributes without a manufacturer code are split across two requests
+        # or read in one, depending on `split_requests`, so respond per attribute ID
+        no_manuf_code_records = {
+            # This one is supported
+            0x0001: foundation.ReadAttributeRecord(
+                attrid=0x0001,
+                status=foundation.Status.SUCCESS,
+                value=foundation.TypeValue(
+                    type=foundation.DataTypeId.uint8,
+                    value=t.uint8_t(123),
+                ),
+            ),
+            # This one is not
+            0x0002: foundation.ReadAttributeRecord(
+                attrid=0x0002,
+                status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
+            ),
+            **{
+                attrid: foundation.ReadAttributeRecord(
+                    attrid=attrid,
                     status=foundation.Status.SUCCESS,
                     value=foundation.TypeValue(
                         type=foundation.DataTypeId.uint8,
-                        value=t.uint8_t(123),
+                        value=t.uint8_t(attrid),
                     ),
-                ),
-                # The other is not
-                foundation.ReadAttributeRecord(
-                    attrid=0x0002,
-                    status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
-                ),
-            ],
-            (0x1234, (0x0001, 0x0002)): [
-                # Both are supported
-                foundation.ReadAttributeRecord(
-                    attrid=0x0001,
-                    status=foundation.Status.SUCCESS,
-                    value=foundation.TypeValue(
-                        type=foundation.DataTypeId.uint8,
-                        value=t.uint8_t(12),
+                )
+                for attrid in (0x0003, 0x0004, 0x0005, 0x0006)
+            },
+        }
+
+        if manufacturer is None:
+            status_records = [no_manuf_code_records[attrid] for attrid in attribute_ids]
+        else:
+            status_records = {
+                (0x1234, (0x0001, 0x0002)): [
+                    # Both are supported
+                    foundation.ReadAttributeRecord(
+                        attrid=0x0001,
+                        status=foundation.Status.SUCCESS,
+                        value=foundation.TypeValue(
+                            type=foundation.DataTypeId.uint8,
+                            value=t.uint8_t(12),
+                        ),
                     ),
-                ),
-                foundation.ReadAttributeRecord(
-                    attrid=0x0002,
-                    status=foundation.Status.SUCCESS,
-                    value=foundation.TypeValue(
-                        type=foundation.DataTypeId.uint8,
-                        value=t.uint8_t(34),
+                    foundation.ReadAttributeRecord(
+                        attrid=0x0002,
+                        status=foundation.Status.SUCCESS,
+                        value=foundation.TypeValue(
+                            type=foundation.DataTypeId.uint8,
+                            value=t.uint8_t(34),
+                        ),
                     ),
-                ),
-            ],
-            (0x5678, (0x0003, 0x0004)): [
-                # Neither of these are supported
-                foundation.ReadAttributeRecord(
-                    attrid=0x0003,
-                    status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
-                ),
-                foundation.ReadAttributeRecord(
-                    attrid=0x0004,
-                    status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
-                ),
-            ],
-        }[manufacturer, tuple(attribute_ids)]
+                ],
+                (0x5678, (0x0003, 0x0004)): [
+                    # Neither of these are supported
+                    foundation.ReadAttributeRecord(
+                        attrid=0x0003,
+                        status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
+                    ),
+                    foundation.ReadAttributeRecord(
+                        attrid=0x0004,
+                        status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
+                    ),
+                ],
+            }[manufacturer, tuple(attribute_ids)]
 
         return foundation.GENERAL_COMMANDS[
             foundation.GeneralCommand.Read_Attributes_rsp
@@ -2033,6 +2058,10 @@ async def test_read_attributes_complex(split_requests: bool) -> None:
                 TestCluster.AttributeDefs.attribute2,  # Batch 1  (no code)
                 TestCluster.AttributeDefs.attribute4,  # Batch 2  (0x5678)
                 TestCluster.AttributeDefs.attribute6,  # Batch 3  (0x1234)
+                TestCluster.AttributeDefs.attribute7,  # Batch 1  (no code)
+                TestCluster.AttributeDefs.attribute8,  # Batch 1  (no code)
+                TestCluster.AttributeDefs.attribute9,  # Batch 1  (no code)
+                TestCluster.AttributeDefs.attribute10,  # Batch 1  (no code)
             ],
             split_requests=split_requests,
         )
@@ -2041,6 +2070,10 @@ async def test_read_attributes_complex(split_requests: bool) -> None:
         TestCluster.AttributeDefs.attribute1: 123,
         TestCluster.AttributeDefs.attribute3: 12,
         TestCluster.AttributeDefs.attribute4: 34,
+        TestCluster.AttributeDefs.attribute7: 0x0003,
+        TestCluster.AttributeDefs.attribute8: 0x0004,
+        TestCluster.AttributeDefs.attribute9: 0x0005,
+        TestCluster.AttributeDefs.attribute10: 0x0006,
     }
 
     assert failure == {
@@ -2049,11 +2082,22 @@ async def test_read_attributes_complex(split_requests: bool) -> None:
         TestCluster.AttributeDefs.attribute6: foundation.Status.UNSUPPORTED_ATTRIBUTE,
     }
 
-    assert mock_raw.mock_calls == [
-        call([0x0001, 0x0002], manufacturer=None),
-        call([0x0003, 0x0004], manufacturer=0x5678),
-        call([0x0001, 0x0002], manufacturer=0x1234),
-    ]
+    if split_requests:
+        # The six attributes without a manufacturer code need two requests
+        assert mock_raw.mock_calls == [
+            call([0x0001, 0x0002, 0x0003, 0x0004, 0x0005], manufacturer=None),
+            call([0x0006], manufacturer=None),
+            call([0x0003, 0x0004], manufacturer=0x5678),
+            call([0x0001, 0x0002], manufacturer=0x1234),
+        ]
+    else:
+        # They all fit into a single request, but the manufacturer code grouping
+        # still applies
+        assert mock_raw.mock_calls == [
+            call([0x0001, 0x0002, 0x0003, 0x0004, 0x0005, 0x0006], manufacturer=None),
+            call([0x0003, 0x0004], manufacturer=0x5678),
+            call([0x0001, 0x0002], manufacturer=0x1234),
+        ]
 
 
 async def test_command_explicit_manufacturer():
