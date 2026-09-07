@@ -478,7 +478,11 @@ async def test_ota_trusted_provider_missing_sha3_256_checksum(
 
     # Image should be removed due to missing SHA3-256 checksum
     assert len(images.upgrades) == 0
-    assert "does not have SHA3-256 checksum" in caplog.text
+    assert caplog.text.count("does not have SHA3-256 checksum") == 1
+
+    # The warning is emitted once per index refresh, not once per device check
+    await ota.get_ota_images(device, query_cmd)
+    assert caplog.text.count("does not have SHA3-256 checksum") == 1
 
 
 def _make_device_with_ota_cluster(
@@ -687,6 +691,137 @@ async def test_check_all_devices_for_ota_tolerates_failure(query_cmd) -> None:
 
     # device2 should still get checked even though device1 failed
     assert len(events2) == 1
+
+
+async def test_ota_provider_indexes_refreshed_concurrently(
+    query_cmd, ota_image
+) -> None:
+    """Provider indexes are refreshed concurrently, not sequentially."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    meta = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 1,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=ota_image.serialize(),
+    )
+
+    second_provider_started = asyncio.get_running_loop().create_future()
+
+    class WaitingProvider(SelfContainedProvider):
+        """Provider that blocks until the second provider's refresh starts."""
+
+        async def _load_index(self, session):
+            await second_provider_started
+
+            for meta in self._index:
+                yield meta
+
+    class SignallingProvider(SelfContainedProvider):
+        """Provider that unblocks the first provider."""
+
+        async def _load_index(self, session):
+            second_provider_started.set_result(None)
+
+            for meta in self._index:
+                yield meta
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    # The waiting provider is registered (and so refreshed) first: a sequential
+    # refresh would stall here until the fetch timeout expires
+    ota.register_provider(WaitingProvider([meta]))
+    ota.register_provider(SignallingProvider([meta]))
+
+    images = await ota.get_ota_images(device, query_cmd)
+    assert len(images.upgrades) == 1
+
+
+async def test_ota_index_download_failure_backoff(query_cmd, ota_image) -> None:
+    """Failed index downloads back off exponentially, capped at the index TTL."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    meta = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 1,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=ota_image.serialize(),
+    )
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    provider = SelfContainedProvider([meta])
+    ota.register_provider(provider)
+
+    with patch.object(
+        provider, "_load_index", side_effect=RuntimeError("offline")
+    ) as load_index:
+        # The first check attempts (and fails) a download
+        await ota.get_ota_images(device, query_cmd)
+        assert len(load_index.mock_calls) == 1
+        assert provider._index_failures == 1
+
+        # An immediate second check is backed off, no new attempt is made
+        await ota.get_ota_images(device, query_cmd)
+        assert len(load_index.mock_calls) == 1
+
+        # After the initial retry delay has passed, a new attempt is made
+        provider._index_last_failure -= 2 * provider.INDEX_RETRY_DELAY
+        await ota.get_ota_images(device, query_cmd)
+        assert len(load_index.mock_calls) == 2
+        assert provider._index_failures == 2
+
+        # The delay grows with each failure: the initial delay is no longer enough
+        provider._index_last_failure -= 1.5 * provider.INDEX_RETRY_DELAY
+        await ota.get_ota_images(device, query_cmd)
+        assert len(load_index.mock_calls) == 2
+
+        # The delay never exceeds the index expiration time
+        provider._index_failures = 100
+        provider._index_last_failure -= 2 * provider.INDEX_EXPIRATION_TIME
+        await ota.get_ota_images(device, query_cmd)
+        assert len(load_index.mock_calls) == 3
+
+    # A successful download resets the failure state
+    provider._index_last_failure = datetime.datetime.now(datetime.UTC)
+    provider.invalidate_index()  # the user can always force a retry
+    images = await ota.get_ota_images(device, query_cmd)
+    assert len(images.upgrades) == 1
+    assert provider._index_failures == 0
+
+
+async def test_ota_stale_provider_images_expire(query_cmd, ota_image, caplog) -> None:
+    """Images of a provider that is down for a prolonged time are dropped."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+
+    meta = SelfContainedOtaImageMetadata(
+        file_version=query_cmd.current_file_version + 1,
+        manufacturer_id=query_cmd.manufacturer_code,
+        test_data=ota_image.serialize(),
+    )
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    provider = SelfContainedProvider([meta])
+    ota.register_provider(provider)
+
+    images1 = await ota.get_ota_images(device, query_cmd)
+    assert len(images1.upgrades) == 1
+
+    # The provider has been down for longer than the stale expiration time
+    stale = 2 * provider.STALE_INDEX_EXPIRATION_TIME
+    provider._index_last_updated -= stale
+    provider._index_last_success -= stale
+
+    with patch.object(provider, "_load_index", side_effect=RuntimeError("offline")):
+        images2 = await ota.get_ota_images(device, query_cmd)
+        assert len(images2.upgrades) == 0
+        assert caplog.text.count("dropping its 1 cached images") == 1
+
+        # The warning is not repeated on subsequent failing checks
+        provider._index_last_failure -= 2 * provider.INDEX_RETRY_DELAY
+        await ota.get_ota_images(device, query_cmd)
+        assert caplog.text.count("dropping its 1 cached images") == 1
+
+    # Once the provider recovers, its images are offered again
+    provider.invalidate_index()
+    images3 = await ota.get_ota_images(device, query_cmd)
+    assert images3 == images1
 
 
 async def test_invalidate_provider_caches(query_cmd) -> None:

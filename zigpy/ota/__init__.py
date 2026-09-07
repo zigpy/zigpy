@@ -296,9 +296,7 @@ class OTA:
         is unchanged and is otherwise re-downloaded.
         """
         for provider in self._providers:
-            provider._index_last_updated = datetime.datetime.fromtimestamp(
-                0, tz=datetime.UTC
-            )
+            provider.invalidate_index()
 
     async def check_cluster_for_ota(self, cluster: Ota) -> None:
         """Check OTA image availability for a single OTA cluster.
@@ -480,9 +478,11 @@ class OTA:
             async with asyncio_timeout(OTA_FETCH_TIMEOUT):
                 index = await provider.load_index()
         except Exception as exc:  # noqa: BLE001
-            # Keep the previously-cached images: a provider outage should not
-            # withdraw its images
+            # Keep the previously-cached images: a brief provider outage should
+            # not withdraw its images
             _LOGGER.debug("Failed to load provider %s", provider, exc_info=exc)
+            provider.record_index_failure()
+            self._expire_stale_provider_images(provider)
             return
 
         # The cached index is still fresh
@@ -501,6 +501,17 @@ class OTA:
             if provider.TRUSTED and not meta.trusted:
                 meta = meta.replace(trusted=True)
 
+            # Trusted images are not downloaded before installation, so their
+            # content cannot be verified without a SHA3-256 checksum
+            if meta.trusted and (
+                meta.checksum is None or not meta.checksum.startswith("sha3-256:")
+            ):
+                _LOGGER.warning(
+                    "Trusted image %s does not have SHA3-256 checksum, ignoring",
+                    meta,
+                )
+                continue
+
             if meta in new_images:
                 continue
 
@@ -514,6 +525,33 @@ class OTA:
         # Replace the provider's images wholesale so images withdrawn from the
         # index are revoked
         self._image_cache[provider] = new_images
+
+    def _expire_stale_provider_images(
+        self, provider: zigpy.ota.providers.BaseOtaProvider
+    ) -> None:
+        """Drop a provider's cached images after a prolonged outage.
+
+        A provider that cannot be reached cannot withdraw images either, so
+        images from a provider whose index has not been successfully refreshed
+        for a long time are revoked instead of being offered indefinitely.
+        """
+        images = self._image_cache.get(provider)
+        if not images:
+            return
+
+        now = datetime.datetime.now(datetime.UTC)
+
+        if now - provider._index_last_success <= provider.STALE_INDEX_EXPIRATION_TIME:
+            return
+
+        _LOGGER.warning(
+            "Provider %s has been unreachable for over %s, dropping its"
+            " %d cached images",
+            provider,
+            provider.STALE_INDEX_EXPIRATION_TIME,
+            len(images),
+        )
+        del self._image_cache[provider]
 
     @zigpy.util.combine_concurrent_calls
     async def _fetch_image(self, image: OtaImageWithMetadata) -> OtaImageWithMetadata:
@@ -533,9 +571,11 @@ class OTA:
             p for p in self._providers if p.compatible_with_device(device)
         ]
 
-        # Refresh the index of every provider whose cache expired
-        for provider in compatible_providers:
-            await self._refresh_provider_index(provider)
+        # Refresh the index of every provider whose cache expired, concurrently:
+        # one slow or unreachable provider should not delay the others
+        await asyncio.gather(
+            *(self._refresh_provider_index(p) for p in compatible_providers)
+        )
 
         # Merge the cached images of all compatible providers. The same metadata can
         # be served by multiple providers so prefer entries with downloaded firmware.
@@ -642,33 +682,16 @@ class OTA:
         self,
         upgrades: dict[zigpy.ota.providers.BaseOtaImageMetadata, OtaImageWithMetadata],
     ) -> None:
-        """Remove images with identical versions and specificity but differing contents.
-
-        Also removes trusted images that lack a SHA3-256 checksum, since their content
-        cannot be verified for collision detection.
-        """
+        """Remove images with identical versions and specificity but differing contents."""
         # Structure: {(version, specificity): {content_hash: [images]}}
         collisions: defaultdict[
             tuple[int, int], defaultdict[str, list[OtaImageWithMetadata]]
         ] = defaultdict(lambda: defaultdict(list))
 
-        images_to_remove: list[zigpy.ota.providers.BaseOtaImageMetadata] = []
-
         for img in upgrades.values():
             # Untrusted images are always downloaded above and ones that failed
             # to download were already removed; this should never happen.
             assert img.firmware is not None or img.metadata.trusted
-
-            # Ignore trusted image without SHA3-256 checksum
-            if img.firmware is None and (
-                img.metadata.checksum is None
-                or not img.metadata.checksum.startswith("sha3-256:")
-            ):
-                _LOGGER.warning(
-                    "Trusted image %s does not have SHA3-256 checksum, ignoring", img
-                )
-                images_to_remove.append(img.metadata)
-                continue
 
             # Calculate content hash from firmware if available, otherwise use metadata
             if img.firmware is not None:
@@ -678,13 +701,12 @@ class OTA:
                 )
                 content_hash = "sha3-256:" + hasher.hexdigest()
             else:
-                assert img.metadata.checksum is not None  # Checked above
+                # Trusted images without a SHA3-256 checksum are dropped when
+                # the provider's index is refreshed
+                assert img.metadata.checksum is not None
                 content_hash = img.metadata.checksum
 
             collisions[img.version, img.specificity][content_hash].append(img)
-
-        for meta in images_to_remove:
-            upgrades.pop(meta)
 
         for (version, specificity), buckets in collisions.items():
             # If there are multiple unique hashes, we have a collision
