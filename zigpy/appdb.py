@@ -39,6 +39,14 @@ from zigpy.zcl import (
 from zigpy.zcl.clusters.general import Basic, Ota
 from zigpy.zcl.foundation import Status
 from zigpy.zdo import types as zdo_t
+from zigpy.zgp.device import GPDevice, ieee_to_source_id
+from zigpy.zgp.events import (
+    CommandReceived,
+    DeviceJoined,
+    DeviceLeft,
+    RawCommandReceived,
+)
+from zigpy.zgp.types import SecurityKeyType, SecurityLevel
 
 if TYPE_CHECKING:
     from zigpy.application import ControllerApplication
@@ -55,7 +63,7 @@ if sqlite3.sqlite_version_info < MIN_SQLITE_VERSION:
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 15
+DB_VERSION = 16
 DB_V = f"_v{DB_VERSION}"
 
 UNIX_EPOCH = datetime.fromtimestamp(0, tz=UTC)
@@ -131,6 +139,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self._callback_handlers: asyncio.Queue = asyncio.Queue()
         self.running = False
         self._worker_task = asyncio.create_task(self._worker())
+        self._gp_unsubs: list = []
 
     async def initialize_tables(self) -> None:
         async with self.execute("PRAGMA integrity_check") as cursor:
@@ -725,6 +734,123 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         )
         await self._db.commit()
 
+    def subscribe_to_green_power(self, green_power) -> None:
+        self._gp_unsubs = [
+            green_power.on_event(DeviceJoined.event_type, self._on_gp_device_joined),
+            green_power.on_event(DeviceLeft.event_type, self._on_gp_device_left),
+            green_power.on_event(
+                CommandReceived.event_type, self._on_gp_command_received
+            ),
+            green_power.on_event(
+                RawCommandReceived.event_type, self._on_gp_command_received
+            ),
+        ]
+
+    def unsubscribe_from_green_power(self) -> None:
+        for unsub in self._gp_unsubs:
+            unsub()
+        self._gp_unsubs = []
+
+    def _gp_device(self, device_ieee: str) -> GPDevice | None:
+        source_id = ieee_to_source_id(t.EUI64.convert(device_ieee))
+        if source_id is None:
+            return None
+        return self._application.green_power.get_device(source_id)
+
+    def _on_gp_device_joined(self, event: DeviceJoined) -> None:
+        device = self._gp_device(event.device_ieee)
+        if device is not None:
+            self.enqueue("_save_gp_device", device)
+
+    def _on_gp_device_left(self, event: DeviceLeft) -> None:
+        # The manager removes the device from its registry before emitting
+        # DeviceLeft, so the source ID is derived from the IEEE directly
+        # rather than through a now-stale lookup.
+        source_id = ieee_to_source_id(t.EUI64.convert(event.device_ieee))
+        if source_id is not None:
+            self.enqueue("_remove_gp_device", source_id)
+
+    def _on_gp_command_received(
+        self, event: CommandReceived | RawCommandReceived
+    ) -> None:
+        # Each operational frame advances the device's frame counter (replay
+        # protection, set in the manager before this event fires).  Persist it
+        # with a lightweight single-row UPDATE so the replay baseline survives a
+        # restart, rather than the full-row rewrite _save_gp_device does - the
+        # join-time row already holds the static fields.  A RawCommandReceived
+        # still advanced the counter, so it is handled the same as CommandReceived.
+        device = self._gp_device(event.device_ieee)
+        if device is None:
+            return
+
+        self.enqueue(
+            "_update_gp_frame_counter",
+            device.source_id,
+            device.frame_counter,
+            (device._last_seen or UNIX_EPOCH).timestamp(),
+        )
+
+    async def _save_gp_device(self, device: GPDevice) -> None:
+        q = f"""INSERT INTO gp_devices{DB_V} VALUES (
+            :source_id, :device_id, :security_key, :security_level,
+            :security_key_type, :frame_counter, :manufacturer_id, :model_id,
+            :gpd_commands, :server_clusters, :client_clusters,
+            :mac_seq_num_capability, :rx_on_capability, :fixed_location, :last_seen
+        ) ON CONFLICT (source_id) DO UPDATE SET
+            device_id=excluded.device_id,
+            security_key=excluded.security_key,
+            security_level=excluded.security_level,
+            security_key_type=excluded.security_key_type,
+            frame_counter=excluded.frame_counter,
+            manufacturer_id=excluded.manufacturer_id,
+            model_id=excluded.model_id,
+            gpd_commands=excluded.gpd_commands,
+            server_clusters=excluded.server_clusters,
+            client_clusters=excluded.client_clusters,
+            mac_seq_num_capability=excluded.mac_seq_num_capability,
+            rx_on_capability=excluded.rx_on_capability,
+            fixed_location=excluded.fixed_location,
+            last_seen=excluded.last_seen"""
+        await self.execute(
+            q,
+            {
+                "source_id": device.source_id,
+                "device_id": device.device_id,
+                "security_key": (
+                    bytes(device.security_key).hex() if device.security_key else None
+                ),
+                "security_level": int(device.security_level),
+                "security_key_type": int(device.security_key_type),
+                "frame_counter": device.frame_counter,
+                "manufacturer_id": device.manufacturer_id,
+                "model_id": device.model_id,
+                "gpd_commands": json.dumps(device.gpd_commands),
+                "server_clusters": json.dumps(device.server_clusters),
+                "client_clusters": json.dumps(device.client_clusters),
+                "mac_seq_num_capability": device.mac_seq_num_capability,
+                "rx_on_capability": device.rx_on_capability,
+                "fixed_location": device.fixed_location,
+                "last_seen": (device._last_seen or UNIX_EPOCH).timestamp(),
+            },
+        )
+        await self._db.commit()
+
+    async def _update_gp_frame_counter(
+        self, source_id: int, frame_counter: int, last_seen: float
+    ) -> None:
+        await self.execute(
+            f"UPDATE gp_devices{DB_V} SET frame_counter=?, last_seen=? "
+            f"WHERE source_id=?",
+            (frame_counter, last_seen, source_id),
+        )
+        await self._db.commit()
+
+    async def _remove_gp_device(self, source_id: int) -> None:
+        await self.execute(
+            f"DELETE FROM gp_devices{DB_V} WHERE source_id=?", (source_id,)
+        )
+        await self._db.commit()
+
     def network_backup_created(self, backup: zigpy.backups.NetworkBackup) -> None:
         self.enqueue("_network_backup_created", json.dumps(backup.as_dict()))
 
@@ -803,6 +929,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_routes()
         await self._load_network_backups()
         await self._load_ota_query_cache()
+        await self._load_gp_devices()
 
         await self._db.commit()
 
@@ -1151,6 +1278,59 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         cluster.last_query_cmd = cmd
                         break
 
+    async def _load_gp_devices(self) -> None:
+        green_power = self._application.green_power
+        num_devices = 0
+
+        async with self.execute(
+            f"SELECT source_id, device_id, security_key, security_level, "
+            f"security_key_type, frame_counter, manufacturer_id, model_id, "
+            f"gpd_commands, server_clusters, client_clusters, "
+            f"mac_seq_num_capability, rx_on_capability, fixed_location, last_seen "
+            f"FROM gp_devices{DB_V}"
+        ) as cursor:
+            async for (
+                source_id,
+                device_id,
+                security_key,
+                security_level,
+                security_key_type,
+                frame_counter,
+                manufacturer_id,
+                model_id,
+                gpd_commands,
+                server_clusters,
+                client_clusters,
+                mac_seq_num_capability,
+                rx_on_capability,
+                fixed_location,
+                last_seen,
+            ) in cursor:
+                device = GPDevice(
+                    source_id=source_id,
+                    device_id=device_id,
+                    security_key=(
+                        t.KeyData(bytes.fromhex(security_key)) if security_key else None
+                    ),
+                    security_level=SecurityLevel(security_level),
+                    security_key_type=SecurityKeyType(security_key_type),
+                    frame_counter=frame_counter,
+                    manufacturer_id=manufacturer_id,
+                    model_id=model_id,
+                    gpd_commands=json.loads(gpd_commands),
+                    server_clusters=json.loads(server_clusters),
+                    client_clusters=json.loads(client_clusters),
+                    mac_seq_num_capability=bool(mac_seq_num_capability),
+                    rx_on_capability=bool(rx_on_capability),
+                    fixed_location=bool(fixed_location),
+                )
+                if last_seen > 0:
+                    device.last_seen = last_seen
+                green_power.add_device(device)
+                num_devices += 1
+
+        LOGGER.info("Restored %d GP device(s) from database", num_devices)
+
     async def _register_device_listeners(self) -> None:
         for dev in self._application.devices.values():
             dev.add_context_listener(self)
@@ -1243,6 +1423,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 (self._migrate_to_v13, 13),
                 (self._migrate_to_v14, 14),
                 (self._migrate_to_v15, 15),
+                (self._migrate_to_v16, 16),
             ]:
                 if db_version >= min(to_db_version, DB_VERSION):
                     continue
@@ -1708,3 +1889,23 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             }
         )
         # ota_query_cache_v15 is new and starts empty
+
+    async def _migrate_to_v16(self) -> None:
+        """Schema v16 adds the gp_devices table for Green Power persistence."""
+        await self._migrate_tables(
+            {
+                "devices_v15": "devices_v16",
+                "endpoints_v15": "endpoints_v16",
+                "neighbors_v15": "neighbors_v16",
+                "routes_v15": "routes_v16",
+                "node_descriptors_v15": "node_descriptors_v16",
+                "groups_v15": "groups_v16",
+                "group_members_v15": "group_members_v16",
+                "relays_v15": "relays_v16",
+                "network_backups_v15": "network_backups_v16",
+                "clusters_v15": "clusters_v16",
+                "attributes_cache_v15": "attributes_cache_v16",
+                "ota_query_cache_v15": "ota_query_cache_v16",
+            }
+        )
+        # gp_devices_v16 is new - starts empty
