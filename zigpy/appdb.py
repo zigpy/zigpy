@@ -13,6 +13,7 @@ import aiosqlite
 
 import zigpy.appdb_schemas
 import zigpy.backups
+import zigpy.config as conf
 import zigpy.device
 from zigpy.device import Device, Status as DeviceStatus
 import zigpy.endpoint
@@ -132,6 +133,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self.running = False
         self._worker_task = asyncio.create_task(self._worker())
 
+        self._commit_interval = self._application.config[conf.CONF_DB_COMMIT_INTERVAL]
+        self._commit_task: asyncio.Task | None = None
+        self._has_pending_commits = False
+
     async def initialize_tables(self) -> None:
         async with self.execute("PRAGMA integrity_check") as cursor:
             rows = await cursor.fetchall()
@@ -203,12 +208,90 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 )
             self._callback_handlers.task_done()
 
+    async def _commit(self, force: bool = False) -> None:
+        """Commit changes to the database, optionally deferring the operation.
+
+        When deferred, the timer task only enqueues ``_flush_commit`` onto the
+        worker queue: the actual ``commit()`` runs on the worker, so it always
+        lands at a handler boundary instead of interleaving with an in-flight
+        handler. A crash therefore rolls back the entire in-flight handler
+        rather than persisting a partial set of its statements.
+        """
+        if force or self._commit_interval <= 0:
+            # Cancel any pending delayed commit and commit immediately on the
+            # worker task. This is the synchronous-write path.
+            if self._commit_task is not None:
+                self._commit_task.cancel()
+                self._commit_task = None
+            await self._db.commit()
+            self._has_pending_commits = False
+            return
+
+        # Deferred path: arm the timer once. When it fires, it enqueues a flush
+        # through `_callback_handlers` so the commit serializes with handlers.
+        self._has_pending_commits = True
+        self._arm_commit_timer()
+
+    def _arm_commit_timer(self) -> None:
+        """Start the deferred commit timer, unless one is already running."""
+        if self._commit_task is None or self._commit_task.done():
+            self._commit_task = asyncio.create_task(self._delayed_commit())
+
+    async def _delayed_commit(self) -> None:
+        """Wait out the commit interval, then queue a flush on the worker.
+
+        Cancelling this task is the caller's business: both cancellation sites
+        clear ``_commit_task`` themselves, and ``_arm_commit_timer`` replaces a
+        task that is already done, so the timer never clears a reference that
+        may since have been re-armed by someone else.
+        """
+        await asyncio.sleep(self._commit_interval)
+
+        # The timer has elapsed. Clear the reference so a subsequent `_commit()`
+        # call (from a handler that runs before `_flush_commit` does) can re-arm
+        # a new timer for whatever new writes arrive after this point.
+        self._commit_task = None
+        self.enqueue("_flush_commit")
+
+    async def _flush_commit(self) -> None:
+        """Flush pending commits, invoked by the worker after the delay expires.
+
+        Running on the worker task guarantees commits land only at handler
+        boundaries. If a handler ran after the timer fired but before this
+        method, ``_has_pending_commits`` will still be ``True`` and its writes
+        will be included in this commit.
+        """
+        if not self._has_pending_commits:
+            return
+
+        try:
+            await self._db.commit()
+        except Exception:
+            # Re-arm so the pending writes are retried after another interval,
+            # instead of waiting for the next write or for shutdown.
+            LOGGER.exception("Failed to flush pending database commits")
+            self._arm_commit_timer()
+            return
+
+        self._has_pending_commits = False
+
     async def shutdown(self) -> None:
         """Shutdown connection."""
         self.running = False
         await self._callback_handlers.join()
         if not self._worker_task.done():
             self._worker_task.cancel()
+
+        if self._commit_task is not None:
+            self._commit_task.cancel()
+            self._commit_task = None
+
+        if self._has_pending_commits:
+            try:
+                await self._db.commit()
+            except Exception:
+                LOGGER.exception("Failed to commit pending changes during shutdown")
+            self._has_pending_commits = False
 
         # Delete the journal on shutdown
         await self._set_isolation_level(None)
@@ -271,7 +354,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _update_device_nwk(self, ieee: t.EUI64, nwk: t.NWK) -> None:
         await self.execute(f"UPDATE devices{DB_V} SET nwk=? WHERE ieee=?", (nwk, ieee))
-        await self._db.commit()
+        await self._commit(force=True)
 
     def device_initialized(self, device: Device) -> None:
         pass
@@ -295,7 +378,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "min_update_delta": MIN_UPDATE_DELTA,
             },
         )
-        await self._db.commit()
+        await self._commit()
 
     def device_relays_updated(self, device: Device, relays: t.Relays | None) -> None:
         """Device relay list is updated."""
@@ -310,7 +393,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         DO UPDATE SET relays=excluded.relays WHERE relays != :relays"""
             await self.execute(q, {"ieee": ieee, "relays": relays.serialize()})
 
-        await self._db.commit()
+        await self._commit()
 
     def neighbors_updated(self, ieee: t.EUI64, neighbors: list[zdo_t.Neighbor]) -> None:
         """Neighbor update from Mgmt_Lqi_req."""
@@ -326,7 +409,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.executemany(
             f"INSERT INTO neighbors{DB_V} VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", rows
         )
-        await self._db.commit()
+        await self._commit()
 
     def routes_updated(self, ieee: t.EUI64, routes: list[zdo_t.Route]) -> None:
         """Route update from Mgmt_Rtg_req."""
@@ -340,7 +423,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.executemany(
             f"INSERT INTO routes{DB_V} VALUES (?,?,?,?,?,?,?,?)", rows
         )
-        await self._db.commit()
+        await self._commit()
 
     def group_added(self, group: zigpy.group.Group) -> None:
         """Group is added."""
@@ -351,7 +434,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     ON CONFLICT (group_id)
                     DO UPDATE SET name=excluded.name"""
         await self.execute(q, (group.group_id, group.name))
-        await self._db.commit()
+        await self._commit(force=True)
 
     def group_member_added(self, group: zigpy.group.Group, ep: Endpoint) -> None:
         """Called when a group member is added."""
@@ -362,7 +445,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     ON CONFLICT
                     DO NOTHING"""
         await self.execute(q, (group.group_id, *ep.unique_id))
-        await self._db.commit()
+        await self._commit(force=True)
 
     def group_member_removed(self, group: zigpy.group.Group, ep: Endpoint) -> None:
         """Called when a group member is removed."""
@@ -375,7 +458,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                                                 AND ieee=?
                                                 AND endpoint_id=?"""
         await self.execute(q, (group.group_id, *ep.unique_id))
-        await self._db.commit()
+        await self._commit(force=True)
 
     def group_removed(self, group: zigpy.group.Group) -> None:
         """Called when a group is removed."""
@@ -384,14 +467,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _group_removed(self, group: zigpy.group.Group) -> None:
         q = f"DELETE FROM groups{DB_V} WHERE group_id=?"
         await self.execute(q, (group.group_id,))
-        await self._db.commit()
+        await self._commit(force=True)
 
     def device_removed(self, device: Device) -> None:
         self.enqueue("_remove_device", device)
 
     async def _remove_device(self, device: Device) -> None:
         await self.execute(f"DELETE FROM devices{DB_V} WHERE ieee = ?", (device.ieee,))
-        await self._db.commit()
+        await self._commit(force=True)
 
     def raw_device_initialized(self, device: Device) -> None:
         # We work with a clone of a device so that quirks that run in the same event
@@ -438,7 +521,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             await self._save_attribute_cache(ep)
             await self._save_unsupported_attributes(ep)
         await self._save_ota_query_cache(device)
-        await self._db.commit()
+        await self._commit(force=True)
 
     async def _save_endpoints(self, device: Device) -> None:
         rows = [
@@ -625,7 +708,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             },
         )
 
-        await self._db.commit()
+        await self._commit()
 
     def on_attribute_cleared(self, event: AttributeClearedEvent) -> None:
         self.enqueue("_clear_attribute", event)
@@ -653,7 +736,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "manufacturer_code": event.manufacturer_code,
             },
         )
-        await self._db.commit()
+        await self._commit()
 
     def on_attribute_unsupported(self, event: AttributeUnsupportedEvent) -> None:
         self.enqueue("_unsupported_attribute_added", event)
@@ -680,7 +763,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "timestamp": datetime.now(UTC).timestamp(),
             },
         )
-        await self._db.commit()
+        await self._commit()
 
     def on_ota_query_cache_updated(self, event: OtaQueryCacheUpdatedEvent) -> None:
         self.enqueue("_save_ota_query_cache_entry", event)
@@ -711,7 +794,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 datetime.now(UTC).timestamp(),
             ),
         )
-        await self._db.commit()
+        await self._commit()
 
     def on_ota_query_cache_cleared(self, event: OtaQueryCacheClearedEvent) -> None:
         self.enqueue("_delete_ota_query_cache_entry", event)
@@ -723,7 +806,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             f"DELETE FROM ota_query_cache{DB_V} WHERE ieee = ? AND endpoint_id = ?",
             (event.device_ieee, event.endpoint_id),
         )
-        await self._db.commit()
+        await self._commit()
 
     def network_backup_created(self, backup: zigpy.backups.NetworkBackup) -> None:
         self.enqueue("_network_backup_created", json.dumps(backup.as_dict()))
@@ -735,7 +818,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         backup_json=excluded.backup_json"""
 
         await self.execute(q, (None, backup_json))
-        await self._db.commit()
+        await self._commit(force=True)
 
     def network_backup_removed(self, backup: zigpy.backups.NetworkBackup) -> None:
         self.enqueue("_network_backup_removed", backup.backup_time)
@@ -745,7 +828,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     WHERE json_extract(backup_json, '$.backup_time')=?"""
 
         await self.execute(q, (backup_time.isoformat(),))
-        await self._db.commit()
+        await self._commit(force=True)
 
     async def _read_all_attributes(
         self,
@@ -804,7 +887,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_network_backups()
         await self._load_ota_query_cache()
 
-        await self._db.commit()
+        await self._commit(force=True)
 
         await self._register_device_listeners()
 
