@@ -535,12 +535,14 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 if not initiated_fast_polling:
                     # Ask the device to enter fast polling mode as soon as we are
                     # aware of a PollControl cluster
-                    try:
+                    with contextlib.suppress(TimeoutError, DeliveryError):
                         await self.begin_fast_polling()
-                    except (TimeoutError, DeliveryError):
-                        pass
-                    else:
-                        initiated_fast_polling = True
+
+                    # `begin_fast_polling` returns silently when no PollControl
+                    # cluster is found, which happens until the endpoint hosting
+                    # it has been initialized. Use `_fast_polling` (only set on
+                    # actual success) to decide whether to keep retrying.
+                    initiated_fast_polling = self._fast_polling
 
         # Query model info
         if self.model is not None and self.manufacturer is not None:

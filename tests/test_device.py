@@ -1800,6 +1800,112 @@ async def test_initialize_fast_polling_failure(dev: device.Device) -> None:
     assert dev.begin_fast_polling.mock_calls == [call()]
 
 
+def _make_fast_polling_init_mocks(pollcontrol_endpoint_id):
+    """Build endpoint mocks. Captures the PollControl cluster (if any) for later assertions."""
+    captured: dict = {}
+
+    async def mockepinit(self, *args, **kwargs):
+        self.status = endpoint.Status.ZDO_INIT
+        self.add_input_cluster(Basic.cluster_id)
+
+        if self.endpoint_id == pollcontrol_endpoint_id:
+            poll_control = self.add_input_cluster(PollControl.cluster_id)
+            poll_control.bind = AsyncMock()
+            poll_control.write_attributes = AsyncMock()
+            captured["poll_control"] = poll_control
+
+    async def mock_ep_get_model_info(self):
+        return "Model", "Manufacturer"
+
+    return mockepinit, mock_ep_get_model_info, captured
+
+
+async def test_initialize_fast_polling_pollcontrol_on_later_endpoint(
+    dev: device.Device,
+) -> None:
+    """Fast polling must be retried until the endpoint hosting PollControl is initialized."""
+    mockepinit, mock_ep_get_model_info, captured = _make_fast_polling_init_mocks(
+        pollcontrol_endpoint_id=2
+    )
+
+    with (
+        patch("zigpy.endpoint.Endpoint.initialize", mockepinit),
+        patch("zigpy.endpoint.Endpoint.get_model_info", mock_ep_get_model_info),
+        patch.object(
+            dev.zdo, "Active_EP_req", AsyncMock(return_value=[0, None, [0, 1, 2]])
+        ),
+    ):
+        await dev.initialize()
+
+    # PollControl was on ep2, but `begin_fast_polling` was first attempted after
+    # ep1 was initialized (when no endpoint had PollControl yet). It must be
+    # retried after ep2 is initialized.
+    poll_control = captured["poll_control"]
+    assert dev._fast_polling
+    assert poll_control.bind.mock_calls == [call()]
+    assert poll_control.write_attributes.mock_calls == [
+        call(
+            {
+                PollControl.AttributeDefs.fast_poll_timeout.id: int(
+                    device.DEFAULT_FAST_POLL_TIMEOUT * 4
+                )
+            }
+        )
+    ]
+
+
+async def test_initialize_fast_polling_pollcontrol_on_first_endpoint(
+    dev: device.Device,
+) -> None:
+    """PollControl on the first endpoint: fast polling still binds + writes the timeout."""
+    mockepinit, mock_ep_get_model_info, captured = _make_fast_polling_init_mocks(
+        pollcontrol_endpoint_id=1
+    )
+
+    with (
+        patch("zigpy.endpoint.Endpoint.initialize", mockepinit),
+        patch("zigpy.endpoint.Endpoint.get_model_info", mock_ep_get_model_info),
+        patch.object(
+            dev.zdo, "Active_EP_req", AsyncMock(return_value=[0, None, [0, 1, 2]])
+        ),
+    ):
+        await dev.initialize()
+
+    poll_control = captured["poll_control"]
+    assert dev._fast_polling
+    assert poll_control.bind.mock_calls == [call()]
+    assert poll_control.write_attributes.mock_calls == [
+        call(
+            {
+                PollControl.AttributeDefs.fast_poll_timeout.id: int(
+                    device.DEFAULT_FAST_POLL_TIMEOUT * 4
+                )
+            }
+        )
+    ]
+
+
+async def test_initialize_fast_polling_no_pollcontrol(dev: device.Device) -> None:
+    """No PollControl on any endpoint: no Bind_req issued, fast polling stays off."""
+    mockepinit, mock_ep_get_model_info, _ = _make_fast_polling_init_mocks(
+        pollcontrol_endpoint_id=None
+    )
+    bind_req = AsyncMock()
+
+    with (
+        patch("zigpy.endpoint.Endpoint.initialize", mockepinit),
+        patch("zigpy.endpoint.Endpoint.get_model_info", mock_ep_get_model_info),
+        patch.object(
+            dev.zdo, "Active_EP_req", AsyncMock(return_value=[0, None, [0, 1, 2]])
+        ),
+        patch.object(dev.zdo, "Bind_req", bind_req),
+    ):
+        await dev.initialize()
+
+    assert not dev._fast_polling
+    assert bind_req.mock_calls == []
+
+
 @pytest.mark.parametrize(
     (
         "has_input_cluster",
