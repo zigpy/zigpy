@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any, Final, Self
+from typing import Final, Self
 
 import zigpy.types as t
 from zigpy.zcl import Cluster, OtaQueryCacheUpdatedEvent, foundation
@@ -2033,6 +2033,39 @@ class Ota(Cluster):
         super().__init__(*args, **kwargs)
         self.last_query_cmd: QueryNextImageCommand | None = None
 
+        # If a subclass overrides `handle_cluster_request`, do not interfere. Note: this
+        # will be removed in a future release.
+        if self._takes_over_command_handling:
+            return
+
+        # Owned as defaults so that an OTAManager takes over for the duration of an
+        # upgrade and then falls back to generic defaults.
+        self.respond_to_command(
+            self.ServerCommandDefs.query_next_image,
+            self._handle_query_next_image,
+            default=True,
+        )
+        self.respond_to_command(
+            self.ServerCommandDefs.image_block,
+            self._handle_image_block_req,
+            default=True,
+        )
+        self.respond_to_command(
+            self.ServerCommandDefs.image_page,
+            self._handle_image_block_req,
+            default=True,
+        )
+        self.respond_to_command(
+            self.ServerCommandDefs.upgrade_end,
+            self._unimplemented_request,
+            default=True,
+        )
+        self.respond_to_command(
+            self.ServerCommandDefs.query_specific_file,
+            self._unimplemented_request,
+            default=True,
+        )
+
     class AttributeDefs(BaseAttributeDefs):
         upgrade_server_id: Final = ZCLAttributeDef(
             id=0x0000, type=t.EUI64, access="r", mandatory=True
@@ -2129,36 +2162,15 @@ class Ota(Cluster):
             },
         )
 
-    def handle_cluster_request(
+    def _unimplemented_request(self, hdr: foundation.ZCLHeader, cmd) -> None:
+        """Claim a request whose paired response zigpy does not implement yet."""
+        self.debug("No response implemented for %s, ignoring it", hdr.command_id)
+
+    async def _handle_query_next_image(
         self,
         hdr: foundation.ZCLHeader,
-        args: list[Any],
-        *,
-        # This parameter is unused and kept only for backwards compatibility
-        dst_addressing: t.AddrMode | None = None,
-    ):
-        # We don't want the cluster to do anything here because it would interfere with
-        # the OTA manager
-        device = self.endpoint.device
-        if device.ota_in_progress:
-            return
-
-        if (
-            hdr.direction == foundation.Direction.Client_to_Server
-            and hdr.command_id == self.ServerCommandDefs.query_next_image.id
-        ):
-            self.create_catching_task(
-                self._handle_query_next_image(hdr, args),
-            )
-        elif (
-            hdr.direction == foundation.Direction.Client_to_Server
-            and hdr.command_id == self.ServerCommandDefs.image_block.id
-        ):
-            self.create_catching_task(
-                self._handle_image_block_req(hdr, args),
-            )
-
-    async def _handle_query_next_image(self, hdr, cmd):
+        cmd: QueryNextImageCommand,  # type:ignore[valid-type]
+    ) -> None:
         # Cache the query command fields for proactive OTA lookups
         self.last_query_cmd = cmd
         self.emit(

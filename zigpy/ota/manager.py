@@ -6,6 +6,7 @@ import asyncio
 from asyncio import timeout as asyncio_timeout
 from collections.abc import Callable
 import contextlib
+import functools
 from typing import TYPE_CHECKING
 
 import zigpy.datastructures
@@ -60,9 +61,17 @@ class OTAManager:
         force: bool = False,
     ) -> None:
         self.device = device
+
+        # `image_notify` goes to the first endpoint exposing the cluster, but requests
+        # can come from any of them
         self.ota_cluster = device.find_cluster(
             cluster_id=Ota.cluster_id, cluster_type=ClusterType.Client
         )
+        self.ota_clusters = [
+            ep.out_clusters[Ota.cluster_id]
+            for ep in device.non_zdo_endpoints
+            if Ota.cluster_id in ep.out_clusters
+        ]
 
         self.image = image
         self._image_data = image.firmware.serialize()
@@ -77,45 +86,26 @@ class OTAManager:
         self.stack = contextlib.ExitStack()
 
     def __enter__(self) -> Self:
-        self.stack.enter_context(
-            self.device._application.callback_for_response(
-                src=self.device,
-                filters=[
-                    Ota.ServerCommandDefs.query_next_image.schema(),
-                ],
-                callback=self._image_query_req,
-            )
-        )
+        handlers: dict[foundation.ZCLCommandDef, Callable] = {
+            Ota.ServerCommandDefs.query_next_image: self._image_query_req,
+            Ota.ServerCommandDefs.image_block: self._image_block_req,
+            Ota.ServerCommandDefs.image_page: self._image_page_req,
+            Ota.ServerCommandDefs.upgrade_end: self._upgrade_end,
+        }
 
-        self.stack.enter_context(
-            self.device._application.callback_for_response(
-                src=self.device,
-                filters=[
-                    Ota.ServerCommandDefs.image_block.schema(),
-                ],
-                callback=self._image_block_req,
-            )
-        )
+        # Owning these for the duration of the upgrade displaces the clusters' own
+        # default owners, which resume once this stack is closed
+        with contextlib.ExitStack() as stack:
+            for cluster in self.ota_clusters:
+                for command, handler in handlers.items():
+                    stack.callback(
+                        cluster.respond_to_command(
+                            command, functools.partial(handler, cluster)
+                        )
+                    )
 
-        self.stack.enter_context(
-            self.device._application.callback_for_response(
-                src=self.device,
-                filters=[
-                    Ota.ServerCommandDefs.image_page.schema(),
-                ],
-                callback=self._image_page_req,
-            )
-        )
-
-        self.stack.enter_context(
-            self.device._application.callback_for_response(
-                src=self.device,
-                filters=[
-                    Ota.ServerCommandDefs.upgrade_end.schema(),
-                ],
-                callback=self._upgrade_end,
-            )
-        )
+            # Kept only once every registration succeeded, the rest unwind otherwise
+            self.stack = stack.pop_all()
 
         return self
 
@@ -134,7 +124,10 @@ class OTAManager:
             self._upgrade_end_future.set_result(status)
 
     async def _image_query_req(
-        self, hdr: foundation.ZCLHeader, command: QueryNextImageCommand
+        self,
+        cluster: Ota,
+        hdr: foundation.ZCLHeader,
+        command: QueryNextImageCommand,
     ) -> None:
         """Handle image query request."""
 
@@ -148,7 +141,7 @@ class OTAManager:
             status = foundation.Status.SUCCESS
 
         try:
-            await self.ota_cluster.query_next_image_response(
+            await cluster.query_next_image_response(
                 status=status,
                 manufacturer_code=self.image.firmware.header.manufacturer_id,
                 image_type=self.image.firmware.header.image_type,
@@ -163,10 +156,12 @@ class OTAManager:
         if status != foundation.Status.SUCCESS:
             self._finish(status)
 
-    async def _finish_malformed_image_block_response(self, handler: str, tsn: int):
+    async def _finish_malformed_image_block_response(
+        self, cluster: Ota, handler: str, tsn: int
+    ):
         """Create an image block response failure."""
         try:
-            await self.ota_cluster.image_block_response(
+            await cluster.image_block_response(
                 status=foundation.Status.MALFORMED_COMMAND, tsn=tsn
             )
         except Exception as ex:  # noqa: BLE001
@@ -177,7 +172,10 @@ class OTAManager:
         self._finish(foundation.Status.MALFORMED_COMMAND)
 
     async def _image_block_req(
-        self, hdr: foundation.ZCLHeader, command: ImageBlockCommand
+        self,
+        cluster: Ota,
+        hdr: foundation.ZCLHeader,
+        command: ImageBlockCommand,
     ) -> None:
         """Handle image block request."""
         default_image_block_size = _image_block_size_for_manufacturer(
@@ -189,13 +187,13 @@ class OTAManager:
 
         if not block:
             await self._finish_malformed_image_block_response(
-                "image_block", tsn=hdr.tsn
+                cluster, "image_block", tsn=hdr.tsn
             )
             return
 
         try:
             async with self.device.application.request_priority(t.PacketPriority.LOW):
-                await self.ota_cluster.image_block_response(
+                await cluster.image_block_response(
                     status=foundation.Status.SUCCESS,
                     manufacturer_code=self.image.firmware.header.manufacturer_id,
                     image_type=self.image.firmware.header.image_type,
@@ -223,7 +221,10 @@ class OTAManager:
             self.device.debug("OTA image_block handler exception", exc_info=ex)
 
     async def _image_page_req(
-        self, hdr: foundation.ZCLHeader, command: ImagePageCommand
+        self,
+        cluster: Ota,
+        hdr: foundation.ZCLHeader,
+        command: ImagePageCommand,
     ) -> None:
         """Handle image page request."""
         offset = command.file_offset
@@ -236,6 +237,7 @@ class OTAManager:
 
         if bytes_remaining <= 0:
             await self._finish_malformed_image_block_response(
+                cluster,
                 "image_page_req",
                 tsn=hdr.tsn,
             )
@@ -254,8 +256,8 @@ class OTAManager:
                     t.PacketPriority.LOW
                 ):
                     # Once we have a way to send requests without waiting for replies,
-                    # this can be converted to just `self.ota_cluster.image_block_response`.
-                    await self.ota_cluster.request(
+                    # this can be converted to just `cluster.image_block_response`.
+                    await cluster.request(
                         general=False,
                         command_id=Ota.ClientCommandDefs.image_block_response.id,
                         schema=Ota.ClientCommandDefs.image_block_response.schema,
@@ -289,11 +291,14 @@ class OTAManager:
             await asyncio.sleep(command.response_spacing / 1000)
 
     async def _upgrade_end(
-        self, hdr: foundation.ZCLHeader, command: foundation.CommandSchema
+        self,
+        cluster: Ota,
+        hdr: foundation.ZCLHeader,
+        command: foundation.CommandSchema,
     ) -> None:
         """Handle upgrade end request."""
         try:
-            await self.ota_cluster.upgrade_end_response(
+            await cluster.upgrade_end_response(
                 manufacturer_code=self.image.firmware.header.manufacturer_id,
                 image_type=self.image.firmware.header.image_type,
                 file_version=self.image.firmware.header.file_version,

@@ -501,6 +501,75 @@ async def test_handle_unknown_cluster(dev, caplog) -> None:
     assert "Ignoring message on unknown cluster: 0x9999" in caplog.text
 
 
+async def test_device_owns_poll_control_checkin(dev) -> None:
+    """Test that a device claims the check-in, so no Default Response duplicates it."""
+    ep = dev.add_endpoint(1)
+
+    with patch.object(device.Device, "poll_control_checkin_callback") as checkin:
+        cluster = ep.add_input_cluster(PollControl.cluster_id)
+        hdr, command = cluster.deserialize(b"\x09\x4c\x00")
+
+        with patch.object(cluster, "send_default_rsp") as rsp:
+            cluster.handle_message(hdr, command)
+
+    assert checkin.mock_calls == [call(hdr, command)]
+    assert len(rsp.mock_calls) == 0
+
+
+async def test_quirk_displaces_device_poll_control_checkin(dev) -> None:
+    """Test that a cluster owning the check-in itself displaces the device's owner."""
+    quirk_calls = []
+
+    class CustomPollControl(PollControl):
+        _skip_registry = True
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.respond_to_command(
+                PollControl.ClientCommandDefs.checkin,
+                lambda hdr, cmd: quirk_calls.append(cmd),
+            )
+
+    ep = dev.add_endpoint(1)
+
+    # Building the endpoint does not raise, even though the device owns the check-in too
+    cluster = ep.add_input_cluster(
+        PollControl.cluster_id, cluster=CustomPollControl(ep)
+    )
+
+    hdr, command = cluster._create_request(
+        general=False,
+        command_id=PollControl.ClientCommandDefs.checkin.id,
+        schema=PollControl.ClientCommandDefs.checkin.schema,
+        tsn=0x4C,
+        disable_default_response=False,
+        direction=foundation.Direction.Server_to_Client,
+        args=(),
+        kwargs={},
+    )
+
+    with (
+        patch.object(device.Device, "poll_control_checkin_callback") as checkin,
+        patch.object(cluster, "send_default_rsp") as rsp,
+    ):
+        dev.packet_received(
+            t.ZigbeePacket(
+                src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+                src_ep=1,
+                dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+                dst_ep=1,
+                tsn=hdr.tsn,
+                profile_id=260,
+                cluster_id=PollControl.cluster_id,
+                data=t.SerializableBytes(hdr.serialize() + command.serialize()),
+            )
+        )
+
+    assert [c.command.name for c in quirk_calls] == ["checkin"]
+    assert len(checkin.mock_calls) == 0
+    assert len(rsp.mock_calls) == 0
+
+
 async def test_update_device_firmware_no_ota_cluster(dev):
     """Test that device firmware updates fails: no ota cluster."""
     mock_image = MagicMock()
