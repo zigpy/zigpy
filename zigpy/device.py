@@ -37,7 +37,7 @@ from zigpy.ota.manager import update_firmware
 from zigpy.profiles import zha, zll
 import zigpy.types as t
 import zigpy.util
-from zigpy.zcl import Cluster, ClusterType, OtaQueryCacheClearedEvent, foundation
+from zigpy.zcl import Cluster, ClusterType, OtaQueryCacheUpdatedEvent, foundation
 from zigpy.zcl.clusters.general import Ota, PollControl, QueryNextImageCommand
 import zigpy.zdo.types as zdo_t
 
@@ -57,6 +57,10 @@ DEFAULT_REQUEST_RETRIES = 2
 DEFAULT_REQUEST_RETRY_DELAY = 0.1
 
 AFTER_OTA_ATTR_READ_DELAY = 10
+POST_OTA_PROBE_RETRIES = 10
+POST_OTA_CONFIRMATION_TIMEOUT = 300
+
+CHECKIN_ACTION_RETRY_COOLDOWN = 300
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +71,17 @@ class ResponseKey:
     cluster_id: int
     direction: foundation.Direction | None
     tsn: int
+
+
+@dataclass
+class _CheckinAction:
+    """A pending action to run when the device is next seen awake."""
+
+    name: str
+    coro_factory: Callable[[], Coroutine[Any, Any, bool]]
+    cooldown: float
+    task: asyncio.Task | None = None
+    last_attempt: float | None = None
 
 
 class Status(enum.IntEnum):
@@ -118,6 +133,8 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._on_remove_callbacks: list[typing.Callable[[], None]] = []
         self._tasks: set[asyncio.Future[Any]] = set()
 
+        self._checkin_actions: dict[str, _CheckinAction] = {}
+
         self._packet_debouncer = zigpy.datastructures.Debouncer()
         self._concurrent_requests_semaphore = zigpy.datastructures.RequestLimiter(
             max_concurrency=MAX_DEVICE_CONCURRENCY,
@@ -157,6 +174,13 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             callback()
 
         self._on_remove_callbacks.clear()
+
+        # Check-in action tasks run on the application and are deliberately
+        # not cancelled here: `_device_reinterviewed()` calls the old device's
+        # `on_remove()` mid-swap, and an action driving that very re-interview
+        # must not cancel its own call stack. Orphaned tasks fail their device
+        # I/O and are never retriggered.
+        self._checkin_actions.clear()
 
         for task in self._tasks:
             task.cancel()
@@ -411,6 +435,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             if (
                 self.initializing
                 or self.reinterviewing
+                or self.has_pending_checkin_actions
                 or self._concurrent_requests_semaphore.active_requests > 0
                 or self._fast_polling
             ):
@@ -431,6 +456,93 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     expect_reply=False,
                     disable_default_response=True,
                 )
+
+    def register_checkin_action(
+        self,
+        name: str,
+        coro_factory: Callable[[], Coroutine[Any, Any, bool]],
+        *,
+        cooldown: float = CHECKIN_ACTION_RETRY_COOLDOWN,
+    ) -> None:
+        """Run an action the next time the device shows signs of being awake.
+
+        Sleepy end devices can only receive requests for a short moment after
+        they send something themselves. `coro_factory` is called (and the
+        coroutine awaited) when a packet is received from the device. The
+        coroutine must return `True` when the action is complete, which
+        unregisters it, or `False` to retry on a later check-in, no sooner
+        than `cooldown` seconds after the last attempt started. A raised
+        exception is logged and keeps the action registered, like `False`.
+
+        Registering an action with an existing name replaces its coroutine
+        factory but keeps the running attempt and cooldown state.
+        """
+        existing = self._checkin_actions.get(name)
+
+        if existing is not None:
+            # Mutate in place instead of replacing: a running attempt holds a
+            # reference to this object and unregisters by identity on success
+            existing.coro_factory = coro_factory
+            existing.cooldown = cooldown
+            return
+
+        self._checkin_actions[name] = _CheckinAction(
+            name=name,
+            coro_factory=coro_factory,
+            cooldown=cooldown,
+        )
+
+    def remove_checkin_action(self, name: str) -> None:
+        """Remove a previously registered check-in action, if present.
+
+        A currently running attempt is deliberately not cancelled — it may be
+        mid-request (or mid-re-interview) and aborting it is riskier than
+        letting it finish; it just will not be retried afterwards.
+        """
+        self._checkin_actions.pop(name, None)
+
+    @property
+    def has_pending_checkin_actions(self) -> bool:
+        """Return True if any check-in actions are waiting to run."""
+        return bool(self._checkin_actions)
+
+    def _trigger_checkin_actions(self) -> None:
+        """Start all due check-in actions: the device appears to be awake."""
+        now = time.monotonic()
+
+        for action in list(self._checkin_actions.values()):
+            if action.task is not None and not action.task.done():
+                # Already running: ignore traffic caused by the action itself
+                continue
+
+            if (
+                action.last_attempt is not None
+                and now - action.last_attempt < action.cooldown
+            ):
+                continue
+
+            action.last_attempt = now
+            # Run on the application, not the device: device-owned tasks are
+            # cancelled when a re-interview swaps the device object, which
+            # would cancel an action that is itself driving the re-interview.
+            action.task = self._application.create_task(
+                self._run_checkin_action(action),
+                name=f"checkin_action_{action.name}-{self.ieee}",
+            )
+
+    async def _run_checkin_action(self, action: _CheckinAction) -> None:
+        try:
+            done = await action.coro_factory()
+        except Exception:  # noqa: BLE001
+            self.warning(
+                "Check-in action %r failed, will retry on a later check-in",
+                action.name,
+                exc_info=True,
+            )
+            return
+
+        if done and self._checkin_actions.get(action.name) is action:
+            del self._checkin_actions[action.name]
 
     async def begin_fast_polling(
         self, timeout: float = DEFAULT_FAST_POLL_TIMEOUT, *, reset_after: bool = True
@@ -925,6 +1037,12 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         if packet.rssi is not None:
             self.rssi = packet.rssi
 
+        # The device just sent traffic, so it is likely briefly awake and able
+        # to receive queued requests. Duplicate packets are a wake signal too,
+        # so trigger before the debouncer filters them out.
+        if self._checkin_actions:
+            self._trigger_checkin_actions()
+
         # Filter duplicate packets
         if self._should_filter_packet(packet):
             self.debug("Filtering duplicate packet")
@@ -1037,28 +1155,37 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         if result != foundation.Status.SUCCESS:
             return result
 
-        # Clear the current file version when the update succeeds
         ota = self.find_cluster(
             cluster_id=Ota.cluster_id, cluster_type=ClusterType.Client
         )
-        ota.update_attribute(Ota.AttributeDefs.current_file_version.id, None)
-        ota.last_query_cmd = None
-        ota.emit(
-            OtaQueryCacheClearedEvent.event_type,
-            OtaQueryCacheClearedEvent(
-                device_ieee=str(self.ieee),
-                endpoint_id=ota.endpoint.endpoint_id,
-            ),
-        )
 
+        # Devices need a moment after the final block before they're worth
+        # talking to again.
         await asyncio.sleep(AFTER_OTA_ATTR_READ_DELAY)
-        await ota.read_attributes(
-            [Ota.AttributeDefs.current_file_version.name],
-            retries=10,
-            retry_delay=AFTER_OTA_ATTR_READ_DELAY,
-        )
 
-        # Prompt device to send QueryNextImage with updated version for query cache
+        # Wait for the device to confirm it booted into the new firmware,
+        # whichever signal arrives first:
+        #   - a successful active read of `current_file_version` (a quietly
+        #     rebooted mains device that sends no traffic on its own),
+        #   - QueryNextImage with a `current_file_version` that differs from
+        #     the value we cached pre-flash (the OTA cluster's listener will
+        #     also schedule a re-interview when this happens), or
+        #   - Device_annce after the post-flash reboot.
+        try:
+            await asyncio.wait_for(
+                self._wait_for_post_ota_confirmation(ota),
+                timeout=POST_OTA_CONFIRMATION_TIMEOUT,
+            )
+        except TimeoutError:
+            self.warning(
+                "Device did not confirm new firmware within %ds; reinterview "
+                "will run if/when the device next reports a version change",
+                POST_OTA_CONFIRMATION_TIMEOUT,
+            )
+            return result
+
+        # The device responded. Best-effort: tell it to refresh its OTA query
+        # cache so it learns we don't have a newer image for it right now.
         try:
             await ota.image_notify(
                 payload_type=Ota.ImageNotifyCommand.PayloadType.QueryJitter,
@@ -1067,12 +1194,100 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         except Exception:  # noqa: BLE001
             self.debug("Post-OTA image_notify failed", exc_info=True)
 
-        # Re-interview the device after successful OTA to pick up
-        # any changes in clusters/endpoints/model and re-apply quirks.
+        # Re-interview the device after successful OTA to pick up any changes
+        # in clusters/endpoints/model and re-apply quirks. The OTA cluster's
+        # version-change listener may have already driven a re-interview when a
+        # post-flash QueryNextImage arrived: an in-flight one leaves the shadow
+        # device registered (and the `reinterviewing` guard set), a completed
+        # one has replaced this device in `application.devices` — skip both.
         # reinterview() handles its own errors internally.
-        await self.reinterview()
+        if self._application.devices.get(self.ieee, self) is self:
+            await self.reinterview()
 
         return result
+
+    async def _wait_for_post_ota_confirmation(self, ota: Ota) -> None:
+        """Wait until the device confirms a successful boot into new firmware.
+
+        Resolves on whichever signal arrives first:
+        - A successful active read of `current_file_version` (probes devices
+          that reboot without sending any traffic of their own).
+        - A new `QueryNextImageCommand` whose `current_file_version` differs
+          from the value cached on the OTA cluster before this wait began.
+          When no baseline was cached, any query counts: the device is alive
+          and talking after the flash, which is all this wait establishes.
+        - A `device_joined` event for this device on the Application (fires
+          on TC-join and on the Device_annce path when the device's NWK
+          changes or it was unknown).
+
+        Listeners are attached only at the start of this wait and torn down
+        on resolution, timeout, or cancellation, so unrelated joins from
+        before the OTA do not get counted.
+        """
+        snapshot = (
+            ota.last_query_cmd.current_file_version
+            if ota.last_query_cmd is not None
+            else None
+        )
+
+        confirmed = asyncio.Event()
+        device_ieee = self.ieee
+
+        def on_qni_update(event: OtaQueryCacheUpdatedEvent) -> None:
+            if (
+                event.current_file_version is not None
+                and event.current_file_version != snapshot
+            ):
+                confirmed.set()
+
+        unsub_qni = ota.on_event(OtaQueryCacheUpdatedEvent.event_type, on_qni_update)
+
+        class _PostOtaJoinListener:
+            def device_joined(self, joined_dev: Device) -> None:
+                if joined_dev.ieee == device_ieee:
+                    confirmed.set()
+
+        join_listener = _PostOtaJoinListener()
+        self._application.add_listener(join_listener)
+
+        async def probe_version() -> None:
+            # Actively poll the firmware version: sleepy devices won't answer,
+            # but a rebooted-and-quiet mains device will. Any response means
+            # the device survived the flash (and a read also refreshes the
+            # attribute cache with the running version).
+            try:
+                await ota.read_attributes(
+                    [Ota.AttributeDefs.current_file_version.name],
+                    retries=POST_OTA_PROBE_RETRIES,
+                    retry_delay=AFTER_OTA_ATTR_READ_DELAY,
+                )
+            except Exception:  # noqa: BLE001
+                self.debug("Post-OTA firmware version probe went unanswered")
+                return
+
+            confirmed.set()
+
+        probe_task = asyncio.create_task(probe_version())
+
+        try:
+            # Race-safe re-check after attaching listeners: if a confirming
+            # QueryNextImage arrived between snapshot and listener attach,
+            # `last_query_cmd` will already reflect the new version.
+            current = (
+                ota.last_query_cmd.current_file_version
+                if ota.last_query_cmd is not None
+                else None
+            )
+            if current is not None and current != snapshot:
+                return
+
+            await confirmed.wait()
+        finally:
+            probe_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await probe_task
+            unsub_qni()
+            self._application.remove_listener(join_listener)
 
     def get_last_ota_query_cmd(self) -> QueryNextImageCommand | None:
         """Return the last cached QueryNextImageCommand, preferring client clusters."""

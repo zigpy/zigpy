@@ -1,8 +1,10 @@
 import asyncio
+import contextlib
 from contextlib import AsyncExitStack
 from datetime import UTC, datetime
 import logging
 import math
+import time
 from unittest.mock import call
 
 import pytest
@@ -18,7 +20,7 @@ from zigpy.profiles import zha
 import zigpy.state
 import zigpy.types as t
 import zigpy.util
-from zigpy.zcl import ClusterType, OtaQueryCacheClearedEvent, foundation
+from zigpy.zcl import ClusterType, OtaQueryCacheUpdatedEvent, foundation
 from zigpy.zcl.clusters.general import Basic, OnOff, Ota, PollControl
 from zigpy.zdo import types as zdo_t
 
@@ -523,6 +525,7 @@ async def test_update_device_firmware_already_in_progress(dev, caplog):
 
 @patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
 @patch("zigpy.device.AFTER_OTA_ATTR_READ_DELAY", 0.01)
+@patch("zigpy.device.POST_OTA_CONFIRMATION_TIMEOUT", 1)
 async def test_update_device_firmware(monkeypatch, dev, caplog):
     """Test that device firmware updates execute the expected calls."""
     ep = dev.add_endpoint(1)
@@ -711,81 +714,30 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
                 assert cmd.file_version == active_fw_image.firmware.header.file_version
                 assert cmd.current_time == 0
                 assert cmd.upgrade_time == 0
-            elif isinstance(
-                cmd,
-                foundation.GENERAL_COMMANDS[
-                    foundation.GeneralCommand.Read_Attributes
-                ].schema,
-            ):
-                assert cmd.attribute_ids == [Ota.AttributeDefs.current_file_version.id]
 
-                req_hdr, req_cmd = cluster._create_request(
-                    general=True,
-                    command_id=foundation.GeneralCommand.Read_Attributes_rsp,
-                    schema=foundation.GENERAL_COMMANDS[
-                        foundation.GeneralCommand.Read_Attributes_rsp
-                    ].schema,
-                    tsn=hdr.tsn,
-                    disable_default_response=True,
-                    direction=foundation.Direction.Client_to_Server,
-                    args=(),
-                    kwargs={
-                        "status_records": [
-                            foundation.ReadAttributeRecord(
-                                attrid=Ota.AttributeDefs.current_file_version.id,
-                                status=foundation.Status.SUCCESS,
-                                value=foundation.TypeValue(
-                                    type=foundation.DataTypeId.uint32,
-                                    value=active_fw_image.firmware.header.file_version,
-                                ),
-                            )
-                        ]
-                    },
-                )
+                # Simulate the device rebooting and announcing itself.
+                # update_firmware() waits for this signal before sending the
+                # post-OTA image_notify.
+                async def fire_announce() -> None:
+                    await asyncio.sleep(0.05)
+                    dev.application.listener_event("device_joined", dev)
 
-                dev.application.packet_received(
-                    t.ZigbeePacket(
-                        src=t.AddrModeAddress(
-                            addr_mode=t.AddrMode.NWK, address=dev.nwk
-                        ),
-                        src_ep=1,
-                        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
-                        dst_ep=1,
-                        tsn=hdr.tsn,
-                        profile_id=260,
-                        cluster_id=cluster.cluster_id,
-                        data=t.SerializableBytes(
-                            req_hdr.serialize() + req_cmd.serialize()
-                        ),
-                        lqi=255,
-                        rssi=-30,
-                    )
-                )
+                asyncio.create_task(fire_announce())  # noqa: RUF006
 
     dev.application.send_packet = AsyncMock(side_effect=send_packet)
     progress_callback = MagicMock()
 
-    cleared_events = []
-    cluster.on_event(OtaQueryCacheClearedEvent.event_type, cleared_events.append)
-
     result = await dev.update_firmware(fw_image, progress_callback)
-    assert (
-        dev.endpoints[1]
-        .out_clusters[Ota.cluster_id]
-        ._attr_cache[Ota.AttributeDefs.current_file_version.id]
-        == 0x12345678
-    )
 
     # Wait for background tasks (post-OTA query_next_image handling)
     await asyncio.sleep(0)
-    # 6 OTA + 1 post-OTA image_notify + 1 post-OTA query_next_image_response
+    # 5 OTA + 1 probe read + 1 post-OTA image_notify + 1 post-OTA
+    # query_next_image_response
     assert dev.application.send_packet.await_count == 8
     assert progress_callback.call_count == 2
     assert progress_callback.call_args_list[0] == call(40, 70, 57.142857142857146)
     assert progress_callback.call_args_list[1] == call(70, 70, 100.0)
     assert result == foundation.Status.SUCCESS
-    assert len(cleared_events) == 1
-    assert isinstance(cleared_events[0], OtaQueryCacheClearedEvent)
     # Post-OTA image_notify repopulated the query cache
     assert cluster.last_query_cmd is not None
 
@@ -796,7 +748,8 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     )
 
     await asyncio.sleep(0)
-    # 6 OTA + 1 post-OTA image_notify + 1 post-OTA query_next_image_response
+    # 5 OTA + 1 probe read + 1 post-OTA image_notify + 1 post-OTA
+    # query_next_image_response
     assert dev.application.send_packet.await_count == 8
     assert progress_callback.call_count == 2
     assert progress_callback.call_args_list[0] == call(40, 70, 57.142857142857146)
@@ -943,6 +896,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
 
 @patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
 @patch("zigpy.device.AFTER_OTA_ATTR_READ_DELAY", 0.01)
+@patch("zigpy.device.POST_OTA_CONFIRMATION_TIMEOUT", 1)
 async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     """Legrand device (manufacturer_code == 4129) firmware update expects the "image_block" command "maximum_data_size" to be complied with."""
     ep = dev.add_endpoint(1)
@@ -1130,70 +1084,22 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
                 assert cmd.file_version == active_fw_image.firmware.header.file_version
                 assert cmd.current_time == 0
                 assert cmd.upgrade_time == 0
-            elif isinstance(
-                cmd,
-                foundation.GENERAL_COMMANDS[
-                    foundation.GeneralCommand.Read_Attributes
-                ].schema,
-            ):
-                assert cmd.attribute_ids == [Ota.AttributeDefs.current_file_version.id]
 
-                req_hdr, req_cmd = cluster._create_request(
-                    general=True,
-                    command_id=foundation.GeneralCommand.Read_Attributes_rsp,
-                    schema=foundation.GENERAL_COMMANDS[
-                        foundation.GeneralCommand.Read_Attributes_rsp
-                    ].schema,
-                    tsn=hdr.tsn,
-                    disable_default_response=True,
-                    direction=foundation.Direction.Client_to_Server,
-                    args=(),
-                    kwargs={
-                        "status_records": [
-                            foundation.ReadAttributeRecord(
-                                attrid=Ota.AttributeDefs.current_file_version.id,
-                                status=foundation.Status.SUCCESS,
-                                value=foundation.TypeValue(
-                                    type=foundation.DataTypeId.uint32,
-                                    value=active_fw_image.firmware.header.file_version,
-                                ),
-                            )
-                        ]
-                    },
-                )
+                # Simulate the device rebooting and announcing itself.
+                async def fire_announce() -> None:
+                    await asyncio.sleep(0.05)
+                    dev.application.listener_event("device_joined", dev)
 
-                dev.application.packet_received(
-                    t.ZigbeePacket(
-                        src=t.AddrModeAddress(
-                            addr_mode=t.AddrMode.NWK, address=dev.nwk
-                        ),
-                        src_ep=1,
-                        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
-                        dst_ep=1,
-                        tsn=hdr.tsn,
-                        profile_id=260,
-                        cluster_id=cluster.cluster_id,
-                        data=t.SerializableBytes(
-                            req_hdr.serialize() + req_cmd.serialize()
-                        ),
-                        lqi=255,
-                        rssi=-30,
-                    )
-                )
+                asyncio.create_task(fire_announce())  # noqa: RUF006
 
     dev.application.send_packet = AsyncMock(side_effect=send_packet)
     progress_callback = MagicMock()
     result = await dev.update_firmware(fw_image, progress_callback)
-    assert (
-        dev.endpoints[1]
-        .out_clusters[Ota.cluster_id]
-        ._attr_cache[Ota.AttributeDefs.current_file_version.id]
-        == 0x12345678
-    )
 
     # Wait for background tasks (post-OTA query_next_image handling)
     await asyncio.sleep(0)
-    # 6 OTA + 1 post-OTA image_notify + 1 post-OTA query_next_image_response
+    # 5 OTA + 1 probe read + 1 post-OTA image_notify + 1 post-OTA
+    # query_next_image_response
     assert dev.application.send_packet.await_count == 8
     assert progress_callback.call_count == 2
     assert progress_callback.call_args_list[0] == call(64, 70, 91.42857142857143)
@@ -1207,7 +1113,8 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     )
 
     await asyncio.sleep(0)
-    # 6 OTA + 1 post-OTA image_notify + 1 post-OTA query_next_image_response
+    # 5 OTA + 1 probe read + 1 post-OTA image_notify + 1 post-OTA
+    # query_next_image_response
     assert dev.application.send_packet.await_count == 8
     assert progress_callback.call_count == 2
     assert progress_callback.call_args_list[0] == call(64, 70, 91.42857142857143)
@@ -1737,6 +1644,245 @@ async def test_fast_poll_mode_cancel_old_timer(dev: device.Device) -> None:
     await asyncio.sleep(0.3)
     assert dev._fast_polling
 
+
+def make_wake_packet(dev, tsn: int = 0x12) -> t.ZigbeePacket:
+    """Build a minimal inbound packet signalling that the device is awake."""
+    return t.ZigbeePacket(
+        profile_id=260,
+        cluster_id=Basic.cluster_id,
+        src_ep=1,
+        dst_ep=1,
+        data=t.SerializableBytes(
+            foundation.ZCLHeader(
+                frame_control=foundation.FrameControl(
+                    frame_type=foundation.FrameType.GLOBAL_COMMAND,
+                    is_manufacturer_specific=False,
+                    direction=foundation.Direction.Server_to_Client,
+                    disable_default_response=True,
+                    reserved=0,
+                ),
+                tsn=tsn,
+                command_id=foundation.GeneralCommand.Default_Response,
+                manufacturer=None,
+            ).serialize()
+            + (
+                foundation.GENERAL_COMMANDS[foundation.GeneralCommand.Default_Response]
+                .schema(
+                    command_id=Basic.ServerCommandDefs.reset_fact_default.id,
+                    status=foundation.Status.SUCCESS,
+                )
+                .serialize()
+            )
+        ),
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+    )
+
+
+async def test_checkin_action_runs_and_unregisters(dev: device.Device) -> None:
+    """A completed (True) check-in action runs once and is unregistered."""
+    action = AsyncMock(return_value=True)
+    dev.register_checkin_action("test", action)
+    assert dev.has_pending_checkin_actions
+
+    dev.packet_received(make_wake_packet(dev))
+    await asyncio.sleep(0)
+
+    action.assert_awaited_once()
+    assert not dev.has_pending_checkin_actions
+
+    # Further packets do not run it again
+    dev.packet_received(make_wake_packet(dev, tsn=0x13))
+    await asyncio.sleep(0)
+    action.assert_awaited_once()
+
+
+async def test_checkin_action_cooldown(dev: device.Device) -> None:
+    """An incomplete (False) action is retried, but not within its cooldown."""
+    action = AsyncMock(return_value=False)
+    dev.register_checkin_action("test", action, cooldown=60)
+
+    dev.packet_received(make_wake_packet(dev))
+    await asyncio.sleep(0)
+    action.assert_awaited_once()
+    assert dev.has_pending_checkin_actions
+
+    # A packet within the cooldown does not retrigger the action
+    dev.packet_received(make_wake_packet(dev, tsn=0x13))
+    await asyncio.sleep(0)
+    action.assert_awaited_once()
+
+    # After the cooldown expires, the action is retried
+    dev._checkin_actions["test"].last_attempt -= 61
+    dev.packet_received(make_wake_packet(dev, tsn=0x14))
+    await asyncio.sleep(0)
+    assert action.await_count == 2
+
+
+async def test_checkin_action_exception_keeps_registered(
+    dev: device.Device, caplog
+) -> None:
+    """A raising action is logged and stays registered."""
+    action = AsyncMock(side_effect=RuntimeError("Oops"))
+    dev.register_checkin_action("test", action, cooldown=0)
+
+    dev.packet_received(make_wake_packet(dev))
+    await asyncio.sleep(0)
+
+    action.assert_awaited_once()
+    assert "Check-in action 'test' failed" in caplog.text
+    assert dev.has_pending_checkin_actions
+
+    # It is retried on a later check-in
+    dev.packet_received(make_wake_packet(dev, tsn=0x13))
+    await asyncio.sleep(0)
+    assert action.await_count == 2
+
+
+async def test_checkin_action_not_retriggered_while_running(
+    dev: device.Device,
+) -> None:
+    """An in-flight action is not started a second time by its own traffic."""
+    started = 0
+    finish = asyncio.Event()
+
+    async def action() -> bool:
+        nonlocal started
+        started += 1
+        await finish.wait()
+        return True
+
+    dev.register_checkin_action("test", action, cooldown=0)
+
+    dev.packet_received(make_wake_packet(dev))
+    await asyncio.sleep(0)
+    assert started == 1
+
+    # Traffic while the action is running (e.g. its own responses) is ignored
+    dev.packet_received(make_wake_packet(dev, tsn=0x13))
+    await asyncio.sleep(0)
+    assert started == 1
+
+    finish.set()
+    await asyncio.sleep(0)
+    assert not dev.has_pending_checkin_actions
+
+
+async def test_checkin_action_reregistered_while_running(
+    dev: device.Device,
+) -> None:
+    """Re-registering an in-flight action must not orphan its completion."""
+    finish = asyncio.Event()
+
+    async def action() -> bool:
+        await finish.wait()
+        return True
+
+    dev.register_checkin_action("test", action, cooldown=0)
+
+    dev.packet_received(make_wake_packet(dev))
+    await asyncio.sleep(0)
+
+    # Re-register while the first attempt is still running: the entry must be
+    # updated in place so the running attempt can still unregister on success
+    replacement = AsyncMock(return_value=True)
+    dev.register_checkin_action("test", replacement, cooldown=30)
+
+    finish.set()
+    await asyncio.sleep(0)
+
+    assert not dev.has_pending_checkin_actions
+    replacement.assert_not_called()
+
+
+async def test_checkin_action_duplicate_packet_still_triggers(
+    dev: device.Device,
+) -> None:
+    """A duplicate (debounced) packet is still a wake signal."""
+    action = AsyncMock(return_value=False)
+    dev.register_checkin_action("test", action, cooldown=0)
+
+    packet = make_wake_packet(dev)
+    dev.packet_received(packet)
+    await asyncio.sleep(0)
+    dev.packet_received(packet)  # filtered by the debouncer
+    await asyncio.sleep(0)
+
+    assert action.await_count == 2
+
+
+async def test_checkin_action_cleared_on_remove(dev: device.Device) -> None:
+    """Removing the device clears its pending check-in actions."""
+    dev.register_checkin_action("test", AsyncMock(return_value=True))
+    assert dev.has_pending_checkin_actions
+
+    dev.on_remove()
+    assert not dev.has_pending_checkin_actions
+
+
+async def test_checkin_action_remove_is_idempotent(dev: device.Device) -> None:
+    """Removing a missing action is a no-op."""
+    dev.remove_checkin_action("missing")
+
+    dev.register_checkin_action("test", AsyncMock(return_value=True))
+    dev.remove_checkin_action("test")
+    assert not dev.has_pending_checkin_actions
+
+
+async def test_checkin_action_triggered_by_handle_join(app) -> None:
+    """A stack-reported join/announce triggers pending check-in actions."""
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    action = AsyncMock(return_value=True)
+    dev.register_checkin_action("test", action)
+
+    app.handle_join(nwk=dev.nwk, ieee=dev.ieee, parent_nwk=0x0000)
+    await asyncio.sleep(0)
+
+    action.assert_awaited_once()
+    assert not dev.has_pending_checkin_actions
+
+
+async def test_poll_control_checkin_fast_polls_with_pending_actions(
+    dev: device.Device,
+) -> None:
+    """A Poll Control check-in starts fast polling when actions are pending."""
+    ep = dev.add_endpoint(1)
+    poll_control = ep.add_input_cluster(PollControl.cluster_id)
+    poll_control.checkin_response = AsyncMock()
+
+    # Prevent the action from running (and completing) via the trigger, so the
+    # response decision is made while the action is still pending
+    dev.register_checkin_action("test", AsyncMock(return_value=True), cooldown=0)
+    dev._checkin_actions["test"].last_attempt = time.monotonic()
+    dev._checkin_actions["test"].cooldown = 60
+
+    zcl_hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.CLUSTER_COMMAND,
+            is_manufacturer_specific=False,
+            direction=foundation.Direction.Server_to_Client,
+            disable_default_response=1,
+            reserved=0,
+        ),
+        tsn=0x12,
+        command_id=PollControl.ClientCommandDefs.checkin.id,
+    )
+    command = PollControl.ClientCommandDefs.checkin.schema()
+
+    await dev.poll_control_checkin_callback(zcl_hdr, command)
+
+    assert poll_control.checkin_response.mock_calls == [
+        call(
+            start_fast_polling=True,
+            fast_poll_timeout=int(device.DEFAULT_FAST_POLL_TIMEOUT * 4),
+            tsn=0x12,
+            expect_reply=False,
+            disable_default_response=True,
+        )
+    ]
+
     # The second one resets it
     await asyncio.sleep(0.3)
     assert not dev._fast_polling
@@ -2179,8 +2325,332 @@ async def test_reinterview_during_ota(dev):
     dev._application._device_reinterviewed.assert_not_called()
 
 
+async def test_update_firmware_no_reinterview_on_confirmation_timeout(monkeypatch, dev):
+    """update_firmware() does not invoke reinterview() when confirmation times
+    out — recovery is deferred to the version-change listener instead.
+    """
+    ep = dev.add_endpoint(1)
+    cluster = zigpy.zcl.Cluster.from_id(ep, Ota.cluster_id, is_server=False)
+    ep.add_output_cluster(Ota.cluster_id, cluster)
+
+    async def mockrequest(nwk, tries=None, delay=None):
+        return [0, None, [0, 1]]
+
+    async def mockepinit(self, *args, **kwargs):
+        self.status = endpoint.Status.ZDO_INIT
+        self.add_input_cluster(Basic.cluster_id)
+
+    async def mock_ep_get_model_info(self):
+        return "Model", "Manufacturer"
+
+    monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
+    monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
+    dev.zdo.Active_EP_req = mockrequest
+
+    with mock_attribute_reads(cluster, {"current_file_version": 0x00000001}):
+        await dev.initialize()
+
+    monkeypatch.setattr(
+        "zigpy.device.update_firmware",
+        AsyncMock(return_value=foundation.Status.SUCCESS),
+    )
+    monkeypatch.setattr("zigpy.device.AFTER_OTA_ATTR_READ_DELAY", 0)
+    monkeypatch.setattr("zigpy.device.POST_OTA_CONFIRMATION_TIMEOUT", 0.1)
+
+    dev.reinterview = AsyncMock()
+
+    result = await dev.update_firmware(
+        MagicMock(),
+        progress_callback=MagicMock(),
+    )
+
+    assert result == foundation.Status.SUCCESS
+    dev.reinterview.assert_not_called()
+
+
+def _make_post_ota_qni_event(
+    cluster: Ota,
+    current_file_version: int,
+) -> OtaQueryCacheUpdatedEvent:
+    """Build an OtaQueryCacheUpdatedEvent for a cluster with the given version."""
+    return OtaQueryCacheUpdatedEvent(
+        device_ieee=str(cluster.endpoint.device.ieee),
+        endpoint_id=cluster.endpoint.endpoint_id,
+        cluster_type=cluster.cluster_type,
+        cluster_id=cluster.cluster_id,
+        manufacturer_code=0x1234,
+        image_type=0x90,
+        current_file_version=current_file_version,
+        hardware_version=None,
+    )
+
+
+@pytest.fixture
+async def ota_dev(dev):
+    """A device with an OTA out_cluster ready for post-OTA tests."""
+    ep = dev.add_endpoint(1)
+    cluster = zigpy.zcl.Cluster.from_id(ep, Ota.cluster_id, is_server=False)
+    ep.add_output_cluster(Ota.cluster_id, cluster)
+    return dev, cluster
+
+
+async def test_post_ota_confirmation_resolves_on_device_joined(ota_dev):
+    """A `device_joined` event for this device resolves the wait."""
+    dev, cluster = ota_dev
+
+    wait_task = asyncio.create_task(dev._wait_for_post_ota_confirmation(cluster))
+    # Give the wait function a chance to attach its listeners
+    await asyncio.sleep(0)
+
+    dev.application.listener_event("device_joined", dev)
+    await asyncio.wait_for(wait_task, timeout=1.0)
+
+
+async def test_post_ota_confirmation_ignores_other_devices_joining(ota_dev):
+    """A `device_joined` event for a DIFFERENT device must NOT resolve the wait."""
+    dev, cluster = ota_dev
+
+    other = MagicMock()
+    other.ieee = t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11")
+    assert other.ieee != dev.ieee
+
+    wait_task = asyncio.create_task(dev._wait_for_post_ota_confirmation(cluster))
+    await asyncio.sleep(0)
+
+    dev.application.listener_event("device_joined", other)
+    await asyncio.sleep(0)
+    assert not wait_task.done()
+
+    wait_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await wait_task
+
+
+async def test_post_ota_confirmation_resolves_on_version_change(ota_dev):
+    """A version-change OtaQueryCacheUpdatedEvent resolves the wait."""
+    dev, cluster = ota_dev
+
+    # Establish a baseline so the snapshot is non-None
+    cluster.last_query_cmd = Ota.QueryNextImageCommand(
+        field_control=Ota.QueryNextImageCommand.FieldControl(0),
+        manufacturer_code=0x1234,
+        image_type=0x90,
+        current_file_version=0x00000001,
+    )
+
+    wait_task = asyncio.create_task(dev._wait_for_post_ota_confirmation(cluster))
+    await asyncio.sleep(0)
+
+    cluster.emit(
+        "ota_query_cache_updated",
+        _make_post_ota_qni_event(cluster, current_file_version=0x00000002),
+    )
+    await asyncio.wait_for(wait_task, timeout=1.0)
+
+
+async def test_post_ota_confirmation_ignores_same_version(ota_dev):
+    """An OtaQueryCacheUpdatedEvent with the same version does NOT resolve."""
+    dev, cluster = ota_dev
+
+    cluster.last_query_cmd = Ota.QueryNextImageCommand(
+        field_control=Ota.QueryNextImageCommand.FieldControl(0),
+        manufacturer_code=0x1234,
+        image_type=0x90,
+        current_file_version=0x00000001,
+    )
+
+    wait_task = asyncio.create_task(dev._wait_for_post_ota_confirmation(cluster))
+    await asyncio.sleep(0)
+
+    cluster.emit(
+        "ota_query_cache_updated",
+        _make_post_ota_qni_event(cluster, current_file_version=0x00000001),
+    )
+    await asyncio.sleep(0)
+    assert not wait_task.done()
+
+    # Cleanup
+    wait_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await wait_task
+
+
+async def test_post_ota_confirmation_resolves_immediately_on_pre_attach_change(
+    ota_dev,
+):
+    """If the version already changed before the wait started, resolve immediately."""
+    dev, cluster = ota_dev
+
+    cluster.last_query_cmd = Ota.QueryNextImageCommand(
+        field_control=Ota.QueryNextImageCommand.FieldControl(0),
+        manufacturer_code=0x1234,
+        image_type=0x90,
+        current_file_version=0x00000001,
+    )
+
+    # Trigger the version change AFTER snapshot but BEFORE the listeners are
+    # attached: monkey-patch on_event to swap last_query_cmd at attach time.
+    real_on_event = cluster.on_event
+
+    def patched_on_event(event_name, callback, with_context=False):
+        unsub = real_on_event(event_name, callback, with_context=with_context)
+        # Simulate a version change right after listener attach (still before
+        # the wait re-checks the snapshot)
+        cluster.last_query_cmd = Ota.QueryNextImageCommand(
+            field_control=Ota.QueryNextImageCommand.FieldControl(0),
+            manufacturer_code=0x1234,
+            image_type=0x90,
+            current_file_version=0x00000002,
+        )
+        return unsub
+
+    cluster.on_event = patched_on_event
+
+    await asyncio.wait_for(
+        dev._wait_for_post_ota_confirmation(cluster),
+        timeout=1.0,
+    )
+
+
+async def test_post_ota_confirmation_cleans_up_listeners_on_cancel(ota_dev):
+    """Cancellation should remove both listeners."""
+    dev, cluster = ota_dev
+
+    qni_listeners_before = len(
+        cluster._event_listeners.get("ota_query_cache_updated", [])
+    )
+    app_listeners_before = len(dev.application._listeners)
+
+    wait_task = asyncio.create_task(dev._wait_for_post_ota_confirmation(cluster))
+    await asyncio.sleep(0)
+    # Listeners are attached
+    assert (
+        len(cluster._event_listeners.get("ota_query_cache_updated", []))
+        == qni_listeners_before + 1
+    )
+    assert len(dev.application._listeners) == app_listeners_before + 1
+
+    wait_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await wait_task
+
+    # And cleaned up after cancellation
+    assert (
+        len(cluster._event_listeners.get("ota_query_cache_updated", []))
+        == qni_listeners_before
+    )
+    assert len(dev.application._listeners) == app_listeners_before
+
+
+async def test_post_ota_confirmation_unanswered_probe_is_swallowed(ota_dev, caplog):
+    """A probe read that fails outright neither confirms nor raises."""
+    dev, cluster = ota_dev
+
+    cluster.read_attributes = AsyncMock(
+        side_effect=zigpy.exceptions.DeliveryError("Device asleep")
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        wait_task = asyncio.create_task(dev._wait_for_post_ota_confirmation(cluster))
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+    # The probe failed, but the wait keeps waiting for the passive signals
+    cluster.read_attributes.assert_awaited_once()
+    assert "probe went unanswered" in caplog.text
+    assert not wait_task.done()
+
+    # Cleanup
+    wait_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await wait_task
+
+
+async def test_update_firmware_post_ota_timeout(monkeypatch, dev, caplog):
+    """If neither confirmation signal arrives, timeout but still return SUCCESS."""
+    ep = dev.add_endpoint(1)
+    cluster = zigpy.zcl.Cluster.from_id(ep, Ota.cluster_id, is_server=False)
+    ep.add_output_cluster(Ota.cluster_id, cluster)
+
+    monkeypatch.setattr(
+        "zigpy.device.update_firmware",
+        AsyncMock(return_value=foundation.Status.SUCCESS),
+    )
+    monkeypatch.setattr("zigpy.device.AFTER_OTA_ATTR_READ_DELAY", 0)
+    monkeypatch.setattr("zigpy.device.POST_OTA_CONFIRMATION_TIMEOUT", 0.05)
+
+    cluster.image_notify = AsyncMock()
+
+    result = await dev.update_firmware(MagicMock(), progress_callback=MagicMock())
+
+    assert result == foundation.Status.SUCCESS
+    assert "Device did not confirm new firmware" in caplog.text
+    # image_notify must NOT be sent on timeout
+    cluster.image_notify.assert_not_called()
+
+
+async def test_update_firmware_post_ota_sends_image_notify_after_confirmation(
+    monkeypatch, dev
+):
+    """After confirmation, update_firmware sends image_notify."""
+    ep = dev.add_endpoint(1)
+    cluster = zigpy.zcl.Cluster.from_id(ep, Ota.cluster_id, is_server=False)
+    ep.add_output_cluster(Ota.cluster_id, cluster)
+
+    monkeypatch.setattr(
+        "zigpy.device.update_firmware",
+        AsyncMock(return_value=foundation.Status.SUCCESS),
+    )
+    monkeypatch.setattr("zigpy.device.AFTER_OTA_ATTR_READ_DELAY", 0)
+    monkeypatch.setattr("zigpy.device.POST_OTA_CONFIRMATION_TIMEOUT", 1)
+
+    cluster.image_notify = AsyncMock()
+
+    async def fire_announce_soon():
+        await asyncio.sleep(0.02)
+        dev.application.listener_event("device_joined", dev)
+
+    asyncio.create_task(fire_announce_soon())  # noqa: RUF006
+
+    result = await dev.update_firmware(MagicMock(), progress_callback=MagicMock())
+
+    assert result == foundation.Status.SUCCESS
+    cluster.image_notify.assert_awaited_once()
+
+
+async def test_update_firmware_post_ota_image_notify_failure_is_swallowed(
+    monkeypatch, dev, caplog
+):
+    """A failing post-OTA image_notify still results in a SUCCESS return."""
+    ep = dev.add_endpoint(1)
+    cluster = zigpy.zcl.Cluster.from_id(ep, Ota.cluster_id, is_server=False)
+    ep.add_output_cluster(Ota.cluster_id, cluster)
+
+    monkeypatch.setattr(
+        "zigpy.device.update_firmware",
+        AsyncMock(return_value=foundation.Status.SUCCESS),
+    )
+    monkeypatch.setattr("zigpy.device.AFTER_OTA_ATTR_READ_DELAY", 0)
+    monkeypatch.setattr("zigpy.device.POST_OTA_CONFIRMATION_TIMEOUT", 1)
+
+    cluster.image_notify = AsyncMock(
+        side_effect=zigpy.exceptions.DeliveryError("Device asleep")
+    )
+
+    async def fire_announce_soon():
+        await asyncio.sleep(0.02)
+        dev.application.listener_event("device_joined", dev)
+
+    asyncio.create_task(fire_announce_soon())  # noqa: RUF006
+
+    result = await dev.update_firmware(MagicMock(), progress_callback=MagicMock())
+
+    assert result == foundation.Status.SUCCESS
+    assert "Post-OTA image_notify failed" in caplog.text
+
+
 async def test_update_firmware_triggers_reinterview(monkeypatch, dev):
-    """Test that successful OTA triggers reinterview."""
+    """Test that successful OTA triggers reinterview (probe-read confirmation)."""
     ep = dev.add_endpoint(1)
     cluster = zigpy.zcl.Cluster.from_id(ep, Ota.cluster_id, is_server=False)
     ep.add_output_cluster(Ota.cluster_id, cluster)
@@ -2208,9 +2678,12 @@ async def test_update_firmware_triggers_reinterview(monkeypatch, dev):
         "zigpy.device.update_firmware",
         AsyncMock(return_value=foundation.Status.SUCCESS),
     )
+    monkeypatch.setattr("zigpy.device.AFTER_OTA_ATTR_READ_DELAY", 0)
+    monkeypatch.setattr("zigpy.device.POST_OTA_CONFIRMATION_TIMEOUT", 1)
 
     dev.reinterview = AsyncMock()
 
+    # The active probe read succeeds and confirms the new firmware
     with mock_attribute_reads(cluster, {"current_file_version": 0x00000002}):
         result = await dev.update_firmware(
             MagicMock(),
