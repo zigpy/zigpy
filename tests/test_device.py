@@ -128,7 +128,7 @@ async def test_initialize_sends_image_notify(
         await dev.initialize()
 
     # image_notify is the last packet sent during initialization
-    packet = app.send_packet.call_args_list[0][0][0]
+    packet = app._send_packet.call_args_list[0][0][0]
     hdr, cmd = ota.deserialize(packet.data.serialize())
     assert isinstance(cmd, Ota.ImageNotifyCommand)
     assert cmd.payload_type == Ota.ImageNotifyCommand.PayloadType.QueryJitter
@@ -213,7 +213,7 @@ async def test_initialize_ep_failed(monkeypatch, dev):
 
 async def test_failed_request(dev):
     assert dev.last_seen is None
-    dev._application.send_packet = AsyncMock(
+    dev._application._send_packet = AsyncMock(
         side_effect=zigpy.exceptions.DeliveryError("Uh oh")
     )
     with pytest.raises(zigpy.exceptions.DeliveryError):
@@ -762,7 +762,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
                     )
                 )
 
-    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+    dev.application._send_packet = AsyncMock(side_effect=send_packet)
     progress_callback = MagicMock()
 
     cleared_events = []
@@ -779,7 +779,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     # Wait for background tasks (post-OTA query_next_image handling)
     await asyncio.sleep(0)
     # 6 OTA + 1 post-OTA image_notify + 1 post-OTA query_next_image_response
-    assert dev.application.send_packet.await_count == 8
+    assert dev.application._send_packet.await_count == 8
     assert progress_callback.call_count == 2
     assert progress_callback.call_args_list[0] == call(40, 70, 57.142857142857146)
     assert progress_callback.call_args_list[1] == call(70, 70, 100.0)
@@ -790,21 +790,21 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     assert cluster.last_query_cmd is not None
 
     progress_callback.reset_mock()
-    dev.application.send_packet.reset_mock()
+    dev.application._send_packet.reset_mock()
     result = await dev.update_firmware(
         fw_image, progress_callback=progress_callback, force=True
     )
 
     await asyncio.sleep(0)
     # 6 OTA + 1 post-OTA image_notify + 1 post-OTA query_next_image_response
-    assert dev.application.send_packet.await_count == 8
+    assert dev.application._send_packet.await_count == 8
     assert progress_callback.call_count == 2
     assert progress_callback.call_args_list[0] == call(40, 70, 57.142857142857146)
     assert progress_callback.call_args_list[1] == call(70, 70, 100.0)
     assert result == foundation.Status.SUCCESS
 
     # Post-OTA image_notify failure: OTA still succeeds
-    dev.application.send_packet.reset_mock()
+    dev.application._send_packet.reset_mock()
     progress_callback.reset_mock()
     caplog.clear()
     original_image_notify = cluster.image_notify
@@ -825,12 +825,12 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     caplog.clear()
 
     # _image_query_req exception test
-    dev.application.send_packet.reset_mock()
+    dev.application._send_packet.reset_mock()
     progress_callback.reset_mock()
     image_notify = cluster.image_notify
     cluster.image_notify = AsyncMock(side_effect=zigpy.exceptions.DeliveryError("Foo"))
     result = await dev.update_firmware(fw_image, progress_callback=progress_callback)
-    assert dev.application.send_packet.await_count == 0
+    assert dev.application._send_packet.await_count == 0
     assert progress_callback.call_count == 0
     assert "OTA image_notify handler exception" in caplog.text
     assert result != foundation.Status.SUCCESS
@@ -838,14 +838,14 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     caplog.clear()
 
     # _image_query_req exception test
-    dev.application.send_packet.reset_mock()
+    dev.application._send_packet.reset_mock()
     progress_callback.reset_mock()
     query_next_image_response = cluster.query_next_image_response
     cluster.query_next_image_response = AsyncMock(
         side_effect=zigpy.exceptions.DeliveryError("Foo")
     )
     result = await dev.update_firmware(fw_image, progress_callback=progress_callback)
-    assert dev.application.send_packet.await_count == 1  # just image notify
+    assert dev.application._send_packet.await_count == 1  # just image notify
     assert progress_callback.call_count == 0
     assert "OTA query_next_image handler exception" in caplog.text
     assert result != foundation.Status.SUCCESS
@@ -853,7 +853,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     caplog.clear()
 
     # _image_block_req exception test
-    dev.application.send_packet.reset_mock()
+    dev.application._send_packet.reset_mock()
     progress_callback.reset_mock()
     image_block_response = cluster.image_block_response
     cluster.image_block_response = AsyncMock(
@@ -861,7 +861,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     )
     result = await dev.update_firmware(fw_image, progress_callback=progress_callback)
     assert (
-        dev.application.send_packet.await_count == 2
+        dev.application._send_packet.await_count == 2
     )  # just image notify + query next image
     assert progress_callback.call_count == 0
     assert "OTA image_block handler exception" in caplog.text
@@ -870,7 +870,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     caplog.clear()
 
     # _upgrade_end exception test
-    dev.application.send_packet.reset_mock()
+    dev.application._send_packet.reset_mock()
     progress_callback.reset_mock()
     upgrade_end_response = cluster.upgrade_end_response
     cluster.upgrade_end_response = AsyncMock(
@@ -878,9 +878,11 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     )
     result = await dev.update_firmware(fw_image, progress_callback=progress_callback)
     assert (
-        dev.application.send_packet.await_count == 4
+        dev.application._send_packet.await_count == 4
     )  # just image notify, qne, and 2 img blocks
-    assert progress_callback.call_count == 2
+    # The second block's progress is suppressed: the instantly-failing upgrade_end
+    # resolves the update before the block's send handle is awaited
+    assert progress_callback.call_count == 1
     assert "OTA upgrade_end handler exception" in caplog.text
     assert result != foundation.Status.SUCCESS
     cluster.upgrade_end_response = upgrade_end_response
@@ -924,7 +926,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
                     )
                 )
 
-    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+    dev.application._send_packet = AsyncMock(side_effect=send_packet)
 
     progress_callback.reset_mock()
     image_block_response = cluster.image_block_response
@@ -933,7 +935,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     )
     result = await dev.update_firmware(fw_image, progress_callback=progress_callback)
     assert (
-        dev.application.send_packet.await_count == 2
+        dev.application._send_packet.await_count == 2
     )  # just image notify, qne, img block response fails
     assert progress_callback.call_count == 0
     assert "OTA image_block handler[MALFORMED_COMMAND] exception" in caplog.text
@@ -1181,7 +1183,7 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
                     )
                 )
 
-    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+    dev.application._send_packet = AsyncMock(side_effect=send_packet)
     progress_callback = MagicMock()
     result = await dev.update_firmware(fw_image, progress_callback)
     assert (
@@ -1194,33 +1196,33 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     # Wait for background tasks (post-OTA query_next_image handling)
     await asyncio.sleep(0)
     # 6 OTA + 1 post-OTA image_notify + 1 post-OTA query_next_image_response
-    assert dev.application.send_packet.await_count == 8
+    assert dev.application._send_packet.await_count == 8
     assert progress_callback.call_count == 2
     assert progress_callback.call_args_list[0] == call(64, 70, 91.42857142857143)
     assert progress_callback.call_args_list[1] == call(70, 70, 100.0)
     assert result == foundation.Status.SUCCESS
 
     progress_callback.reset_mock()
-    dev.application.send_packet.reset_mock()
+    dev.application._send_packet.reset_mock()
     result = await dev.update_firmware(
         fw_image, progress_callback=progress_callback, force=True
     )
 
     await asyncio.sleep(0)
     # 6 OTA + 1 post-OTA image_notify + 1 post-OTA query_next_image_response
-    assert dev.application.send_packet.await_count == 8
+    assert dev.application._send_packet.await_count == 8
     assert progress_callback.call_count == 2
     assert progress_callback.call_args_list[0] == call(64, 70, 91.42857142857143)
     assert progress_callback.call_args_list[1] == call(70, 70, 100.0)
     assert result == foundation.Status.SUCCESS
 
     # _image_query_req exception test
-    dev.application.send_packet.reset_mock()
+    dev.application._send_packet.reset_mock()
     progress_callback.reset_mock()
     image_notify = cluster.image_notify
     cluster.image_notify = AsyncMock(side_effect=zigpy.exceptions.DeliveryError("Foo"))
     result = await dev.update_firmware(fw_image, progress_callback=progress_callback)
-    assert dev.application.send_packet.await_count == 0
+    assert dev.application._send_packet.await_count == 0
     assert progress_callback.call_count == 0
     assert "OTA image_notify handler exception" in caplog.text
     assert result != foundation.Status.SUCCESS
@@ -1228,14 +1230,14 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     caplog.clear()
 
     # _image_query_req exception test
-    dev.application.send_packet.reset_mock()
+    dev.application._send_packet.reset_mock()
     progress_callback.reset_mock()
     query_next_image_response = cluster.query_next_image_response
     cluster.query_next_image_response = AsyncMock(
         side_effect=zigpy.exceptions.DeliveryError("Foo")
     )
     result = await dev.update_firmware(fw_image, progress_callback=progress_callback)
-    assert dev.application.send_packet.await_count == 1  # just image notify
+    assert dev.application._send_packet.await_count == 1  # just image notify
     assert progress_callback.call_count == 0
     assert "OTA query_next_image handler exception" in caplog.text
     assert result != foundation.Status.SUCCESS
@@ -1243,7 +1245,7 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     caplog.clear()
 
     # _image_block_req exception test
-    dev.application.send_packet.reset_mock()
+    dev.application._send_packet.reset_mock()
     progress_callback.reset_mock()
     image_block_response = cluster.image_block_response
     cluster.image_block_response = AsyncMock(
@@ -1251,7 +1253,7 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     )
     result = await dev.update_firmware(fw_image, progress_callback=progress_callback)
     assert (
-        dev.application.send_packet.await_count == 2
+        dev.application._send_packet.await_count == 2
     )  # just image notify + query next image
     assert progress_callback.call_count == 0
     assert "OTA image_block handler exception" in caplog.text
@@ -1260,7 +1262,7 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     caplog.clear()
 
     # _upgrade_end exception test
-    dev.application.send_packet.reset_mock()
+    dev.application._send_packet.reset_mock()
     progress_callback.reset_mock()
     upgrade_end_response = cluster.upgrade_end_response
     cluster.upgrade_end_response = AsyncMock(
@@ -1268,9 +1270,11 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     )
     result = await dev.update_firmware(fw_image, progress_callback=progress_callback)
     assert (
-        dev.application.send_packet.await_count == 4
+        dev.application._send_packet.await_count == 4
     )  # just image notify, qne, and 2 img blocks
-    assert progress_callback.call_count == 2
+    # The second block's progress is suppressed: the instantly-failing upgrade_end
+    # resolves the update before the block's send handle is awaited
+    assert progress_callback.call_count == 1
     assert "OTA upgrade_end handler exception" in caplog.text
     assert result != foundation.Status.SUCCESS
     cluster.upgrade_end_response = upgrade_end_response
@@ -1314,7 +1318,7 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
                     )
                 )
 
-    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+    dev.application._send_packet = AsyncMock(side_effect=send_packet)
 
     progress_callback.reset_mock()
     image_block_response = cluster.image_block_response
@@ -1323,7 +1327,7 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     )
     result = await dev.update_firmware(fw_image, progress_callback=progress_callback)
     assert (
-        dev.application.send_packet.await_count == 2
+        dev.application._send_packet.await_count == 2
     )  # just image notify, qne, img block response fails
     assert progress_callback.call_count == 0
     assert "OTA image_block handler[MALFORMED_COMMAND] exception" in caplog.text
@@ -1434,6 +1438,9 @@ async def test_debouncing(dev):
 
 async def test_device_concurrency(dev: device.Device) -> None:
     """Test that the device can handle multiple requests concurrently."""
+    # This exercises the legacy per-device limiter, replaced by the scheduler's
+    # per-destination window
+    dev._application._uses_scheduler = False
     dev._concurrent_requests_semaphore = RequestLimiter(
         max_concurrency=1, capacities={t.PacketPriority.LOW: 1}
     )
@@ -1522,6 +1529,7 @@ async def test_duplicate_request_sending(dev: device.Device) -> None:
 
     dev._application.request = AsyncMock(side_effect=delayed_receive)
     dev._concurrent_requests_semaphore.max_concurrency = 100000
+    dev._application._scheduler.destination_window = None
 
     # We send 256 + 1 requests
     errors = await asyncio.gather(
@@ -1902,10 +1910,12 @@ async def test_attribute_report_not_matched_with_request(dev):
     ep = dev.add_endpoint(1)
     ep.add_input_cluster(OnOff.cluster_id)
 
-    with patch.object(dev._application, "send_packet") as mock_packet_send:
+    with patch.object(dev._application, "_send_packet") as mock_packet_send:
         request_task = asyncio.create_task(dev.endpoints[1].on_off.on())
 
-        # Get the TSN that was used for the request
+        # Get the TSN that was used for the request. The scheduler dispatches the
+        # attempt in its own task, one tick after the request task submits.
+        await asyncio.sleep(0)
         await asyncio.sleep(0)
         assert len(mock_packet_send.mock_calls) == 1
         sent_packet = mock_packet_send.mock_calls[0].args[0]
@@ -2221,8 +2231,10 @@ async def test_update_firmware_triggers_reinterview(monkeypatch, dev):
     dev.reinterview.assert_awaited_once()
 
 
-async def test_request_retry_success(app) -> None:
+@pytest.mark.parametrize("use_scheduler", [True, False])
+async def test_request_retry_success(app, use_scheduler) -> None:
     """Test retry logic succeeding after a few attempts."""
+    app._uses_scheduler = use_scheduler
     tsn = 0x12
 
     dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
@@ -2283,7 +2295,7 @@ async def test_request_retry_success(app) -> None:
             ),
         )
 
-    app.send_packet.side_effect = send_packet
+    app._send_packet.side_effect = send_packet
     dev.get_sequence = MagicMock(return_value=tsn)
 
     rsp = await dev.endpoints[1].basic.reset_fact_default()
@@ -2292,11 +2304,13 @@ async def test_request_retry_success(app) -> None:
         status=foundation.Status.SUCCESS,
     )
 
-    assert len(app.send_packet.mock_calls) == 3
+    assert len(app._send_packet.mock_calls) == 3
 
 
-async def test_request_retry_failure(app) -> None:
+@pytest.mark.parametrize("use_scheduler", [True, False])
+async def test_request_retry_failure(app, use_scheduler) -> None:
     """Test retry logic when all attempts fail."""
+    app._uses_scheduler = use_scheduler
     dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
     dev.node_desc = make_node_desc()
 
@@ -2304,7 +2318,7 @@ async def test_request_retry_failure(app) -> None:
     ep.status = endpoint.Status.ZDO_INIT
     ep.add_input_cluster(Basic.cluster_id)
 
-    app.send_packet.side_effect = [
+    app._send_packet.side_effect = [
         zigpy.exceptions.DeliveryError("Failure"),
         zigpy.exceptions.DeliveryError("Failure"),
         zigpy.exceptions.DeliveryError("Failure"),
@@ -2325,7 +2339,7 @@ async def test_request_retry_failure(app) -> None:
         )
 
     packet = t.ZigbeePacket(
-        priority=None,
+        priority=t.PacketPriority.NORMAL,
         src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
         src_ep=1,
         dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
@@ -2341,7 +2355,7 @@ async def test_request_retry_failure(app) -> None:
         non_member_radius=0,
     )
 
-    assert app.send_packet.mock_calls == [
+    assert app._send_packet.mock_calls == [
         call(packet),
         call(
             packet.replace(
@@ -2361,8 +2375,10 @@ async def test_request_retry_failure(app) -> None:
     ]
 
 
-async def test_request_retry_reply_timeout(app) -> None:
+@pytest.mark.parametrize("use_scheduler", [True, False])
+async def test_request_retry_reply_timeout(app, use_scheduler) -> None:
     """Test retry logic when a request is enqueued but no reply arrives, then a later attempt succeeds."""
+    app._uses_scheduler = use_scheduler
     tsn = 0x12
 
     dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
@@ -2425,7 +2441,7 @@ async def test_request_retry_reply_timeout(app) -> None:
             ),
         )
 
-    app.send_packet.side_effect = send_packet
+    app._send_packet.side_effect = send_packet
     dev.get_sequence = MagicMock(return_value=tsn)
 
     rsp = await dev.endpoints[1].basic.reset_fact_default(timeout=0.01, retry_delay=0)
@@ -2434,15 +2450,18 @@ async def test_request_retry_reply_timeout(app) -> None:
         status=foundation.Status.SUCCESS,
     )
 
-    assert len(app.send_packet.mock_calls) == 3
+    assert len(app._send_packet.mock_calls) == 3
 
 
 async def test_request_retry_delay_releases_concurrency(app) -> None:
     """A request awaiting its post-retry delay must not hold a concurrency slot."""
+    # This exercises the legacy per-device limiter; the scheduler equivalent is
+    # covered by the retry-parking tests in test_scheduler.py
+    app._uses_scheduler = False
     dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
 
     # Every send fails, so each request enters its (long) post-retry delay
-    app.send_packet.side_effect = zigpy.exceptions.DeliveryError("Failure")
+    app._send_packet.side_effect = zigpy.exceptions.DeliveryError("Failure")
 
     async def make_request(sequence: int) -> None:
         await dev.request(
@@ -2467,10 +2486,10 @@ async def test_request_retry_delay_releases_concurrency(app) -> None:
         # should still get its first attempt sent: the concurrency slot is released
         # *before* the delay, not held during it.
         async with asyncio.timeout(1):
-            while len(app.send_packet.mock_calls) < len(tasks):
+            while len(app._send_packet.mock_calls) < len(tasks):
                 await asyncio.sleep(0)
 
-        assert len(app.send_packet.mock_calls) == len(tasks)
+        assert len(app._send_packet.mock_calls) == len(tasks)
 
         # Tear down the still-pending requests so the task group can exit
         for task in tasks:
