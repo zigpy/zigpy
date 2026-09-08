@@ -524,6 +524,18 @@ async def test_last_seen_initial_migration(test_db):
     await app.shutdown()
 
 
+async def test_reinterview_pending_initial_migration(test_db):
+    test_db_v5 = test_db("simple_v5.sql")
+
+    # Migrated devices default to no pending re-interview
+    app = await make_app_with_db(test_db_v5)
+    dev = app.get_device(nwk=0xBD4D)
+
+    assert dev.reinterview_pending is None
+    assert not dev.has_pending_checkin_actions
+    await app.shutdown()
+
+
 def test_db_version_is_latest_schema_version():
     assert max(zigpy.appdb_schemas.SCHEMAS.keys()) == zigpy.appdb.DB_VERSION
 
