@@ -58,6 +58,7 @@ class OTAManager:
         image: OtaImageWithMetadata,
         progress_callback=None,
         force: bool = False,
+        allow_downgrade: bool = False,
     ) -> None:
         self.device = device
         self.ota_cluster = device.find_cluster(
@@ -68,6 +69,7 @@ class OTAManager:
         self._image_data = image.firmware.serialize()
         self.progress_callback = progress_callback
         self.force = force
+        self.allow_downgrade = allow_downgrade
 
         self._upgrade_end_future = asyncio.get_running_loop().create_future()
         self._stall_timer = zigpy.datastructures.ReschedulableTimeout(
@@ -138,11 +140,29 @@ class OTAManager:
     ) -> None:
         """Handle image query request."""
 
-        # If we try to send a device an old image (e.g. cache issue), don't bother
-        if not self.force and (
-            not self.image.check_compatibility(self.device, command)
-            or not self.image.check_version(command.current_file_version)
+        # If we try to send a device an old image (e.g. cache issue), don't bother.
+        # `force` skips both the compatibility and version checks. `allow_downgrade`
+        # skips only the version check, still honoring compatibility, so a caller can
+        # deliberately install an older but compatible image.
+        if self.force:
+            status = foundation.Status.SUCCESS
+        elif not self.image.check_compatibility(self.device, command):
+            self.device.warning(
+                "OTA image %s is not compatible with the device, replying with"
+                " NO_IMAGE_AVAILABLE",
+                self.image,
+            )
+            status = foundation.Status.NO_IMAGE_AVAILABLE
+        elif not self.allow_downgrade and not self.image.check_version(
+            command.current_file_version
         ):
+            self.device.warning(
+                "OTA image %s does not pass the version check (current file version"
+                " 0x%08X); pass allow_downgrade=True to install it anyway. Replying"
+                " with NO_IMAGE_AVAILABLE",
+                self.image,
+                command.current_file_version,
+            )
             status = foundation.Status.NO_IMAGE_AVAILABLE
         else:
             status = foundation.Status.SUCCESS
@@ -332,6 +352,7 @@ async def update_firmware(
     image: OtaImageWithMetadata,
     progress_callback: Callable[[int, int, float], None] | None = None,
     force: bool = False,
+    allow_downgrade: bool = False,
 ) -> foundation.Status:
     """Update the firmware on a Zigbee device."""
     # Fetch firmware if not already downloaded (deferred download for trusted providers)
@@ -361,6 +382,12 @@ async def update_firmware(
 
     # Ask the device to start fast polling before we send the OTA image
     async with device.fast_poll_mode():
-        with OTAManager(device, image, progress_callback=progress, force=force) as ota:
+        with OTAManager(
+            device,
+            image,
+            progress_callback=progress,
+            force=force,
+            allow_downgrade=allow_downgrade,
+        ) as ota:
             await ota.notify()
             return await ota.wait()
