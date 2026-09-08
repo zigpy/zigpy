@@ -37,7 +37,7 @@ from zigpy.ota.manager import update_firmware
 from zigpy.profiles import zha, zll
 import zigpy.types as t
 import zigpy.util
-from zigpy.zcl import Cluster, ClusterType, OtaQueryCacheClearedEvent, foundation
+from zigpy.zcl import Cluster, ClusterType, OtaQueryCacheUpdatedEvent, foundation
 from zigpy.zcl.clusters.general import Ota, PollControl, QueryNextImageCommand
 import zigpy.zdo.types as zdo_t
 
@@ -57,6 +57,8 @@ DEFAULT_REQUEST_RETRIES = 2
 DEFAULT_REQUEST_RETRY_DELAY = 0.1
 
 AFTER_OTA_ATTR_READ_DELAY = 10
+POST_OTA_PROBE_RETRIES = 10
+POST_OTA_CONFIRMATION_TIMEOUT = 300
 
 
 @dataclass(frozen=True, slots=True)
@@ -1037,28 +1039,37 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         if result != foundation.Status.SUCCESS:
             return result
 
-        # Clear the current file version when the update succeeds
         ota = self.find_cluster(
             cluster_id=Ota.cluster_id, cluster_type=ClusterType.Client
         )
-        ota.update_attribute(Ota.AttributeDefs.current_file_version.id, None)
-        ota.last_query_cmd = None
-        ota.emit(
-            OtaQueryCacheClearedEvent.event_type,
-            OtaQueryCacheClearedEvent(
-                device_ieee=str(self.ieee),
-                endpoint_id=ota.endpoint.endpoint_id,
-            ),
-        )
 
+        # Devices need a moment after the final block before they're worth
+        # talking to again.
         await asyncio.sleep(AFTER_OTA_ATTR_READ_DELAY)
-        await ota.read_attributes(
-            [Ota.AttributeDefs.current_file_version.name],
-            retries=10,
-            retry_delay=AFTER_OTA_ATTR_READ_DELAY,
-        )
 
-        # Prompt device to send QueryNextImage with updated version for query cache
+        # Wait for the device to confirm it booted into the new firmware,
+        # whichever signal arrives first:
+        #   - a successful active read of `current_file_version` (a quietly
+        #     rebooted mains device that sends no traffic on its own),
+        #   - QueryNextImage with a `current_file_version` that differs from
+        #     the value we cached pre-flash (the OTA cluster's listener will
+        #     also schedule a re-interview when this happens), or
+        #   - Device_annce after the post-flash reboot.
+        try:
+            await asyncio.wait_for(
+                self._wait_for_post_ota_confirmation(ota),
+                timeout=POST_OTA_CONFIRMATION_TIMEOUT,
+            )
+        except TimeoutError:
+            self.warning(
+                "Device did not confirm new firmware within %ds; reinterview "
+                "will run if/when the device next reports a version change",
+                POST_OTA_CONFIRMATION_TIMEOUT,
+            )
+            return result
+
+        # The device responded. Best-effort: tell it to refresh its OTA query
+        # cache so it learns we don't have a newer image for it right now.
         try:
             await ota.image_notify(
                 payload_type=Ota.ImageNotifyCommand.PayloadType.QueryJitter,
@@ -1067,12 +1078,100 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         except Exception:  # noqa: BLE001
             self.debug("Post-OTA image_notify failed", exc_info=True)
 
-        # Re-interview the device after successful OTA to pick up
-        # any changes in clusters/endpoints/model and re-apply quirks.
+        # Re-interview the device after successful OTA to pick up any changes
+        # in clusters/endpoints/model and re-apply quirks. The OTA cluster's
+        # version-change listener may have already driven a re-interview when a
+        # post-flash QueryNextImage arrived: an in-flight one leaves the shadow
+        # device registered (and the `reinterviewing` guard set), a completed
+        # one has replaced this device in `application.devices` — skip both.
         # reinterview() handles its own errors internally.
-        await self.reinterview()
+        if self._application.devices.get(self.ieee, self) is self:
+            await self.reinterview()
 
         return result
+
+    async def _wait_for_post_ota_confirmation(self, ota: Ota) -> None:
+        """Wait until the device confirms a successful boot into new firmware.
+
+        Resolves on whichever signal arrives first:
+        - A successful active read of `current_file_version` (probes devices
+          that reboot without sending any traffic of their own).
+        - A new `QueryNextImageCommand` whose `current_file_version` differs
+          from the value cached on the OTA cluster before this wait began.
+          When no baseline was cached, any query counts: the device is alive
+          and talking after the flash, which is all this wait establishes.
+        - A `device_joined` event for this device on the Application (fires
+          on TC-join and on the Device_annce path when the device's NWK
+          changes or it was unknown).
+
+        Listeners are attached only at the start of this wait and torn down
+        on resolution, timeout, or cancellation, so unrelated joins from
+        before the OTA do not get counted.
+        """
+        snapshot = (
+            ota.last_query_cmd.current_file_version
+            if ota.last_query_cmd is not None
+            else None
+        )
+
+        confirmed = asyncio.Event()
+        device_ieee = self.ieee
+
+        def on_qni_update(event: OtaQueryCacheUpdatedEvent) -> None:
+            if (
+                event.current_file_version is not None
+                and event.current_file_version != snapshot
+            ):
+                confirmed.set()
+
+        unsub_qni = ota.on_event(OtaQueryCacheUpdatedEvent.event_type, on_qni_update)
+
+        class _PostOtaJoinListener:
+            def device_joined(self, joined_dev: Device) -> None:
+                if joined_dev.ieee == device_ieee:
+                    confirmed.set()
+
+        join_listener = _PostOtaJoinListener()
+        self._application.add_listener(join_listener)
+
+        async def probe_version() -> None:
+            # Actively poll the firmware version: sleepy devices won't answer,
+            # but a rebooted-and-quiet mains device will. Any response means
+            # the device survived the flash (and a read also refreshes the
+            # attribute cache with the running version).
+            try:
+                await ota.read_attributes(
+                    [Ota.AttributeDefs.current_file_version.name],
+                    retries=POST_OTA_PROBE_RETRIES,
+                    retry_delay=AFTER_OTA_ATTR_READ_DELAY,
+                )
+            except Exception:  # noqa: BLE001
+                self.debug("Post-OTA firmware version probe went unanswered")
+                return
+
+            confirmed.set()
+
+        probe_task = asyncio.create_task(probe_version())
+
+        try:
+            # Race-safe re-check after attaching listeners: if a confirming
+            # QueryNextImage arrived between snapshot and listener attach,
+            # `last_query_cmd` will already reflect the new version.
+            current = (
+                ota.last_query_cmd.current_file_version
+                if ota.last_query_cmd is not None
+                else None
+            )
+            if current is not None and current != snapshot:
+                return
+
+            await confirmed.wait()
+        finally:
+            probe_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await probe_task
+            unsub_qni()
+            self._application.remove_listener(join_listener)
 
     def get_last_ota_query_cmd(self) -> QueryNextImageCommand | None:
         """Return the last cached QueryNextImageCommand, preferring client clusters."""
