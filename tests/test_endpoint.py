@@ -535,6 +535,36 @@ async def test_group_membership_scan(ep):
     assert ep.device.request.call_count == 1
 
 
+async def test_get_group_membership(ep):
+    """Read physical group membership without using the local group cache."""
+    with pytest.raises(zigpy.exceptions.UnsupportedCluster):
+        await ep.get_group_membership()
+    assert ep.device.request.call_count == 0
+
+    ep.add_input_cluster(4)
+    ep.device.request.return_value = [0, [1, 3, 7]]
+    assert await ep.get_group_membership() == frozenset({1, 3, 7})
+    assert ep.device.request.call_count == 1
+
+
+async def test_get_group_membership_timeout(ep):
+    """A physical membership read timeout is not reported as an empty result."""
+    ep.add_input_cluster(4)
+    ep.device.request.side_effect = asyncio.TimeoutError
+    with pytest.raises(asyncio.TimeoutError):
+        await ep.get_group_membership()
+
+
+async def test_get_group_membership_unsupported(ep):
+    """A device-level unsupported response is distinguishable from success."""
+    ep.add_input_cluster(4)
+    ep.device.request.return_value = GENERAL_COMMANDS[
+        GeneralCommand.Default_Response
+    ].schema(command_id=2, status=ZCLStatus.UNSUP_CLUSTER_COMMAND)
+    with pytest.raises(zigpy.exceptions.UnsupportedCluster):
+        await ep.get_group_membership()
+
+
 async def test_group_membership_scan_fail(ep):
     """Test group membership scan failure."""
 

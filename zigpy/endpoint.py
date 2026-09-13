@@ -167,19 +167,37 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     async def group_membership_scan(self) -> None:
         """Sync up group membership."""
         try:
-            res = await self.groups.get_membership(groups=[])
-        except AttributeError:
+            groups = await self.get_group_membership()
+        except zigpy.exceptions.UnsupportedCluster as ex:
+            self.debug("Device does not support group commands: %s", ex)
             return
         except (TimeoutError, zigpy.exceptions.ZigbeeException):
             self.debug("Failed to sync-up group membership")
             return
 
-        if isinstance(res, GENERAL_COMMANDS[GeneralCommand.Default_Response].schema):
-            self.debug("Device does not support group commands: %s", res)
-            return
+        self.device.application.groups.update_group_membership(self, set(groups))
 
-        groups = set(res[1])
-        self.device.application.groups.update_group_membership(self, groups)
+    async def get_group_membership(self) -> frozenset[int]:
+        """Read this endpoint's physical Groups membership from the device.
+
+        The request is always sent to the endpoint and never uses the local
+        group cache. A successful response returns the decoded group IDs. A
+        missing or unsupported Groups cluster raises ``UnsupportedCluster``;
+        transport timeouts and other Zigbee errors are propagated unchanged.
+        """
+        try:
+            res = await self.groups.get_membership(groups=[])
+        except AttributeError as err:
+            raise zigpy.exceptions.UnsupportedCluster(
+                "Endpoint does not have a Groups cluster"
+            ) from err
+
+        if isinstance(res, GENERAL_COMMANDS[GeneralCommand.Default_Response].schema):
+            raise zigpy.exceptions.UnsupportedCluster(
+                f"Endpoint rejected Groups membership query: {getattr(res, 'status', res)}"
+            )
+
+        return frozenset(res[1])
 
     async def get_model_info(self) -> tuple[str | None, str | None]:
         if zigpy.zcl.clusters.general.Basic.cluster_id not in self.in_clusters:

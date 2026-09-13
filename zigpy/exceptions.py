@@ -46,6 +46,10 @@ class InvalidResponse(ZigbeeException):
     """A ZDO or ZCL response has an unsuccessful status code"""
 
 
+class UnsupportedCluster(ZigbeeException):
+    """The requested cluster operation is not supported by the endpoint."""
+
+
 class RadioException(Exception):
     """Base exception class for radio exceptions"""
 
