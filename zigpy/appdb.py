@@ -781,14 +781,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             new_device.original_signature = device.original_signature
             self._application.devices[device.ieee] = new_device
 
-        # Clear the attribute cache to ensure the quirked state is correct
+        # Clear the attribute cache to ensure the quirked state is correct.
+        # Unsupported-attribute declarations made by the (quirked) clusters at
+        # instantiation are part of that state, so they are kept.
         for device in self._application.devices.values():
             for ep in device.non_zdo_endpoints:
                 for cluster in ep.in_clusters.values():
-                    cluster._attr_cache.clear()
+                    cluster._attr_cache.clear(include_unsupported=False)
 
                 for cluster in ep.out_clusters.values():
-                    cluster._attr_cache.clear()
+                    cluster._attr_cache.clear(include_unsupported=False)
 
         # Second pass: populate the attribute cache for the final device state and
         # migrate attributes with unknown manufacturer codes to the correct codes. Only
@@ -944,6 +946,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 continue
 
             if row.status == Status.SUCCESS:
+                if cluster._attr_cache.is_unsupported(attr_def):
+                    # The cluster declared this attribute unsupported; a stale
+                    # cached value is not new evidence that it is supported
+                    continue
+
                 cluster._attr_cache.set_value(
                     attr_def,
                     row.value,

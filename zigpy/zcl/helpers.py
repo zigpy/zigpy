@@ -45,9 +45,10 @@ class AttributeCache:
             self._cluster._get_effective_manufacturer_code(attr_def),
         )
 
-    def clear(self) -> None:
+    def clear(self, *, include_unsupported: bool = True) -> None:
         self._cache.clear()
-        self._unsupported.clear()
+        if include_unsupported:
+            self._unsupported.clear()
         self._legacy_cache.clear()
 
     def remove(self, attr_def: ZCLAttributeDef) -> None:
