@@ -883,7 +883,13 @@ async def test_quirked_unsupported_attr_survives_restore(tmp_path) -> None:
     class QuirkedBasic(Basic):
         _skip_registry = True
 
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            self.add_unsupported_attribute("location_desc")
+
     def resolver(device):
+        # Same order as zha-quirks v2 `.replaces()`: instantiate (marks unsupported),
+        # attach the cluster, then copy the restored cache onto it.
         new = device.clone()
         ep = new.endpoints[3]
         old = ep.in_clusters.pop(Basic.cluster_id, None)
@@ -893,7 +899,6 @@ async def test_quirked_unsupported_attr_survives_restore(tmp_path) -> None:
         if old is not None:
             cluster._attr_cache_internal = old._attr_cache.clone(cluster)
 
-        cluster.add_unsupported_attribute("location_desc")
         return new
 
     db = tmp_path / "test.db"
@@ -928,18 +933,8 @@ async def test_quirked_unsupported_attr_survives_restore(tmp_path) -> None:
 
     await app2.shutdown()
 
-    # The stale row was rewritten as unsupported and the value is not resurrected
-    with sqlite3.connect(str(db)) as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"SELECT status, value FROM attributes_cache{zigpy.appdb.DB_V} WHERE attr_id=?",
-            [Basic.AttributeDefs.location_desc.id],
-        )
-        (status, value) = cur.fetchone()
-
-    assert status == ZCLStatus.UNSUPPORTED_ATTRIBUTE
-    assert value is None
-
+    # A leftover SUCCESS row is not new evidence; a second restore must still
+    # ignore it rather than resurrect the attribute.
     app3 = await make_app_with_db(db, device_resolver=resolver)
     dev3 = app3.get_device(ieee)
     clus3 = dev3.endpoints[3].in_clusters[Basic.cluster_id]

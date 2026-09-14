@@ -178,3 +178,12 @@ def test_cache_clone() -> None:
     cache2.set_value(attr1, "modified")
     assert cache1.get_value(attr1) == "value1"
     assert cache2.get_value(attr1) == "modified"
+
+    # Destination unsupported marks survive the copy (quirk `__init__` then replace)
+    attr3 = HelperCluster.AttributeDefs.attr3
+    cluster3 = HelperCluster(endpoint)
+    cluster3._attr_cache.mark_unsupported(attr3)
+    cache3 = cache1.clone(cluster3)
+    assert cache3.is_unsupported(attr3)
+    assert cache3.is_unsupported(attr2)
+    assert cache3.get_value(attr1) == "value1"
