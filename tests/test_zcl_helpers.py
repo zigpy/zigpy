@@ -89,7 +89,6 @@ def test_cache_unsupported_attributes() -> None:
     assert not cache.is_unsupported(HelperCluster.AttributeDefs.attr2)
 
 
-
 def test_cache_clear_keeps_unsupported_when_asked() -> None:
     """clear() drops unsupported marks by default and keeps them on request."""
     endpoint = MagicMock(spec=zigpy.endpoint.Endpoint)
