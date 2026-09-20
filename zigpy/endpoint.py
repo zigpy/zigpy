@@ -183,18 +183,31 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         The request is always sent to the endpoint and never uses the local
         group cache. A successful response returns the decoded group IDs. A
         missing or unsupported Groups cluster raises ``UnsupportedCluster``;
-        transport timeouts and other Zigbee errors are propagated unchanged.
+        other default responses raise ``InvalidResponse``. Transport timeouts
+        and other request errors are propagated unchanged.
         """
         try:
-            res = await self.groups.get_membership(groups=[])
+            groups_cluster = self.groups
         except AttributeError as err:
             raise zigpy.exceptions.UnsupportedCluster(
                 "Endpoint does not have a Groups cluster"
             ) from err
 
+        res = await groups_cluster.get_membership(groups=[])
         if isinstance(res, GENERAL_COMMANDS[GeneralCommand.Default_Response].schema):
-            raise zigpy.exceptions.UnsupportedCluster(
-                f"Endpoint rejected Groups membership query: {getattr(res, 'status', res)}"
+            status = res[1]
+            if status in (
+                ZCLStatus.UNSUP_CLUSTER_COMMAND,
+                ZCLStatus.UNSUP_GENERAL_COMMAND,
+                ZCLStatus.UNSUP_MANUF_CLUSTER_COMMAND,
+                ZCLStatus.UNSUP_MANUF_GENERAL_COMMAND,
+                ZCLStatus.UNSUPPORTED_CLUSTER,
+            ):
+                raise zigpy.exceptions.UnsupportedCluster(
+                    f"Endpoint rejected Groups membership query: {status!r}"
+                )
+            raise zigpy.exceptions.InvalidResponse(
+                f"Expected Groups membership response, got default response: {status!r}"
             )
 
         return frozenset(res[1])

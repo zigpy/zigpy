@@ -555,14 +555,55 @@ async def test_get_group_membership_timeout(ep):
         await ep.get_group_membership()
 
 
-async def test_get_group_membership_unsupported(ep):
+@pytest.mark.parametrize(
+    "status",
+    [
+        ZCLStatus.UNSUP_CLUSTER_COMMAND,
+        ZCLStatus.UNSUP_GENERAL_COMMAND,
+        ZCLStatus.UNSUP_MANUF_CLUSTER_COMMAND,
+        ZCLStatus.UNSUP_MANUF_GENERAL_COMMAND,
+        ZCLStatus.UNSUPPORTED_CLUSTER,
+    ],
+)
+async def test_get_group_membership_unsupported(ep, status):
     """A device-level unsupported response is distinguishable from success."""
     ep.add_input_cluster(4)
     ep.device.request.return_value = GENERAL_COMMANDS[
         GeneralCommand.Default_Response
-    ].schema(command_id=2, status=ZCLStatus.UNSUP_CLUSTER_COMMAND)
-    with pytest.raises(zigpy.exceptions.UnsupportedCluster):
+    ].schema(command_id=2, status=status)
+    with pytest.raises(zigpy.exceptions.UnsupportedCluster, match=status.name):
         await ep.get_group_membership()
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        ZCLStatus.FAILURE,
+        ZCLStatus.NOT_AUTHORIZED,
+        ZCLStatus.SUCCESS,
+        ZCLStatus.MALFORMED_COMMAND,
+    ],
+)
+async def test_get_group_membership_invalid_default_response(ep, status):
+    """Other default responses do not establish missing Groups support."""
+    ep.add_input_cluster(4)
+    ep.device.request.return_value = GENERAL_COMMANDS[
+        GeneralCommand.Default_Response
+    ].schema(command_id=2, status=status)
+    with pytest.raises(zigpy.exceptions.InvalidResponse, match=status.name):
+        await ep.get_group_membership()
+    ep.device.application.groups.update_group_membership.assert_not_called()
+
+
+async def test_get_group_membership_request_attribute_error(ep):
+    """Request implementation errors must not be mistaken for missing support."""
+    ep.add_input_cluster(4)
+    error = AttributeError("request implementation failed")
+    ep.device.request.side_effect = error
+    with pytest.raises(AttributeError) as exc_info:
+        await ep.get_group_membership()
+    assert exc_info.value is error
+    ep.device.application.groups.update_group_membership.assert_not_called()
 
 
 async def test_group_membership_scan_fail(ep):
