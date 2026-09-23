@@ -542,9 +542,13 @@ async def test_get_group_membership(ep):
     assert ep.device.request.call_count == 0
 
     ep.add_input_cluster(4)
+    ep.member_of[99] = sentinel.cached_group
+    ep.device.application.groups.update_group_membership = MagicMock()
     ep.device.request.return_value = [0, [1, 3, 7]]
     assert await ep.get_group_membership() == frozenset({1, 3, 7})
     assert ep.device.request.call_count == 1
+    assert ep.member_of == {99: sentinel.cached_group}
+    ep.device.application.groups.update_group_membership.assert_not_called()
 
 
 async def test_get_group_membership_timeout(ep):
@@ -604,6 +608,18 @@ async def test_get_group_membership_request_attribute_error(ep):
         await ep.get_group_membership()
     assert exc_info.value is error
     ep.device.application.groups.update_group_membership.assert_not_called()
+
+
+async def test_group_membership_scan_request_attribute_error(ep):
+    """Background scans tolerate request-side AttributeError without changing cache."""
+    ep.add_input_cluster(4)
+    ep.device.request.side_effect = AttributeError("request implementation failed")
+    ep.device.application.groups.update_group_membership = MagicMock()
+
+    await ep.group_membership_scan()
+
+    ep.device.application.groups.update_group_membership.assert_not_called()
+    assert ep.device.request.call_count == 1
 
 
 async def test_group_membership_scan_fail(ep):

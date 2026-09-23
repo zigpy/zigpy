@@ -171,7 +171,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         except zigpy.exceptions.UnsupportedCluster as ex:
             self.debug("Device does not support group commands: %s", ex)
             return
-        except (TimeoutError, zigpy.exceptions.ZigbeeException):
+        except (AttributeError, TimeoutError, zigpy.exceptions.ZigbeeException):
             self.debug("Failed to sync-up group membership")
             return
 
