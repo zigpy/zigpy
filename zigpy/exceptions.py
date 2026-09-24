@@ -49,6 +49,10 @@ class InvalidResponse(ZigbeeException):
 class UnsupportedCluster(ZigbeeException):
     """The requested cluster operation is not supported by the endpoint."""
 
+    def __init__(self, message: str, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
+
 
 class RadioException(Exception):
     """Base exception class for radio exceptions"""

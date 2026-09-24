@@ -579,6 +579,31 @@ async def test_get_group_membership_unsupported(ep, status):
         await ep.get_group_membership()
 
 
+async def test_get_group_membership_unsupported_exception(ep):
+    """Map unsuccessful default-response exceptions consistently."""
+    ep.add_input_cluster(4)
+    error = zigpy.exceptions.InvalidResponse("unsupported command")
+    setattr(error, "status", ZCLStatus.UNSUP_CLUSTER_COMMAND)
+    ep.device.request.side_effect = error
+
+    with pytest.raises(zigpy.exceptions.UnsupportedCluster) as exc_info:
+        await ep.get_group_membership()
+
+    assert getattr(exc_info.value, "status") == ZCLStatus.UNSUP_CLUSTER_COMMAND
+
+
+async def test_get_group_membership_empty_is_read_only(ep):
+    """An empty on-device membership is a valid fresh result, not cache data."""
+    ep.add_input_cluster(4)
+    ep.member_of[99] = sentinel.cached_group
+    ep.device.request.return_value = [0, []]
+    ep.device.application.groups.update_group_membership = MagicMock()
+
+    assert await ep.get_group_membership() == frozenset()
+    assert ep.member_of == {99: sentinel.cached_group}
+    ep.device.application.groups.update_group_membership.assert_not_called()
+
+
 @pytest.mark.parametrize(
     "status",
     [

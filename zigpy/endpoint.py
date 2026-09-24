@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import enum
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from zigpy.const import APS_REPLY_TIMEOUT
 import zigpy.exceptions
@@ -193,7 +193,27 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 "Endpoint does not have a Groups cluster"
             ) from err
 
-        res = await groups_cluster.get_membership(groups=[])
+        try:
+            res = await groups_cluster.get_membership(groups=[])
+        except zigpy.exceptions.InvalidResponse as err:
+            # Newer response handling raises for non-success Default Responses
+            # before returning the command payload. Preserve this API's
+            # unsupported-status classification across both response paths.
+            status = getattr(err, "status", None)
+            if status in (
+                ZCLStatus.UNSUP_CLUSTER_COMMAND,
+                ZCLStatus.UNSUP_GENERAL_COMMAND,
+                ZCLStatus.UNSUP_MANUF_CLUSTER_COMMAND,
+                ZCLStatus.UNSUP_MANUF_GENERAL_COMMAND,
+                ZCLStatus.UNSUPPORTED_CLUSTER,
+            ):
+                raise zigpy.exceptions.UnsupportedCluster(
+                    f"Endpoint rejected Groups membership query: {status!r}",
+                    status=cast(int, status),
+                ) from err
+
+            raise
+
         if isinstance(res, GENERAL_COMMANDS[GeneralCommand.Default_Response].schema):
             status = res[1]
             if status in (
@@ -204,7 +224,8 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 ZCLStatus.UNSUPPORTED_CLUSTER,
             ):
                 raise zigpy.exceptions.UnsupportedCluster(
-                    f"Endpoint rejected Groups membership query: {status!r}"
+                    f"Endpoint rejected Groups membership query: {status!r}",
+                    status=status,
                 )
             raise zigpy.exceptions.InvalidResponse(
                 f"Expected Groups membership response, got default response: {status!r}"
