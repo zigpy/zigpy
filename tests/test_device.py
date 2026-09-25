@@ -2138,6 +2138,55 @@ async def test_reinterview_failure_preserves_device(monkeypatch, dev, exception)
     )
 
 
+async def test_reinterview_discards_shadow_when_device_removed(monkeypatch, dev):
+    """A device removed while its shadow is interviewed is not registered again."""
+    dev._application.devices = {dev.ieee: dev}
+    dev._application._device_reinterviewed = AsyncMock()
+
+    async def mock_discover(shadow):
+        # `remove()` picks up the registered shadow: `_remove_device()` pops it and
+        # tears it down, the old device is not touched
+        popped = dev._application.devices.pop(dev.ieee)
+        assert popped is shadow
+        popped.on_remove()
+
+    monkeypatch.setattr(device.Device, "_discover", mock_discover)
+
+    await dev.reinterview()
+
+    dev._application._device_reinterviewed.assert_not_called()
+    assert dev.ieee not in dev._application.devices
+    assert not dev.reinterviewing
+    # The old device is torn down as well, and callers get a completion signal
+    assert not dev._on_remove_callbacks
+    dev._application.listener_event.assert_called_with(
+        "device_reinterview_failure", dev
+    )
+
+
+async def test_reinterview_failure_after_device_removed(monkeypatch, dev):
+    """A failed re-interview does not restore a device that was removed meanwhile."""
+    dev._application.devices = {dev.ieee: dev}
+    dev._application._device_reinterviewed = AsyncMock()
+
+    async def mock_discover(shadow):
+        dev._application.devices.pop(dev.ieee)
+        shadow.on_remove()
+        raise TimeoutError
+
+    monkeypatch.setattr(device.Device, "_discover", mock_discover)
+
+    await dev.reinterview()
+
+    dev._application._device_reinterviewed.assert_not_called()
+    assert dev.ieee not in dev._application.devices
+    assert not dev.reinterviewing
+    assert not dev._on_remove_callbacks
+    dev._application.listener_event.assert_called_with(
+        "device_reinterview_failure", dev
+    )
+
+
 async def test_reinterview_blocks_auto_init(dev):
     """Test that schedule_initialize is a no-op while reinterviewing."""
     dev._reinterview_in_progress = True
