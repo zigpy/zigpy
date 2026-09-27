@@ -734,32 +734,28 @@ def test_bitstruct_gp_commissioning_notification_options() -> None:
 
 
 def test_non_byte_sized_struct():
-    class TestStruct(t.Struct):
-        foo: t.uint1_t
-        bar: t.uint8_t
+    with pytest.raises(TypeError):
 
-    s = TestStruct(foo=1, bar=2)
-
-    with pytest.raises(ValueError):
-        s.serialize()
-
-    with pytest.raises(ValueError):
-        TestStruct.deserialize(b"\x00\x00\x00\x00")
+        class TestStruct(t.Struct):
+            foo: t.uint1_t
+            bar: t.uint8_t
 
 
 def test_non_aligned_struct_non_integer_types():
-    class TestStruct(t.Struct):
-        foo: t.uint1_t
-        bar: t.data8
-        foo: t.uint7_t
+    with pytest.raises(TypeError):
 
-    s = TestStruct(foo=1, bar=[2])
+        class TestStruct(t.Struct):
+            foo: t.uint1_t
+            bar: t.data8
+            foo: t.uint7_t
 
-    with pytest.raises(ValueError):
-        s.serialize()
 
-    with pytest.raises(ValueError):
-        TestStruct.deserialize(b"\x00\x00\x00\x00")
+def test_conditional_bitfield():
+    with pytest.raises(TypeError):
+
+        class TestStruct(t.Struct):
+            foo: t.uint1_t
+            bar: t.uint7_t = t.StructField(requires=lambda s: s.foo == 1)
 
 
 def test_bitstruct_complex():

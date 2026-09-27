@@ -224,9 +224,15 @@ class FixedIntType(int):
         if len(data) < byte_size:
             raise ValueError(f"Data is too short to contain {byte_size} bytes")
 
-        r = cls.from_bytes(data[:byte_size], cls._byteorder, signed=cls._signed)
-        data = data[byte_size:]
-        return r, data
+        n = int.from_bytes(data[:byte_size], cls._byteorder, signed=cls._signed)
+
+        # The range check in `__new__` cannot fail for an integer of exactly this width
+        if cls.__new__ is FixedIntType.__new__:
+            r = int.__new__(cls, n)
+        else:
+            r = cls(n)
+
+        return r, data[byte_size:]
 
 
 class uint_t(FixedIntType, signed=False):

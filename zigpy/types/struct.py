@@ -22,9 +22,34 @@ class ListSubclass(list):
     pass
 
 
-class EmptyObject:
-    # So we can call `setattr()` on it
-    pass
+class PartialStruct:
+    """Read-only view over a partially deserialized struct, for `requires`/`length`."""
+
+    __slots__ = ("_result", "_names")
+
+    def __init__(self, result: dict[str, typing.Any], names: frozenset[str]) -> None:
+        self._result = result
+        self._names = names
+
+    def __getattr__(self, name: str) -> typing.Any:
+        if name not in self._names:
+            raise AttributeError(name)
+
+        if name in self._result:
+            return self._result[name]
+
+        return None
+
+
+class IntRun:
+    """Run of unconditional integer fields, (de)serialized as a single integer."""
+
+    __slots__ = ("size", "entries", "names")
+
+    def __init__(self, size: int, entries: tuple[tuple[typing.Any, ...], ...]) -> None:
+        self.size = size
+        self.entries = entries
+        self.names = [entry[0].name for entry in entries]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -98,6 +123,11 @@ class Struct:
         # `Struct.__setattr__` only guards frozen instances, which a new instance
         # never is. Only route through it if a subclass has its own hook.
         cls._direct_setattr = cls.__setattr__ is Struct.__setattr__
+        cls._needs_temp_instance = any(
+            f.requires is not None or f.length is not None for f in cls.fields
+        )
+        cls._field_names = frozenset(f.name for f in cls.fields)
+        cls._plan = cls._build_plan()
         cls._generated_new = cls._generate_new()
 
         # Check to see if the Struct is also an integer
@@ -297,18 +327,121 @@ class Struct:
     def as_tuple(self, *, skip_missing: bool = False) -> tuple:
         return tuple(self.as_dict(skip_missing=skip_missing).values())
 
+    @classmethod
+    def _build_plan(cls) -> tuple[IntRun | ResolvedStructField, ...]:
+        # Unconditional integer fields (including bitfields) are grouped into runs
+        # that are read and written with a single integer conversion. Every other
+        # field is handled on its own.
+        plan: list[IntRun | ResolvedStructField] = []
+        entries: list[tuple[typing.Any, ...]] = []
+        bit_offset = 0
+
+        def close_run() -> None:
+            nonlocal entries, bit_offset
+
+            if entries:
+                plan.append(IntRun(bit_offset // 8, tuple(entries)))
+
+            entries = []
+            bit_offset = 0
+
+        for field in cls.fields:
+            field_type = field.type
+            is_conditional = (
+                field.requires is not None or field.optional or field.length is not None
+            )
+            is_int = issubclass(field_type, t.FixedIntType)
+            is_bitfield = is_int and (field_type._bits % 8 != 0 or bit_offset % 8 != 0)
+
+            if is_bitfield and is_conditional:
+                raise TypeError(
+                    f"Field {field.name!r} is not byte aligned and cannot be conditional"
+                )
+
+            if not is_bitfield and bit_offset % 8 != 0:
+                raise TypeError(
+                    f"Segment of bitfields before field {field.name!r} does not"
+                    f" terminate on a byte boundary"
+                )
+
+            if is_int and not is_conditional and field_type._byteorder == "little":
+                # Byte-aligned integers with custom (de)serialization stay opaque
+                if is_bitfield or (
+                    field_type.deserialize.__func__
+                    in (
+                        t.FixedIntType.deserialize.__func__,
+                        IntStruct.deserialize.__func__,
+                    )
+                    and field_type.serialize
+                    in (t.FixedIntType.serialize, IntStruct.serialize)
+                ):
+                    entries.append(
+                        (
+                            field,
+                            field_type,
+                            bit_offset,
+                            (1 << field_type._bits) - 1,
+                            field_type._signed,
+                            # The range check in `__new__` cannot fail for unpacked
+                            # values so it is skipped for plain integer types
+                            field_type.__new__ is t.FixedIntType.__new__,
+                        )
+                    )
+                    bit_offset += field_type._bits
+                    continue
+
+            close_run()
+            plan.append(field)
+
+        if bit_offset % 8 != 0:
+            raise TypeError(
+                f"Trailing segment of bitfields in {cls} does not terminate on a"
+                f" byte boundary"
+            )
+
+        close_run()
+
+        return tuple(plan)
+
     def serialize(self) -> bytes:
         chunks = []
 
-        bit_offset = 0
-        bitfields = []
-        packed = 0
+        for op in self._plan:
+            if type(op) is IntRun:
+                packed = 0
 
-        for field, value in self.assigned_fields(strict=True):
-            if value is None and field.optional:
+                for field, field_type, shift, mask, _, _ in op.entries:
+                    value = getattr(self, field.name)
+
+                    if value is None:
+                        raise ValueError(
+                            f"Value for field {field.name!r} is required: {self!r}"
+                        )
+                    elif not isinstance(value, field_type):
+                        value = field._convert_type(value)
+
+                    packed |= (value & mask) << shift
+
+                chunks.append(packed.to_bytes(op.size, "little"))
                 continue
 
-            value = field._convert_type(value)
+            field = op
+
+            # Ignore fields that aren't required
+            if field.requires is not None and not field.requires(self):
+                continue
+
+            value = getattr(self, field.name)
+
+            if value is None:
+                if field.optional:
+                    continue
+                elif field.length is None:
+                    raise ValueError(
+                        f"Value for field {field.name!r} is required: {self!r}"
+                    )
+            elif not isinstance(value, field.type):
+                value = field._convert_type(value)
 
             # Fields with lengths dependent on other fields need to be validated
             if field.length is not None:
@@ -329,120 +462,61 @@ class Struct:
                         f" {expected_length}, got: {value!r}"
                     )
 
-            # All integral types are compacted into one chunk, unless they start and end
-            # on a byte boundary.
-            if issubclass(field.type, t.FixedIntType) and not (
-                value._bits % 8 == 0 and bit_offset % 8 == 0
-            ):
-                # Little endian, so [11, 1000, 00] is packed as 00_1000_11
-                packed |= (value & ((1 << value._bits) - 1)) << bit_offset
-                bit_offset += value._bits
-                bitfields.append(value)
-
-                # Serialize the current segment of bitfields once we reach a boundary
-                if bit_offset % 8 == 0:
-                    chunks.append(packed.to_bytes(bit_offset // 8, "little"))
-                    bit_offset = 0
-                    bitfields = []
-                    packed = 0
-
-                continue
-            elif bitfields:
-                raise ValueError(
-                    f"Segment of bitfields did not terminate on a byte boundary: "
-                    f" {bitfields}"
-                )
-
             chunks.append(value.serialize())
-
-        if bitfields:
-            raise ValueError(
-                f"Trailing segment of bitfields did not terminate on a byte boundary: "
-                f" {bitfields}"
-            )
 
         return b"".join(chunks)
 
-    @staticmethod
-    def _deserialize_internal(
-        fields: list[ResolvedStructField], data: bytes
-    ) -> tuple[dict[str, typing.Any], bytes]:
-        bit_length = 0
-        bitfields = []
-        result = {}
+    @classmethod
+    def deserialize(cls: type[Self], data: bytes) -> tuple[Self, bytes]:
+        result: dict[str, typing.Any] = {}
 
-        # We need to create a temporary instance to call the field's `requires` method,
-        # which expects a struct-like object
-        temp_instance = EmptyObject()
+        # `requires` and `length` callables expect a struct-like object
+        if cls._needs_temp_instance:
+            partial = PartialStruct(result, cls._field_names)
+        else:
+            partial = None
 
-        for field in fields:
-            setattr(temp_instance, field.name, None)
+        for op in cls._plan:
+            if type(op) is IntRun:
+                size = op.size
 
-        for field in fields:
-            if (field.requires is not None and not field.requires(temp_instance)) or (
+                if len(data) < size:
+                    raise ValueError(f"Data is too short to contain {op.names}")
+
+                packed = int.from_bytes(data[:size], "little")
+                data = data[size:]
+
+                for field, field_type, shift, mask, signed, direct_new in op.entries:
+                    value = (packed >> shift) & mask
+
+                    if signed and value > field_type.max_value:
+                        value -= mask + 1
+
+                    if direct_new:
+                        result[field.name] = int.__new__(field_type, value)
+                    else:
+                        result[field.name] = field_type(value)
+
+                continue
+
+            field = op
+
+            if (field.requires is not None and not field.requires(partial)) or (
                 not data and field.optional
             ):
                 continue
 
-            if issubclass(field.type, t.FixedIntType) and not (
-                field.type._bits % 8 == 0 and bit_length % 8 == 0
-            ):
-                bit_length += field.type._bits
-                bitfields.append(field)
-
-                if bit_length % 8 == 0:
-                    if len(data) < bit_length // 8:
-                        raise ValueError(f"Data is too short to contain {bitfields}")
-
-                    packed = int.from_bytes(data[: bit_length // 8], "little")
-                    data = data[bit_length // 8 :]
-
-                    for f in bitfields:
-                        bits = f.type._bits
-                        value = packed & ((1 << bits) - 1)
-                        packed >>= bits
-
-                        if f.type._signed and value > f.type.max_value:
-                            value -= 1 << bits
-
-                        value = f.type(value)
-                        result[f.name] = value
-                        setattr(temp_instance, f.name, value)
-
-                    bit_length = 0
-                    bitfields = []
-
-                continue
-            elif bitfields:
-                raise ValueError(
-                    f"Segment of bitfields did not terminate on a byte boundary: "
-                    f" {bitfields}"
-                )
-
             if field.length is not None:
                 field = cast(ResolvedArrayStructField, field)
 
-                count = field.length(temp_instance)
-                items, data = field.type.deserialize(data, count=count)
+                items, data = field.type.deserialize(data, count=field.length(partial))
                 value = field.type(items)
             else:
                 value, data = field.type.deserialize(data)
 
             result[field.name] = value
-            setattr(temp_instance, field.name, value)
 
-        if bitfields:
-            raise ValueError(
-                f"Trailing segment of bitfields did not terminate on a byte boundary: "
-                f" {bitfields}"
-            )
-
-        return result, data
-
-    @classmethod
-    def deserialize(cls: type[Self], data: bytes) -> tuple[Self, bytes]:
-        fields, data = cls._deserialize_internal(cls.fields, data)
-        return cls(**fields), data
+        return cls(**result), data
 
     def replace(self, **kwargs: dict[str, typing.Any]) -> Struct:
         d = self.as_dict().copy()
@@ -651,13 +725,10 @@ class IntStruct(Struct, IntMixin):
             if field.type._signed and value > field.type.max_value:
                 value -= mask + 1
 
-            if cls._direct_setattr:
-                instance.__dict__[field.name] = field.type(value)
-            else:
-                setattr(instance, field.name, field.type(value))
+            setattr(instance, field.name, field.type(value))
 
         # Freeze it
-        instance.__dict__["_frozen"] = True
+        instance._frozen = True
 
         return instance
 
