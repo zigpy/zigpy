@@ -1832,6 +1832,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         return list(self.ServerCommandDefs)
 
     def log(self, lvl: int, msg: str, *args, **kwargs) -> None:
+        if not LOGGER.isEnabledFor(lvl):
+            return None
+
         msg = "[%s:%s:0x%04x] " + msg
         args = (
             self._endpoint.device.name,

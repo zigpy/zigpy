@@ -1503,6 +1503,9 @@ class ZigbeeDevice(BaseDevice):
         return None
 
     def log(self, lvl, msg, *args, **kwargs) -> None:
+        if not LOGGER.isEnabledFor(lvl):
+            return
+
         msg = "[0x%04x] " + msg
         args = (self.nwk, *args)
         LOGGER.log(lvl, msg, *args, **kwargs)
