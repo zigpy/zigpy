@@ -732,6 +732,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         self.debug("Received ZCL frame: %r", data.hex(" "))
 
         hdr, data = foundation.ZCLHeader.deserialize(data)
+
+        return self._deserialize_command(hdr, data)
+
+    def _deserialize_command(
+        self, hdr: foundation.ZCLHeader, data: bytes
+    ) -> tuple[foundation.ZCLHeader, CommandSchema | bytes]:
+        """Deserialize the command following an already-parsed ZCL header."""
         self.debug("Decoded ZCL frame header: %r", hdr)
 
         if hdr.frame_control.frame_type == foundation.FrameType.CLUSTER_COMMAND:

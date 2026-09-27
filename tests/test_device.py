@@ -1455,7 +1455,6 @@ async def test_request_exception_propagation(dev):
 
     ep = dev.add_endpoint(1)
     ep.add_input_cluster(Basic.cluster_id)
-    ep.basic.deserialize = MagicMock(side_effect=RuntimeError())
 
     dev.get_sequence = MagicMock(return_value=tsn)
 
@@ -1488,7 +1487,7 @@ async def test_request_exception_propagation(dev):
                         status=foundation.Status.SUCCESS,
                     )
                     .serialize()
-                )
+                )[:-1]
             ),
             src=t.AddrModeAddress(
                 addr_mode=t.AddrMode.NWK,
@@ -1504,7 +1503,7 @@ async def test_request_exception_propagation(dev):
     with pytest.raises(zigpy.exceptions.ParsingError) as exc:
         await ep.basic.reset_fact_default()
 
-    assert type(exc.value.__cause__) is RuntimeError
+    assert type(exc.value.__cause__) is ValueError
 
 
 async def test_debouncing(dev):

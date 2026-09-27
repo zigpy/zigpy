@@ -1288,7 +1288,11 @@ class ZigbeeDevice(BaseDevice):
                 return endpoint, zcl_cluster
 
     def _parse_packet_command(
-        self, packet: t.ZigbeePacket, endpoint: typing.Any, zcl_cluster: Cluster | None
+        self,
+        packet: t.ZigbeePacket,
+        endpoint: typing.Any,
+        zcl_cluster: Cluster | None,
+        hdr: zdo_t.ZDOHeader | foundation.ZCLHeader,
     ) -> typing.Any:
         """Deserialize packet data."""
         data = packet.data.serialize()
@@ -1297,7 +1301,16 @@ class ZigbeeDevice(BaseDevice):
             _, cmd = endpoint.deserialize(packet.cluster_id, data)
         else:
             assert zcl_cluster is not None
-            _, cmd = zcl_cluster.deserialize(data)
+            assert isinstance(hdr, foundation.ZCLHeader)
+
+            if type(zcl_cluster).deserialize is Cluster.deserialize:
+                # The ZCL header has already been parsed, do not parse it again
+                _, cmd = zcl_cluster._deserialize_command(
+                    hdr, data[len(hdr.serialize()) :]
+                )
+            else:
+                # Quirks can override `deserialize` to rewrite the whole frame
+                _, cmd = zcl_cluster.deserialize(data)
 
         return cmd
 
@@ -1360,7 +1373,7 @@ class ZigbeeDevice(BaseDevice):
 
         # Deserialize packet data
         try:
-            cmd = self._parse_packet_command(packet, endpoint, zcl_cluster)
+            cmd = self._parse_packet_command(packet, endpoint, zcl_cluster, hdr)
         except Exception as exc:  # noqa: BLE001
             cmd = None
             error = zigpy.exceptions.ParsingError()
