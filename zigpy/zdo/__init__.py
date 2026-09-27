@@ -61,6 +61,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         priority: int | None = None,
         retries: int | None = None,
         retry_delay: float | None = None,
+        aps_encryption: bool = False,
         **kwargs,
     ):
         data = self._serialize(command, *args, **kwargs)
@@ -79,6 +80,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
             priority=priority,
             retries=retries,
             retry_delay=retry_delay,
+            aps_encryption=aps_encryption,
         )
 
     async def reply(
@@ -93,6 +95,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         priority: int | None = None,
         retries: int | None = None,
         retry_delay: float | None = None,
+        aps_encryption: bool = False,
         **kwargs,
     ):
         data = self._serialize(command, *args, **kwargs)
@@ -112,6 +115,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
             priority=priority,
             retries=retries,
             retry_delay=retry_delay,
+            aps_encryption=aps_encryption,
         )
 
     def handle_message(
