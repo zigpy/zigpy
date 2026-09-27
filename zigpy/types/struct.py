@@ -524,11 +524,14 @@ class Struct:
 
 
 class IntStruct(Struct, IntMixin):
+    _int_type: ClassVar[type[t.FixedIntType]]
+    _bit_layout: ClassVar[tuple[tuple[ResolvedStructField, int, int], ...]]
+
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
 
         try:
-            cls._int_type: type[t.FixedIntType] = next(
+            cls._int_type = next(
                 c
                 for c in cls.__mro__[1:]
                 if issubclass(c, t.FixedIntType) and not issubclass(c, Struct)
@@ -536,14 +539,39 @@ class IntStruct(Struct, IntMixin):
         except StopIteration:
             raise TypeError("Integer structs must be an integer subclasses") from None
 
-    def __new__(
-        cls: type[Self], *args, _underlying_int: int | None = None, **kwargs
-    ) -> Self:
+        # Every field of an integer struct is a fixed-width integer at a fixed bit
+        # offset, so the layout is computed once and used for packing and unpacking
+        layout = []
+        shift = 0
+
+        for field in cls.fields:
+            if field.requires is not None or field.optional or field.length is not None:
+                raise TypeError(
+                    f"Field {field.name!r} of an integer struct cannot be conditional"
+                )
+
+            if not issubclass(field.type, t.FixedIntType):
+                raise TypeError(
+                    f"Field {field.name!r} of an integer struct must be an integer"
+                    f" type, not {field.type}"
+                )
+
+            layout.append((field, shift, (1 << field.type._bits) - 1))
+            shift += field.type._bits
+
+        if shift != cls._int_type._bits:
+            raise TypeError(
+                f"Fields of {cls} span {shift} bits but {cls._int_type} has"
+                f" {cls._int_type._bits} bits"
+            )
+
+        cls._bit_layout = tuple(layout)
+
+    def __new__(cls: type[Self], *args, **kwargs) -> Self:
         # Integers are immutable in Python so we need to know, at creation time, what
         # the integer value of this object will be. This means that these structs *must*
         # also be immutable.
         cls = cls._real_cls()  # noqa: PLW0642
-        underlying_int = _underlying_int
 
         if len(args) > 1:
             raise TypeError(f"{cls} takes no positional arguments")
@@ -557,40 +585,33 @@ class IntStruct(Struct, IntMixin):
                 )
 
             underlying_int = args[0]
+        else:
+            underlying_int = 0
 
-            data = cls._int_type(underlying_int).serialize()
-            kwargs, _ = cls._deserialize_internal(cls.fields, data)
-            args = ()
+            for field, shift, mask in cls._bit_layout:
+                if field.name in kwargs:
+                    value = kwargs.pop(field.name)
+                else:
+                    value = field.default
 
-        if underlying_int is None:
-            # To compute the underlying integer, we create a temp instance and serialize
-            temp_instance = super(Struct, cls).__new__(cls, 0)
+                if value is None:
+                    raise ValueError(f"Value for field {field.name!r} is required")
 
-            # Set the correct attributes on the instance so we can serialize
-            bound = cls._signature.bind(*args, **kwargs)
-            bound.apply_defaults()
+                underlying_int |= (field._convert_type(value) & mask) << shift
 
-            for name, value in bound.arguments.items():
-                field = getattr(cls.fields, name)
-                setattr(temp_instance, name, value)
-
-            # Finally, serialize
-            underlying_int, rest = cls._int_type.deserialize(temp_instance.serialize())
-            assert not rest
-
-            # Pretend we were called with the correct kwargs
-            args = ()
-            kwargs = temp_instance.as_dict()
-
-        bound = cls._signature.bind(*args, **kwargs)
-        bound.apply_defaults()
+            if kwargs:
+                raise TypeError(f"{cls} got unexpected keyword arguments: {kwargs!r}")
 
         instance = super(Struct, cls).__new__(cls, underlying_int)
 
-        # Set attributes on the final instance
-        for name, value in bound.arguments.items():
-            field = getattr(cls.fields, name)
-            setattr(instance, name, field._convert_type(value))
+        # Attributes are always unpacked from the integer so they are canonical
+        for field, shift, mask in cls._bit_layout:
+            value = (underlying_int >> shift) & mask
+
+            if field.type._signed and value > field.type.max_value:
+                value -= mask + 1
+
+            setattr(instance, field.name, field.type(value))
 
         # Freeze it
         instance._frozen = True
@@ -609,14 +630,10 @@ class IntStruct(Struct, IntMixin):
 
         return int(self) == int(other)
 
+    def serialize(self) -> bytes:
+        return self._int_type.serialize(self)
+
     @classmethod
     def deserialize(cls: type[Self], data: bytes) -> tuple[Self, bytes]:
-        fields, remaining = cls._deserialize_internal(cls.fields, data)
-        underlying_int, _ = cls._int_type.deserialize(
-            data[: len(data) - len(remaining)]
-        )
-
-        # We overload deserialization to avoid an unnecessary serialize-deserialize
-        # during `cls.__new__` to compute the underlying integer, since we have all the
-        # data here already
-        return cls(_underlying_int=underlying_int, **fields), remaining
+        underlying_int, remaining = cls._int_type.deserialize(data)
+        return cls(underlying_int), remaining
