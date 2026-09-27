@@ -1220,9 +1220,25 @@ class ZigbeeDevice(BaseDevice):
 
     def _should_filter_packet(self, packet: t.ZigbeePacket) -> bool:
         """Check if packet should be filtered as duplicate."""
+        # Be conservative with deduplication: everything but the timestamp, TSN, and
+        # link quality has to match. Building a tuple is much cheaper than copying and
+        # hashing the packet itself.
         return self._packet_debouncer.filter(
-            # Be conservative with deduplication
-            obj=packet.replace(timestamp=None, tsn=None, lqi=None, rssi=None),
+            obj=(
+                packet.priority,
+                packet.src,
+                packet.src_ep,
+                packet.dst,
+                packet.dst_ep,
+                packet.source_route,
+                packet.extended_timeout,
+                packet.profile_id,
+                packet.cluster_id,
+                packet.data,
+                packet.tx_options,
+                packet.radius,
+                packet.non_member_radius,
+            ),
             expire_in=PACKET_DEBOUNCE_WINDOW,
         )
 
