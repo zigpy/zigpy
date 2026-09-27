@@ -406,7 +406,14 @@ class uint64_t_be(uint_t_be, bits=64):
 class _AlwaysCreateEnumMeta(enum.EnumMeta):
     """An EnumMeta that always creates a new enum member for unknown values."""
 
-    def __call__(cls, value, *args, **kwargs) -> type[enum.Enum]:  # type: ignore[override]
+    def __call__(cls, value, *args, **kwargs) -> enum.Enum:  # type: ignore[override]
+        # Fast path for known values, this is one of the hottest calls in zigpy
+        if not args and not kwargs:
+            try:
+                return cls._value2member_map_[value]
+            except (KeyError, TypeError):
+                pass
+
         # Until zigpy stops using constructs like `t.enum8(0xFF)`, we need this check
         if not cls._member_map_:
             return cls._missing_(value)
@@ -415,7 +422,7 @@ class _AlwaysCreateEnumMeta(enum.EnumMeta):
 
 
 class _IntEnumMeta(_AlwaysCreateEnumMeta):
-    def __call__(cls, value, *args, **kwargs) -> type[enum.Enum]:  # type: ignore[override]
+    def __call__(cls, value, *args, **kwargs) -> enum.Enum:  # type: ignore[override]
         if isinstance(value, str):
             if value.startswith("0x"):
                 value = int(value, base=16)
