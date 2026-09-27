@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import inspect
 import typing
 from typing import TYPE_CHECKING, Any, ClassVar, Self, cast
 
@@ -93,18 +92,13 @@ class Struct:
         super().__init_subclass__()
 
         # We generate fields up here to fail early and cache it
-        cls.fields = cls._real_cls()._get_fields()
-        cls._signature = inspect.Signature(
-            parameters=[
-                inspect.Parameter(
-                    name=f.name,
-                    kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                    default=f.default,
-                    annotation=f.type,
-                )
-                for f in cls.fields
-            ]
-        )
+        cls._real_type = cls._real_cls()
+        cls.fields = cls._real_type._get_fields()
+
+        # `Struct.__setattr__` only guards frozen instances, which a new instance
+        # never is. Only route through it if a subclass has its own hook.
+        cls._direct_setattr = cls.__setattr__ is Struct.__setattr__
+        cls._generated_new = cls._generate_new()
 
         # Check to see if the Struct is also an integer
         if next(
@@ -121,9 +115,7 @@ class Struct:
         cls._frozen = False
 
     def __new__(cls: type[Self], *args, **kwargs) -> Self:
-        cls = cls._real_cls()  # noqa: PLW0642
-
-        if len(args) == 1 and isinstance(args[0], cls):
+        if len(args) == 1 and isinstance(args[0], cls._real_type):
             # Like a copy constructor
             if kwargs:
                 raise ValueError(f"Cannot use copy constructor with kwargs: {kwargs!r}")
@@ -131,18 +123,57 @@ class Struct:
             kwargs = args[0].as_dict()
             args = ()
 
-        # Pretend our signature is `__new__(cls, p1: t1, p2: t2, ...)`
-        bound = cls._signature.bind(*args, **kwargs)
-        bound.apply_defaults()
+        return cls._generated_new(*args, **kwargs)
 
-        instance = super().__new__(cls)
+    @classmethod
+    def _generate_new(cls) -> typing.Callable[..., Self]:
+        # Generate a `__new__(p1=d1, p2=d2, ...)` so argument binding, type
+        # conversion, and attribute assignment are unrolled with no per-field
+        # lookups. This is much faster than `inspect.Signature.bind`.
+        namespace = {
+            "__real_type": cls._real_type,
+            # Mixins like `tuple` must allocate the instance, not `object`
+            "__base_new": super(Struct, cls._real_type).__new__,
+            "__isinstance": isinstance,
+        }
 
-        # Set each attributes on the instance
-        for name, value in bound.arguments.items():
-            field = getattr(cls.fields, name)
-            setattr(instance, name, field._convert_type(value))
+        params = []
+        lines = []
 
-        return instance
+        direct_setattr = cls._direct_setattr
+
+        if direct_setattr:
+            lines.append("    __dict = __instance.__dict__")
+
+        for index, field in enumerate(cls.fields):
+            namespace[f"__field{index}"] = field
+            namespace[f"__type{index}"] = field.type
+            namespace[f"__default{index}"] = field.default
+            params.append(f"{field.name}=__default{index}")
+
+            lines.append(
+                f"    if {field.name} is not None"
+                f" and not __isinstance({field.name}, __type{index}):"
+                f" {field.name} = __field{index}._convert_type({field.name})"
+            )
+
+            if direct_setattr:
+                lines.append(f"    __dict[{field.name!r}] = {field.name}")
+            else:
+                lines.append(f"    __instance.{field.name} = {field.name}")
+
+        source = "\n".join(
+            [
+                f"def __new__({', '.join(params)}):",
+                "    __instance = __base_new(__real_type)",
+                *lines,
+                "    return __instance",
+            ]
+        )
+
+        exec(source, namespace)  # noqa: S102
+
+        return namespace["__new__"]
 
     @classmethod
     def _get_fields(cls) -> list[ResolvedStructField]:
@@ -271,6 +302,7 @@ class Struct:
 
         bit_offset = 0
         bitfields = []
+        packed = 0
 
         for field, value in self.assigned_fields(strict=True):
             if value is None and field.optional:
@@ -302,14 +334,17 @@ class Struct:
             if issubclass(field.type, t.FixedIntType) and not (
                 value._bits % 8 == 0 and bit_offset % 8 == 0
             ):
+                # Little endian, so [11, 1000, 00] is packed as 00_1000_11
+                packed |= (value & ((1 << value._bits) - 1)) << bit_offset
                 bit_offset += value._bits
                 bitfields.append(value)
 
                 # Serialize the current segment of bitfields once we reach a boundary
                 if bit_offset % 8 == 0:
-                    segment = t.Bits.from_bitfields(bitfields).serialize()[::-1]
-                    chunks.append(segment)
+                    chunks.append(packed.to_bytes(bit_offset // 8, "little"))
+                    bit_offset = 0
                     bitfields = []
+                    packed = 0
 
                 continue
             elif bitfields:
@@ -359,15 +394,20 @@ class Struct:
                     if len(data) < bit_length // 8:
                         raise ValueError(f"Data is too short to contain {bitfields}")
 
-                    bits, _ = t.Bits.deserialize(data[: bit_length // 8][::-1])
+                    packed = int.from_bytes(data[: bit_length // 8], "little")
                     data = data[bit_length // 8 :]
 
                     for f in bitfields:
-                        value, bits = f.type.from_bits(bits)
+                        bits = f.type._bits
+                        value = packed & ((1 << bits) - 1)
+                        packed >>= bits
+
+                        if f.type._signed and value > f.type.max_value:
+                            value -= 1 << bits
+
+                        value = f.type(value)
                         result[f.name] = value
                         setattr(temp_instance, f.name, value)
-
-                    assert not bits
 
                     bit_length = 0
                     bitfields = []
@@ -611,10 +651,13 @@ class IntStruct(Struct, IntMixin):
             if field.type._signed and value > field.type.max_value:
                 value -= mask + 1
 
-            setattr(instance, field.name, field.type(value))
+            if cls._direct_setattr:
+                instance.__dict__[field.name] = field.type(value)
+            else:
+                setattr(instance, field.name, field.type(value))
 
         # Freeze it
-        instance._frozen = True
+        instance.__dict__["_frozen"] = True
 
         return instance
 
