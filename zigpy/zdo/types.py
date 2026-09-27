@@ -132,17 +132,23 @@ class NodeDescriptor(t.Struct):
         reserved = None
 
         if byte1 is not None:
-            logical_type = LogicalType(byte1 & 0b111)
-            complex_descriptor_available = t.uint1_t((byte1 >> 3) & 0b1)
-            user_descriptor_available = t.uint1_t((byte1 >> 4) & 0b1)
-            reserved = t.uint3_t(byte1 >> 5)
+            bits, _ = t.Bits.deserialize(bytes([byte1]))
+            logical_type, bits = LogicalType.from_bits(bits)
+            complex_descriptor_available, bits = t.uint1_t.from_bits(bits)
+            user_descriptor_available, bits = t.uint1_t.from_bits(bits)
+            reserved, bits = t.uint3_t.from_bits(bits)
+
+            assert not bits
 
         aps_flags = None
         frequency_band = None
 
         if byte2 is not None:
-            aps_flags = t.uint3_t(byte2 & 0b111)
-            frequency_band = cls.FrequencyBand(byte2 >> 3)
+            bits, _ = t.Bits.deserialize(bytes([byte2]))
+            aps_flags, bits = t.uint3_t.from_bits(bits)
+            frequency_band, bits = cls.FrequencyBand.from_bits(bits)
+
+            assert not bits
 
         return cls(  # type:ignore[operator]
             logical_type=logical_type,
