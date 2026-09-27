@@ -68,12 +68,6 @@ def test_fractional_ints_corner():
     with pytest.raises(TypeError):
         n.serialize()
 
-    assert t.uint1_t(0).bits() == t.Bits([0])
-    assert t.uint1_t(1).bits() == t.Bits([1])
-
-    assert t.uint1_t.from_bits([1, 1]) == (1, [1])
-    assert t.uint1_t.from_bits([0, 1]) == (1, [0])
-
 
 def test_fractional_ints_larger():
     assert t.uint7_t._size is None
@@ -95,15 +89,6 @@ def test_fractional_ints_larger():
 
     with pytest.raises(TypeError):
         n.serialize()
-
-    assert t.uint7_t(0).bits() == t.Bits([0, 0, 0, 0, 0, 0, 0])
-    assert t.uint7_t(1).bits() == t.Bits([0, 0, 0, 0, 0, 0, 1])
-    assert t.uint7_t(0b1011111).bits() == t.Bits([1, 0, 1, 1, 1, 1, 1])
-
-    assert t.uint7_t.from_bits([1, 0, 1, 1, 1, 1, 0, 1, 1, 1]) == (0b1110111, [1, 0, 1])
-
-    with pytest.raises(ValueError):
-        assert t.uint7_t.from_bits([1] * 6)
 
 
 def test_ints_signed():
@@ -130,21 +115,10 @@ def test_ints_signed():
     with pytest.raises(TypeError):
         n.serialize()
 
-    assert int7s(0).bits() == t.Bits([0, 0, 0, 0, 0, 0, 0])
-    assert int7s(1).bits() == t.Bits([0, 0, 0, 0, 0, 0, 1])
-    assert int7s(-1).bits() == t.Bits([1, 1, 1, 1, 1, 1, 1])
-    assert int7s(2**6 - 1).bits() == t.Bits([0, 1, 1, 1, 1, 1, 1])
-
-    assert int7s.from_bits([1, 0, 1, 0, 1, 1, 0, 1, 1, 1]) == (0b0110111, [1, 0, 1])
-
     with pytest.raises(TypeError):
         int7s.deserialize(b"\xff")
 
     t.int8s.deserialize(b"\xff")
-
-    n = t.int8s(-126)
-    bits = t.Bits([1, 0]) + t.Bits.deserialize(n.serialize())[0]
-    assert t.int8s.from_bits(bits) == (n, t.Bits([1, 0]))
 
 
 def test_bigendian_ints():
@@ -157,18 +131,6 @@ def test_bigendian_ints():
         t.uint32_t_be(0x12345678).serialize()[::-1]
         == t.uint32_t(0x12345678).serialize()
     )
-
-
-def test_bits():
-    assert t.Bits() == t.Bits([])
-    assert t.Bits([1]) != [1]
-    assert t.Bits([1] + [0] * 15).serialize() == b"\x80\x00"
-    assert t.Bits.deserialize(b"\x80\x00") == (t.Bits([1] + [0] * 15), b"")
-
-    bits = t.Bits([0] * 7)
-
-    with pytest.raises(ValueError):
-        assert bits.serialize()
 
 
 def compare_with_nan(v1, v2):

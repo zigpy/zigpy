@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
 import enum
 import inspect
 import logging
@@ -17,71 +16,6 @@ class Serializable(Protocol):
 
     @classmethod
     def deserialize(cls, data: bytes) -> tuple[Self, bytes]: ...
-
-
-class Bits:  # noqa: PLW1641
-    def __init__(self, bits: list[int] | None = None) -> None:
-        self._bits: list[int] = bits or []
-
-    def __len__(self) -> int:
-        return len(self._bits)
-
-    def __getitem__(self, index: slice) -> Self:
-        return type(self)(self._bits[index])
-
-    def __iter__(self) -> Iterator[int]:
-        return iter(self._bits)
-
-    def extend(self, bits: list[int]) -> None:
-        self._bits.extend(bits)
-
-    def __repr__(self) -> str:
-        return f"Bits({self._bits})"
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, type(self)):
-            return NotImplemented
-
-        return self._bits == other._bits
-
-    def __add__(self, other: Self) -> Self:
-        return type(self)(self._bits + other._bits)
-
-    @classmethod
-    def from_bitfields(cls, fields: list[FixedIntType]) -> Self:
-        instance = cls()
-
-        # Little endian, so [11, 1000, 00] will be packed as 00_1000_11
-        for field in fields[::-1]:
-            instance.extend(field.bits())
-
-        return instance
-
-    def serialize(self) -> bytes:
-        if len(self) % 8 != 0:
-            raise ValueError(f"Cannot serialize {len(self)} bits into bytes: {self}")
-
-        serialized_bytes = []
-
-        for index in range(0, len(self), 8):
-            byte = 0x00
-
-            for bit in self._bits[index : index + 8]:
-                byte <<= 1
-                byte |= bit
-
-            serialized_bytes.append(byte)
-
-        return bytes(serialized_bytes)
-
-    @classmethod
-    def deserialize(cls, data) -> tuple[Self, bytes]:
-        bits: list[int] = []
-
-        for byte in data:
-            bits.extend((byte >> i) & 1 for i in range(7, -1, -1))
-
-        return cls(bits), b""
 
 
 class SerializableBytes:
@@ -188,25 +122,6 @@ class FixedIntType(int):
         # XXX: The enum module sabotages pickling using the same logic.
         if "__reduce_ex__" not in cls.__dict__:
             cls.__reduce_ex__ = cls.__reduce_ex__
-
-    def bits(self) -> Bits:
-        return Bits([(self >> n) & 0b1 for n in range(self._bits - 1, -1, -1)])
-
-    @classmethod
-    def from_bits(cls, bits: Bits) -> tuple[Self, Bits]:
-        if len(bits) < cls._bits:
-            raise ValueError(f"Not enough bits to decode {cls}: {bits}")
-
-        n = 0
-
-        for bit in bits[-cls._bits :]:
-            n <<= 1
-            n |= bit & 1
-
-        if cls._signed and n >= 2 ** (cls._bits - 1):
-            n -= 2**cls._bits
-
-        return cls(n), bits[: -cls._bits]
 
     def serialize(self) -> bytes:
         if self._bits % 8 != 0:
