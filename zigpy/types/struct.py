@@ -640,6 +640,7 @@ class Struct:
 class IntStruct(Struct, IntMixin):
     _int_type: ClassVar[type[t.FixedIntType]]
     _bit_layout: ClassVar[tuple[tuple[ResolvedStructField, int, int], ...]]
+    _instance_cache: ClassVar[dict[int, Any] | None]
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
@@ -681,6 +682,15 @@ class IntStruct(Struct, IntMixin):
 
         cls._bit_layout = tuple(layout)
 
+        # Instances are immutable so small integer structs are shared, like enum
+        # members. `FrameControl` is constructed for every ZCL frame.
+        if cls is not cls._real_type:
+            cls._instance_cache = cls._real_type._instance_cache
+        elif cls._int_type._bits <= 8:
+            cls._instance_cache = {}
+        else:
+            cls._instance_cache = None
+
     def __new__(cls: type[Self], *args, **kwargs) -> Self:
         # Integers are immutable in Python so we need to know, at creation time, what
         # the integer value of this object will be. This means that these structs *must*
@@ -716,6 +726,14 @@ class IntStruct(Struct, IntMixin):
             if kwargs:
                 raise TypeError(f"{cls} got unexpected keyword arguments: {kwargs!r}")
 
+        cache = cls._instance_cache
+
+        if cache is not None:
+            try:
+                return cache[underlying_int]
+            except KeyError:
+                pass
+
         instance = super(Struct, cls).__new__(cls, underlying_int)
 
         # Attributes are always unpacked from the integer so they are canonical
@@ -729,6 +747,9 @@ class IntStruct(Struct, IntMixin):
 
         # Freeze it
         instance._frozen = True
+
+        if cache is not None:
+            cache[int(instance)] = instance
 
         return instance
 
