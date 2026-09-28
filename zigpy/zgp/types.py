@@ -19,9 +19,11 @@ __all__ = [
     "SecurityLevel",
     "SecurityKeyType",
     "SecurityStatus",
+    "SinkSecurityLevel",
     "SinkCommissioningExitMode",
     "ProxyCommissioningModeExitMode",
     "CommunicationMode",
+    "SinkCommunicationMode",
     "CommunicationDirection",
     "GPLinkQuality",
     "GPPGPDLink",
@@ -228,9 +230,17 @@ class SecurityKeyType(basic.enum3):
     DerivedIndividual = 0b111
 
 
+# Figure 23, the `gpsSecurityLevel` attribute of a sink
+class SinkSecurityLevel(t.IntStruct, basic.uint8_t):
+    minimal_security_level: SecurityLevel
+    protection_with_gp_link_key: basic.uint1_t
+    involve_tc: basic.uint1_t
+    _reserved: basic.uint4_t
+
+
 # Figure 22, the `gpsCommissioningExitMode` attribute of a sink. Each bit is an
 # independent exit condition and can be combined with the others.
-class SinkCommissioningExitMode(basic.bitmap3):
+class SinkCommissioningExitMode(basic.bitmap8):
     NotDefined = 0b000
     OnExpire = 0b001
     OnFirstPairing = 0b010
@@ -252,6 +262,12 @@ class CommunicationMode(basic.enum2):
     GroupcastForwardToDGroup = 0b01
     GroupcastForwardToCommGroup = 0b10
     UnicastLightweight = 0b11
+
+
+# A.3.3.2.3, the `gpsCommunicationMode` attribute of a sink
+class SinkCommunicationMode(t.IntStruct, basic.uint8_t):
+    communication_mode: CommunicationMode
+    _reserved: basic.uint6_t
 
 
 class CommunicationDirection(basic.enum1):

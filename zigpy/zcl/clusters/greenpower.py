@@ -10,6 +10,7 @@ from zigpy.zcl import Cluster, foundation
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
     BaseCommandDefs,
+    DataTypeId,
     ZCLAttributeDef,
     ZCLCommandDef,
 )
@@ -267,7 +268,8 @@ class GreenPowerProxy(Cluster):
         )
         communication_mode: Final = ZCLAttributeDef(
             id=0x0002,
-            type=zgptypes.CommunicationMode,
+            type=zgptypes.SinkCommunicationMode,
+            zcl_type=DataTypeId.map8,
             access="rw",
             mandatory=True,
         )
@@ -284,7 +286,8 @@ class GreenPowerProxy(Cluster):
         )
         security_level: Final = ZCLAttributeDef(
             id=0x0005,
-            type=zgptypes.SecurityLevel,
+            type=zgptypes.SinkSecurityLevel,
+            zcl_type=DataTypeId.map8,
             access="rw",
             mandatory=True,
         )

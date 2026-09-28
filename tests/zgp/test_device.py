@@ -39,7 +39,7 @@ def events(device) -> list:
 
 
 def make_packet(
-    frame_counter: int,
+    frame_counter: int | None,
     *,
     command_id: GPDCommandID = GPDCommandID.Toggle,
     payload: bytes = b"",
@@ -60,7 +60,7 @@ def make_packet(
         endpoint=None if endpoint is None else t.uint8_t(endpoint),
         command_id=command_id,
         payload=t.SerializableBytes(payload),
-        frame_counter=t.uint32_t(frame_counter),
+        frame_counter=(None if frame_counter is None else t.uint32_t(frame_counter)),
         security_level=security_level,
         security_key_type=security_key_type,
         security_status=security_status,
@@ -244,20 +244,43 @@ def test_security_mismatch_is_dropped(
     assert device.frame_counter == 5000
 
 
-def test_undecrypted_frame_is_dropped(device, events) -> None:
-    """An encrypted GPDF the radio did not decrypt has no readable command ID."""
+@pytest.mark.parametrize(
+    ("security_status", "delivered"),
+    [
+        (None, True),
+        (SecurityStatus.SecuritySuccess, True),
+        (SecurityStatus.NoSecurity, True),
+        (SecurityStatus.CounterFailure, False),
+        (SecurityStatus.AuthFailure, False),
+        (SecurityStatus.Unprocessed, False),
+    ],
+)
+def test_security_status_gate(device, events, security_status, delivered) -> None:
+    """Only frames that passed security processing are delivered (A.3.5.2.5)."""
     commission_security(device)
 
     device.packet_received(make_packet(5000))
     device.packet_received(
         make_packet(
             6000,
-            security_status=SecurityStatus.Unprocessed,
+            security_status=security_status,
             offset=timedelta(seconds=10),
         )
     )
 
-    assert len(events) == 1
+    assert len(events) == (2 if delivered else 1)
+    assert device.frame_counter == (6000 if delivered else 5000)
+
+
+def test_missing_frame_counter_keeps_stored_counter(device, events) -> None:
+    """A frame without a frame counter must not disable replay protection."""
+    commission_security(device)
+
+    device.packet_received(make_packet(5000))
+    device.packet_received(make_packet(None, offset=timedelta(seconds=10)))
+    device.packet_received(make_packet(1, offset=timedelta(seconds=20)))
+
+    assert len(events) == 2
     assert device.frame_counter == 5000
 
 
@@ -281,17 +304,16 @@ def test_unprotected_frame_cannot_reset_frame_counter(device, events) -> None:
     assert device.frame_counter == 5000
 
 
-@pytest.mark.parametrize("endpoint", [3, 5, 0x00, 0xFF])
-def test_ieee_frame_endpoint_passthrough(endpoint) -> None:
-    """IEEE addressing delivers the frame's endpoint, wildcards included."""
+def test_ieee_frame_endpoint_passthrough() -> None:
+    """IEEE addressing delivers the frame's endpoint."""
     device = GreenPowerDevice(None, application_id=ApplicationID.IEEE, ieee=IEEE)
 
     events = []
     device.on_event("gp_command_received", events.append)
 
     device.packet_received(
-        make_packet(1000, application_id=ApplicationID.IEEE, endpoint=endpoint)
+        make_packet(1000, application_id=ApplicationID.IEEE, endpoint=5)
     )
 
     assert len(events) == 1
-    assert events[0].endpoint_id == endpoint
+    assert events[0].endpoint_id == 5

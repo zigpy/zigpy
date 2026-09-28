@@ -990,7 +990,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         raise NotImplementedError  # pragma: no cover
 
     @abc.abstractmethod
-    async def force_remove(self, dev: BaseDevice):
+    async def force_remove(self, dev: ZigbeeDevice):
         """Instructs the radio to remove a device with a lower-level leave command. Not all
         radios implement this.
         """

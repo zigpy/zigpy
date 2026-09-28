@@ -263,9 +263,7 @@ class GreenPowerDevice(BaseDevice):
         # The only application description a `GenericSwitch` sends
         self.switch_configuration: GPGenericSwitchConfiguration | None = None
 
-        # Whether the GPD uses an incremental (rather than random) MAC sequence
-        # number. For unprotected GPDs this governs duplicate filtering; it is also
-        # echoed in the GP Pairing command sent to proxies.
+        # Whether the GPD uses an incremental (rather than random) MAC sequence number
         self.mac_seq_num_capability: bool = False
 
         # Security material for decoding subsequent data frames.
@@ -353,13 +351,17 @@ class GreenPowerDevice(BaseDevice):
     def packet_received(self, packet: t.ZigbeeGpPacket) -> None:
         """Process a decoded, decrypted GPDF."""
 
-        # An encrypted GPDF carries its command ID inside the ciphertext (A.1.5.3.4),
-        # so nothing can be decoded from one the radio did not decrypt
-        if (
-            packet.security_level is SecurityLevel.Encrypted
-            and packet.security_status is SecurityStatus.Unprocessed
+        # Only frames with status NO_SECURITY or SECURITY_SUCCESS are delivered (spec
+        # A.3.5.2.5)
+        if packet.security_status not in (
+            None,
+            SecurityStatus.NoSecurity,
+            SecurityStatus.SecuritySuccess,
         ):
-            self.debug("Dropping encrypted packet that was not decrypted")
+            self.debug(
+                "Dropping packet that failed security processing: %s",
+                packet.security_status,
+            )
             return
 
         # The frame's security level and key type must match the commissioned values
@@ -388,7 +390,8 @@ class GreenPowerDevice(BaseDevice):
         if packet.rssi is not None:
             self.rssi = packet.rssi
 
-        self.frame_counter = packet.frame_counter
+        if packet.frame_counter is not None:
+            self.frame_counter = packet.frame_counter
 
         command: t.Struct | None
 
