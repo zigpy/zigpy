@@ -15,7 +15,7 @@ import os
 import random
 import time
 import typing
-from typing import Any, ClassVar, ParamSpec, Protocol, TypeVar
+from typing import Any, ClassVar, ParamSpec, TypeVar
 import warnings
 
 import zigpy.appdb
@@ -52,14 +52,9 @@ TRANSIENT_CONNECTION_ERRORS = {
 
 ENERGY_SCAN_WARN_THRESHOLD = 0.75 * 255
 _R = TypeVar("_R")
-_DeviceT = TypeVar("_DeviceT", bound=BaseDevice)
 _P = ParamSpec("_P")
 
-
-class DeviceResolver(Protocol):
-    """Turns a freshly-constructed device into its final object, e.g. a quirk."""
-
-    def __call__(self, device: _DeviceT) -> _DeviceT: ...
+DeviceResolver = Callable[[BaseDevice], BaseDevice]
 
 
 CHANNEL_CHANGE_BROADCAST_DELAY_S = 1.0
@@ -631,7 +626,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.devices[ieee] = dev
         return dev
 
-    def _finalize_device(self, device: _DeviceT) -> _DeviceT:
+    def _finalize_device(self, device: BaseDevice) -> BaseDevice:
         """Resolve a device, persist to DB, and register the device."""
         self.listener_event("raw_device_initialized", device)
 
@@ -646,7 +641,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         return resolved
 
-    def _resolve_device(self, device: _DeviceT) -> _DeviceT:
+    def _resolve_device(self, device: BaseDevice) -> BaseDevice:
         """Resolve a freshly-constructed device into its final object."""
         if self._device_resolver is not None:
             return self._device_resolver(device)
