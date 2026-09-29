@@ -876,6 +876,74 @@ async def test_unsupported_attribute(tmp_path, dev_init):
     await app4.shutdown()
 
 
+@patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
+async def test_quirked_unsupported_attr_survives_restore(tmp_path) -> None:
+    """A quirk's unsupported declaration survives a stale cached value in the DB."""
+
+    class QuirkedBasic(Basic):
+        _skip_registry = True
+
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            self.add_unsupported_attribute("location_desc")
+
+    def resolver(device):
+        # Same order as zha-quirks v2 `.replaces()`: instantiate (marks unsupported),
+        # attach the cluster, then copy the restored cache onto it.
+        new = device.clone()
+        ep = new.endpoints[3]
+        old = ep.in_clusters.pop(Basic.cluster_id, None)
+        cluster = QuirkedBasic(ep, is_server=True)
+        ep.add_input_cluster(cluster.cluster_id, cluster)
+
+        if old is not None:
+            cluster._attr_cache_internal = old._attr_cache.clone(cluster)
+
+        return new
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(3)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(Basic.cluster_id)
+
+    # An earlier quirk era left a stale cached value behind
+    clus.update_attribute(Basic.AttributeDefs.location_desc.id, "stale value")
+    clus.update_attribute(Basic.AttributeDefs.model.id, "Some Model")
+    app.device_initialized(dev)
+    await app.shutdown()
+
+    # Reload with a quirk declaring the attribute unsupported
+    app2 = await make_app_with_db(db, device_resolver=resolver)
+    dev2 = app2.get_device(ieee)
+    clus2 = dev2.endpoints[3].in_clusters[Basic.cluster_id]
+
+    assert isinstance(clus2, QuirkedBasic)
+    assert clus2.is_attribute_unsupported("location_desc")
+    assert clus2.get(Basic.AttributeDefs.location_desc.id) is None
+
+    # Unrelated attributes still restore
+    assert clus2.get(Basic.AttributeDefs.model.id) == "Some Model"
+
+    await app2.shutdown()
+
+    # A leftover SUCCESS row is not new evidence; a second restore must still
+    # ignore it rather than resurrect the attribute.
+    app3 = await make_app_with_db(db, device_resolver=resolver)
+    dev3 = app3.get_device(ieee)
+    clus3 = dev3.endpoints[3].in_clusters[Basic.cluster_id]
+
+    assert clus3.is_attribute_unsupported("location_desc")
+    assert clus3.get(Basic.AttributeDefs.location_desc.id) is None
+    await app3.shutdown()
+
+
 async def test_device_without_node_descriptor_not_persisted(tmp_path) -> None:
     """A device whose node descriptor was never read persists without one."""
 
