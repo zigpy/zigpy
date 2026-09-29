@@ -949,11 +949,11 @@ async def test_force_route_discovery(app, device, packet) -> None:
     ]
 
 
-async def test_request_zigbee_direct_aps_encryption(app, device, packet) -> None:
+async def test_request_aps_encryption(app, device, packet) -> None:
     await app.request(
         device=device,
         profile=0x1234,
-        cluster=clusters.general.ZigbeeDirectConfiguration.cluster_id,
+        cluster=0x0006,
         src_ep=0x9A,
         dst_ep=0xBC,
         sequence=0xDE,
@@ -961,12 +961,12 @@ async def test_request_zigbee_direct_aps_encryption(app, device, packet) -> None
         expect_reply=True,
         use_ieee=False,
         extended_timeout=False,
+        aps_encryption=True,
     )
 
     assert app.send_packet.mock_calls == [
         call(
             packet.replace(
-                cluster_id=clusters.general.ZigbeeDirectConfiguration.cluster_id,
                 tx_options=packet.tx_options | t.TransmitOptions.APS_Encryption,
                 priority=t.PacketPriority.NORMAL,
             )

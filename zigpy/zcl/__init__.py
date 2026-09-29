@@ -343,6 +343,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     # Clusters are accessible by name from their endpoint as an attribute
     ep_attribute: str = None
 
+    # All traffic on this cluster is APS encrypted with the device's link key
+    aps_encryption: bool = False
+
     # Manufacturer specific clusters exist between 0xFC00 and 0xFFFF. This exists solely
     # to remove the need to create 1024 "ManufacturerSpecificCluster" instances.
     cluster_id_range: tuple[t.uint16_t, t.uint16_t] = None
@@ -853,6 +856,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             priority=priority,
             retries=retries,
             retry_delay=retry_delay,
+            aps_encryption=self.aps_encryption,
         )
 
     async def reply(
@@ -908,6 +912,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             priority=priority,
             retries=retries,
             retry_delay=retry_delay,
+            aps_encryption=self.aps_encryption,
         )
 
     def handle_message(

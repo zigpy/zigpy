@@ -219,6 +219,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         priority: int | None = None,
         retries: int | None = None,
         retry_delay: float | None = None,
+        aps_encryption: bool = False,
     ):
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
             cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
@@ -242,6 +243,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             priority=priority,
             retries=retries,
             retry_delay=retry_delay,
+            aps_encryption=aps_encryption,
         )
 
     async def reply(
@@ -257,6 +259,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         priority: int | None = None,
         retries: int | None = None,
         retry_delay: float | None = None,
+        aps_encryption: bool = False,
     ) -> None:
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
             cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
@@ -280,6 +283,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             priority=priority,
             retries=retries,
             retry_delay=retry_delay,
+            aps_encryption=aps_encryption,
         )
 
     def log(self, lvl: int, msg: str, *args: Any, **kwargs: Any) -> None:

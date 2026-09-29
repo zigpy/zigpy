@@ -1110,6 +1110,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         ask_for_ack: bool | None = None,
         priority: int = t.PacketPriority.NORMAL,
         force_route_discovery: bool = False,
+        aps_encryption: bool = False,
     ) -> tuple[zigpy.zcl.foundation.Status, str]:
         """Submit and send data out as an unicast transmission.
         :param device: destination device
@@ -1123,6 +1124,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         :param use_ieee: use EUI64 for destination addressing
         :param extended_timeout: instruct the radio to use slower APS retries
         :param force_route_discovery: force route re-discovery for this transmission
+        :param aps_encryption: APS encrypt the transmission with the device's link key
         """
 
         if use_ieee:
@@ -1153,10 +1155,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if force_route_discovery:
             tx_options |= t.TransmitOptions.FORCE_ROUTE_DISCOVERY
 
-        if cluster == zigpy.zcl.clusters.general.ZigbeeDirectConfiguration.cluster_id:
-            # All interactions with the Zigbee Direct Configuration cluster require
-            # APS encryption (with the Trust Center link key, in a centralized
-            # security network)
+        if aps_encryption:
             tx_options |= t.TransmitOptions.APS_Encryption
 
         await self.send_packet(

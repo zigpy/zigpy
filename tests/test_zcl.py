@@ -1743,6 +1743,7 @@ async def test_received_onoff_toggle_generates_default_response():
             priority=t.PacketPriority.LOW,
             retries=None,
             retry_delay=None,
+            aps_encryption=False,
         )
     ]
 

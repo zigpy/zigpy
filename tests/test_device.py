@@ -19,7 +19,14 @@ import zigpy.state
 import zigpy.types as t
 import zigpy.util
 from zigpy.zcl import ClusterType, OtaQueryCacheClearedEvent, foundation
-from zigpy.zcl.clusters.general import Basic, OnOff, Ota, PollControl
+from zigpy.zcl.clusters.general import (
+    Basic,
+    KeepAlive,
+    OnOff,
+    Ota,
+    PollControl,
+    ZigbeeDirectConfiguration,
+)
 from zigpy.zdo import types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
@@ -532,6 +539,84 @@ async def test_handle_unknown_cluster(dev, caplog) -> None:
         )
 
     assert "Ignoring message on unknown cluster: 0x9999" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "tx_options", [t.TransmitOptions.NONE, t.TransmitOptions.APS_Encryption]
+)
+async def test_keep_alive_reply_aps_encryption(dev, app_mock, tx_options) -> None:
+    """Keep-Alive replies are APS encrypted regardless of the request."""
+    dev.add_endpoint(1).add_output_cluster(KeepAlive.cluster_id)
+
+    req_hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.GLOBAL_COMMAND,
+            is_manufacturer_specific=False,
+            direction=foundation.Direction.Client_to_Server,
+            disable_default_response=True,
+            reserved=0,
+        ),
+        tsn=8,
+        command_id=foundation.GeneralCommand.Read_Attributes,
+    )
+    req_cmd = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Read_Attributes
+    ].schema(
+        attribute_ids=[
+            KeepAlive.AttributeDefs.tc_keep_alive_base.id,
+            KeepAlive.AttributeDefs.tc_keep_alive_jitter.id,
+        ]
+    )
+
+    dev.packet_received(
+        t.ZigbeePacket(
+            profile_id=zha.PROFILE_ID,
+            cluster_id=KeepAlive.cluster_id,
+            src_ep=1,
+            dst_ep=1,
+            tsn=req_hdr.tsn,
+            data=t.SerializableBytes(req_hdr.serialize() + req_cmd.serialize()),
+            src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+            tx_options=tx_options,
+        )
+    )
+    await asyncio.sleep(0.01)
+
+    assert len(app_mock.send_packet.mock_calls) == 1
+    packet = app_mock.send_packet.mock_calls[0].args[0]
+    assert packet.dst.address == dev.nwk
+    assert packet.cluster_id == KeepAlive.cluster_id
+    assert packet.tsn == req_hdr.tsn
+    assert t.TransmitOptions.APS_Encryption in packet.tx_options
+
+
+@pytest.mark.parametrize(
+    ("cluster", "encrypted"),
+    [
+        (OnOff, False),
+        (KeepAlive, True),
+        (ZigbeeDirectConfiguration, True),
+    ],
+)
+async def test_cluster_request_aps_encryption(
+    dev, app_mock, cluster, encrypted
+) -> None:
+    """Requests on clusters that require APS encryption set the transmit option."""
+    zcl_cluster = dev.add_endpoint(1).add_input_cluster(cluster.cluster_id)
+
+    await zcl_cluster.request(
+        True,
+        foundation.GeneralCommand.Read_Attributes,
+        foundation.GENERAL_COMMANDS[foundation.GeneralCommand.Read_Attributes].schema,
+        attribute_ids=[0x0000],
+        expect_reply=False,
+    )
+
+    assert len(app_mock.send_packet.mock_calls) == 1
+    packet = app_mock.send_packet.mock_calls[0].args[0]
+    assert packet.cluster_id == cluster.cluster_id
+    assert (t.TransmitOptions.APS_Encryption in packet.tx_options) == encrypted
 
 
 async def test_update_device_firmware_no_ota_cluster(dev):
