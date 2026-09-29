@@ -211,6 +211,53 @@ async def test_initialize_ep_failed(monkeypatch, dev):
     assert dev.application.listener_event.call_args[0][0] == "device_init_failure"
 
 
+@pytest.mark.parametrize(
+    ("active_eps", "inactive_eps"),
+    [
+        # Aqara H1 remote, zigpy/zigpy#1894
+        ([1, 2, 3, 4], [5, 6]),
+        ([1, 3], [2]),
+    ],
+)
+async def test_initialize_removes_inactive_endpoints(
+    monkeypatch, dev, active_eps: list[int], inactive_eps: list[int]
+) -> None:
+    """Endpoints listed as active but without a simple descriptor are removed."""
+
+    async def mock_active_ep_req(nwk):
+        return [zdo_t.Status.SUCCESS, nwk, sorted(active_eps + inactive_eps)]
+
+    async def mock_simple_desc_req(nwk, endpoint_id):
+        if endpoint_id in inactive_eps:
+            return [zdo_t.Status.NOT_ACTIVE, nwk, None]
+
+        return [
+            zdo_t.Status.SUCCESS,
+            nwk,
+            zdo_t.SizePrefixedSimpleDescriptor(
+                endpoint=endpoint_id,
+                profile=zha.PROFILE_ID,
+                device_type=zha.DeviceType.ON_OFF_SWITCH,
+                device_version=1,
+                input_clusters=[Basic.cluster_id],
+                output_clusters=[OnOff.cluster_id],
+            ),
+        ]
+
+    async def mock_ep_get_model_info(self):
+        return "Model", "Manufacturer"
+
+    monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
+    dev.zdo.Active_EP_req = mock_active_ep_req
+    dev.zdo.Simple_Desc_req = mock_simple_desc_req
+
+    await dev.initialize()
+
+    assert dev.is_initialized
+    assert [ep.endpoint_id for ep in dev.non_zdo_endpoints] == active_eps
+    assert all(ep.status == endpoint.Status.ZDO_INIT for ep in dev.non_zdo_endpoints)
+
+
 async def test_failed_request(dev):
     assert dev.last_seen is None
     dev._application.send_packet = AsyncMock(

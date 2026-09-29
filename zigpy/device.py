@@ -532,6 +532,12 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             for ep in self.non_zdo_endpoints:
                 await ep.initialize()
 
+                # Some devices list endpoints as active but have no simple descriptor
+                if ep.status == zigpy.endpoint.Status.ENDPOINT_INACTIVE:
+                    self.info("Removing inactive endpoint %s", ep.endpoint_id)
+                    del self.endpoints[ep.endpoint_id]
+                    continue
+
                 if not initiated_fast_polling:
                     # Ask the device to enter fast polling mode as soon as we are
                     # aware of a PollControl cluster
