@@ -777,8 +777,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         try:
             return self._find_zcl_cluster_strict(hdr, packet)
         except KeyError:
-            # If the cluster is not found, try to find it with flipped direction. This
-            # will be removed in 2025.9.0.
+            pass
+
+        # If the cluster is not found, try to find it with flipped direction
+        try:
             cluster = self._find_zcl_cluster_strict(
                 hdr.replace(
                     frame_control=hdr.frame_control.replace(
@@ -787,6 +789,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 ),
                 packet,
             )
+        except KeyError:
+            pass
+        else:
             LOGGER.debug(
                 (
                     "Cluster 0x%04x on %r has incorrect direction (got %r for %r cluster)."
@@ -799,6 +804,35 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             )
 
             return cluster
+
+        # Devices are supposed to advertise the client side of any cluster they send
+        # requests from but some do not. If the request is aimed at a server cluster we
+        # host, we know the cluster and can still answer. The cluster is transient.
+        if hdr.frame_control.direction != foundation.Direction.Client_to_Server:
+            raise KeyError(packet.cluster_id)
+
+        app = self._application
+
+        if app.state.node_info.ieee not in app.devices:
+            raise KeyError(packet.cluster_id)
+
+        coordinator = app.devices[app.state.node_info.ieee]
+
+        if packet.dst_ep not in coordinator.endpoints:
+            raise KeyError(packet.cluster_id)
+
+        if packet.cluster_id not in coordinator.endpoints[packet.dst_ep].in_clusters:
+            raise KeyError(packet.cluster_id)
+
+        self.debug(
+            "Handling request for unadvertised cluster 0x%04x on endpoint %d",
+            packet.cluster_id,
+            packet.dst_ep,
+        )
+
+        assert packet.src_ep is not None
+        ep = self.endpoints[packet.src_ep]
+        return Cluster.from_id(ep, packet.cluster_id, is_server=False)
 
     def custom_profile_packet_received(self, packet: t.ZigbeePacket) -> None:
         """Handle packets with a custom profile ID."""

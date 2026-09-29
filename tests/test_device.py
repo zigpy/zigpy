@@ -19,7 +19,7 @@ import zigpy.state
 import zigpy.types as t
 import zigpy.util
 from zigpy.zcl import ClusterType, OtaQueryCacheClearedEvent, foundation
-from zigpy.zcl.clusters.general import Basic, OnOff, Ota, PollControl
+from zigpy.zcl.clusters.general import Basic, KeepAlive, OnOff, Ota, PollControl
 from zigpy.zdo import types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
@@ -546,6 +546,78 @@ async def test_handle_unknown_cluster(dev, caplog) -> None:
         )
 
     assert "Ignoring message on unknown cluster: 0x9999" in caplog.text
+
+
+async def test_handle_request_for_hosted_cluster(dev, app_mock) -> None:
+    """Requests aimed at a cluster we host are answered even if not advertised."""
+    coordinator = app_mock.add_device(app_mock.state.node_info.ieee, 0x0000)
+    coordinator.add_endpoint(1).add_input_cluster(KeepAlive.cluster_id)
+
+    # The device only advertises `OnOff` but sends keep-alive reads anyway
+    dev.add_endpoint(1).add_input_cluster(OnOff.cluster_id)
+
+    req_hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.GLOBAL_COMMAND,
+            is_manufacturer_specific=False,
+            direction=foundation.Direction.Client_to_Server,
+            disable_default_response=True,
+            reserved=0,
+        ),
+        tsn=8,
+        command_id=foundation.GeneralCommand.Read_Attributes,
+    )
+    req_cmd = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Read_Attributes
+    ].schema(
+        attribute_ids=[
+            KeepAlive.AttributeDefs.tc_keep_alive_base.id,
+            KeepAlive.AttributeDefs.tc_keep_alive_jitter.id,
+        ]
+    )
+
+    dev.packet_received(
+        t.ZigbeePacket(
+            profile_id=zha.PROFILE_ID,
+            cluster_id=KeepAlive.cluster_id,
+            src_ep=1,
+            dst_ep=1,
+            tsn=req_hdr.tsn,
+            data=t.SerializableBytes(req_hdr.serialize() + req_cmd.serialize()),
+            src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+        )
+    )
+    await asyncio.sleep(0.01)
+
+    assert KeepAlive.cluster_id not in dev.endpoints[1].out_clusters
+
+    assert len(app_mock.send_packet.mock_calls) == 1
+    packet = app_mock.send_packet.mock_calls[0].args[0]
+    assert packet.dst.address == dev.nwk
+    assert packet.cluster_id == KeepAlive.cluster_id
+    assert packet.src_ep == 1
+    assert packet.dst_ep == 1
+
+    hdr, rest = foundation.ZCLHeader.deserialize(packet.data.serialize())
+    assert hdr.tsn == req_hdr.tsn
+    assert hdr.command_id == foundation.GeneralCommand.Read_Attributes_rsp
+
+    rsp, _ = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Read_Attributes_rsp
+    ].schema.deserialize(rest)
+    assert rsp.status_records == [
+        foundation.ReadAttributeRecord(
+            attrid=KeepAlive.AttributeDefs.tc_keep_alive_base.id,
+            status=foundation.Status.SUCCESS,
+            value=foundation.TypeValue(type=foundation.DataTypeId.uint8, value=10),
+        ),
+        foundation.ReadAttributeRecord(
+            attrid=KeepAlive.AttributeDefs.tc_keep_alive_jitter.id,
+            status=foundation.Status.SUCCESS,
+            value=foundation.TypeValue(type=foundation.DataTypeId.uint16, value=300),
+        ),
+    ]
 
 
 async def test_update_device_firmware_no_ota_cluster(dev):
