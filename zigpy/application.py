@@ -701,6 +701,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         # Clean up old device's callbacks and tasks
         old_device.on_remove()
 
+        if self.devices.get(shadow.ieee) is not shadow:
+            # The device was removed (and possibly re-added) while the old one was
+            # being deleted from the DB: do not register the torn-down shadow again
+            LOGGER.debug("Device %s was removed during re-interview", shadow.ieee)
+            shadow.on_remove()
+            return
+
         # Apply quirks, persist to DB, and register the device — but do NOT
         # fire the device_initialized listener event.  Callers (and ZHA)
         # should listen for device_reinterviewed instead.
@@ -798,7 +805,18 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         except (TimeoutError, zigpy.exceptions.DeliveryError) as ex:
             LOGGER.debug("Sending 'zdo_leave_req' failed: %s", ex)
 
-        self.devices.pop(device.ieee, None)
+        popped = self.devices.pop(device.ieee, None)
+
+        # Tear down the removed device's tasks and callbacks. The leave exchange itself
+        # can re-schedule initialization of a not-yet-initialized device (its ZDO
+        # response arrives before the device is popped), so this must happen after the
+        # leave request completes, not only when removal starts.
+        device.on_remove()
+
+        # A different object may have been registered under the same IEEE while the
+        # leave request was in flight (e.g. a re-interview shadow): tear it down too
+        if popped is not None and popped is not device:
+            popped.on_remove()
 
     def deserialize(
         self,
