@@ -842,6 +842,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         # be updated
         dev.last_seen = datetime.now(UTC)
 
+        # Joins/announces reported by the radio stack without a ZDO packet also
+        # mean the device is awake
+        dev._trigger_checkin_actions()
+
         # Cancel all pending requests for the device
         dev._concurrent_requests_semaphore.cancel_waiting(
             zigpy.exceptions.DeliveryError("Device has re-joined the network")
