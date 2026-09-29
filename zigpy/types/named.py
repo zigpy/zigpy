@@ -604,6 +604,9 @@ class ZigbeePacket(BaseDataclassMixin):
     # Higher priority will try to be sent before lower
     priority: int | None = dataclasses.field(default=None)
 
+    # Queued outgoing packets sharing a coalesce key supersede one another
+    coalesce_key: typing.Hashable = dataclasses.field(default=None)
+
     # Set to `None` when the packet is outgoing
     src: AddrModeAddress | None = dataclasses.field(default=None)
     src_ep: basic.uint8_t | None = dataclasses.field(default=None)
@@ -654,6 +657,7 @@ class ZigbeePacket(BaseDataclassMixin):
                 self.lqi,
                 self.rssi,
                 self.priority,
+                self.coalesce_key,
             )
         )
 

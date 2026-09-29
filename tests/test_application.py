@@ -11,7 +11,6 @@ import pytest
 
 import zigpy.application
 import zigpy.config as conf
-from zigpy.datastructures import RequestLimiter
 import zigpy.device
 import zigpy.endpoint
 from zigpy.exceptions import (
@@ -782,7 +781,7 @@ async def test_request_concurrency():
             await asyncio.sleep(0.1)
             current_concurrency -= 1
 
-            if packet % 10 == 7:
+            if packet.dst.address % 10 == 7:
                 # Fail randomly
                 raise DeliveryError("Failure")
 
@@ -793,7 +792,12 @@ async def test_request_concurrency():
 
     await asyncio.gather(
         *[
-            app.send_packet(t.ZigbeePacket(priority=t.PacketPriority.HIGH))
+            app.send_packet(
+                t.ZigbeePacket(
+                    priority=t.PacketPriority.HIGH,
+                    dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=t.NWK(i)),
+                )
+            )
             for i in range(100)
         ],
         return_exceptions=True,
@@ -1680,25 +1684,22 @@ async def test_packet_capture(app) -> None:
         assert app._packet_capture_change_channel.mock_calls == [call(channel=25)]
 
 
-async def test_request_priority(app) -> None:
-    app._concurrent_requests_semaphore = RequestLimiter(
-        max_concurrency=1, capacities={t.PacketPriority.LOW: 1}
+async def test_request_priority(app, packet) -> None:
+    app._scheduler.max_in_flight = 1
+
+    packet_low = packet.replace(priority=t.PacketPriority.LOW)
+    packet_normal = packet.replace(priority=t.PacketPriority.NORMAL)
+    packet_high = packet.replace(priority=t.PacketPriority.HIGH)
+    packet_critical = packet.replace(priority=t.PacketPriority.CRITICAL)
+
+    await asyncio.gather(
+        app.send_packet(packet_low),
+        app.send_packet(packet_normal),
+        app.send_packet(packet_high),
+        app.send_packet(packet_critical),
     )
 
-    with patch.object(app, "_send_packet", wraps=app._send_packet) as mock_send_packet:
-        packet_low = Mock(name="LOW", priority=t.PacketPriority.LOW)
-        packet_normal = Mock(name="NORMAL", priority=t.PacketPriority.NORMAL)
-        packet_high = Mock(name="HIGH", priority=t.PacketPriority.HIGH)
-        packet_critical = Mock(name="CRITICAL", priority=t.PacketPriority.CRITICAL)
-
-        await asyncio.gather(
-            app.send_packet(packet_low),
-            app.send_packet(packet_normal),
-            app.send_packet(packet_high),
-            app.send_packet(packet_critical),
-        )
-
-    assert mock_send_packet.mock_calls == [
+    assert app._send_packet.mock_calls == [
         # The low priority packet made it through first, locking up the queue
         call(packet_low),
         # The critical one bypasses all others even though it's sent last
@@ -1711,15 +1712,15 @@ async def test_request_priority(app) -> None:
 async def test_request_priority_context_concurrency(app, packet):
     """Test that request_priority contexts work correctly with concurrent tasks."""
     # Limit concurrency to see priority ordering effects
-    app._concurrent_requests_semaphore = RequestLimiter(
-        max_concurrency=1, capacities={t.PacketPriority.LOW: 1}
-    )
+    app._scheduler.max_in_flight = 1
 
     with patch.object(app, "_send_packet", wraps=app._send_packet) as mock_send:
 
         async def task_with_priority(name: str, priority: int):
             async with app.request_priority(priority):
-                await app.send_packet(packet.replace(data=name.encode()))
+                await app.send_packet(
+                    packet.replace(data=t.SerializableBytes(name.encode()))
+                )
 
         # Start multiple concurrent tasks with different priority contexts
         await asyncio.gather(
@@ -1731,13 +1732,31 @@ async def test_request_priority_context_concurrency(app, packet):
             ),
         )
 
-    # Verify packets were processed in priority order, not send order
+    # Verify packets were processed in priority order, not send order. The contextvar
+    # priority is stamped onto the packet at submission.
     assert mock_send.mock_calls == [
         # The low priority task started first but gets processed in priority order
-        call(packet.replace(data=b"low")),
-        call(packet.replace(data=b"critical")),
-        call(packet.replace(data=b"high")),
-        call(packet.replace(data=b"normal")),
+        call(
+            packet.replace(
+                data=t.SerializableBytes(b"low"), priority=t.PacketPriority.LOW
+            )
+        ),
+        call(
+            packet.replace(
+                data=t.SerializableBytes(b"critical"),
+                priority=t.PacketPriority.CRITICAL,
+            )
+        ),
+        call(
+            packet.replace(
+                data=t.SerializableBytes(b"high"), priority=t.PacketPriority.HIGH
+            )
+        ),
+        call(
+            packet.replace(
+                data=t.SerializableBytes(b"normal"), priority=t.PacketPriority.NORMAL
+            )
+        ),
     ]
 
 
