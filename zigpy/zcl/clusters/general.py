@@ -2159,6 +2159,8 @@ class Ota(Cluster):
             )
 
     async def _handle_query_next_image(self, hdr, cmd):
+        old_query_cmd = self.last_query_cmd
+
         # Cache the query command fields for proactive OTA lookups
         self.last_query_cmd = cmd
         self.emit(
@@ -2175,12 +2177,64 @@ class Ota(Cluster):
             ),
         )
 
+        self._maybe_schedule_post_ota_reinterview(
+            old_version=(
+                old_query_cmd.current_file_version
+                if old_query_cmd is not None
+                else None
+            ),
+            new_version=cmd.current_file_version,
+        )
+
         # Always send no image available response so that the device stops asking
         await self.query_next_image_response(
             foundation.Status.NO_IMAGE_AVAILABLE, tsn=hdr.tsn
         )
 
         await self.endpoint.device.application.ota.check_cluster_for_ota(self)
+
+    def _maybe_schedule_post_ota_reinterview(
+        self,
+        old_version: int | None,
+        new_version: int | None,
+    ) -> None:
+        """Schedule a reinterview if the device reports a new running firmware.
+
+        A QueryNextImage with a `current_file_version` different from the value
+        we previously cached for this device is a strong signal that the device
+        rebooted into new firmware (e.g. after an OTA, including OTAs done
+        outside of `update_firmware()`). Re-interviewing rebuilds endpoints,
+        clusters, and quirks to match the new firmware.
+
+        Skipped when the previous value is unknown (first observation), when
+        the value is unchanged, when an OTA is in progress (the OTA flow drives
+        its own reinterview), when a reinterview is already running, or for
+        the active coordinator.
+        """
+        if old_version is None or new_version is None:
+            return
+        if old_version == new_version:
+            return
+
+        device = self.endpoint.device
+        app = device.application
+
+        if device.ieee == app.state.node_info.ieee:
+            return
+        if device.ota_in_progress:
+            return
+        if device.reinterviewing:
+            return
+
+        device.info(
+            "Firmware version changed (0x%08X -> 0x%08X), scheduling re-interview",
+            old_version,
+            new_version,
+        )
+        app.create_task(
+            device.reinterview(),
+            name=f"reinterview_after_fw_change-{device.ieee}",
+        )
 
     async def _handle_image_block_req(self, hdr, cmd):
         # Abort any running firmware update (i.e. the integration is reloaded midway)
