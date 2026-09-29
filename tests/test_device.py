@@ -19,7 +19,7 @@ import zigpy.state
 import zigpy.types as t
 import zigpy.util
 from zigpy.zcl import ClusterType, OtaQueryCacheClearedEvent, foundation
-from zigpy.zcl.clusters.general import Basic, OnOff, Ota, PollControl
+from zigpy.zcl.clusters.general import Basic, Groups, OnOff, Ota, PollControl
 from zigpy.zdo import types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
@@ -1434,6 +1434,56 @@ async def test_request_exception_propagation(dev):
         await ep.basic.reset_fact_default()
 
     assert type(exc.value.__cause__) is RuntimeError
+
+
+async def test_get_group_membership_unsupported_default_response_packet(app) -> None:
+    """A real unsupported Default Response remains UnsupportedCluster."""
+    tsn = 0x12
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+    ep.add_input_cluster(Groups.cluster_id)
+    dev.get_sequence = MagicMock(return_value=tsn)
+
+    def send_packet(*args, **kwargs) -> None:
+        asyncio.get_running_loop().call_soon(
+            dev.packet_received,
+            t.ZigbeePacket(
+                profile_id=260,
+                cluster_id=Groups.cluster_id,
+                src_ep=1,
+                dst_ep=1,
+                data=t.SerializableBytes(
+                    foundation.ZCLHeader(
+                        frame_control=foundation.FrameControl(
+                            frame_type=foundation.FrameType.GLOBAL_COMMAND,
+                            is_manufacturer_specific=False,
+                            direction=foundation.Direction.Server_to_Client,
+                            disable_default_response=True,
+                            reserved=0,
+                        ),
+                        tsn=tsn,
+                        command_id=foundation.GeneralCommand.Default_Response,
+                        manufacturer=None,
+                    ).serialize()
+                    + foundation.GENERAL_COMMANDS[
+                        foundation.GeneralCommand.Default_Response
+                    ].schema(
+                        command_id=Groups.ServerCommandDefs.get_membership.id,
+                        status=foundation.Status.UNSUP_CLUSTER_COMMAND,
+                    ).serialize()
+                ),
+                src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+                dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+            ),
+        )
+
+    app.send_packet.side_effect = send_packet
+
+    with pytest.raises(zigpy.exceptions.UnsupportedCluster):
+        await ep.get_group_membership()
 
 
 async def test_debouncing(dev):

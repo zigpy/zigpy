@@ -532,6 +532,118 @@ async def test_group_membership_scan(ep):
     assert ep.device.request.call_count == 1
 
 
+async def test_get_group_membership(ep):
+    """Read physical group membership without using the local group cache."""
+    with pytest.raises(zigpy.exceptions.UnsupportedCluster):
+        await ep.get_group_membership()
+    assert ep.device.request.call_count == 0
+
+    ep.add_input_cluster(4)
+    ep.member_of[99] = sentinel.cached_group
+    ep.device.application.groups.update_group_membership = MagicMock()
+    ep.device.request.return_value = [0, [1, 3, 7]]
+    assert await ep.get_group_membership() == frozenset({1, 3, 7})
+    assert ep.device.request.call_count == 1
+    assert ep.member_of == {99: sentinel.cached_group}
+    ep.device.application.groups.update_group_membership.assert_not_called()
+
+
+async def test_get_group_membership_timeout(ep):
+    """A physical membership read timeout is not reported as an empty result."""
+    ep.add_input_cluster(4)
+    ep.device.request.side_effect = asyncio.TimeoutError
+    with pytest.raises(asyncio.TimeoutError):
+        await ep.get_group_membership()
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        ZCLStatus.UNSUP_CLUSTER_COMMAND,
+        ZCLStatus.UNSUP_GENERAL_COMMAND,
+        ZCLStatus.UNSUP_MANUF_CLUSTER_COMMAND,
+        ZCLStatus.UNSUP_MANUF_GENERAL_COMMAND,
+        ZCLStatus.UNSUPPORTED_CLUSTER,
+    ],
+)
+async def test_get_group_membership_unsupported(ep, status):
+    """A device-level unsupported response is distinguishable from success."""
+    ep.add_input_cluster(4)
+    ep.device.request.return_value = GENERAL_COMMANDS[
+        GeneralCommand.Default_Response
+    ].schema(command_id=2, status=status)
+    with pytest.raises(zigpy.exceptions.UnsupportedCluster, match=status.name):
+        await ep.get_group_membership()
+
+
+async def test_get_group_membership_unsupported_exception(ep):
+    """Map unsuccessful default-response exceptions consistently."""
+    ep.add_input_cluster(4)
+    error = zigpy.exceptions.InvalidResponse("unsupported command")
+    setattr(error, "status", ZCLStatus.UNSUP_CLUSTER_COMMAND)
+    ep.device.request.side_effect = error
+
+    with pytest.raises(zigpy.exceptions.UnsupportedCluster) as exc_info:
+        await ep.get_group_membership()
+
+    assert getattr(exc_info.value, "status") == ZCLStatus.UNSUP_CLUSTER_COMMAND
+
+
+async def test_get_group_membership_empty_is_read_only(ep):
+    """An empty on-device membership is a valid fresh result, not cache data."""
+    ep.add_input_cluster(4)
+    ep.member_of[99] = sentinel.cached_group
+    ep.device.request.return_value = [0, []]
+    ep.device.application.groups.update_group_membership = MagicMock()
+
+    assert await ep.get_group_membership() == frozenset()
+    assert ep.member_of == {99: sentinel.cached_group}
+    ep.device.application.groups.update_group_membership.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        ZCLStatus.FAILURE,
+        ZCLStatus.NOT_AUTHORIZED,
+        ZCLStatus.SUCCESS,
+        ZCLStatus.MALFORMED_COMMAND,
+    ],
+)
+async def test_get_group_membership_invalid_default_response(ep, status):
+    """Other default responses do not establish missing Groups support."""
+    ep.add_input_cluster(4)
+    ep.device.request.return_value = GENERAL_COMMANDS[
+        GeneralCommand.Default_Response
+    ].schema(command_id=2, status=status)
+    with pytest.raises(zigpy.exceptions.InvalidResponse, match=status.name):
+        await ep.get_group_membership()
+    ep.device.application.groups.update_group_membership.assert_not_called()
+
+
+async def test_get_group_membership_request_attribute_error(ep):
+    """Request implementation errors must not be mistaken for missing support."""
+    ep.add_input_cluster(4)
+    error = AttributeError("request implementation failed")
+    ep.device.request.side_effect = error
+    with pytest.raises(AttributeError) as exc_info:
+        await ep.get_group_membership()
+    assert exc_info.value is error
+    ep.device.application.groups.update_group_membership.assert_not_called()
+
+
+async def test_group_membership_scan_request_attribute_error(ep):
+    """Background scans tolerate request-side AttributeError without changing cache."""
+    ep.add_input_cluster(4)
+    ep.device.request.side_effect = AttributeError("request implementation failed")
+    ep.device.application.groups.update_group_membership = MagicMock()
+
+    await ep.group_membership_scan()
+
+    ep.device.application.groups.update_group_membership.assert_not_called()
+    assert ep.device.request.call_count == 1
+
+
 async def test_group_membership_scan_fail(ep):
     """Test group membership scan failure."""
 
