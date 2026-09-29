@@ -55,7 +55,7 @@ if sqlite3.sqlite_version_info < MIN_SQLITE_VERSION:
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 15
+DB_VERSION = 16
 DB_V = f"_v{DB_VERSION}"
 
 UNIX_EPOCH = datetime.fromtimestamp(0, tz=UTC)
@@ -297,6 +297,21 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         )
         await self._db.commit()
 
+    def device_reinterview_pending_updated(
+        self, device: Device, pending: datetime | None
+    ) -> None:
+        """Device pending re-interview request was set or cleared."""
+        self.enqueue("_save_device_reinterview_pending", device.ieee, pending)
+
+    async def _save_device_reinterview_pending(
+        self, ieee: t.EUI64, pending: datetime | None
+    ) -> None:
+        await self.execute(
+            f"UPDATE devices{DB_V} SET reinterview_pending=? WHERE ieee=?",
+            ((pending or UNIX_EPOCH).timestamp(), ieee),
+        )
+        await self._db.commit()
+
     def device_relays_updated(self, device: Device, relays: t.Relays | None) -> None:
         """Device relay list is updated."""
         self.enqueue("_save_device_relays", device.ieee, relays)
@@ -412,13 +427,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         if device.original_signature is not None:
             raise ValueError("A device with quirks cannot be saved to the database")
 
-        q = f"""INSERT INTO devices{DB_V} (ieee, nwk, status, last_seen)
-                    VALUES (?, ?, ?, ?)
+        q = f"""INSERT INTO devices{DB_V}
+                    (ieee, nwk, status, last_seen, reinterview_pending)
+                    VALUES (?, ?, ?, ?, ?)
                     ON CONFLICT (ieee)
                     DO UPDATE SET
                         nwk=excluded.nwk,
                         status=excluded.status,
-                        last_seen=excluded.last_seen"""
+                        last_seen=excluded.last_seen,
+                        reinterview_pending=excluded.reinterview_pending"""
         await self.execute(
             q,
             (
@@ -426,6 +443,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 device.nwk,
                 device.status,
                 (device._last_seen or UNIX_EPOCH).timestamp(),
+                (device._reinterview_pending or UNIX_EPOCH).timestamp(),
             ),
         )
 
@@ -779,6 +797,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             device.original_signature = device.get_signature()
             new_device = self._application._resolve_device(device)
             new_device.original_signature = device.original_signature
+
+            # A pending re-interview must survive the quirk swap; the setter
+            # re-arms the check-in action on the resolved device
+            if device._reinterview_pending is not None:
+                new_device.reinterview_pending = device._reinterview_pending
+
             self._application.devices[device.ieee] = new_device
 
         # Clear the attribute cache to ensure the quirked state is correct
@@ -1022,12 +1046,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _load_devices(self) -> None:
         async with self.execute(f"SELECT * FROM devices{DB_V}") as cursor:
-            async for ieee, nwk, status, last_seen in cursor:
+            async for ieee, nwk, status, last_seen, reinterview_pending in cursor:
                 dev = self._application.add_device(ieee, nwk)
                 dev.status = DeviceStatus(status)
 
                 if last_seen > 0:
                     dev.last_seen = last_seen
+
+                if reinterview_pending > 0:
+                    # The setter also re-arms the re-interview check-in action
+                    dev.reinterview_pending = reinterview_pending
 
     async def _load_node_descriptors(self) -> None:
         async with self.execute(f"SELECT * FROM node_descriptors{DB_V}") as cursor:
@@ -1243,6 +1271,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 (self._migrate_to_v13, 13),
                 (self._migrate_to_v14, 14),
                 (self._migrate_to_v15, 15),
+                (self._migrate_to_v16, 16),
             ]:
                 if db_version >= min(to_db_version, DB_VERSION):
                     continue
@@ -1708,3 +1737,25 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             }
         )
         # ota_query_cache_v15 is new and starts empty
+
+    async def _migrate_to_v16(self) -> None:
+        """Schema v16 adds the `reinterview_pending` column to `devices`.
+
+        The new column has a SQL default of 0 so the table copy fills it in.
+        """
+        await self._migrate_tables(
+            {
+                "devices_v15": "devices_v16",
+                "endpoints_v15": "endpoints_v16",
+                "neighbors_v15": "neighbors_v16",
+                "routes_v15": "routes_v16",
+                "node_descriptors_v15": "node_descriptors_v16",
+                "groups_v15": "groups_v16",
+                "group_members_v15": "group_members_v16",
+                "relays_v15": "relays_v16",
+                "network_backups_v15": "network_backups_v16",
+                "clusters_v15": "clusters_v16",
+                "attributes_cache_v15": "attributes_cache_v16",
+                "ota_query_cache_v15": "ota_query_cache_v16",
+            }
+        )

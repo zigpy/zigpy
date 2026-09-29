@@ -710,6 +710,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         # (relevant when no quirk is applied and new_device is the shadow itself)
         new_device._reinterview_in_progress = False
 
+        # The re-interview satisfies any pending re-interview request. Clear it
+        # through the setter on the new device: some quirk constructors copy
+        # arbitrary attributes from the device they replace.
+        new_device.reinterview_pending = None
+
         # Restore group memberships on the new device's matching endpoints.
         # A group may have been removed while we were awaiting `_remove_device`,
         # so guard against missing entries rather than aborting the reinterview.
@@ -841,6 +846,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         # Not all stacks send a ZDO command when a device joins so the last_seen should
         # be updated
         dev.last_seen = datetime.now(UTC)
+
+        # Joins/announces reported by the radio stack without a ZDO packet also
+        # mean the device is awake
+        dev._trigger_checkin_actions()
 
         # Cancel all pending requests for the device
         dev._concurrent_requests_semaphore.cancel_waiting(
