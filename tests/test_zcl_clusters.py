@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+import logging
 import re
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -16,7 +17,7 @@ from zigpy.zcl.clusters.general import Basic, KeepAlive, Ota, Time
 import zigpy.zcl.clusters.security as sec
 from zigpy.zdo import types as zdo_t
 
-from .async_mock import AsyncMock, MagicMock, call, patch, sentinel
+from .async_mock import AsyncMock, MagicMock, call, patch
 
 IMAGE_SIZE = 0x2345
 IMAGE_OFFSET = 0x2000
@@ -350,35 +351,22 @@ def ota_cluster(dev):
         yield cluster
 
 
-async def test_ota_handle_cluster_req_wrapper(ota_cluster, caplog):
-    ota_cluster._handle_query_next_image = AsyncMock()
-
-    hdr = zigpy.zcl.foundation.ZCLHeader.cluster(123, 0x01)
-    ota_cluster.handle_cluster_request(hdr, [sentinel.args])
-    assert ota_cluster._handle_query_next_image.call_count == 1
-    assert ota_cluster._handle_query_next_image.mock_calls[0].args == (
-        hdr,
-        [sentinel.args],
-    )
-    ota_cluster._handle_query_next_image.reset_mock()
-
-    # This command isn't currently handled
-    hdr.command_id = 0x08
-    ota_cluster.handle_cluster_request(hdr, [sentinel.just_args])
-    assert ota_cluster._handle_query_next_image.call_count == 0
-
-
 async def test_ota_handle_query_next_image(ota_cluster):
     dev = ota_cluster.endpoint.device
 
     ota_cluster.query_next_image_response = AsyncMock()
     dev.ota_in_progress = False
 
-    # TODO: get rid of `sentinel` and mock the actual command
     hdr = zigpy.zcl.foundation.ZCLHeader.cluster(
         tsn=0x12, command_id=Ota.ServerCommandDefs.query_next_image.id
     )
-    cmd = MagicMock()
+    cmd = Ota.ServerCommandDefs.query_next_image.schema(
+        field_control=0,
+        manufacturer_code=0x1234,
+        image_type=0x5678,
+        current_file_version=1,
+        hardware_version=1,
+    )
 
     cache_events = []
     ota_cluster.on_event(OtaQueryCacheUpdatedEvent.event_type, cache_events.append)
@@ -394,7 +382,7 @@ async def test_ota_handle_query_next_image(ota_cluster):
     ota.get_ota_images = AsyncMock(
         return_value=OtaImagesResult(upgrades=(), downgrades=())
     )
-    ota_cluster.handle_cluster_request(hdr, cmd)
+    ota_cluster.handle_message(hdr, cmd)
     await asyncio.sleep(0)
 
     assert ota_cluster.query_next_image_response.mock_calls == [
@@ -416,7 +404,7 @@ async def test_ota_handle_query_next_image(ota_cluster):
     ota.get_ota_images = AsyncMock(
         return_value=OtaImagesResult(upgrades=(img,), downgrades=())
     )
-    ota_cluster.handle_cluster_request(hdr, cmd)
+    ota_cluster.handle_message(hdr, cmd)
     await asyncio.sleep(0)
 
     assert ota_cluster.query_next_image_response.mock_calls == [
@@ -438,10 +426,19 @@ async def test_ota_handle_image_block_req(ota_cluster):
     hdr = zigpy.zcl.foundation.ZCLHeader.cluster(
         tsn=0x12, command_id=Ota.ServerCommandDefs.image_block.id
     )
-    cmd = MagicMock()
+    cmd = Ota.ServerCommandDefs.image_block.schema(
+        field_control=0,
+        manufacturer_code=0x1234,
+        image_type=0x5678,
+        file_version=1,
+        file_offset=0,
+        maximum_data_size=64,
+        request_node_addr=types.EUI64.convert("11:22:33:44:55:66:77:88"),
+        minimum_block_period=0,
+    )
 
     # Stop the upgrade, none is in progress
-    ota_cluster.handle_cluster_request(hdr, cmd)
+    ota_cluster.handle_message(hdr, cmd)
     await asyncio.sleep(0)
 
     assert ota_cluster.image_block_response.mock_calls == [
@@ -450,12 +447,70 @@ async def test_ota_handle_image_block_req(ota_cluster):
 
     ota_cluster.image_block_response.reset_mock()
 
-    # If we flip the progress flag, send nothing
-    dev.ota_in_progress = True
-    ota_cluster.handle_cluster_request(hdr, cmd)
+    # An OTAManager owning the command displaces the cluster, which sends nothing
+    manager_calls = []
+    unsub = ota_cluster.respond_to_command(
+        Ota.ServerCommandDefs.image_block, lambda hdr, cmd: manager_calls.append(cmd)
+    )
+    ota_cluster.handle_message(hdr, cmd)
     await asyncio.sleep(0)
 
+    assert manager_calls == [cmd]
     assert ota_cluster.image_block_response.mock_calls == []
+
+    # Once the upgrade ends the cluster takes over again
+    unsub()
+    ota_cluster.handle_message(hdr, cmd)
+    await asyncio.sleep(0)
+
+    assert ota_cluster.image_block_response.mock_calls == [
+        call(zcl.foundation.Status.ABORT, tsn=hdr.tsn)
+    ]
+
+
+async def test_ota_unimplemented_request(dev, caplog):
+    """Test that a request zigpy has no response for gets no Default Response either."""
+    ep = dev.add_endpoint(1)
+    cluster = ep.add_output_cluster(Ota.cluster_id)
+
+    hdr = zigpy.zcl.foundation.ZCLHeader.cluster(
+        tsn=0x12, command_id=Ota.ServerCommandDefs.query_specific_file.id
+    )
+    assert hdr.frame_control.disable_default_response == 0
+
+    with (
+        patch.object(cluster, "send_default_rsp") as rsp,
+        caplog.at_level(logging.DEBUG),
+    ):
+        dev.packet_received(
+            types.ZigbeePacket(
+                src=types.AddrModeAddress(
+                    addr_mode=types.AddrMode.NWK, address=dev.nwk
+                ),
+                src_ep=1,
+                dst=types.AddrModeAddress(addr_mode=types.AddrMode.NWK, address=0x0000),
+                dst_ep=1,
+                tsn=hdr.tsn,
+                profile_id=260,
+                cluster_id=Ota.cluster_id,
+                data=types.SerializableBytes(
+                    hdr.serialize()
+                    + Ota.ServerCommandDefs.query_specific_file.schema(
+                        request_node_addr=types.EUI64.convert(
+                            "11:22:33:44:55:66:77:88"
+                        ),
+                        manufacturer_code=0x1234,
+                        image_type=0x5678,
+                        file_version=1,
+                        current_zigbee_stack_version=2,
+                    ).serialize()
+                ),
+            )
+        )
+        await asyncio.sleep(0)
+
+    assert "No response implemented" in caplog.text
+    assert len(rsp.mock_calls) == 0
 
 
 def test_ias_zone_type():

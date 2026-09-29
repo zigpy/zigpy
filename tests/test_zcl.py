@@ -5,6 +5,7 @@ import logging
 from typing import Any
 from unittest import mock
 from unittest.mock import AsyncMock, MagicMock, call, patch, sentinel
+import warnings
 
 import pytest
 
@@ -30,7 +31,7 @@ from zigpy.zcl import (
     _chunk_records_by_size,
     foundation,
 )
-from zigpy.zcl.clusters.general import Basic, OnOff, Ota
+from zigpy.zcl.clusters.general import Basic, OnOff, Ota, PollControl
 from zigpy.zcl.clusters.measurement import OccupancySensing
 from zigpy.zcl.clusters.smartenergy import Metering
 from zigpy.zcl.helpers import ReportingConfig
@@ -841,6 +842,385 @@ async def test_handle_cluster_request_handler(cluster):
     hdr = foundation.ZCLHeader.cluster(123, 0x00)
     cluster.handle_cluster_request(hdr, [sentinel.arg1, sentinel.arg2])
     await asyncio.sleep(0)
+
+
+async def test_command_owner_displaces_default_owner(endpoint):
+    """Test that a default owner stands down while a non-default one is registered."""
+    cluster = endpoint.add_input_cluster(OnOff.cluster_id)
+    hdr, command = cluster.deserialize(b"\x01\x7b\x01")  # on
+
+    default_owner = MagicMock()
+    cluster.respond_to_command(zcl.ANY_COMMAND, default_owner, default=True)
+
+    cluster.handle_message(hdr, command)
+    assert default_owner.mock_calls == [call(hdr, command)]
+
+    # An owner for this command takes over, without unregistering the default
+    default_owner.reset_mock()
+    owner = MagicMock()
+    unsub = cluster.respond_to_command(OnOff.ServerCommandDefs.on, owner)
+
+    cluster.handle_message(hdr, command)
+    assert owner.mock_calls == [call(hdr, command)]
+    assert len(default_owner.mock_calls) == 0
+
+    # A different command is untouched, so the default still owns it
+    other_hdr, other_command = cluster.deserialize(b"\x01\x7c\x00")  # off
+    cluster.handle_message(other_hdr, other_command)
+    assert default_owner.mock_calls == [call(other_hdr, other_command)]
+
+    # Once the owner goes away the default resumes
+    default_owner.reset_mock()
+    unsub()
+    cluster.handle_message(hdr, command)
+    assert default_owner.mock_calls == [call(hdr, command)]
+
+
+async def test_two_command_owners_rejected(endpoint):
+    """Test that a second owner for one command is refused, not silently stacked."""
+    cluster = endpoint.add_input_cluster(OnOff.cluster_id)
+    cluster.respond_to_command(OnOff.ServerCommandDefs.on, MagicMock())
+
+    with pytest.raises(ValueError, match="already registered"):
+        cluster.respond_to_command(OnOff.ServerCommandDefs.on, MagicMock())
+
+    # A different command, and any number of defaults, are fine
+    cluster.respond_to_command(OnOff.ServerCommandDefs.off, MagicMock())
+    cluster.respond_to_command(zcl.ANY_COMMAND, MagicMock(), default=True)
+    cluster.respond_to_command(zcl.ANY_COMMAND, MagicMock(), default=True)
+
+
+async def test_specific_command_owner_displaces_any_command_owner(endpoint):
+    """Test that only the most specific owner of a command replies to it."""
+    cluster = endpoint.add_input_cluster(OnOff.cluster_id)
+    on_hdr, on_command = cluster._create_request(
+        general=False,
+        command_id=OnOff.ServerCommandDefs.on.id,
+        schema=OnOff.ServerCommandDefs.on.schema,
+        tsn=0x7B,
+        disable_default_response=False,
+        direction=foundation.Direction.Client_to_Server,
+        args=(),
+        kwargs={},
+    )
+    off_hdr, off_command = cluster._create_request(
+        general=False,
+        command_id=OnOff.ServerCommandDefs.off.id,
+        schema=OnOff.ServerCommandDefs.off.schema,
+        tsn=0x7C,
+        disable_default_response=False,
+        direction=foundation.Direction.Client_to_Server,
+        args=(),
+        kwargs={},
+    )
+
+    any_owner = MagicMock()
+    cluster.respond_to_command(zcl.ANY_COMMAND, any_owner)
+
+    on_owner = MagicMock()
+    unsub = cluster.respond_to_command(OnOff.ServerCommandDefs.on, on_owner)
+
+    # Both are non-default and overlap, so the specific one alone answers `on`
+    cluster.handle_message(on_hdr, on_command)
+    assert on_owner.mock_calls == [call(on_hdr, on_command)]
+    assert len(any_owner.mock_calls) == 0
+
+    # Every other command is still answered by the catch-all
+    cluster.handle_message(off_hdr, off_command)
+    assert any_owner.mock_calls == [call(off_hdr, off_command)]
+
+    # And it takes `on` back once the specific owner goes away
+    any_owner.reset_mock()
+    unsub()
+    cluster.handle_message(on_hdr, on_command)
+    assert any_owner.mock_calls == [call(on_hdr, on_command)]
+
+
+async def test_command_owner_displaces_more_specific_default_owner(endpoint):
+    """Test that a non-default owner outranks a default owner of a specific command."""
+    cluster = endpoint.add_input_cluster(OnOff.cluster_id)
+    hdr, command = cluster._create_request(
+        general=False,
+        command_id=OnOff.ServerCommandDefs.on.id,
+        schema=OnOff.ServerCommandDefs.on.schema,
+        tsn=0x7B,
+        disable_default_response=False,
+        direction=foundation.Direction.Client_to_Server,
+        args=(),
+        kwargs={},
+    )
+
+    default_on_owner = MagicMock()
+    cluster.respond_to_command(
+        OnOff.ServerCommandDefs.on, default_on_owner, default=True
+    )
+
+    any_owner = MagicMock()
+    cluster.respond_to_command(zcl.ANY_COMMAND, any_owner)
+
+    cluster.handle_message(hdr, command)
+    assert any_owner.mock_calls == [call(hdr, command)]
+    assert len(default_on_owner.mock_calls) == 0
+
+
+async def test_failing_command_owner_does_not_stop_handling(endpoint, caplog):
+    """Test that an owner raising is logged and the frame is still handled."""
+    cluster = endpoint.add_input_cluster(OnOff.cluster_id)
+    hdr, command = cluster._create_request(
+        general=False,
+        command_id=OnOff.ServerCommandDefs.on.id,
+        schema=OnOff.ServerCommandDefs.on.schema,
+        tsn=0x7B,
+        disable_default_response=False,
+        direction=foundation.Direction.Client_to_Server,
+        args=(),
+        kwargs={},
+    )
+
+    events = []
+    cluster.on_command(OnOff.ServerCommandDefs.on, events.append)
+
+    def owner(hdr, command):
+        raise RuntimeError("boom")
+
+    cluster.respond_to_command(OnOff.ServerCommandDefs.on, owner)
+
+    with caplog.at_level(logging.WARNING):
+        cluster.handle_message(hdr, command)
+
+    assert "Owner of command 0x01 failed" in caplog.text
+    assert [e.command for e in events] == [command]
+
+
+async def test_command_owner_unsubscribe_is_idempotent(endpoint):
+    """Test that a stale unsubscribe cannot remove a later registration."""
+    cluster = endpoint.add_input_cluster(OnOff.cluster_id)
+    hdr, command = cluster._create_request(
+        general=False,
+        command_id=OnOff.ServerCommandDefs.on.id,
+        schema=OnOff.ServerCommandDefs.on.schema,
+        tsn=0x7B,
+        disable_default_response=False,
+        direction=foundation.Direction.Client_to_Server,
+        args=(),
+        kwargs={},
+    )
+
+    owner = MagicMock()
+    unsub = cluster.respond_to_command(OnOff.ServerCommandDefs.on, owner)
+    unsub()
+
+    # The same callback is registered again, and the stale unsub must not touch it
+    cluster.respond_to_command(OnOff.ServerCommandDefs.on, owner)
+    unsub()
+
+    with patch.object(cluster, "send_default_rsp") as rsp:
+        cluster.handle_message(hdr, command)
+
+    assert owner.mock_calls == [call(hdr, command)]
+    assert len(rsp.mock_calls) == 0
+
+
+async def test_on_command_filters_by_command(endpoint):
+    """Test that on_command only fires for its own command, sync or async."""
+    cluster = endpoint.add_input_cluster(OnOff.cluster_id)
+
+    on_events = []
+    async_on_events = []
+    any_events = []
+
+    cluster.on_command(OnOff.ServerCommandDefs.on, on_events.append)
+    cluster.on_command(zcl.ANY_COMMAND, any_events.append)
+
+    async def async_listener(event):
+        async_on_events.append(event)
+
+    cluster.on_command(OnOff.ServerCommandDefs.on, async_listener)
+
+    on_hdr, on_command = cluster.deserialize(b"\x01\x7b\x01")
+    cluster.handle_message(on_hdr, on_command)
+    off_hdr, off_command = cluster.deserialize(b"\x01\x7c\x00")
+    cluster.handle_message(off_hdr, off_command)
+    await asyncio.sleep(0)
+
+    assert [e.command for e in on_events] == [on_command]
+    assert [e.command for e in async_on_events] == [on_command]
+    assert [e.command for e in any_events] == [on_command, off_command]
+
+    # An undecodable command reaches ANY_COMMAND subscribers only
+    unknown_hdr, raw = cluster.deserialize(b"\x01\x7d\xee")
+    cluster.handle_message(unknown_hdr, raw)
+
+    assert [e.command for e in on_events] == [on_command]
+    assert [e.command for e in any_events] == [on_command, off_command, None]
+
+
+async def test_cluster_command_received_event(endpoint):
+    """Test that observers get the typed command, and `None` when it cannot be decoded."""
+    cluster = endpoint.add_input_cluster(OnOff.cluster_id)
+    listener = MagicMock()
+    cluster.on_event(zcl.ClusterCommandReceivedEvent.event_type, listener)
+
+    hdr, command = cluster.deserialize(b"\x01\x7b\x01")  # on
+    cluster.handle_message(hdr, command)
+
+    (event,) = [c.args[0] for c in listener.mock_calls]
+    assert event.command is command
+    assert event.command.command.name == "on"
+    assert event.command_id == OnOff.ServerCommandDefs.on.id
+    assert event.tsn == 0x7B
+
+    assert event.raw_command is None
+
+    # An unknown command id cannot be decoded, so `command` is None
+    listener.reset_mock()
+    unknown_hdr = foundation.ZCLHeader.cluster(tsn=0x7C, command_id=0xEE)
+    cluster.handle_message(unknown_hdr, b"\xaa\xbb")
+
+    (event,) = [c.args[0] for c in listener.mock_calls]
+    assert event.command is None
+    assert event.command_id == 0xEE
+
+    # ...but the payload it could not decode is still there
+    assert event.raw_command == b"\xaa\xbb"
+
+
+async def test_any_command_owner_owns_undecodable_command(endpoint):
+    """Test that an `ANY_COMMAND` owner answers a command the cluster cannot decode."""
+    cluster = endpoint.add_input_cluster(OnOff.cluster_id)
+
+    owner = MagicMock()
+    cluster.respond_to_command(zcl.ANY_COMMAND, owner)
+
+    # The cluster defines no command 0xEE, so there is no schema to build a request from
+    hdr = foundation.ZCLHeader.cluster(tsn=0x7C, command_id=0xEE)
+    assert hdr.frame_control.disable_default_response == 0
+
+    with patch.object(cluster, "send_default_rsp") as rsp:
+        cluster.handle_message(hdr, b"\xaa\xbb")
+
+    assert owner.mock_calls == [call(hdr, None)]
+    assert len(rsp.mock_calls) == 0
+
+    owner.reset_mock()
+    on_hdr, on_command = cluster._create_request(
+        general=False,
+        command_id=OnOff.ServerCommandDefs.on.id,
+        schema=OnOff.ServerCommandDefs.on.schema,
+        tsn=0x7B,
+        disable_default_response=False,
+        direction=foundation.Direction.Client_to_Server,
+        args=(),
+        kwargs={},
+    )
+    cluster.handle_message(on_hdr, on_command)
+
+    assert owner.mock_calls == [call(on_hdr, on_command)]
+
+
+def test_detects_clusters_that_take_over_command_handling():
+    """Test that overriding handle_cluster_request is detectable, quirks included."""
+
+    # `_skip_registry` so these do not displace OnOff in the global cluster registry
+    class PlainQuirk(OnOff):
+        """A quirk that only adds definitions, so the base class still answers."""
+
+        _skip_registry = True
+
+    with pytest.warns(DeprecationWarning, match="overrides `handle_cluster_request`"):
+
+        class TakeoverQuirk(OnOff):
+            _skip_registry = True
+
+            def handle_cluster_request(self, hdr, args, *, dst_addressing=None):
+                pass
+
+    # Only the class introducing the override warns, not everything beneath it
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+
+        class InheritedTakeover(TakeoverQuirk):
+            """Inherits the override, so it is still taking over."""
+
+            _skip_registry = True
+
+    assert zcl.Cluster._takes_over_command_handling is False
+    assert OnOff._takes_over_command_handling is False
+    assert PlainQuirk._takes_over_command_handling is False
+
+    # No cluster shipped by zigpy takes over any more, so the remaining users of
+    # `handle_cluster_request` are all quirks
+    assert Ota._takes_over_command_handling is False
+    assert TakeoverQuirk._takes_over_command_handling is True
+    assert InheritedTakeover._takes_over_command_handling is True
+
+
+async def test_takeover_quirk_displaces_cluster_default_owners(endpoint):
+    """Test that a cluster's own default owners stand down for an unmigrated override."""
+    requests = []
+
+    with pytest.warns(DeprecationWarning, match="overrides `handle_cluster_request`"):
+
+        class TakeoverOta(Ota):
+            _skip_registry = True
+
+            def handle_cluster_request(self, hdr, args, *, dst_addressing=None):
+                requests.append(args)
+
+    cluster = TakeoverOta(endpoint, is_server=False)
+    cluster.image_block_response = AsyncMock()
+
+    hdr = foundation.ZCLHeader.cluster(
+        tsn=0x12, command_id=Ota.ServerCommandDefs.image_block.id
+    )
+    command = Ota.ServerCommandDefs.image_block.schema(
+        field_control=0,
+        manufacturer_code=0x1234,
+        image_type=0x5678,
+        file_version=1,
+        file_offset=0,
+        maximum_data_size=64,
+        request_node_addr=t.EUI64.convert("11:22:33:44:55:66:77:88"),
+        minimum_block_period=0,
+    )
+
+    cluster.handle_message(hdr, command)
+    await asyncio.sleep(0)
+
+    # The override is the only thing that replies
+    assert requests == [command]
+    assert len(cluster.image_block_response.mock_calls) == 0
+
+    # An OTAManager can still take over from the quirk for the duration of an upgrade
+    manager_calls = []
+    cluster.respond_to_command(
+        Ota.ServerCommandDefs.image_block, lambda hdr, cmd: manager_calls.append(cmd)
+    )
+    cluster.handle_message(hdr, command)
+    await asyncio.sleep(0)
+
+    assert manager_calls == [command]
+
+
+async def test_owner_suppresses_default_response(endpoint):
+    """Test that an owned command gets no Default Response, only the owner's reply."""
+    # Both would carry the same TSN, endpoints and cluster: two replies to one command
+    cluster = endpoint.add_input_cluster(PollControl.cluster_id)
+
+    # A check-in that does *not* disable the default response
+    hdr, command = cluster.deserialize(b"\x09\x4c\x00")
+    assert hdr.frame_control.disable_default_response == 0
+    assert command.command.name == "checkin"
+
+    with patch.object(cluster, "send_default_rsp") as rsp:
+        cluster.handle_message(hdr, command)
+    assert len(rsp.mock_calls) == 1
+
+    cluster.respond_to_command(PollControl.ClientCommandDefs.checkin, MagicMock())
+
+    with patch.object(cluster, "send_default_rsp") as rsp:
+        cluster.handle_message(hdr, command)
+    assert len(rsp.mock_calls) == 0
 
 
 async def test_handle_cluster_general_request_disable_default_rsp(endpoint):
