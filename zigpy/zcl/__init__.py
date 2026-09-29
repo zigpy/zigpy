@@ -1060,7 +1060,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                         ),
                     )
 
-        if not hdr.frame_control.disable_default_response:
+        # ZCL R8 2.5.12.2: a Default Response is never sent in response to another
+        # Default Response
+        if (
+            hdr.command_id != foundation.GeneralCommand.Default_Response
+            and not hdr.frame_control.disable_default_response
+        ):
             self.send_default_rsp(
                 hdr,
                 foundation.Status.SUCCESS,
