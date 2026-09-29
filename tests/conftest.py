@@ -395,6 +395,8 @@ def verify_cleanup() -> typing.Generator[None, None, None]:
 def mock_attribute_reads(
     cluster: Cluster,
     mock_attributes: dict[str | int | foundation.ZCLAttributeDef, typing.Any],
+    *,
+    rsp: foundation.CommandSchema | None = None,
 ) -> typing.Generator[
     tuple[AsyncMock, dict[str | int | foundation.ZCLAttributeDef, AsyncMock]],
     None,
@@ -415,6 +417,9 @@ def mock_attribute_reads(
         manufacturer: int | UndefinedType | None = UNDEFINED,
         **kwargs,
     ):
+        if rsp is not None:
+            return rsp
+
         status_records = []
 
         for attrid in attributes:

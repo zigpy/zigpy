@@ -1285,6 +1285,34 @@ class WriteAttributesStructuredResponseSchema(CommandSchema):
     status_records: WriteAttributesStructuredResponse
 
 
+class ConfigureReportingResponseSchema(CommandSchema):
+    status_records: ConfigureReportingResponse
+
+
+class ReadReportingConfigurationResponseSchema(CommandSchema):
+    attribute_configs: t.List[AttributeReportingConfigWithStatus]
+
+
+class DiscoverAttributesResponseSchema(CommandSchema):
+    discovery_complete: t.Bool
+    attribute_info: t.List[DiscoverAttributesResponseRecord]
+
+
+class DiscoverCommandsReceivedResponseSchema(CommandSchema):
+    discovery_complete: t.Bool
+    command_ids: t.List[t.uint8_t]
+
+
+class DiscoverCommandsGeneratedResponseSchema(CommandSchema):
+    discovery_complete: t.Bool
+    command_ids: t.List[t.uint8_t]
+
+
+class DiscoverAttributeExtendedResponseSchema(CommandSchema):
+    discovery_complete: t.Bool
+    extended_attr_info: t.List[DiscoverAttributesExtendedResponseRecord]
+
+
 class DefaultResponse(CommandSchema):
     command_id: t.uint8_t
     status: Status
@@ -1457,7 +1485,7 @@ GENERAL_COMMANDS = COMMANDS = {
         direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Configure_Reporting_rsp: ZCLCommandDef(
-        schema={"status_records": ConfigureReportingResponse},
+        schema=ConfigureReportingResponseSchema,
         direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Read_Reporting_Configuration: ZCLCommandDef(
@@ -1465,7 +1493,7 @@ GENERAL_COMMANDS = COMMANDS = {
         direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Read_Reporting_Configuration_rsp: ZCLCommandDef(
-        schema={"attribute_configs": t.List[AttributeReportingConfigWithStatus]},
+        schema=ReadReportingConfigurationResponseSchema,
         direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Report_Attributes: ZCLCommandDef(
@@ -1481,10 +1509,7 @@ GENERAL_COMMANDS = COMMANDS = {
         direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Discover_Attributes_rsp: ZCLCommandDef(
-        schema={
-            "discovery_complete": t.Bool,
-            "attribute_info": t.List[DiscoverAttributesResponseRecord],
-        },
+        schema=DiscoverAttributesResponseSchema,
         direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Read_Attributes_Structured: ZCLCommandDef(
@@ -1504,7 +1529,7 @@ GENERAL_COMMANDS = COMMANDS = {
         direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Discover_Commands_Received_rsp: ZCLCommandDef(
-        schema={"discovery_complete": t.Bool, "command_ids": t.List[t.uint8_t]},
+        schema=DiscoverCommandsReceivedResponseSchema,
         direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Discover_Commands_Generated: ZCLCommandDef(
@@ -1512,7 +1537,7 @@ GENERAL_COMMANDS = COMMANDS = {
         direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Discover_Commands_Generated_rsp: ZCLCommandDef(
-        schema={"discovery_complete": t.Bool, "command_ids": t.List[t.uint8_t]},
+        schema=DiscoverCommandsGeneratedResponseSchema,
         direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Discover_Attribute_Extended: ZCLCommandDef(
@@ -1520,10 +1545,7 @@ GENERAL_COMMANDS = COMMANDS = {
         direction=Direction.Client_to_Server,
     ),
     GeneralCommand.Discover_Attribute_Extended_rsp: ZCLCommandDef(
-        schema={
-            "discovery_complete": t.Bool,
-            "extended_attr_info": t.List[DiscoverAttributesExtendedResponseRecord],
-        },
+        schema=DiscoverAttributeExtendedResponseSchema,
         direction=Direction.Server_to_Client,
     ),
 }
