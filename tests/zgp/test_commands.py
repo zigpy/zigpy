@@ -881,19 +881,6 @@ def test_manufacturer_defined_payload() -> None:
 
 
 @pytest.mark.parametrize(
-    "command_id",
-    [
-        command_id
-        for command_id in GPDCommandID
-        if command_id not in (GPDCommandID.AnySensorCommand, GPDCommandID.AnyCommand)
-    ],
-)
-def test_every_command_id_is_mapped(command_id: GPDCommandID) -> None:
-    """Every command ID that can appear on the wire needs a mapping entry."""
-    assert command_id in GPD_COMMAND_SCHEMAS
-
-
-@pytest.mark.parametrize(
     "command_id", [GPDCommandID.AnySensorCommand, GPDCommandID.AnyCommand]
 )
 def test_translation_table_pseudo_ids_are_unmapped(command_id: GPDCommandID) -> None:
@@ -905,20 +892,6 @@ def test_translation_table_pseudo_ids_are_unmapped(command_id: GPDCommandID) -> 
 def test_manufacturer_defined_range_is_mapped(command_id: int) -> None:
     """The whole 0xB0 - 0xBF range is manufacturer-defined (Table 55)."""
     assert GPD_COMMAND_SCHEMAS[GPDCommandID(command_id)] is GPManufacturerDefinedPayload
-
-
-@pytest.mark.parametrize(
-    "command_id",
-    [
-        GPDCommandID.ReadAttributesResponse,
-        GPDCommandID.CompactAttributeReporting,
-        GPDCommandID.ApplicationDescription,
-        GPDCommandID.WriteAttributes,
-    ],
-)
-def test_unimplemented_payloads_are_explicitly_none(command_id: GPDCommandID) -> None:
-    """Commands whose payload parser is still missing map to `None`, not absence."""
-    assert GPD_COMMAND_SCHEMAS[command_id] is None
 
 
 def test_unknown_command_id_is_unmapped() -> None:

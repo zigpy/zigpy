@@ -14,7 +14,7 @@ from zigpy.zcl.foundation import GENERAL_COMMANDS, GeneralCommand, Status as ZCL
 from zigpy.zdo.types import Status as ZDOStatus
 
 if TYPE_CHECKING:
-    from zigpy.device import Device
+    from zigpy.device import ZigbeeDevice
 
 LOGGER = logging.getLogger(__name__)
 
@@ -33,8 +33,8 @@ class Status(enum.IntEnum):
 class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     """An endpoint on a device on the network"""
 
-    def __init__(self, device: Device, endpoint_id: int) -> None:
-        self._device: Device = device
+    def __init__(self, device: ZigbeeDevice, endpoint_id: int) -> None:
+        self._device: ZigbeeDevice = device
         self._endpoint_id: int = endpoint_id
         self._listeners: dict = {}
 
@@ -288,7 +288,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         LOGGER.log(lvl, msg, *args, **kwargs)
 
     @property
-    def device(self) -> Device:
+    def device(self) -> ZigbeeDevice:
         return self._device
 
     @property
