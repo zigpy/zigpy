@@ -6,6 +6,7 @@ import voluptuous as vol
 
 from zigpy.config.defaults import (
     CONF_CONCURRENCY_DEFAULT,
+    CONF_DB_COMMIT_INTERVAL_DEFAULT,
     CONF_DEVICE_BAUDRATE_DEFAULT,
     CONF_DEVICE_FLOW_CONTROL_DEFAULT,
     CONF_MAX_CONCURRENT_REQUESTS_DEFAULT,
@@ -54,6 +55,7 @@ import zigpy.types as t
 
 CONF_ADDITIONAL_ENDPOINTS = "additional_endpoints"
 CONF_DATABASE = "database_path"
+CONF_DB_COMMIT_INTERVAL = "database_commit_interval"
 CONF_DEVICE = "device"
 CONF_DEVICE_PATH = "path"
 CONF_DEVICE_BAUDRATE = "baudrate"
@@ -418,6 +420,9 @@ SCHEMA_EXPERIMENTAL = vol.Schema(
 ZIGPY_SCHEMA = vol.Schema(
     {
         vol.Optional(CONF_DATABASE, default=None): vol.Any(None, str),
+        vol.Optional(
+            CONF_DB_COMMIT_INTERVAL, default=CONF_DB_COMMIT_INTERVAL_DEFAULT
+        ): vol.All(vol.Coerce(float), vol.Range(min=0)),
         vol.Optional(CONF_NWK, default={}): SCHEMA_NETWORK,
         vol.Optional(CONF_OTA, default={}): SCHEMA_OTA,
         vol.Optional(
