@@ -3443,14 +3443,17 @@ async def test_quirk_manufacturer_code_context_isolation(app_mock) -> None:
     )
 
 
-async def test_quirk_manufacturer_code_context_other_cluster(app_mock) -> None:
+@pytest.mark.parametrize("known_attribute", [True, False])
+async def test_quirk_manufacturer_code_context_other_cluster(
+    app_mock, known_attribute: bool
+) -> None:
     """Test that the manufacturer code is not applied to other clusters.
 
     A quirk forwarding a manufacturer-specific report to an attribute with the same ID
     on another cluster must not look up that attribute with the manufacturer code.
     """
 
-    class ManufCluster(zcl.Cluster):
+    class UnknownAttributeCluster(zcl.Cluster):
         cluster_id = 0xFC00
         ep_attribute = "manuf_cluster"
         _skip_registry = True
@@ -3461,16 +3464,28 @@ async def test_quirk_manufacturer_code_context_other_cluster(app_mock) -> None:
             if attrid == OccupancySensing.AttributeDefs.occupancy.id:
                 self.endpoint.occupancy.update_attribute(attrid, value)
 
+    class KnownAttributeCluster(UnknownAttributeCluster):
+        _skip_registry = True
+
+        class AttributeDefs(zcl.foundation.BaseAttributeDefs):
+            manuf_attr = foundation.ZCLAttributeDef(
+                id=OccupancySensing.AttributeDefs.occupancy.id,
+                type=t.uint8_t,
+                manufacturer_code=0x1234,
+            )
+
+    cluster_cls = KnownAttributeCluster if known_attribute else UnknownAttributeCluster
+
     dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
-    cluster = ManufCluster(dev.endpoints[1])
+    cluster = cluster_cls(dev.endpoints[1])
     occupancy_cluster = OccupancySensing(dev.endpoints[1])
-    dev.endpoints[1].add_input_cluster(ManufCluster.cluster_id, cluster)
+    dev.endpoints[1].add_input_cluster(cluster_cls.cluster_id, cluster)
     dev.endpoints[1].add_input_cluster(OccupancySensing.cluster_id, occupancy_cluster)
 
     events = []
     occupancy_cluster.on_event(AttributeUpdatedEvent.event_type, events.append)
 
-    # Report an unknown attribute with a manufacturer code
+    # Report the attribute with a manufacturer code
     hdr = foundation.ZCLHeader.general(
         tsn=1,
         command_id=foundation.GeneralCommand.Report_Attributes,
@@ -3481,12 +3496,11 @@ async def test_quirk_manufacturer_code_context_other_cluster(app_mock) -> None:
         attrid=OccupancySensing.AttributeDefs.occupancy.id,
         value=foundation.TypeValue(type=t.uint8_t, value=t.uint8_t(1)),
     )
-    cluster.handle_message(
-        hdr,
-        foundation.GENERAL_COMMANDS[
-            foundation.GeneralCommand.Report_Attributes
-        ].schema([attr]),
-    )
+    report = foundation.GENERAL_COMMANDS[foundation.GeneralCommand.Report_Attributes]
+    cluster.handle_message(hdr, report.schema([attr]))
+
+    if known_attribute:
+        assert cluster.get(KnownAttributeCluster.AttributeDefs.manuf_attr) == 1
 
     # The attribute of the other cluster is found and not stored as a legacy value
     assert occupancy_cluster._attr_cache._legacy_cache == {}
@@ -3506,6 +3520,27 @@ async def test_quirk_manufacturer_code_context_other_cluster(app_mock) -> None:
             value=OccupancySensing.Occupancy.Occupied,
         )
     ]
+
+
+def test_quirk_attribute_update_nested_and_failing(cluster) -> None:
+    """Test that tracking of quirk attribute updates is always restored."""
+    assert cluster._quirk_attribute_updates == {}
+
+    with cluster._quirk_attribute_update(0x0001, None):
+        with cluster._quirk_attribute_update(0x0001, 0x1234):
+            assert cluster._quirk_attribute_updates == {0x0001: 0x1234}
+
+        assert cluster._quirk_attribute_updates == {0x0001: None}
+
+    assert cluster._quirk_attribute_updates == {}
+
+    with (
+        pytest.raises(RuntimeError),
+        cluster._quirk_attribute_update(0x0001, None),
+    ):
+        raise RuntimeError
+
+    assert cluster._quirk_attribute_updates == {}
 
 
 async def test_read_attributes_structured_raw(cluster):

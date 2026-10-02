@@ -534,8 +534,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     ) -> Generator[None, None, None]:
         """Track a reported or read attribute passing through `_update_attribute`.
 
-        While active, `_update_attribute` calls for this attribute on this cluster do
-        not emit an `AttributeUpdatedEvent` (the caller emits the appropriate event
+        While active, `_update_attribute` calls with this attribute ID on this cluster
+        do not emit an `AttributeUpdatedEvent` (the caller emits the appropriate event
         instead) and resolve the attribute definition with the manufacturer code, so
         that manufacturer-specific attributes with conflicting IDs are stored
         correctly. Other attributes, clusters, and cluster instances updated by the
@@ -1352,9 +1352,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     def _update_attribute(
         self, attrid: int | t.uint16_t | foundation.ZCLAttributeDef, value: Any
     ) -> None:
-        # If this attribute is currently being passed through a quirk (see
+        # If this attribute ID is currently being passed through a quirk (see
         # `_quirk_attribute_update`), the `AttributeUpdatedEvent` is suppressed and the
-        # manufacturer code of the original report or read is used to find it. Other
+        # manufacturer code tracked for it is used to find the attribute. Other
         # attributes and clusters updated by quirks emit their own events.
         manufacturer_code: int | UndefinedType | None = UNDEFINED
 
