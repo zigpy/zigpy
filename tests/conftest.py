@@ -171,6 +171,16 @@ class App(BaseApp):
         else:
             return 10
 
+    async def _subscribe_to_multicast_group(
+        self, group_id: t.Group, endpoint_id: int
+    ) -> None:
+        pass
+
+    async def _unsubscribe_from_multicast_group(
+        self, group_id: t.Group, endpoint_id: int
+    ) -> None:
+        pass
+
 
 def recursive_dict_merge(
     obj: dict[str, typing.Any], updates: dict[str, typing.Any]
@@ -414,7 +424,10 @@ def mock_attribute_reads(
             if attr_def in mock_reads:
                 value = mock_reads[attr_def]()
 
-                if isinstance(value, foundation.Status):
+                if value is None:
+                    # Omit the record from the response entirely
+                    continue
+                elif isinstance(value, foundation.Status):
                     record.status = value
                 else:
                     record.status = foundation.Status.SUCCESS

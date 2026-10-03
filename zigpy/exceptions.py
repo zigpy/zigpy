@@ -14,6 +14,10 @@ class ParsingError(ZigbeeException):
     """Failed to parse a frame"""
 
 
+class GPSecurityProcessingFailed(ZigbeeException):
+    """A proxy could not perform the security processing of a tunneled GPDF."""
+
+
 class ControllerException(ZigbeeException):
     """Application controller failed in some way."""
 

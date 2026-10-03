@@ -121,8 +121,10 @@ async def _remove(
         else:
             raise TimeoutError
 
-    device = MagicMock()
+    device = MagicMock(spec=zigpy.device.ZigbeeDevice)
     device.ieee = ieee
+    device.nwk = 0x1234
+    device.zdo = MagicMock()
     device.zdo.leave.side_effect = leave
 
     if has_node_desc:
@@ -805,9 +807,10 @@ async def test_request_concurrency():
 
 @pytest.fixture
 def device():
-    device = MagicMock()
+    device = MagicMock(spec=zigpy.device.ZigbeeDevice)
     device.nwk = 0xABCD
     device.ieee = t.EUI64.convert("aa:bb:cc:dd:11:22:33:44")
+    device._concurrent_requests_semaphore = MagicMock()
 
     return device
 
@@ -940,6 +943,31 @@ async def test_force_route_discovery(app, device, packet) -> None:
         call(
             packet.replace(
                 tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY,
+                priority=t.PacketPriority.NORMAL,
+            )
+        ),
+    ]
+
+
+async def test_request_aps_encryption(app, device, packet) -> None:
+    await app.request(
+        device=device,
+        profile=0x1234,
+        cluster=0x0006,
+        src_ep=0x9A,
+        dst_ep=0xBC,
+        sequence=0xDE,
+        data=b"test data",
+        expect_reply=True,
+        use_ieee=False,
+        extended_timeout=False,
+        aps_encryption=True,
+    )
+
+    assert app.send_packet.mock_calls == [
+        call(
+            packet.replace(
+                tx_options=packet.tx_options | t.TransmitOptions.APS_Encryption,
                 priority=t.PacketPriority.NORMAL,
             )
         ),
@@ -1753,7 +1781,7 @@ async def test_callback_wrapping(
             "zigpy.application",
             logging.WARNING,
             (
-                "Device <Device model=None manuf=None nwk=0x1234 "
+                "Device <ZigbeeDevice model=None manuf=None nwk=0x1234 "
                 "ieee=07:06:05:04:03:02:01:00 is_initialized=False> "
                 "callback failed - ValueError('Boom!')"
             ),
@@ -1782,7 +1810,7 @@ async def test_callback_wrapping_async(
             "zigpy.application",
             logging.WARNING,
             (
-                "Device <Device model=None manuf=None nwk=0x1234 "
+                "Device <ZigbeeDevice model=None manuf=None nwk=0x1234 "
                 "ieee=07:06:05:04:03:02:01:00 is_initialized=False> "
                 "callback failed - ValueError('Boom!')"
             ),
@@ -2044,3 +2072,28 @@ async def test_device_resolver_new_kwarg():
     )
     assert app_default._device_resolver is None
     assert app_default._uninitialized_packet_handler is None
+
+
+async def test_coordinator_group_subscribe_unsubscribe(
+    app: zigpy.application.ControllerApplication,
+) -> None:
+    """Test that the coordinator can subscribe and unsubscribe from group messages."""
+    await app.startup()
+
+    # Subscribe to a group
+    with patch.object(app, "_subscribe_to_multicast_group") as mock_subscribe:
+        await app.subscribe_to_multicast_group(0x1234)
+        await app.subscribe_to_multicast_group(0x1234, endpoint_id=2)
+        assert mock_subscribe.mock_calls == [
+            call(group_id=0x1234, endpoint_id=1),
+            call(group_id=0x1234, endpoint_id=2),
+        ]
+
+    # Unsubscribe from a group
+    with patch.object(app, "_unsubscribe_from_multicast_group") as mock_unsubscribe:
+        await app.unsubscribe_from_multicast_group(0x1234)
+        await app.unsubscribe_from_multicast_group(0x1234, endpoint_id=2)
+        assert mock_unsubscribe.mock_calls == [
+            call(group_id=0x1234, endpoint_id=1),
+            call(group_id=0x1234, endpoint_id=2),
+        ]

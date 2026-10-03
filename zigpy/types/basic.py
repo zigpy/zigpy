@@ -1104,6 +1104,57 @@ class LVList(list, Generic[_T, _V], metaclass=KwargTypeMeta):
         return r, data
 
 
+class SizePrefixedList(list, Generic[_T, _V], metaclass=KwargTypeMeta):
+    """List prefixed by the total size in octets of its serialized items.
+
+    Where `LVList` counts items, the prefix here delimits the region the items occupy,
+    so the items themselves may vary in size. Items are read until that region is
+    exactly consumed; anything else is malformed.
+    """
+
+    _item_type: type[_T] | None
+    _size_type: type[_V] = uint8_t
+
+    _getitem_kwargs = {"item_type": None, "size_type": uint8_t}
+
+    def __init_subclass__(
+        cls, item_type: type[_T] | None = None, size_type: type[_V] | None = None
+    ) -> None:
+        if item_type is not None:
+            cls._item_type = item_type
+
+        if size_type is not None:
+            cls._size_type = size_type
+
+    def serialize(self) -> bytes:
+        assert self._size_type is not None
+        assert self._item_type is not None
+
+        items = b"".join([self._item_type(i).serialize() for i in self])
+
+        return self._size_type(len(items)).serialize() + items
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
+        assert cls._size_type is not None
+        assert cls._item_type is not None
+
+        size, data = cls._size_type.deserialize(data)
+
+        # Without this the region would be silently truncated to the data on hand
+        if len(data) < size:
+            raise ValueError(f"Data is too short to contain {size} bytes: {data!r}")
+
+        chunk, data = data[:size], data[size:]
+        r = cls()
+
+        while chunk:
+            item, chunk = cls._item_type.deserialize(chunk)
+            r.append(item)
+
+        return r, data
+
+
 class FixedList(list, Generic[_T], metaclass=KwargTypeMeta):
     _item_type: type[_T] | None
     _length: int | None

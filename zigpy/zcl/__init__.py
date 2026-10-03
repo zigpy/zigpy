@@ -53,7 +53,7 @@ def _chunk_records_by_size(
     *,
     max_bytes: int = MAX_ATTRIBUTE_RECORDS_BYTES,
 ) -> list[list[_RecordT]]:
-    """Split records into chunks not exceeding max_bytes of serialized payload."""
+    """Split records into chunks of at most max_bytes, except oversized records."""
     chunks: list[list[_RecordT]] = []
     chunk_size = 0
 
@@ -61,10 +61,18 @@ def _chunk_records_by_size(
         record_size = get_size(record)
 
         if record_size > max_bytes:
-            raise ValueError(
-                f"Record {record!r} is too large to fit in a single request: "
-                f"{record_size} > {max_bytes} bytes"
+            # Chunking can't shrink a single record, so send it alone and let the
+            # device reject it. `max_bytes + 1` keeps the next record out of this
+            # chunk, whatever its size.
+            LOGGER.debug(
+                "Record exceeds the %d byte request budget (%d bytes), sending it"
+                " on its own",
+                max_bytes,
+                record_size,
             )
+            chunks.append([record])
+            chunk_size = max_bytes + 1
+            continue
 
         if not chunks or chunk_size + record_size > max_bytes:
             chunks.append([])
@@ -334,6 +342,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
     # Clusters are accessible by name from their endpoint as an attribute
     ep_attribute: str = None
+
+    # All traffic on this cluster is APS encrypted with the device's link key
+    aps_encryption: bool = False
 
     # Manufacturer specific clusters exist between 0xFC00 and 0xFFFF. This exists solely
     # to remove the need to create 1024 "ManufacturerSpecificCluster" instances.
@@ -845,6 +856,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             priority=priority,
             retries=retries,
             retry_delay=retry_delay,
+            aps_encryption=self.aps_encryption,
         )
 
     async def reply(
@@ -900,6 +912,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             priority=priority,
             retries=retries,
             retry_delay=retry_delay,
+            aps_encryption=self.aps_encryption,
         )
 
     def handle_message(
@@ -1108,8 +1121,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         allow_cache: bool = False,
         only_cache: bool = False,
         manufacturer: int | UndefinedType | None = UNDEFINED,
+        *,
+        split_requests: bool = True,
         **kwargs,
     ) -> Any:
+        """Read attributes from the device.
+
+        Setting ``split_requests`` to ``False`` disables fixed-size chunking, but
+        attributes with different manufacturer codes are still read separately.
+        Attributes omitted from a response or reported as ``INSUFFICIENT_SPACE`` are
+        also re-read individually.
+        """
         # Find definition objects for every attribute
         attribute_defs: list[foundation.ZCLAttributeDef] = []
 
@@ -1169,93 +1191,176 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         # Now, we can perform the reads for each manufacturer code group
         for manufacturer_code, attribute_group in reads_by_manuf_code.items():
-            for i in range(0, len(attribute_group), MAX_READ_ATTRIBUTES_PER_REQ):
-                chunk = attribute_group[i : i + MAX_READ_ATTRIBUTES_PER_REQ]
+            retry_attrs: list[foundation.ZCLAttributeDef] = []
+
+            if split_requests:
+                chunks = [
+                    attribute_group[i : i + MAX_READ_ATTRIBUTES_PER_REQ]
+                    for i in range(0, len(attribute_group), MAX_READ_ATTRIBUTES_PER_REQ)
+                ]
+            else:
+                # Read every attribute in the group with a single request
+                chunks = [attribute_group]
+
+            for chunk in chunks:
                 result = await self.read_attributes_raw(
                     [attr_def.id for attr_def in chunk],
                     manufacturer=manufacturer_code,
                     **kwargs,
                 )
 
-                # The read response should contain only these attributes
-                potential_attributes = {attr_def.id: attr_def for attr_def in chunk}
+                retry_attrs.extend(
+                    self._process_read_attributes_response(
+                        result,
+                        chunk,
+                        attribute_map,
+                        manufacturer_code,
+                        success,
+                        failure,
+                        # A single-attribute chunk is already being read in isolation,
+                        # so there is nothing to gain from a solo re-read
+                        allow_retry=len(chunk) > 1,
+                    )
+                )
 
-                if not isinstance(result[0], list):
-                    # If we get back a single response status, all reads failed
-                    for attr_def in chunk:
-                        failure[attribute_map[attr_def]] = result[0]
-                else:
-                    for record in result[0]:
-                        attr_def = potential_attributes[record.attrid]
+            # Attributes whose records did not fit in the response frame
+            # (`INSUFFICIENT_SPACE`) or were omitted from it entirely are re-read one
+            # at a time, giving each value the whole frame (ZCL R8 §2.5.2.3). An
+            # attribute that still does not fit when read alone is a terminal failure.
+            for attr_def in retry_attrs:
+                result = await self.read_attributes_raw(
+                    [attr_def.id],
+                    manufacturer=manufacturer_code,
+                    **kwargs,
+                )
 
-                        if record.status == foundation.Status.SUCCESS:
-                            if record.value.value is None:
-                                # TODO: remove this workaround when `LocalDataCluster` and
-                                # `_VALID_ATTRIBUTES` are removed from quirks. There is no
-                                # way for `value` to actually be `None` when read from a
-                                # real device.
-                                value = None
-                            else:
-                                value = attr_def.type(record.value.value)
-
-                            success[attribute_map[attr_def]] = value
-
-                            cached_value = self._legacy_apply_quirk_attribute_update(
-                                attr_def, value
-                            )
-
-                            if cached_value is None:
-                                # Quirk swallowed the attribute
-                                continue
-                            elif cached_value != value:
-                                # Quirk transformed the value, emit AttributeUpdatedEvent
-                                self.emit(
-                                    AttributeUpdatedEvent.event_type,
-                                    AttributeUpdatedEvent(
-                                        device_ieee=str(self.endpoint.device.ieee),
-                                        endpoint_id=self.endpoint.endpoint_id,
-                                        cluster_type=self._type,
-                                        cluster_id=self.cluster_id,
-                                        attribute_name=attr_def.name,
-                                        attribute_id=attr_def.id,
-                                        manufacturer_code=manufacturer_code,
-                                        value=cached_value,
-                                    ),
-                                )
-                            else:
-                                # Value unchanged, emit AttributeReadEvent
-                                self.emit(
-                                    AttributeReadEvent.event_type,
-                                    AttributeReadEvent(
-                                        device_ieee=str(self.endpoint.device.ieee),
-                                        endpoint_id=self.endpoint.endpoint_id,
-                                        cluster_type=self._type,
-                                        cluster_id=self.cluster_id,
-                                        attribute_name=attr_def.name,
-                                        attribute_id=attr_def.id,
-                                        manufacturer_code=manufacturer_code,
-                                        raw_value=record.value.value,
-                                        value=value,
-                                    ),
-                                )
-                        else:
-                            if record.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
-                                self.emit(
-                                    AttributeUnsupportedEvent.event_type,
-                                    AttributeUnsupportedEvent(
-                                        device_ieee=str(self.endpoint.device.ieee),
-                                        endpoint_id=self.endpoint.endpoint_id,
-                                        cluster_type=self._type,
-                                        cluster_id=self.cluster_id,
-                                        attribute_name=attr_def.name,
-                                        attribute_id=attr_def.id,
-                                        manufacturer_code=manufacturer_code,
-                                    ),
-                                )
-
-                            failure[attribute_map[attr_def]] = record.status
+                self._process_read_attributes_response(
+                    result,
+                    [attr_def],
+                    attribute_map,
+                    manufacturer_code,
+                    success,
+                    failure,
+                    allow_retry=False,
+                )
 
         return success, failure
+
+    def _process_read_attributes_response(
+        self,
+        result: Any,
+        chunk: list[foundation.ZCLAttributeDef],
+        attribute_map: dict[
+            foundation.ZCLAttributeDef, int | str | foundation.ZCLAttributeDef
+        ],
+        manufacturer_code: int | None,
+        success: dict,
+        failure: dict,
+        *,
+        allow_retry: bool,
+    ) -> list[foundation.ZCLAttributeDef]:
+        """Process a Read Attributes Response, updating `success`/`failure` in place."""
+
+        # If we get back a single response status, all reads failed
+        if not isinstance(result[0], list):
+            for attr_def in chunk:
+                failure[attribute_map[attr_def]] = result[0]
+
+            return []
+
+        # All reads in this chunk used the same manufacturer code
+        seen_attr_ids: set[int] = set()
+
+        # The read response should contain only these attributes
+        potential_attributes = {attr_def.id: attr_def for attr_def in chunk}
+        insufficient_space_attrs: list[foundation.ZCLAttributeDef] = []
+
+        for record in result[0]:
+            attr_def = potential_attributes[record.attrid]
+            seen_attr_ids.add(record.attrid)
+
+            if record.status == foundation.Status.INSUFFICIENT_SPACE and allow_retry:
+                # The value did not fit; re-read it alone with the full frame
+                insufficient_space_attrs.append(attr_def)
+            elif record.status == foundation.Status.SUCCESS:
+                if record.value.value is None:
+                    # TODO: remove this workaround when `LocalDataCluster` and
+                    # `_VALID_ATTRIBUTES` are removed from quirks. There is no
+                    # way for `value` to actually be `None` when read from a
+                    # real device.
+                    value = None
+                else:
+                    value = attr_def.type(record.value.value)
+
+                success[attribute_map[attr_def]] = value
+
+                cached_value = self._legacy_apply_quirk_attribute_update(
+                    attr_def, value
+                )
+
+                if cached_value is None:
+                    # Quirk swallowed the attribute
+                    continue
+                elif cached_value != value:
+                    # Quirk transformed the value, emit AttributeUpdatedEvent
+                    self.emit(
+                        AttributeUpdatedEvent.event_type,
+                        AttributeUpdatedEvent(
+                            device_ieee=str(self.endpoint.device.ieee),
+                            endpoint_id=self.endpoint.endpoint_id,
+                            cluster_type=self._type,
+                            cluster_id=self.cluster_id,
+                            attribute_name=attr_def.name,
+                            attribute_id=attr_def.id,
+                            manufacturer_code=manufacturer_code,
+                            value=cached_value,
+                        ),
+                    )
+                else:
+                    # Value unchanged, emit AttributeReadEvent
+                    self.emit(
+                        AttributeReadEvent.event_type,
+                        AttributeReadEvent(
+                            device_ieee=str(self.endpoint.device.ieee),
+                            endpoint_id=self.endpoint.endpoint_id,
+                            cluster_type=self._type,
+                            cluster_id=self.cluster_id,
+                            attribute_name=attr_def.name,
+                            attribute_id=attr_def.id,
+                            manufacturer_code=manufacturer_code,
+                            raw_value=record.value.value,
+                            value=value,
+                        ),
+                    )
+            else:
+                if record.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
+                    self.emit(
+                        AttributeUnsupportedEvent.event_type,
+                        AttributeUnsupportedEvent(
+                            device_ieee=str(self.endpoint.device.ieee),
+                            endpoint_id=self.endpoint.endpoint_id,
+                            cluster_type=self._type,
+                            cluster_id=self.cluster_id,
+                            attribute_name=attr_def.name,
+                            attribute_id=attr_def.id,
+                            manufacturer_code=manufacturer_code,
+                        ),
+                    )
+
+                failure[attribute_map[attr_def]] = record.status
+
+        # Attributes omitted from the response entirely (ZCL R8 §2.5.2.3): re-read
+        # them individually, or mark them failed if this was already a solo re-read.
+        for attr_def in chunk:
+            if attr_def.id in seen_attr_ids:
+                continue
+
+            if allow_retry:
+                insufficient_space_attrs.append(attr_def)
+            else:
+                failure[attribute_map[attr_def]] = foundation.Status.INSUFFICIENT_SPACE
+
+        return insufficient_space_attrs
 
     def _on_attribute_unsupported(self, event: AttributeUnsupportedEvent) -> None:
         """Handle an attribute being reported as unsupported by the device."""

@@ -15,6 +15,7 @@ from tests.conftest import add_initialized_device, make_app
 from tests.ota.test_ota_providers import SelfContainedOtaImageMetadata, make_device
 from zigpy import config
 import zigpy.device
+from zigpy.device import GreenPowerDevice
 import zigpy.ota
 from zigpy.ota.image import FieldControl
 from zigpy.ota.providers import (
@@ -27,6 +28,7 @@ from zigpy.ota.providers import (
 import zigpy.types
 from zigpy.zcl import ClusterType, OtaImageAvailableEvent
 from zigpy.zcl.clusters.general import Ota
+from zigpy.zgp.types import ApplicationID, SrcID
 
 
 @pytest.fixture
@@ -646,6 +648,12 @@ async def test_check_all_devices_for_ota(query_cmd) -> None:
     add_initialized_device(
         app, nwk=0x5678, ieee=zigpy.types.EUI64.convert("AA:BB:CC:DD:EE:FF:00:11")
     )
+
+    # A Green Power device is not OTA-capable, should be skipped
+    gpd = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+    app.devices[gpd.ieee] = gpd
 
     images_result = zigpy.ota.OtaImagesResult(upgrades=(), downgrades=())
     app.ota.get_ota_images = AsyncMock(return_value=images_result)

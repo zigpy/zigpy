@@ -19,7 +19,14 @@ import zigpy.state
 import zigpy.types as t
 import zigpy.util
 from zigpy.zcl import ClusterType, OtaQueryCacheClearedEvent, foundation
-from zigpy.zcl.clusters.general import Basic, OnOff, Ota, PollControl
+from zigpy.zcl.clusters.general import (
+    Basic,
+    KeepAlive,
+    OnOff,
+    Ota,
+    PollControl,
+    ZigbeeDirectConfiguration,
+)
 from zigpy.zdo import types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
@@ -211,6 +218,53 @@ async def test_initialize_ep_failed(monkeypatch, dev):
     assert dev.application.listener_event.call_args[0][0] == "device_init_failure"
 
 
+@pytest.mark.parametrize(
+    ("active_eps", "inactive_eps"),
+    [
+        # Aqara H1 remote, zigpy/zigpy#1894
+        ([1, 2, 3, 4], [5, 6]),
+        ([1, 3], [2]),
+    ],
+)
+async def test_initialize_removes_inactive_endpoints(
+    monkeypatch, dev, active_eps: list[int], inactive_eps: list[int]
+) -> None:
+    """Endpoints listed as active but without a simple descriptor are removed."""
+
+    async def mock_active_ep_req(nwk):
+        return [zdo_t.Status.SUCCESS, nwk, sorted(active_eps + inactive_eps)]
+
+    async def mock_simple_desc_req(nwk, endpoint_id):
+        if endpoint_id in inactive_eps:
+            return [zdo_t.Status.NOT_ACTIVE, nwk, None]
+
+        return [
+            zdo_t.Status.SUCCESS,
+            nwk,
+            zdo_t.SizePrefixedSimpleDescriptor(
+                endpoint=endpoint_id,
+                profile=zha.PROFILE_ID,
+                device_type=zha.DeviceType.ON_OFF_SWITCH,
+                device_version=1,
+                input_clusters=[Basic.cluster_id],
+                output_clusters=[OnOff.cluster_id],
+            ),
+        ]
+
+    async def mock_ep_get_model_info(self):
+        return "Model", "Manufacturer"
+
+    monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
+    dev.zdo.Active_EP_req = mock_active_ep_req
+    dev.zdo.Simple_Desc_req = mock_simple_desc_req
+
+    await dev.initialize()
+
+    assert dev.is_initialized
+    assert [ep.endpoint_id for ep in dev.non_zdo_endpoints] == active_eps
+    assert all(ep.status == endpoint.Status.ZDO_INIT for ep in dev.non_zdo_endpoints)
+
+
 async def test_failed_request(dev):
     assert dev.last_seen is None
     dev._application.send_packet = AsyncMock(
@@ -225,20 +279,6 @@ def test_skip_configuration(dev):
     assert dev.skip_configuration is False
     dev.skip_configuration = True
     assert dev.skip_configuration is True
-
-
-def test_radio_details(dev):
-    dev.radio_details(1, 2)
-    assert dev.lqi == 1
-    assert dev.rssi == 2
-
-    dev.radio_details(lqi=3)
-    assert dev.lqi == 3
-    assert dev.rssi == 2
-
-    dev.radio_details(rssi=4)
-    assert dev.lqi == 3
-    assert dev.rssi == 4
 
 
 async def test_handle_message_deserialize_error(dev):
@@ -499,6 +539,84 @@ async def test_handle_unknown_cluster(dev, caplog) -> None:
         )
 
     assert "Ignoring message on unknown cluster: 0x9999" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "tx_options", [t.TransmitOptions.NONE, t.TransmitOptions.APS_Encryption]
+)
+async def test_keep_alive_reply_aps_encryption(dev, app_mock, tx_options) -> None:
+    """Keep-Alive replies are APS encrypted regardless of the request."""
+    dev.add_endpoint(1).add_output_cluster(KeepAlive.cluster_id)
+
+    req_hdr = foundation.ZCLHeader(
+        frame_control=foundation.FrameControl(
+            frame_type=foundation.FrameType.GLOBAL_COMMAND,
+            is_manufacturer_specific=False,
+            direction=foundation.Direction.Client_to_Server,
+            disable_default_response=True,
+            reserved=0,
+        ),
+        tsn=8,
+        command_id=foundation.GeneralCommand.Read_Attributes,
+    )
+    req_cmd = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Read_Attributes
+    ].schema(
+        attribute_ids=[
+            KeepAlive.AttributeDefs.tc_keep_alive_base.id,
+            KeepAlive.AttributeDefs.tc_keep_alive_jitter.id,
+        ]
+    )
+
+    dev.packet_received(
+        t.ZigbeePacket(
+            profile_id=zha.PROFILE_ID,
+            cluster_id=KeepAlive.cluster_id,
+            src_ep=1,
+            dst_ep=1,
+            tsn=req_hdr.tsn,
+            data=t.SerializableBytes(req_hdr.serialize() + req_cmd.serialize()),
+            src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+            tx_options=tx_options,
+        )
+    )
+    await asyncio.sleep(0.01)
+
+    assert len(app_mock.send_packet.mock_calls) == 1
+    packet = app_mock.send_packet.mock_calls[0].args[0]
+    assert packet.dst.address == dev.nwk
+    assert packet.cluster_id == KeepAlive.cluster_id
+    assert packet.tsn == req_hdr.tsn
+    assert t.TransmitOptions.APS_Encryption in packet.tx_options
+
+
+@pytest.mark.parametrize(
+    ("cluster", "encrypted"),
+    [
+        (OnOff, False),
+        (KeepAlive, True),
+        (ZigbeeDirectConfiguration, True),
+    ],
+)
+async def test_cluster_request_aps_encryption(
+    dev, app_mock, cluster, encrypted
+) -> None:
+    """Requests on clusters that require APS encryption set the transmit option."""
+    zcl_cluster = dev.add_endpoint(1).add_input_cluster(cluster.cluster_id)
+
+    await zcl_cluster.request(
+        True,
+        foundation.GeneralCommand.Read_Attributes,
+        foundation.GENERAL_COMMANDS[foundation.GeneralCommand.Read_Attributes].schema,
+        attribute_ids=[0x0000],
+        expect_reply=False,
+    )
+
+    assert len(app_mock.send_packet.mock_calls) == 1
+    packet = app_mock.send_packet.mock_calls[0].args[0]
+    assert packet.cluster_id == cluster.cluster_id
+    assert (t.TransmitOptions.APS_Encryption in packet.tx_options) == encrypted
 
 
 async def test_update_device_firmware_no_ota_cluster(dev):
@@ -2179,6 +2297,7 @@ async def test_reinterview_during_ota(dev):
     dev._application._device_reinterviewed.assert_not_called()
 
 
+@patch("zigpy.device.AFTER_OTA_ATTR_READ_DELAY", 0.01)
 async def test_update_firmware_triggers_reinterview(monkeypatch, dev):
     """Test that successful OTA triggers reinterview."""
     ep = dev.add_endpoint(1)
@@ -2475,3 +2594,32 @@ async def test_request_retry_delay_releases_concurrency(app) -> None:
         # Tear down the still-pending requests so the task group can exit
         for task in tasks:
             task.cancel()
+
+
+async def test_radio_details_deprecated(dev) -> None:
+    with pytest.deprecated_call():
+        dev.radio_details(lqi=120, rssi=-45)
+
+    assert dev.lqi == 120
+    assert dev.rssi == -45
+
+    with pytest.deprecated_call():
+        dev.radio_details(lqi=99)
+
+    assert dev.lqi == 99
+    assert dev.rssi == -45
+
+    with pytest.deprecated_call():
+        dev.radio_details(rssi=-80)
+
+    assert dev.lqi == 99
+    assert dev.rssi == -80
+
+
+async def test_update_last_seen_deprecated(dev) -> None:
+    assert dev.last_seen is None
+
+    with pytest.deprecated_call():
+        dev.update_last_seen()
+
+    assert dev.last_seen is not None

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 from unittest import mock
 from unittest.mock import AsyncMock, MagicMock, call, patch, sentinel
@@ -1742,6 +1743,7 @@ async def test_received_onoff_toggle_generates_default_response():
             priority=t.PacketPriority.LOW,
             retries=None,
             retry_delay=None,
+            aps_encryption=False,
         )
     ]
 
@@ -1931,7 +1933,8 @@ def test_find_attributes() -> None:
         TestCluster.find_attributes(0x0002, manufacturer_code=0xABCD)
 
 
-async def test_read_attributes_complex() -> None:
+@pytest.mark.parametrize("split_requests", [True, False])
+async def test_read_attributes_complex(split_requests: bool) -> None:
     """Test reading attributes, complex scenario."""
 
     class TestCluster(zcl.Cluster):
@@ -1942,6 +1945,14 @@ async def test_read_attributes_complex() -> None:
         class AttributeDefs(zcl.BaseAttributeDefs):
             attribute1 = foundation.ZCLAttributeDef(id=0x0001, type=t.uint8_t)
             attribute2 = foundation.ZCLAttributeDef(id=0x0002, type=t.uint8_t)
+
+            # Six attributes without a manufacturer code in total, so that group spans
+            # two requests with splitting enabled (MAX_READ_ATTRIBUTES_PER_REQ is 5)
+            # and exactly one with it disabled
+            attribute7 = foundation.ZCLAttributeDef(id=0x0003, type=t.uint8_t)
+            attribute8 = foundation.ZCLAttributeDef(id=0x0004, type=t.uint8_t)
+            attribute9 = foundation.ZCLAttributeDef(id=0x0005, type=t.uint8_t)
+            attribute10 = foundation.ZCLAttributeDef(id=0x0006, type=t.uint8_t)
 
             # These two can be read together
             attribute3 = foundation.ZCLAttributeDef(
@@ -1965,54 +1976,71 @@ async def test_read_attributes_complex() -> None:
     async def mock_read_attributes(
         attribute_ids: list[int], manufacturer: int | None = None, **kwargs
     ):
-        status_records = {
-            (None, (0x0001, 0x0002)): [
-                # One is supported
-                foundation.ReadAttributeRecord(
-                    attrid=0x0001,
+        # The attributes without a manufacturer code are split across two requests
+        # or read in one, depending on `split_requests`, so respond per attribute ID
+        no_manuf_code_records = {
+            # This one is supported
+            0x0001: foundation.ReadAttributeRecord(
+                attrid=0x0001,
+                status=foundation.Status.SUCCESS,
+                value=foundation.TypeValue(
+                    type=foundation.DataTypeId.uint8,
+                    value=t.uint8_t(123),
+                ),
+            ),
+            # This one is not
+            0x0002: foundation.ReadAttributeRecord(
+                attrid=0x0002,
+                status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
+            ),
+            **{
+                attrid: foundation.ReadAttributeRecord(
+                    attrid=attrid,
                     status=foundation.Status.SUCCESS,
                     value=foundation.TypeValue(
                         type=foundation.DataTypeId.uint8,
-                        value=t.uint8_t(123),
+                        value=t.uint8_t(attrid),
                     ),
-                ),
-                # The other is not
-                foundation.ReadAttributeRecord(
-                    attrid=0x0002,
-                    status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
-                ),
-            ],
-            (0x1234, (0x0001, 0x0002)): [
-                # Both are supported
-                foundation.ReadAttributeRecord(
-                    attrid=0x0001,
-                    status=foundation.Status.SUCCESS,
-                    value=foundation.TypeValue(
-                        type=foundation.DataTypeId.uint8,
-                        value=t.uint8_t(12),
+                )
+                for attrid in (0x0003, 0x0004, 0x0005, 0x0006)
+            },
+        }
+
+        if manufacturer is None:
+            status_records = [no_manuf_code_records[attrid] for attrid in attribute_ids]
+        else:
+            status_records = {
+                (0x1234, (0x0001, 0x0002)): [
+                    # Both are supported
+                    foundation.ReadAttributeRecord(
+                        attrid=0x0001,
+                        status=foundation.Status.SUCCESS,
+                        value=foundation.TypeValue(
+                            type=foundation.DataTypeId.uint8,
+                            value=t.uint8_t(12),
+                        ),
                     ),
-                ),
-                foundation.ReadAttributeRecord(
-                    attrid=0x0002,
-                    status=foundation.Status.SUCCESS,
-                    value=foundation.TypeValue(
-                        type=foundation.DataTypeId.uint8,
-                        value=t.uint8_t(34),
+                    foundation.ReadAttributeRecord(
+                        attrid=0x0002,
+                        status=foundation.Status.SUCCESS,
+                        value=foundation.TypeValue(
+                            type=foundation.DataTypeId.uint8,
+                            value=t.uint8_t(34),
+                        ),
                     ),
-                ),
-            ],
-            (0x5678, (0x0003, 0x0004)): [
-                # Neither of these are supported
-                foundation.ReadAttributeRecord(
-                    attrid=0x0003,
-                    status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
-                ),
-                foundation.ReadAttributeRecord(
-                    attrid=0x0004,
-                    status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
-                ),
-            ],
-        }[manufacturer, tuple(attribute_ids)]
+                ],
+                (0x5678, (0x0003, 0x0004)): [
+                    # Neither of these are supported
+                    foundation.ReadAttributeRecord(
+                        attrid=0x0003,
+                        status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
+                    ),
+                    foundation.ReadAttributeRecord(
+                        attrid=0x0004,
+                        status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
+                    ),
+                ],
+            }[manufacturer, tuple(attribute_ids)]
 
         return foundation.GENERAL_COMMANDS[
             foundation.GeneralCommand.Read_Attributes_rsp
@@ -2031,13 +2059,22 @@ async def test_read_attributes_complex() -> None:
                 TestCluster.AttributeDefs.attribute2,  # Batch 1  (no code)
                 TestCluster.AttributeDefs.attribute4,  # Batch 2  (0x5678)
                 TestCluster.AttributeDefs.attribute6,  # Batch 3  (0x1234)
-            ]
+                TestCluster.AttributeDefs.attribute7,  # Batch 1  (no code)
+                TestCluster.AttributeDefs.attribute8,  # Batch 1  (no code)
+                TestCluster.AttributeDefs.attribute9,  # Batch 1  (no code)
+                TestCluster.AttributeDefs.attribute10,  # Batch 1  (no code)
+            ],
+            split_requests=split_requests,
         )
 
     assert success == {
         TestCluster.AttributeDefs.attribute1: 123,
         TestCluster.AttributeDefs.attribute3: 12,
         TestCluster.AttributeDefs.attribute4: 34,
+        TestCluster.AttributeDefs.attribute7: 0x0003,
+        TestCluster.AttributeDefs.attribute8: 0x0004,
+        TestCluster.AttributeDefs.attribute9: 0x0005,
+        TestCluster.AttributeDefs.attribute10: 0x0006,
     }
 
     assert failure == {
@@ -2046,11 +2083,22 @@ async def test_read_attributes_complex() -> None:
         TestCluster.AttributeDefs.attribute6: foundation.Status.UNSUPPORTED_ATTRIBUTE,
     }
 
-    assert mock_raw.mock_calls == [
-        call([0x0001, 0x0002], manufacturer=None),
-        call([0x0003, 0x0004], manufacturer=0x5678),
-        call([0x0001, 0x0002], manufacturer=0x1234),
-    ]
+    if split_requests:
+        # The six attributes without a manufacturer code need two requests
+        assert mock_raw.mock_calls == [
+            call([0x0001, 0x0002, 0x0003, 0x0004, 0x0005], manufacturer=None),
+            call([0x0006], manufacturer=None),
+            call([0x0003, 0x0004], manufacturer=0x5678),
+            call([0x0001, 0x0002], manufacturer=0x1234),
+        ]
+    else:
+        # They all fit into a single request, but the manufacturer code grouping
+        # still applies
+        assert mock_raw.mock_calls == [
+            call([0x0001, 0x0002, 0x0003, 0x0004, 0x0005, 0x0006], manufacturer=None),
+            call([0x0003, 0x0004], manufacturer=0x5678),
+            call([0x0001, 0x0002], manufacturer=0x1234),
+        ]
 
 
 async def test_command_explicit_manufacturer():
@@ -2639,6 +2687,255 @@ async def test_read_attributes_chunked_by_count(app_mock) -> None:
     }
 
 
+async def test_read_attributes_unsplit(app_mock) -> None:
+    """Read_attributes sends a single request when splitting is disabled."""
+
+    class TestCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            attr_0 = foundation.ZCLAttributeDef(id=0xFF00, type=t.uint8_t)
+            attr_1 = foundation.ZCLAttributeDef(id=0xFF01, type=t.uint8_t)
+            attr_2 = foundation.ZCLAttributeDef(id=0xFF02, type=t.uint8_t)
+            attr_3 = foundation.ZCLAttributeDef(id=0xFF03, type=t.uint8_t)
+            attr_4 = foundation.ZCLAttributeDef(id=0xFF04, type=t.uint8_t)
+            attr_5 = foundation.ZCLAttributeDef(id=0xFF05, type=t.uint8_t)
+            attr_6 = foundation.ZCLAttributeDef(id=0xFF06, type=t.uint8_t)
+            attr_7 = foundation.ZCLAttributeDef(id=0xFF07, type=t.uint8_t)
+            attr_8 = foundation.ZCLAttributeDef(id=0xFF08, type=t.uint8_t)
+            attr_9 = foundation.ZCLAttributeDef(id=0xFF09, type=t.uint8_t)
+            attr_10 = foundation.ZCLAttributeDef(id=0xFF0A, type=t.uint8_t)
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    attrs = [getattr(TestCluster.AttributeDefs, f"attr_{i}") for i in range(11)]
+
+    # Exclude 2 and 7 so the mock returns UNSUPPORTED
+    supported = {attr: i for i, attr in enumerate(attrs) if i not in (2, 7)}
+    with mock_attribute_reads(cluster, supported) as (mock_read, _):
+        success, failure = await cluster.read_attributes(attrs, split_requests=False)
+
+    # All 11 attributes are requested in a single request, in order
+    chunks = [call_obj.args[0] for call_obj in mock_read.call_args_list]
+    assert chunks == [[attr.id for attr in attrs]]
+
+    assert success == supported
+    assert failure == {
+        attrs[2]: foundation.Status.UNSUPPORTED_ATTRIBUTE,
+        attrs[7]: foundation.Status.UNSUPPORTED_ATTRIBUTE,
+    }
+
+
+async def test_read_attributes_insufficient_space_retry_success(app_mock) -> None:
+    """An INSUFFICIENT_SPACE record is re-read individually and can then succeed."""
+
+    class TestCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            attr_0 = foundation.ZCLAttributeDef(id=0xFF00, type=t.uint8_t)
+            attr_1 = foundation.ZCLAttributeDef(id=0xFF01, type=t.uint8_t)
+            attr_2 = foundation.ZCLAttributeDef(id=0xFF02, type=t.uint8_t)
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    attrs = [
+        TestCluster.AttributeDefs.attr_0,
+        TestCluster.AttributeDefs.attr_1,
+        TestCluster.AttributeDefs.attr_2,
+    ]
+
+    supported = {
+        TestCluster.AttributeDefs.attr_0: 10,
+        # Runs out of space in the batched read, but fits when read alone
+        TestCluster.AttributeDefs.attr_1: mock.Mock(
+            side_effect=[foundation.Status.INSUFFICIENT_SPACE, 20]
+        ),
+        TestCluster.AttributeDefs.attr_2: 30,
+    }
+
+    events = []
+    cluster.on_event(AttributeReadEvent.event_type, events.append)
+    cluster.on_event(AttributeUpdatedEvent.event_type, events.append)
+
+    with mock_attribute_reads(cluster, supported) as (mock_read, _):
+        success, failure = await cluster.read_attributes(attrs)
+
+    assert success == {
+        TestCluster.AttributeDefs.attr_0: 10,
+        TestCluster.AttributeDefs.attr_1: 20,
+        TestCluster.AttributeDefs.attr_2: 30,
+    }
+    assert failure == {}
+
+    # The batched read, then a solo re-read of the attribute that didn't fit
+    chunks = [call_obj.args[0] for call_obj in mock_read.call_args_list]
+    assert chunks == [[0xFF00, 0xFF01, 0xFF02], [0xFF01]]
+
+    assert events == [
+        AttributeReadEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=TestCluster.cluster_id,
+            attribute_name=TestCluster.AttributeDefs.attr_0.name,
+            attribute_id=TestCluster.AttributeDefs.attr_0.id,
+            manufacturer_code=None,
+            raw_value=10,
+            value=10,
+        ),
+        AttributeReadEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=TestCluster.cluster_id,
+            attribute_name=TestCluster.AttributeDefs.attr_2.name,
+            attribute_id=TestCluster.AttributeDefs.attr_2.id,
+            manufacturer_code=None,
+            raw_value=30,
+            value=30,
+        ),
+        # No event for attr_1's INSUFFICIENT_SPACE record; the solo re-read then emits
+        # its AttributeReadEvent last, after the two attributes that succeeded in the
+        # batch
+        AttributeReadEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=TestCluster.cluster_id,
+            attribute_name=TestCluster.AttributeDefs.attr_1.name,
+            attribute_id=TestCluster.AttributeDefs.attr_1.id,
+            manufacturer_code=None,
+            raw_value=20,
+            value=20,
+        ),
+    ]
+
+
+async def test_read_attributes_insufficient_space_retry_persistent(app_mock) -> None:
+    """An attribute that still doesn't fit when read alone is a terminal failure."""
+
+    class TestCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            attr_0 = foundation.ZCLAttributeDef(id=0xFF00, type=t.uint8_t)
+            attr_1 = foundation.ZCLAttributeDef(id=0xFF01, type=t.uint8_t)
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    attrs = [TestCluster.AttributeDefs.attr_0, TestCluster.AttributeDefs.attr_1]
+
+    supported = {
+        TestCluster.AttributeDefs.attr_0: 10,
+        # Never fits, even when read alone
+        TestCluster.AttributeDefs.attr_1: mock.Mock(
+            return_value=foundation.Status.INSUFFICIENT_SPACE
+        ),
+    }
+
+    with mock_attribute_reads(cluster, supported) as (mock_read, _):
+        success, failure = await cluster.read_attributes(attrs)
+
+    assert success == {TestCluster.AttributeDefs.attr_0: 10}
+    assert failure == {
+        TestCluster.AttributeDefs.attr_1: foundation.Status.INSUFFICIENT_SPACE
+    }
+
+    chunks = [call_obj.args[0] for call_obj in mock_read.call_args_list]
+    assert chunks == [[0xFF00, 0xFF01], [0xFF01]]
+
+
+async def test_read_attributes_insufficient_space_single_chunk_no_retry(
+    app_mock,
+) -> None:
+    """A single-attribute chunk is already isolated, so it is not re-read."""
+
+    class TestCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            attr_0 = foundation.ZCLAttributeDef(id=0xFF00, type=t.uint8_t)
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    supported = {
+        TestCluster.AttributeDefs.attr_0: mock.Mock(
+            return_value=foundation.Status.INSUFFICIENT_SPACE
+        ),
+    }
+
+    with mock_attribute_reads(cluster, supported) as (mock_read, _):
+        success, failure = await cluster.read_attributes(
+            [TestCluster.AttributeDefs.attr_0]
+        )
+
+    assert success == {}
+    assert failure == {
+        TestCluster.AttributeDefs.attr_0: foundation.Status.INSUFFICIENT_SPACE
+    }
+
+    # Read exactly once: no redundant solo re-read of an already-isolated attribute
+    chunks = [call_obj.args[0] for call_obj in mock_read.call_args_list]
+    assert chunks == [[0xFF00]]
+
+
+@pytest.mark.parametrize("omitted_again", [False, True])
+@pytest.mark.parametrize("split_requests", [True, False])
+async def test_read_attributes_omitted_record_retry(
+    app_mock, omitted_again: bool, split_requests: bool
+) -> None:
+    """Records omitted from a response are re-read individually (ZCL R8 §2.5.2.3)."""
+
+    class TestCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            attr_0 = foundation.ZCLAttributeDef(id=0xFF00, type=t.uint8_t)
+            attr_1 = foundation.ZCLAttributeDef(id=0xFF01, type=t.uint8_t)
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    attrs = [TestCluster.AttributeDefs.attr_0, TestCluster.AttributeDefs.attr_1]
+
+    supported = {
+        TestCluster.AttributeDefs.attr_0: 10,
+        TestCluster.AttributeDefs.attr_1: mock.Mock(
+            side_effect=[None, None] if omitted_again else [None, 20]
+        ),
+    }
+
+    with mock_attribute_reads(cluster, supported) as (mock_read, _):
+        success, failure = await cluster.read_attributes(
+            attrs, split_requests=split_requests
+        )
+
+    if omitted_again:
+        assert success == {TestCluster.AttributeDefs.attr_0: 10}
+        assert failure == {
+            TestCluster.AttributeDefs.attr_1: foundation.Status.INSUFFICIENT_SPACE
+        }
+    else:
+        assert success == {
+            TestCluster.AttributeDefs.attr_0: 10,
+            TestCluster.AttributeDefs.attr_1: 20,
+        }
+        assert failure == {}
+
+    chunks = [call_obj.args[0] for call_obj in mock_read.call_args_list]
+    assert chunks == [[0xFF00, 0xFF01], [0xFF01]]
+
+
 async def test_write_attributes_chunked_by_size(app_mock) -> None:
     """Write_attributes splits requests if a single one would exceed the limit."""
 
@@ -2709,20 +3006,72 @@ def test_chunk_records_by_size(sizes, max_bytes, expected) -> None:
 
 
 @pytest.mark.parametrize(
-    ("sizes", "max_bytes"),
+    ("sizes", "max_bytes", "expected"),
     [
         # A single record larger than the limit, on its own
-        ([15], 10),
-        # An oversized record surrounded by ones that would otherwise fit
-        ([3, 15, 4], 10),
+        ([15], 10, [[15]]),
+        # An oversized record does not take the records around it down with it
+        ([3, 15, 4], 10, [[3], [15], [4]]),
+        # Records before an oversized one still pack together
+        ([3, 3, 15, 4], 10, [[3, 3], [15], [4]]),
+        # Consecutive oversized records each get a chunk of their own
+        ([15, 15], 10, [[15], [15]]),
     ],
 )
-def test_chunk_records_by_size_oversized_record(sizes, max_bytes) -> None:
-    """A record that on its own exceeds max_bytes can never be sent, so the chunker
-    fails loudly instead of emitting an oversized chunk the transport would reject.
-    """
-    with pytest.raises(ValueError, match="too large to fit in a single request"):
-        _chunk_records_by_size(sizes, lambda size: size, max_bytes=max_bytes)
+def test_chunk_records_by_size_oversized_record(
+    sizes, max_bytes, expected, caplog
+) -> None:
+    """A record that on its own exceeds max_bytes is emitted as its own chunk."""
+    with caplog.at_level(logging.DEBUG, logger="zigpy.zcl"):
+        chunks = _chunk_records_by_size(sizes, lambda size: size, max_bytes=max_bytes)
+
+    assert chunks == expected
+    assert caplog.text.count("exceeds the 10 byte request budget") == sum(
+        size > max_bytes for size in sizes
+    )
+
+
+async def test_write_attributes_oversized_record(app_mock) -> None:
+    """An attribute record over the size budget is still sent, on its own."""
+
+    class TestCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            attr_small = foundation.ZCLAttributeDef(id=0xFF00, type=t.uint8_t)
+            attr_big = foundation.ZCLAttributeDef(id=0xFF01, type=t.LVBytes)
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    # 2 bytes of attribute id + 1 type + 1 length prefix + 55 bytes of value
+    oversized = b"\xaa" * 55
+
+    with mock_attribute_writes(
+        cluster,
+        {
+            TestCluster.AttributeDefs.attr_small: foundation.Status.SUCCESS,
+            TestCluster.AttributeDefs.attr_big: foundation.Status.SUCCESS,
+        },
+    ) as (mock_write, _):
+        [results] = await cluster.write_attributes(
+            {
+                TestCluster.AttributeDefs.attr_small: 1,
+                TestCluster.AttributeDefs.attr_big: oversized,
+            }
+        )
+
+    # The small record is sent normally, the oversized one in a request of its own
+    assert mock_write.call_count == 2
+    chunks = [call_obj.args[0] for call_obj in mock_write.call_args_list]
+    assert [[a.attrid for a in chunk] for chunk in chunks] == [[0xFF00], [0xFF01]]
+
+    [big_record] = chunks[1]
+    assert len(big_record.serialize()) == 59 > MAX_ATTRIBUTE_RECORDS_BYTES
+
+    assert len(results) == 2
+    assert all(r.status == foundation.Status.SUCCESS for r in results)
 
 
 def test_manufacturer_id_override_manuf_specific_cluster(app_mock) -> None:

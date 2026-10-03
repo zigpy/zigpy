@@ -458,6 +458,110 @@ def test_fixedlist():
     assert t.FixedList[t.uint8_t, 2]([1, 2]).serialize() == b"\x01\x02"
 
 
+class VariableSizeItem(t.Struct):
+    """Item whose serialized size depends on its contents."""
+
+    id: t.uint8_t
+    data: t.LVBytes
+
+
+def test_size_prefixed_list() -> None:
+    lst, rest = t.SizePrefixedList[t.uint16_t, t.uint8_t].deserialize(
+        b"\x04\x01\x00\x02\x00" + b"leftover"
+    )
+
+    assert lst == [0x0001, 0x0002]
+    assert rest == b"leftover"
+    assert lst.serialize() == b"\x04\x01\x00\x02\x00"
+    assert isinstance(lst, t.SizePrefixedList[t.uint16_t, t.uint8_t])
+
+
+def test_size_prefixed_list_empty() -> None:
+    lst, rest = t.SizePrefixedList[t.uint16_t, t.uint8_t].deserialize(b"\x00\xaa")
+
+    assert lst == []
+    assert rest == b"\xaa"
+    assert lst.serialize() == b"\x00"
+
+
+def test_size_prefixed_list_variable_size_items() -> None:
+    """The prefix delimits a region, so items may differ in size (unlike `LVList`)."""
+    items = b"\x01\x02ab" + b"\x02\x00" + b"\x03\x01c"
+    lst, rest = t.SizePrefixedList[VariableSizeItem, t.uint8_t].deserialize(
+        bytes([len(items)]) + items + b"\xff"
+    )
+
+    assert [(item.id, item.data) for item in lst] == [(1, b"ab"), (2, b""), (3, b"c")]
+    assert rest == b"\xff"
+    assert lst.serialize() == bytes([len(items)]) + items
+
+
+def test_size_prefixed_list_size_type() -> None:
+    lst, rest = t.SizePrefixedList[t.uint16_t, t.uint16_t].deserialize(
+        b"\x04\x00\x01\x00\x02\x00"
+    )
+
+    assert lst == [0x0001, 0x0002]
+    assert rest == b""
+    assert lst.serialize() == b"\x04\x00\x01\x00\x02\x00"
+
+
+def test_size_prefixed_list_misaligned_size() -> None:
+    """A size that does not cover whole items is malformed, not silently truncated."""
+    with pytest.raises(ValueError):
+        t.SizePrefixedList[t.uint16_t, t.uint8_t].deserialize(b"\x03\x01\x00\x02\x00")
+
+
+def test_size_prefixed_list_too_short() -> None:
+    with pytest.raises(ValueError):
+        t.SizePrefixedList[t.uint16_t, t.uint8_t].deserialize(b"")
+
+    with pytest.raises(ValueError, match="too short"):
+        t.SizePrefixedList[t.uint16_t, t.uint8_t].deserialize(b"\x08\x01\x00")
+
+
+def test_size_prefixed_list_types() -> None:
+    # Brackets create singleton types
+    anon_lst1 = t.SizePrefixedList[t.uint16_t, t.uint8_t]
+    anon_lst2 = t.SizePrefixedList[t.uint16_t, t.uint8_t]
+
+    assert anon_lst1._size_type is t.uint8_t
+    assert anon_lst1._item_type is t.uint16_t
+    assert anon_lst1 is anon_lst2
+    assert not issubclass(
+        t.SizePrefixedList[t.uint16_t, t.uint8_t],
+        t.SizePrefixedList[t.uint8_t, t.uint16_t],
+    )
+
+    # Bracketed types are compatible with explicit subclasses
+    class SizePrefixedListSubclass(
+        t.SizePrefixedList, item_type=t.uint16_t, size_type=t.uint8_t
+    ):
+        pass
+
+    assert issubclass(
+        SizePrefixedListSubclass, t.SizePrefixedList[t.uint16_t, t.uint8_t]
+    )
+    assert isinstance(
+        SizePrefixedListSubclass(), t.SizePrefixedList[t.uint16_t, t.uint8_t]
+    )
+
+    # A count-prefixed list and a size-prefixed one are never interchangeable, as their
+    # length prefixes mean different things on the wire
+    assert not issubclass(
+        t.SizePrefixedList[t.uint8_t, t.uint8_t], t.LVList[t.uint8_t, t.uint8_t]
+    )
+    assert not issubclass(
+        t.LVList[t.uint8_t, t.uint8_t], t.SizePrefixedList[t.uint8_t, t.uint8_t]
+    )
+    assert not isinstance(
+        t.LVList[t.uint8_t, t.uint8_t](), t.SizePrefixedList[t.uint8_t, t.uint8_t]
+    )
+    assert not isinstance(
+        t.SizePrefixedList[t.uint8_t, t.uint8_t](), t.LVList[t.uint8_t, t.uint8_t]
+    )
+
+
 def test_lvlist_types():
     # Brackets create singleton types
     anon_lst1 = t.LVList[t.uint16_t, t.uint8_t]

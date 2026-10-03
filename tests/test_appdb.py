@@ -32,7 +32,7 @@ from zigpy.const import (
     SIG_MODEL,
     SIG_NODE_DESC,
 )
-from zigpy.device import Device, Status
+from zigpy.device import Device, GreenPowerDevice, Status
 import zigpy.endpoint
 import zigpy.group
 import zigpy.ota
@@ -46,6 +46,7 @@ from zigpy.zcl import (
 from zigpy.zcl.clusters.general import Basic, Identify, OnOff, Ota
 from zigpy.zcl.foundation import Status as ZCLStatus, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
+from zigpy.zgp.types import ApplicationID, SrcID
 
 pytestmark = pytest.mark.usefixtures("auto_kill_aiosqlite")
 
@@ -1490,6 +1491,61 @@ async def test_quirk_virtual_endpoints_not_persisted(tmp_path) -> None:
     await app2.shutdown()
 
 
+async def test_inactive_endpoints_round_trip(tmp_path) -> None:
+    """A device listing inactive endpoints is persisted and reloads intact."""
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    ieee = t.EUI64.convert("aa:bb:cc:dd:11:22:33:44")
+    dev = app.add_device(nwk=0x1234, ieee=ieee)
+    dev.node_desc = make_node_desc()
+
+    # Endpoint 2 is listed as active but has no simple descriptor, zigpy/zigpy#1894
+    async def mock_active_ep_req(nwk):
+        return [zdo_t.Status.SUCCESS, nwk, [1, 2]]
+
+    async def mock_simple_desc_req(nwk, endpoint_id):
+        if endpoint_id == 2:
+            return [zdo_t.Status.NOT_ACTIVE, nwk, None]
+
+        return [
+            zdo_t.Status.SUCCESS,
+            nwk,
+            zdo_t.SizePrefixedSimpleDescriptor(
+                endpoint=1,
+                profile=profiles.zha.PROFILE_ID,
+                device_type=profiles.zha.DeviceType.ON_OFF_SWITCH,
+                device_version=1,
+                input_clusters=[Basic.cluster_id],
+                output_clusters=[OnOff.cluster_id],
+            ),
+        ]
+
+    dev.zdo.Active_EP_req = mock_active_ep_req
+    dev.zdo.Simple_Desc_req = mock_simple_desc_req
+
+    with patch(
+        "zigpy.endpoint.Endpoint.get_model_info",
+        AsyncMock(return_value=("Model", "Manufacturer")),
+    ):
+        await dev.initialize()
+
+    assert dev.is_initialized
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(ieee)
+
+    assert list(dev2.original_signature[SIG_ENDPOINTS]) == [1]
+    assert dev2.endpoints[1].profile_id == profiles.zha.PROFILE_ID
+    assert dev2.endpoints[1].device_type == profiles.zha.DeviceType.ON_OFF_SWITCH
+    assert list(dev2.endpoints[1].in_clusters) == [Basic.cluster_id]
+    assert list(dev2.endpoints[1].out_clusters) == [OnOff.cluster_id]
+
+    await app2.shutdown()
+
+
 async def test_reinterview_changed_signature_round_trip(tmp_path) -> None:
     """A reinterview that changes the device's whole signature is persisted cleanly."""
 
@@ -2606,3 +2662,19 @@ async def test_shutdown_survives_failed_commit(tmp_path, caplog):
 
     assert "Failed to commit pending changes during shutdown" in caplog.text
     assert listener._has_pending_commits is False
+
+
+async def test_load_with_green_power_device(tmp_path):
+    """A GPD in `app.devices` has no endpoints whose attribute cache needs clearing."""
+    db = tmp_path / "test.db"
+    app = make_app({conf.CONF_DATABASE: str(db)})
+    gpd = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+    app.devices[gpd.ieee] = gpd
+
+    await app._load_db()
+
+    assert app.devices[gpd.ieee] is gpd
+
+    await app.shutdown()
