@@ -223,7 +223,18 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             if self._commit_task is not None:
                 self._commit_task.cancel()
                 self._commit_task = None
-            await self._db.commit()
+
+            try:
+                await self._db.commit()
+            except Exception:
+                # The timer was cancelled above, so re-arm it: the uncommitted
+                # writes are then retried after another interval, like a failed
+                # `_flush_commit`, instead of waiting for the next write.
+                if self._commit_interval > 0:
+                    self._has_pending_commits = True
+                    self._arm_commit_timer()
+                raise
+
             self._has_pending_commits = False
             return
 

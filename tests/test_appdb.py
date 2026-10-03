@@ -2343,7 +2343,7 @@ async def test_commit_does_not_land_mid_handler(tmp_path):
 
 
 async def test_has_pending_commits_not_cleared_concurrently(tmp_path):
-    """A write that arrives while the flush is in flight must not be lost."""
+    """A write after a completed flush must re-arm the timer and be committed."""
     db = tmp_path / "test.db"
     app = await make_app_with_db(db, commit_interval=0.05)
     listener = app._dblistener
@@ -2379,7 +2379,7 @@ async def test_force_commit_cancels_pending_timer(tmp_path):
     """`_commit(force=True)` must cancel any pending deferred commit.
 
     Otherwise the pending timer would later enqueue a redundant `_flush_commit`
-    that re-commits (harmless) but also wastes a worker cycle. More
+    that finds nothing pending and only wastes a worker cycle. More
     importantly, the force path must leave `_commit_task is None` so a
     subsequent deferred commit can arm a fresh timer.
     """
@@ -2643,6 +2643,46 @@ async def test_flush_commit_rearms_timer_on_failure(tmp_path):
     # rather than waiting for the next write or for shutdown.
     assert listener._has_pending_commits is True
     assert listener._commit_task is not None
+
+    listener._db.commit = AsyncMock()
+    await app.shutdown()
+
+
+async def test_force_commit_rearms_timer_on_failure(tmp_path):
+    """A failed forced commit must re-arm the timer it cancelled."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=10.0)
+    listener = app._dblistener
+
+    listener._has_pending_commits = True
+    listener._arm_commit_timer()
+    listener._db.commit = AsyncMock(side_effect=RuntimeError("boom"))
+
+    with pytest.raises(RuntimeError):
+        await listener._commit(force=True)
+
+    # The pending writes get a fresh timer instead of waiting for the next
+    # write or for shutdown.
+    assert listener._has_pending_commits is True
+    assert listener._commit_task is not None
+
+    listener._db.commit = AsyncMock()
+    await app.shutdown()
+
+
+async def test_failed_commit_without_interval_does_not_arm_timer(tmp_path):
+    """With deferral disabled, a failed commit just propagates, as before."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=0)
+    listener = app._dblistener
+
+    listener._db.commit = AsyncMock(side_effect=RuntimeError("boom"))
+
+    with pytest.raises(RuntimeError):
+        await listener._commit()
+
+    assert listener._has_pending_commits is False
+    assert listener._commit_task is None
 
     listener._db.commit = AsyncMock()
     await app.shutdown()
