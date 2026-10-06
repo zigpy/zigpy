@@ -275,8 +275,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         finally:
             await self._db.close()
 
-            # FIXME: aiosqlite's thread won't always be closed immediately
-            await asyncio.get_running_loop().run_in_executor(None, self._db.join)
+            # `close()` can return before aiosqlite's worker thread has exited
+            await asyncio.get_running_loop().run_in_executor(
+                None, self._db._thread.join
+            )
 
     def register_cluster_events(self, cluster) -> None:
         cluster.on_event(AttributeReadEvent.event_type, self.on_attribute_read)

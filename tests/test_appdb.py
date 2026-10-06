@@ -2706,7 +2706,7 @@ async def test_shutdown_survives_failed_commit(tmp_path, caplog):
     await listener.shutdown()
 
     assert "Failed to commit pending changes during shutdown" in caplog.text
-    assert not listener._db.is_alive()
+    assert not listener._db._thread.is_alive()
     assert await _read_count(db, "groups") == 0
 
 
@@ -2721,7 +2721,7 @@ async def test_shutdown_closes_database_on_failure(tmp_path):
     with pytest.raises(RuntimeError):
         await listener.shutdown()
 
-    assert not listener._db.is_alive()
+    assert not listener._db._thread.is_alive()
 
 
 async def test_shutdown_rolls_back_persistently_failing_commit(tmp_path, caplog):
@@ -2741,7 +2741,7 @@ async def test_shutdown_rolls_back_persistently_failing_commit(tmp_path, caplog)
     await listener.shutdown()
 
     assert "Failed to commit pending changes during shutdown" in caplog.text
-    assert not listener._db.is_alive()
+    assert not listener._db._thread.is_alive()
     assert await _read_count(db, "endpoints") == 0
 
 
