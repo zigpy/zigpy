@@ -2217,6 +2217,14 @@ async def _wait_for_attr_value(db, expected, attr_id=0, message=None):
     )
 
 
+async def _write_uncommitted(listener, group_id=1):
+    """Write a row without committing it, leaving a transaction open."""
+    await listener.execute(
+        f"INSERT INTO groups{zigpy.appdb.DB_V} VALUES (?, ?)", (group_id, "test")
+    )
+    assert listener._db.in_transaction
+
+
 @patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
 async def test_database_commit_interval(tmp_path):
     """Test that configured database_commit_interval defers writes."""
@@ -2234,7 +2242,7 @@ async def test_database_commit_interval(tmp_path):
     # SQL runs on aiosqlite's connection thread, which the loop cannot wait for,
     # so the assertions below would pass vacuously against an empty table.
     await listener._callback_handlers.join()
-    assert listener._has_pending_commits is True
+    assert listener._db.in_transaction
     assert listener._commit_task is not None
 
     # The timer has not fired, so a separate reader must not see the update.
@@ -2259,7 +2267,7 @@ async def test_database_commit_interval_shutdown_forces_commit(tmp_path):
 
     # Wait for `_save_attribute` to run and arm the 10s timer.
     await listener._callback_handlers.join()
-    assert listener._has_pending_commits is True
+    assert listener._db.in_transaction
 
     # Verify it has not yet committed
     assert await _read_attr_value(db) is None
@@ -2277,10 +2285,8 @@ async def test_commit_does_not_land_mid_handler(tmp_path):
     app = await make_app_with_db(db, commit_interval=0.05)
     listener = app._dblistener
 
-    # Wrap `_db.commit` to count calls. We do NOT need to do actual SQL writes - the
-    # invariant under test is purely about *when* `commit()` is called, not what it
-    # persists. Skipping the write also avoids the FK constraints that would require a
-    # fully-populated device row.
+    # Wrap `_db.commit` to count calls: the invariant under test is *when* `commit()`
+    # is called
     commit_calls = []
     original_commit = listener._db.commit
 
@@ -2295,8 +2301,9 @@ async def test_commit_does_not_land_mid_handler(tmp_path):
     handler_finished = asyncio.Event()
 
     async def _synthetic_two_statement_handler():
-        # First "statement" — just arm the deferred commit. The 0.05s timer will fire
+        # First statement, then arm the deferred commit. The 0.05s timer will fire
         # while we wait below.
+        await _write_uncommitted(listener)
         await listener._commit()
         handler_first_statement_done.set()
 
@@ -2342,7 +2349,7 @@ async def test_commit_does_not_land_mid_handler(tmp_path):
     await app.shutdown()
 
 
-async def test_has_pending_commits_not_cleared_concurrently(tmp_path):
+async def test_write_after_flush_is_committed(tmp_path):
     """A write after a completed flush must re-arm the timer and be committed."""
     db = tmp_path / "test.db"
     app = await make_app_with_db(db, commit_interval=0.05)
@@ -2363,10 +2370,10 @@ async def test_has_pending_commits_not_cleared_concurrently(tmp_path):
     await listener._callback_handlers.join()
 
     # The second write must not be committed yet. Assert on the listener's own
-    # bookkeeping rather than on the DB: reading over a fresh connection can take
+    # state rather than on the DB: reading over a fresh connection can take
     # longer than the 0.05s interval on a loaded runner, which would make a DB
     # assertion here a race against the timer rather than a real check.
-    assert listener._has_pending_commits is True
+    assert listener._db.in_transaction
     assert listener._commit_task is not None
 
     # Wait for the second flush by polling for the value.
@@ -2375,40 +2382,33 @@ async def test_has_pending_commits_not_cleared_concurrently(tmp_path):
     await app.shutdown()
 
 
-async def test_force_commit_cancels_pending_timer(tmp_path):
-    """`_commit(force=True)` must cancel any pending deferred commit.
-
-    Otherwise the pending timer would later enqueue a redundant `_flush_commit`
-    that finds nothing pending and only wastes a worker cycle. More
-    importantly, the force path must leave `_commit_task is None` so a
-    subsequent deferred commit can arm a fresh timer.
-    """
+async def test_force_commit_commits_pending_writes(tmp_path):
+    """`_commit(force=True)` commits immediately, including deferred writes."""
     db = tmp_path / "test.db"
     app = await make_app_with_db(db, commit_interval=10.0)
     listener = app._dblistener
 
     _, _, clus = _add_joined_device(app)
 
-    # Arm the 10s timer. `handle_join` and `device_initialized` each enqueue
-    # their own handlers, so wait for the worker to drain all of them before
-    # issuing the attribute write — otherwise the earlier handlers' timers
-    # (cancelled by their own force-commits) confuse the assertions below.
+    # `handle_join` and `device_initialized` each enqueue their own handlers, so
+    # wait for the worker to drain all of them before issuing the attribute write
     await listener._callback_handlers.join()
 
     clus.update_attribute(0, 7)
-    # Wait for `_save_attribute` to run and arm the timer. `join()` is exact
-    # (it blocks until the queue is empty), unlike polling `_commit_task`,
-    # which can be armed by an earlier handler.
     await listener._callback_handlers.join()
-    assert listener._commit_task is not None
-    assert listener._has_pending_commits is True
+    assert listener._db.in_transaction
+    assert await _read_attr_value(db) is None
 
-    # A force commit (e.g. from a network backup) must cancel the timer and
-    # commit immediately.
+    # A force commit (e.g. from a network backup) commits the deferred write too
     await listener._commit(force=True)
-    assert listener._commit_task is None
-    assert listener._has_pending_commits is False
+    assert not listener._db.in_transaction
     assert await _read_attr_value(db) == 7
+
+    # The timer is not cancelled, and finds nothing left to flush
+    assert listener._commit_task is not None
+    assert not listener._commit_task.done()
+    await listener._flush_commit()
+    assert not listener._db.in_transaction
 
     await app.shutdown()
 
@@ -2620,10 +2620,10 @@ async def test_flush_commit_noop_when_nothing_pending(tmp_path):
     listener = app._dblistener
 
     # With nothing pending, `_flush_commit` should return without committing
-    # and without raising.
-    assert listener._has_pending_commits is False
+    assert not listener._db.in_transaction
+    listener._db.commit = AsyncMock(wraps=listener._db.commit)
     await listener._flush_commit()
-    assert listener._has_pending_commits is False
+    listener._db.commit.assert_not_awaited()
 
     await app.shutdown()
 
@@ -2634,40 +2634,46 @@ async def test_flush_commit_rearms_timer_on_failure(tmp_path):
     app = await make_app_with_db(db, commit_interval=10.0)
     listener = app._dblistener
 
-    listener._has_pending_commits = True
+    await _write_uncommitted(listener)
+    commit = listener._db.commit
     listener._db.commit = AsyncMock(side_effect=RuntimeError("boom"))
 
     await listener._flush_commit()
 
     # The writes are still pending and a new timer is armed to retry them,
     # rather than waiting for the next write or for shutdown.
-    assert listener._has_pending_commits is True
+    assert listener._db.in_transaction
     assert listener._commit_task is not None
+    assert not listener._commit_task.done()
 
-    listener._db.commit = AsyncMock()
+    listener._db.commit = commit
     await app.shutdown()
+    assert await _read_count(db, "groups") == 1
 
 
 async def test_force_commit_rearms_timer_on_failure(tmp_path):
-    """A failed forced commit must re-arm the timer it cancelled."""
+    """A failed forced commit must arm the timer to retry the commit."""
     db = tmp_path / "test.db"
     app = await make_app_with_db(db, commit_interval=10.0)
     listener = app._dblistener
 
-    listener._has_pending_commits = True
-    listener._arm_commit_timer()
+    await _write_uncommitted(listener)
+    assert listener._commit_task is None
+    commit = listener._db.commit
     listener._db.commit = AsyncMock(side_effect=RuntimeError("boom"))
 
     with pytest.raises(RuntimeError):
         await listener._commit(force=True)
 
-    # The pending writes get a fresh timer instead of waiting for the next
-    # write or for shutdown.
-    assert listener._has_pending_commits is True
+    # The pending writes get a timer instead of waiting for the next write or for
+    # shutdown
+    assert listener._db.in_transaction
     assert listener._commit_task is not None
+    assert not listener._commit_task.done()
 
-    listener._db.commit = AsyncMock()
+    listener._db.commit = commit
     await app.shutdown()
+    assert await _read_count(db, "groups") == 1
 
 
 async def test_failed_commit_without_interval_does_not_arm_timer(tmp_path):
@@ -2681,7 +2687,6 @@ async def test_failed_commit_without_interval_does_not_arm_timer(tmp_path):
     with pytest.raises(RuntimeError):
         await listener._commit()
 
-    assert listener._has_pending_commits is False
     assert listener._commit_task is None
 
     listener._db.commit = AsyncMock()
@@ -2694,14 +2699,29 @@ async def test_shutdown_survives_failed_commit(tmp_path, caplog):
     app = await make_app_with_db(db, commit_interval=10.0)
     listener = app._dblistener
 
-    listener._has_pending_commits = True
+    await _write_uncommitted(listener)
     listener._db.commit = AsyncMock(side_effect=RuntimeError("boom"))
 
-    # Shutdown must still tear the connection down cleanly.
-    await app.shutdown()
+    # `app.shutdown()` swallows listener errors, so call the listener directly
+    await listener.shutdown()
 
     assert "Failed to commit pending changes during shutdown" in caplog.text
-    assert listener._has_pending_commits is False
+    assert not listener._db.is_alive()
+    assert await _read_count(db, "groups") == 0
+
+
+async def test_shutdown_closes_database_on_failure(tmp_path):
+    """The connection must be closed even if shutdown fails after the commit."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=10.0)
+    listener = app._dblistener
+
+    listener._set_isolation_level = AsyncMock(side_effect=RuntimeError("boom"))
+
+    with pytest.raises(RuntimeError):
+        await listener.shutdown()
+
+    assert not listener._db.is_alive()
 
 
 async def test_shutdown_rolls_back_persistently_failing_commit(tmp_path, caplog):
@@ -2717,12 +2737,10 @@ async def test_shutdown_rolls_back_persistently_failing_commit(tmp_path, caplog)
         f"INSERT INTO endpoints{zigpy.appdb.DB_V} VALUES (?, ?, ?, ?, ?)",
         (t.EUI64.convert("00:11:22:33:44:55:66:77"), 1, 260, 0, 0),
     )
-    listener._has_pending_commits = True
 
     await listener.shutdown()
 
     assert "Failed to commit pending changes during shutdown" in caplog.text
-    assert listener._has_pending_commits is False
     assert not listener._db.is_alive()
     assert await _read_count(db, "endpoints") == 0
 

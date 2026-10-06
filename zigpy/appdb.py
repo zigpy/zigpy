@@ -135,7 +135,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         self._commit_interval = self._application.config[conf.CONF_DB_COMMIT_INTERVAL]
         self._commit_task: asyncio.Task | None = None
-        self._has_pending_commits = False
 
     async def initialize_tables(self) -> None:
         async with self.execute("PRAGMA integrity_check") as cursor:
@@ -211,36 +210,20 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _commit(self, force: bool = False) -> None:
         """Commit changes to the database, optionally deferring the operation.
 
-        When deferred, the timer task only enqueues ``_flush_commit`` onto the
-        worker queue: the actual ``commit()`` runs on the worker, so it always
-        lands at a handler boundary instead of interleaving with an in-flight
-        handler. A crash therefore rolls back the entire in-flight handler
-        rather than persisting a partial set of its statements.
+        A deferred commit runs on the worker, via `_flush_commit`, so it always lands
+        at a handler boundary instead of persisting a partial handler.
         """
         if force or self._commit_interval <= 0:
-            # Cancel any pending delayed commit and commit immediately on the
-            # worker task. This is the synchronous-write path.
-            if self._commit_task is not None:
-                self._commit_task.cancel()
-                self._commit_task = None
-
             try:
                 await self._db.commit()
             except Exception:
-                # The timer was cancelled above, so re-arm it: the uncommitted
-                # writes are then retried after another interval, like a failed
-                # `_flush_commit`, instead of waiting for the next write.
+                # Retry the uncommitted writes after another interval
                 if self._commit_interval > 0:
-                    self._has_pending_commits = True
                     self._arm_commit_timer()
                 raise
 
-            self._has_pending_commits = False
             return
 
-        # Deferred path: arm the timer once. When it fires, it enqueues a flush
-        # through `_callback_handlers` so the commit serializes with handlers.
-        self._has_pending_commits = True
         self._arm_commit_timer()
 
     def _arm_commit_timer(self) -> None:
@@ -249,42 +232,20 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             self._commit_task = asyncio.create_task(self._delayed_commit())
 
     async def _delayed_commit(self) -> None:
-        """Wait out the commit interval, then queue a flush on the worker.
-
-        Cancelling this task is the caller's business: both cancellation sites
-        clear ``_commit_task`` themselves, and ``_arm_commit_timer`` replaces a
-        task that is already done, so the timer never clears a reference that
-        may since have been re-armed by someone else.
-        """
+        """Wait out the commit interval, then queue a flush on the worker."""
         await asyncio.sleep(self._commit_interval)
-
-        # The timer has elapsed. Clear the reference so a subsequent `_commit()`
-        # call (from a handler that runs before `_flush_commit` does) can re-arm
-        # a new timer for whatever new writes arrive after this point.
-        self._commit_task = None
         self.enqueue("_flush_commit")
 
     async def _flush_commit(self) -> None:
-        """Flush pending commits, invoked by the worker after the delay expires.
-
-        Running on the worker task guarantees commits land only at handler
-        boundaries. If a handler ran after the timer fired but before this
-        method, ``_has_pending_commits`` will still be ``True`` and its writes
-        will be included in this commit.
-        """
-        if not self._has_pending_commits:
+        """Commit any open transaction, invoked by the worker after the delay."""
+        if not self._db.in_transaction:
             return
 
         try:
             await self._db.commit()
         except Exception:
-            # Re-arm so the pending writes are retried after another interval,
-            # instead of waiting for the next write or for shutdown.
             LOGGER.exception("Failed to flush pending database commits")
             self._arm_commit_timer()
-            return
-
-        self._has_pending_commits = False
 
     async def shutdown(self) -> None:
         """Shutdown connection."""
@@ -298,9 +259,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             self._commit_task = None
 
         try:
-            if self._has_pending_commits:
-                self._has_pending_commits = False
-
+            if self._db.in_transaction:
                 try:
                     await self._db.commit()
                 except Exception:
