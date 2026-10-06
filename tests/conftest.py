@@ -226,7 +226,7 @@ def make_app(
     return app
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def app():
     """ControllerApplication Mock."""
     app = make_app({})
@@ -234,7 +234,7 @@ async def app():
     await app.shutdown()
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def app_mock():
     """ControllerApplication Mock."""
     app = make_app({})
