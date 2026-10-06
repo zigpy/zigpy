@@ -2958,6 +2958,10 @@ async def test_remove_device_worker_stopped(tmp_path):
         async with asyncio.timeout(5):
             await listener.remove_device(MagicMock())
 
+    # New events are discarded, since nothing would ever mark them done
+    listener.enqueue("_flush_commit")
+    assert listener._callback_handlers.empty()
+
     # Shutdown does not wait for the handlers the stopped worker never finished.
     # `app.shutdown()` would swallow any error, so shut the listener down directly.
     async with asyncio.timeout(5):
