@@ -297,22 +297,27 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             self._commit_task.cancel()
             self._commit_task = None
 
-        if self._has_pending_commits:
-            try:
-                await self._db.commit()
-            except Exception:
-                LOGGER.exception("Failed to commit pending changes during shutdown")
-            self._has_pending_commits = False
+        try:
+            if self._has_pending_commits:
+                self._has_pending_commits = False
 
-        # Delete the journal on shutdown
-        await self._set_isolation_level(None)
-        await self.execute("PRAGMA wal_checkpoint;")
-        await self._set_isolation_level("DEFERRED")
+                try:
+                    await self._db.commit()
+                except Exception:
+                    LOGGER.exception("Failed to commit pending changes during shutdown")
+                    # Otherwise, disabling the isolation level below implicitly
+                    # retries the failed `COMMIT`
+                    await self._db.rollback()
 
-        await self._db.close()
+            # Delete the journal on shutdown
+            await self._set_isolation_level(None)
+            await self.execute("PRAGMA wal_checkpoint;")
+            await self._set_isolation_level("DEFERRED")
+        finally:
+            await self._db.close()
 
-        # FIXME: aiosqlite's thread won't always be closed immediately
-        await asyncio.get_running_loop().run_in_executor(None, self._db.join)
+            # FIXME: aiosqlite's thread won't always be closed immediately
+            await asyncio.get_running_loop().run_in_executor(None, self._db.join)
 
     def register_cluster_events(self, cluster) -> None:
         cluster.on_event(AttributeReadEvent.event_type, self.on_attribute_read)

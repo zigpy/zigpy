@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import voluptuous as vol
 
 from zigpy.config.defaults import (
@@ -422,7 +424,9 @@ ZIGPY_SCHEMA = vol.Schema(
         vol.Optional(CONF_DATABASE, default=None): vol.Any(None, str),
         vol.Optional(
             CONF_DB_COMMIT_INTERVAL, default=CONF_DB_COMMIT_INTERVAL_DEFAULT
-        ): vol.All(vol.Coerce(float), vol.Range(min=0)),
+        ): vol.All(
+            vol.Coerce(float), vol.Range(min=0, max=math.inf, max_included=False)
+        ),
         vol.Optional(CONF_NWK, default={}): SCHEMA_NETWORK,
         vol.Optional(CONF_OTA, default={}): SCHEMA_OTA,
         vol.Optional(

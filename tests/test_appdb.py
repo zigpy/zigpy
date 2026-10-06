@@ -2704,6 +2704,29 @@ async def test_shutdown_survives_failed_commit(tmp_path, caplog):
     assert listener._has_pending_commits is False
 
 
+async def test_shutdown_rolls_back_persistently_failing_commit(tmp_path, caplog):
+    """A commit that keeps failing must not prevent the connection from closing."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=10.0)
+    listener = app._dblistener
+
+    # With foreign key checks deferred, a dangling endpoint fails only at `COMMIT`,
+    # and keeps failing on every retry
+    await listener.execute("PRAGMA defer_foreign_keys = ON")
+    await listener.execute(
+        f"INSERT INTO endpoints{zigpy.appdb.DB_V} VALUES (?, ?, ?, ?, ?)",
+        (t.EUI64.convert("00:11:22:33:44:55:66:77"), 1, 260, 0, 0),
+    )
+    listener._has_pending_commits = True
+
+    await listener.shutdown()
+
+    assert "Failed to commit pending changes during shutdown" in caplog.text
+    assert listener._has_pending_commits is False
+    assert not listener._db.is_alive()
+    assert await _read_count(db, "endpoints") == 0
+
+
 async def test_load_with_green_power_device(tmp_path):
     """A GPD in `app.devices` has no endpoints whose attribute cache needs clearing."""
     db = tmp_path / "test.db"
