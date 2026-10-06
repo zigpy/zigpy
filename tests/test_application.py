@@ -1829,6 +1829,7 @@ async def test_device_reinterviewed_with_db(app):
 
     # Set up a mock DB listener
     db_listener = MagicMock()
+    db_listener.shutdown = AsyncMock()
     db_listener.remove_device = AsyncMock()
     app._dblistener = db_listener
     old_dev.add_context_listener(db_listener)
@@ -1936,6 +1937,7 @@ async def test_device_reinterviewed_skips_group_removed_during_swap(app):
     # running, group 20 is removed. We trigger this by patching the dblistener's
     # `remove_device` to drop the group as a side effect.
     db_listener = MagicMock()
+    db_listener.shutdown = AsyncMock()
 
     async def fake_remove(_dev):
         app.groups.pop(20, None)
@@ -1994,6 +1996,7 @@ async def test_device_reinterviewed_persists_relays(app):
     old_dev._relays = t.Relays([t.NWK(0xAAAA)])
 
     db_listener = MagicMock()
+    db_listener.shutdown = AsyncMock()
     db_listener.remove_device = AsyncMock()
     app._dblistener = db_listener
     old_dev.add_context_listener(db_listener)

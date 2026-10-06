@@ -2775,11 +2775,19 @@ async def test_remove_device_waits_for_queued_work(tmp_path):
     device_row = {"where": "WHERE ieee = ?", "params": (str(dev.ieee),)}
     assert await _read_count(db, "devices", **device_row) == 1
 
-    # Hold the worker with an earlier queued handler
+    # Hold the worker inside an earlier queued handler, after a write that the
+    # removal does not touch
+    other_ieee = t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11")
+    other_row = {"where": "WHERE ieee = ?", "params": (str(other_ieee),)}
     handler_started = asyncio.Event()
     handler_may_finish = asyncio.Event()
 
     async def _blocking_handler():
+        await listener.execute(
+            f"INSERT INTO devices{zigpy.appdb.DB_V} (ieee, nwk, status, last_seen)"
+            " VALUES (?, ?, ?, ?)",
+            (other_ieee, 0x1234, 2, 0),
+        )
         handler_started.set()
         await handler_may_finish.wait()
 
@@ -2791,16 +2799,20 @@ async def test_remove_device_waits_for_queued_work(tmp_path):
     remove_task = asyncio.create_task(listener.remove_device(dev))
     await asyncio.sleep(0.05)
 
-    # The removal waits for the handler queued before it
+    # The removal waits for the handler queued before it, so its forced commit does
+    # not persist that handler's partial write
     assert not remove_task.done()
     assert await _read_count(db, "devices", **device_row) == 1
+    assert await _read_count(db, "devices", **other_row) == 0
 
     handler_may_finish.set()
     async with asyncio.timeout(5):
         await remove_task
 
-    # The removal is committed by the time `remove_device` returns
+    # The removal is committed by the time `remove_device` returns, along with the
+    # completed handler's write
     assert await _read_count(db, "devices", **device_row) == 0
+    assert await _read_count(db, "devices", **other_row) == 1
 
     del listener._blocking_handler
     await app.shutdown()
@@ -2831,7 +2843,7 @@ async def test_remove_device_propagates_errors(tmp_path, caplog):
     await app.shutdown()
 
 
-async def test_remove_device_cancelled_caller(tmp_path):
+async def test_remove_device_cancelled_caller(tmp_path, caplog):
     """A caller cancelled while waiting does not break the worker."""
     db = tmp_path / "test.db"
     app = await make_app_with_db(db)
@@ -2864,10 +2876,14 @@ async def test_remove_device_cancelled_caller(tmp_path):
     assert listener._remove_device.await_count == 2
 
     del listener._blocking_handler
-    await app.shutdown()
 
-    # The worker stopped cleanly, without an error from its own cleanup
+    with caplog.at_level(logging.ERROR, logger="zigpy.appdb"):
+        await app.shutdown()
+
+    # The worker stopped cleanly: no error from its cleanup, and a normal shutdown
+    # is not reported as an unexpected stop
     assert listener._worker_task.cancelled()
+    assert "stopped unexpectedly" not in caplog.text
 
 
 async def test_remove_device_not_running(tmp_path):
@@ -2925,7 +2941,7 @@ async def test_remove_device_cancelled_caller_error_is_logged(tmp_path, caplog):
     await app.shutdown()
 
 
-async def test_remove_device_worker_stopped(tmp_path):
+async def test_remove_device_worker_stopped(tmp_path, caplog):
     """Callers waiting on a worker that stops get an error instead of hanging."""
     db = tmp_path / "test.db"
     app = await make_app_with_db(db)
@@ -2946,12 +2962,16 @@ async def test_remove_device_worker_stopped(tmp_path):
     queued = asyncio.create_task(listener.remove_device(MagicMock()))
     await asyncio.sleep(0)
 
-    listener._worker_task.cancel()
+    with caplog.at_level(logging.ERROR, logger="zigpy.appdb"):
+        listener._worker_task.cancel()
 
-    for task in (waiting, queued):
-        with pytest.raises(RuntimeError, match="worker has stopped"):
-            async with asyncio.timeout(5):
-                await task
+        for task in (waiting, queued):
+            with pytest.raises(RuntimeError, match="worker has stopped"):
+                async with asyncio.timeout(5):
+                    await task
+
+    # The worker stopped while the listener was running, which is logged
+    assert "Database worker stopped unexpectedly, discarding 1 queued" in caplog.text
 
     # New removals are refused instead of waiting forever
     with pytest.raises(RuntimeError, match="not running"):
@@ -3000,4 +3020,21 @@ async def test_worker_logs_fire_and_forget_errors(
     assert not listener._worker_task.done()
 
     del listener._fail
+    await app.shutdown()
+
+
+async def test_worker_unknown_handler(tmp_path, caplog):
+    """An unknown handler name is logged and does not stop the worker."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    listener = app._dblistener
+
+    with caplog.at_level(logging.DEBUG, logger="zigpy.appdb"):
+        listener.enqueue("_does_not_exist")
+        async with asyncio.timeout(5):
+            await listener._callback_handlers.join()
+
+    assert "Unexpected error while processing _does_not_exist" in caplog.text
+    assert not listener._worker_task.done()
+
     await app.shutdown()

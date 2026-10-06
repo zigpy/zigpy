@@ -186,17 +186,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         return listener
 
     async def _worker(self) -> None:
-        """Process request in the received order."""
-        in_progress = False
-        result: asyncio.Future | None = None
+        """Process requests in the received order.
 
+        Callers waiting on a request through `_enqueue_and_wait` get its result.
+        """
         try:
             while True:
                 cb_name, args, result = await self._callback_handlers.get()
-                in_progress = True
-                handler = getattr(self, cb_name)
-                assert handler
+
                 try:
+                    handler = getattr(self, cb_name)
                     await handler(*args)
                 except Exception as exc:  # noqa: BLE001
                     if result is not None and not result.done():
@@ -217,32 +216,37 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 else:
                     if result is not None and not result.done():
                         result.set_result(None)
-
-                in_progress = False
-                self._callback_handlers.task_done()
+                finally:
+                    # Only reached with an unresolved result if the worker is stopping
+                    self._fail_pending_result(result)
+                    self._callback_handlers.task_done()
         finally:
             # Nothing will run the remaining handlers. Fail their waiting callers and
             # mark them done, so that `shutdown()` does not wait for them forever.
-            pending = []
-
-            if in_progress:
-                pending.append(result)
-                self._callback_handlers.task_done()
+            pending = 0
 
             while not self._callback_handlers.empty():
-                *_, queued_result = self._callback_handlers.get_nowait()
-                pending.append(queued_result)
+                *_, result = self._callback_handlers.get_nowait()
+                self._fail_pending_result(result)
                 self._callback_handlers.task_done()
+                pending += 1
 
-            for pending_result in pending:
-                if (
-                    pending_result is not None
-                    and not pending_result.done()
-                    and not pending_result.get_loop().is_closed()
-                ):
-                    pending_result.set_exception(
-                        RuntimeError("The database worker has stopped")
-                    )
+            if self.running:
+                LOGGER.error(
+                    "Database worker stopped unexpectedly, discarding %d queued"
+                    " events, later database changes will not be saved",
+                    pending,
+                )
+
+    def _fail_pending_result(self, result: asyncio.Future | None) -> None:
+        """Fail a waiting caller's result because the worker is stopping."""
+        if (
+            result is not None
+            and not result.done()
+            # The worker can be finalized after its event loop has been closed
+            and not result.get_loop().is_closed()
+        ):
+            result.set_exception(RuntimeError("The database worker has stopped"))
 
     async def _commit(self, force: bool = False) -> None:
         """Commit changes to the database, optionally deferring the operation.
@@ -344,10 +348,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         """Enqueue an async callback handler action and wait for it to finish.
 
         The handler runs on the worker in order with every other queued action, and
-        any exception it raises is propagated to the caller.
+        any exception it raises is propagated to the caller. Raises `RuntimeError` if
+        the listener is shutting down or its worker has stopped. Must not be called
+        from a handler, since the worker would wait for itself.
         """
         if not self.running or self._worker_task.done():
-            raise RuntimeError(f"Cannot run {cb_name}, the database is not running")
+            raise RuntimeError(
+                f"Cannot run {cb_name}, the database worker is not running"
+            )
 
         result = asyncio.get_running_loop().create_future()
         self._callback_handlers.put_nowait((cb_name, args, result))
@@ -500,7 +508,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def remove_device(self, device: Device) -> None:
         """Remove a device from the database and wait until it is deleted.
 
-        Unlike the `device_removed` event, this raises any error from the delete.
+        Unlike the `device_removed` event, this raises any error from the delete, and
+        `RuntimeError` if the database worker is not running.
         """
         await self._enqueue_and_wait("_remove_device", device)
 
