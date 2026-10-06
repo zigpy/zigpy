@@ -187,25 +187,62 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _worker(self) -> None:
         """Process request in the received order."""
-        while True:
-            cb_name, args = await self._callback_handlers.get()
-            handler = getattr(self, cb_name)
-            assert handler
-            try:
-                await handler(*args)
-            except sqlite3.Error as exc:
-                LOGGER.debug(
-                    "Error handling '%s' event with %s params: %s",
-                    cb_name,
-                    args,
-                    str(exc),
-                    exc_info=True,
-                )
-            except Exception:  # noqa: BLE001
-                LOGGER.exception(
-                    "Unexpected error while processing %s(%s)", cb_name, args
-                )
-            self._callback_handlers.task_done()
+        in_progress = False
+        result: asyncio.Future | None = None
+
+        try:
+            while True:
+                cb_name, args, result = await self._callback_handlers.get()
+                in_progress = True
+                handler = getattr(self, cb_name)
+                assert handler
+                try:
+                    await handler(*args)
+                except Exception as exc:  # noqa: BLE001
+                    if result is not None and not result.done():
+                        # The caller waiting for this handler gets the exception
+                        result.set_exception(exc)
+                    elif isinstance(exc, sqlite3.Error):
+                        LOGGER.debug(
+                            "Error handling '%s' event with %s params: %s",
+                            cb_name,
+                            args,
+                            str(exc),
+                            exc_info=True,
+                        )
+                    else:
+                        LOGGER.exception(
+                            "Unexpected error while processing %s(%s)", cb_name, args
+                        )
+                else:
+                    if result is not None and not result.done():
+                        result.set_result(None)
+
+                in_progress = False
+                self._callback_handlers.task_done()
+        finally:
+            # Nothing will run the remaining handlers. Fail their waiting callers and
+            # mark them done, so that `shutdown()` does not wait for them forever.
+            pending = []
+
+            if in_progress:
+                pending.append(result)
+                self._callback_handlers.task_done()
+
+            while not self._callback_handlers.empty():
+                *_, queued_result = self._callback_handlers.get_nowait()
+                pending.append(queued_result)
+                self._callback_handlers.task_done()
+
+            for pending_result in pending:
+                if (
+                    pending_result is not None
+                    and not pending_result.done()
+                    and not pending_result.get_loop().is_closed()
+                ):
+                    pending_result.set_exception(
+                        RuntimeError("The database worker has stopped")
+                    )
 
     async def _commit(self, force: bool = False) -> None:
         """Commit changes to the database, optionally deferring the operation.
@@ -301,7 +338,20 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         if not self.running:
             LOGGER.debug("Discarding %s event", cb_name)
             return
-        self._callback_handlers.put_nowait((cb_name, args))
+        self._callback_handlers.put_nowait((cb_name, args, None))
+
+    async def _enqueue_and_wait(self, cb_name: str, *args) -> None:
+        """Enqueue an async callback handler action and wait for it to finish.
+
+        The handler runs on the worker in order with every other queued action, and
+        any exception it raises is propagated to the caller.
+        """
+        if not self.running or self._worker_task.done():
+            raise RuntimeError(f"Cannot run {cb_name}, the database is not running")
+
+        result = asyncio.get_running_loop().create_future()
+        self._callback_handlers.put_nowait((cb_name, args, result))
+        await result
 
     async def _set_isolation_level(self, level: str | None):
         """Set the SQLite statement isolation level in a thread-safe way."""
@@ -446,6 +496,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     def device_removed(self, device: Device) -> None:
         self.enqueue("_remove_device", device)
+
+    async def remove_device(self, device: Device) -> None:
+        """Remove a device from the database and wait until it is deleted.
+
+        Unlike the `device_removed` event, this raises any error from the delete.
+        """
+        await self._enqueue_and_wait("_remove_device", device)
 
     async def _remove_device(self, device: Device) -> None:
         await self.execute(f"DELETE FROM devices{DB_V} WHERE ieee = ?", (device.ieee,))

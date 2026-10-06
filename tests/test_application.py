@@ -1829,7 +1829,7 @@ async def test_device_reinterviewed_with_db(app):
 
     # Set up a mock DB listener
     db_listener = MagicMock()
-    db_listener._remove_device = AsyncMock()
+    db_listener.remove_device = AsyncMock()
     app._dblistener = db_listener
     old_dev.add_context_listener(db_listener)
 
@@ -1844,7 +1844,7 @@ async def test_device_reinterviewed_with_db(app):
     await app._device_reinterviewed(old_dev, shadow)
 
     # DB removal should have been called for the old device
-    db_listener._remove_device.assert_awaited_once_with(old_dev)
+    db_listener.remove_device.assert_awaited_once_with(old_dev)
 
 
 async def test_reinterview_device_public_api(app):
@@ -1914,7 +1914,7 @@ async def test_device_reinterviewed_preserves_groups(app):
 
 
 async def test_device_reinterviewed_skips_group_removed_during_swap(app):
-    """If a group is removed while `_remove_device` is awaiting, restoration skips it
+    """If a group is removed while `remove_device` is awaiting, restoration skips it
     instead of raising and aborting the reinterview.
     """
     ieee = make_ieee()
@@ -1932,15 +1932,15 @@ async def test_device_reinterviewed_skips_group_removed_during_swap(app):
     surviving.add_member(old_ep, suppress_event=True)
     doomed.add_member(old_ep, suppress_event=True)
 
-    # Simulate the race: between `_remove_device` returning and group restoration
+    # Simulate the race: between `remove_device` returning and group restoration
     # running, group 20 is removed. We trigger this by patching the dblistener's
-    # `_remove_device` to drop the group as a side effect.
+    # `remove_device` to drop the group as a side effect.
     db_listener = MagicMock()
 
     async def fake_remove(_dev):
         app.groups.pop(20, None)
 
-    db_listener._remove_device = AsyncMock(side_effect=fake_remove)
+    db_listener.remove_device = AsyncMock(side_effect=fake_remove)
     app._dblistener = db_listener
     old_dev.add_context_listener(db_listener)
 
@@ -1994,7 +1994,7 @@ async def test_device_reinterviewed_persists_relays(app):
     old_dev._relays = t.Relays([t.NWK(0xAAAA)])
 
     db_listener = MagicMock()
-    db_listener._remove_device = AsyncMock()
+    db_listener.remove_device = AsyncMock()
     app._dblistener = db_listener
     old_dev.add_context_listener(db_listener)
 
