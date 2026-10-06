@@ -352,11 +352,13 @@ def make_route(
 
 # Taken from Home Assistant's `conftest.py`
 @pytest_asyncio.fixture(autouse=True)
-def verify_cleanup() -> typing.Generator[None, None, None]:
+def verify_cleanup(auto_kill_aiosqlite) -> typing.Generator[None, None, None]:
     """Verify that the test has cleaned up resources correctly.
 
     This fixture needs the event loop to not be running, so it cannot be async.
     `pytest_asyncio.fixture` makes sure the test's event loop is set beforehand.
+    Requesting `auto_kill_aiosqlite` tears it down after this check, so a leaked
+    aiosqlite thread fails the test before it is stopped.
     """
 
     event_loop = asyncio.get_event_loop()
@@ -375,10 +377,16 @@ def verify_cleanup() -> typing.Generator[None, None, None]:
     if tasks:
         event_loop.run_until_complete(asyncio.wait(tasks))
 
-    for handle in event_loop._scheduled:  # type: ignore[attr-defined]
-        if not handle.cancelled():
-            _LOGGER.warning("Lingering timer after test %r", handle)
+    timers = [
+        handle
+        for handle in event_loop._scheduled  # type: ignore[attr-defined]
+        if not handle.cancelled()
+    ]
+    if timers:
+        message = f"Lingering timers after test: {timers!r}"
+        for handle in timers:
             handle.cancel()
+        pytest.fail(message)
 
     # Verify no threads were left behind.
     threads = frozenset(threading.enumerate()) - threads_before
