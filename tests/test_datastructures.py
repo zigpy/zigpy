@@ -137,8 +137,17 @@ def test_dynamic_bounded_semaphore_multiple_event_loops():
         with pytest.raises(RuntimeError):
             loop2.run_until_complete(inner())
     finally:
-        loop1.close()
-        loop2.close()
+        for loop in (loop1, loop2):
+            # Closing a loop does not cancel its pending tasks
+            if pending := asyncio.all_tasks(loop):
+                for task in pending:
+                    task.cancel()
+
+                loop.run_until_complete(
+                    asyncio.gather(*pending, return_exceptions=True)
+                )
+
+            loop.close()
 
 
 async def test_dynamic_bounded_semaphore_runtime_limit_increase():
