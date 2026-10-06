@@ -125,16 +125,20 @@ def test_dynamic_bounded_semaphore_multiple_event_loops():
 
         return sem
 
-    loop1 = asyncio.new_event_loop()
-    sem = loop1.run_until_complete(make_semaphore())
-
     async def inner():
         await asyncio.gather(test_semaphore(sem), test_semaphore(sem))
 
+    loop1 = asyncio.new_event_loop()
     loop2 = asyncio.new_event_loop()
 
-    with pytest.raises(RuntimeError):
-        loop2.run_until_complete(inner())
+    try:
+        sem = loop1.run_until_complete(make_semaphore())
+
+        with pytest.raises(RuntimeError):
+            loop2.run_until_complete(inner())
+    finally:
+        loop1.close()
+        loop2.close()
 
 
 async def test_dynamic_bounded_semaphore_runtime_limit_increase():

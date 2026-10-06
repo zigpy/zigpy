@@ -14,6 +14,7 @@ from unittest.mock import Mock, patch
 
 import aiosqlite
 import pytest
+import pytest_asyncio
 
 import zigpy.application
 from zigpy.config import (
@@ -226,15 +227,19 @@ def make_app(
 
 
 @pytest.fixture
-def app():
+async def app():
     """ControllerApplication Mock."""
-    return make_app({})
+    app = make_app({})
+    yield app
+    await app.shutdown()
 
 
 @pytest.fixture
-def app_mock():
+async def app_mock():
     """ControllerApplication Mock."""
-    return make_app({})
+    app = make_app({})
+    yield app
+    await app.shutdown()
 
 
 def make_ieee(start=0):
@@ -346,16 +351,15 @@ def make_route(
 
 
 # Taken from Home Assistant's `conftest.py`
-@pytest.fixture(autouse=True)
+@pytest_asyncio.fixture(autouse=True)
 def verify_cleanup() -> typing.Generator[None, None, None]:
-    """Verify that the test has cleaned up resources correctly."""
+    """Verify that the test has cleaned up resources correctly.
 
-    try:
-        event_loop = asyncio.get_running_loop()
-    except RuntimeError:
-        yield
-        return
+    This fixture needs the event loop to not be running, so it cannot be async.
+    `pytest_asyncio.fixture` makes sure the test's event loop is set beforehand.
+    """
 
+    event_loop = asyncio.get_event_loop()
     threads_before = frozenset(threading.enumerate())
     tasks_before = asyncio.all_tasks(event_loop)
     yield
