@@ -869,6 +869,25 @@ async def test_handle_cluster_general_request_disable_default_rsp(endpoint):
         assert general_cmd_mock.call_args[1]["tsn"] == hdr.tsn
 
 
+async def test_handle_cluster_general_request_default_rsp_not_answered(cluster):
+    """A received Default Response must not be answered with a Default Response.
+
+    ZCL R8 2.5.12.2: "the Default Response command SHALL not be generated in response
+    to reception of another Default Response command."
+    """
+    # `00 20 0b 05 01`: DefaultResponse(command_id=5, status=FAILURE), TSN 32, as sent
+    # by a real device mid-OTA with the Disable Default Response bit cleared.
+    hdr, values = cluster.deserialize(b"\x00\x20\x0b\x05\x01")
+
+    assert hdr.command_id == foundation.GeneralCommand.Default_Response
+    assert not hdr.frame_control.disable_default_response
+
+    with patch.object(cluster, "general_command") as general_cmd_mock:
+        cluster.handle_cluster_general_request(hdr, values)
+        await asyncio.sleep(0)
+        assert general_cmd_mock.call_count == 0
+
+
 async def test_handle_cluster_general_request_not_attr_report(cluster):
     hdr = foundation.ZCLHeader.general(1, foundation.GeneralCommand.Write_Attributes)
     with (
