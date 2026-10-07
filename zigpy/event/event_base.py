@@ -116,10 +116,19 @@ class EventBase:
         )
 
         for listener in listeners:
-            if listener.with_context:
-                call = listener.callback(event_name, data)
-            else:
-                call = listener.callback(data)
+            try:
+                if listener.with_context:
+                    call = listener.callback(event_name, data)
+                else:
+                    call = listener.callback(data)
+            except Exception:
+                # A failing listener must not abort the emitter or skip the others
+                _LOGGER.exception(
+                    "Error calling listener %r for event %s",
+                    listener.callback,
+                    event_name,
+                )
+                continue
 
             if iscoroutinefunction(listener.callback):
                 task = asyncio.create_task(call)
