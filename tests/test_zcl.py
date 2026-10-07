@@ -437,6 +437,36 @@ async def test_read_attributes_uncached(cluster):
     assert cluster._attr_cache.is_unsupported(Basic.AttributeDefs.location_desc)
 
 
+async def test_read_attributes_listener_error(cluster):
+    """Test a failing event listener does not drop the rest of a read response."""
+
+    async def mockrequest(
+        is_general_req, command, schema, args, manufacturer=None, **kwargs
+    ):
+        return [[_mk_rar(0, 99), _mk_rar(4, "Manufacturer"), _mk_rar(5, "Model")]]
+
+    cluster.request = mockrequest
+
+    def failing_listener(event: AttributeReadEvent) -> None:
+        raise RuntimeError("listener failed")
+
+    events = []
+    cluster.on_event(AttributeReadEvent.event_type, failing_listener)
+    cluster.on_event(AttributeReadEvent.event_type, events.append)
+
+    success, failure = await cluster.read_attributes([0, "manufacturer", "model"])
+
+    assert success == {0: 99, "manufacturer": "Manufacturer", "model": "Model"}
+    assert not failure
+    assert cluster.get("manufacturer") == "Manufacturer"
+    assert cluster.get("model") == "Model"
+    assert [e.attribute_name for e in events] == [
+        "zcl_version",
+        "manufacturer",
+        "model",
+    ]
+
+
 async def test_read_attributes_cached(cluster):
     cluster.request = MagicMock()
     cluster._attr_cache.set_value(Basic.AttributeDefs.zcl_version, 99)
