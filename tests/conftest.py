@@ -14,6 +14,7 @@ from unittest.mock import Mock, patch
 
 import aiosqlite
 import pytest
+import pytest_asyncio
 
 import zigpy.application
 from zigpy.config import (
@@ -196,6 +197,10 @@ def recursive_dict_merge(
     return result
 
 
+# Applications created by `make_app`, which `verify_cleanup` shuts down after each test
+_APPS: list[zigpy.application.ControllerApplication] = []
+
+
 def make_app(
     config_updates: dict[str, typing.Any],
     app_base: type[zigpy.application.ControllerApplication] = App,
@@ -222,6 +227,7 @@ def make_app(
     app.send_packet = AsyncMock(wraps=app.send_packet)
     app.write_network_info = AsyncMock(wraps=app.write_network_info)
 
+    _APPS.append(app)
     return app
 
 
@@ -346,35 +352,59 @@ def make_route(
 
 
 # Taken from Home Assistant's `conftest.py`
-@pytest.fixture(autouse=True)
-def verify_cleanup() -> typing.Generator[None, None, None]:
-    """Verify that the test has cleaned up resources correctly."""
+@pytest_asyncio.fixture(autouse=True)
+def verify_cleanup(auto_kill_aiosqlite) -> typing.Generator[None, None, None]:
+    """Verify that the test has cleaned up resources correctly.
 
-    try:
-        event_loop = asyncio.get_running_loop()
-    except RuntimeError:
-        yield
-        return
+    This fixture needs the event loop to not be running, so it cannot be async.
+    `pytest_asyncio.fixture` makes sure the test's event loop is set beforehand.
+    Requesting `auto_kill_aiosqlite` tears it down after this check, so a leaked
+    aiosqlite thread fails the test before it is stopped.
+    """
 
+    event_loop = asyncio.get_event_loop()
     threads_before = frozenset(threading.enumerate())
     tasks_before = asyncio.all_tasks(event_loop)
     yield
 
+    # Shut down the applications the test created, so their background tasks stop.
+    # Take them all first, so a failing shutdown cannot leak one into the next test.
+    failures = []
+    apps = _APPS[::-1]
+    _APPS.clear()
+
+    for app in apps:
+        # Shutting down a closed database again only logs an error
+        close_db = app._dblistener is not None and app._dblistener.running
+
+        try:
+            event_loop.run_until_complete(app.shutdown(db=close_db))
+        except Exception as exc:  # noqa: BLE001
+            failures.append(f"Failed to shut down {app!r}: {exc!r}")
+
     event_loop.run_until_complete(event_loop.shutdown_default_executor())
 
-    # Warn and clean-up lingering tasks and timers
-    # before moving on to the next test.
+    # Clean up lingering tasks and timers before failing the test, so they do not
+    # leak into the next one
     tasks = asyncio.all_tasks(event_loop) - tasks_before
-    for task in tasks:
-        _LOGGER.warning("Linger task after test %r", task)
-        task.cancel()
     if tasks:
+        failures.append(f"Lingering tasks after test: {tasks!r}")
+        for task in tasks:
+            task.cancel()
         event_loop.run_until_complete(asyncio.wait(tasks))
 
-    for handle in event_loop._scheduled:  # type: ignore[attr-defined]
-        if not handle.cancelled():
-            _LOGGER.warning("Lingering timer after test %r", handle)
+    timers = [
+        handle
+        for handle in event_loop._scheduled  # type: ignore[attr-defined]
+        if not handle.cancelled()
+    ]
+    if timers:
+        failures.append(f"Lingering timers after test: {timers!r}")
+        for handle in timers:
             handle.cancel()
+
+    if failures:
+        pytest.fail("\n".join(failures))
 
     # Verify no threads were left behind.
     threads = frozenset(threading.enumerate()) - threads_before

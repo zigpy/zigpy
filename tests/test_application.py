@@ -1295,6 +1295,9 @@ async def test_request_future_matching(app, make_initialized_device):
 
     assert app._req_listeners[device] == orig_listeners
 
+    # The cluster handles each packet in a background task
+    cluster_tasks_before = set(ota._tasks)
+
     with app.wait_for_response(
         device, [ota.commands_by_name["query_next_image"].schema()]
     ) as rsp_fut:
@@ -1322,6 +1325,11 @@ async def test_request_future_matching(app, make_initialized_device):
             assert rsp_cmd.current_file_version == 0x11112222
 
     assert app._req_listeners[device] == orig_listeners
+
+    # Let the cluster finish handling the packets. The task set is shared by all
+    # objects, so only wait for the tasks started by this test.
+    async with asyncio.timeout(5):
+        await asyncio.gather(*(ota._tasks - cluster_tasks_before))
 
 
 async def test_request_callback_matching(app, make_initialized_device):

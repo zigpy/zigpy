@@ -1,3 +1,4 @@
+import contextlib
 from datetime import UTC, datetime
 import logging
 import pathlib
@@ -47,7 +48,7 @@ def test_db(tmp_path):
 
 
 def dump_db(path):
-    with sqlite3.connect(path) as conn:
+    with contextlib.closing(sqlite3.connect(path)) as conn, conn:
         cur = conn.cursor()
         cur.execute("PRAGMA user_version")
         (user_version,) = cur.fetchone()
@@ -61,7 +62,7 @@ def dump_db(path):
 async def test_migration_from_3_to_4(open_twice, test_db):
     test_db_v3 = test_db("simple_v3.sql")
 
-    with sqlite3.connect(test_db_v3) as conn:
+    with contextlib.closing(sqlite3.connect(test_db_v3)) as conn, conn:
         cur = conn.cursor()
 
         neighbors_before = list(cur.execute("SELECT * FROM neighbors"))
@@ -129,7 +130,7 @@ async def test_migration_from_3_to_4(open_twice, test_db):
 
     await app.shutdown()
 
-    with sqlite3.connect(test_db_v3) as conn:
+    with contextlib.closing(sqlite3.connect(test_db_v3)) as conn, conn:
         cur = conn.cursor()
 
         # Old tables are untouched
@@ -149,7 +150,7 @@ async def test_migration_from_3_to_4(open_twice, test_db):
 async def test_migration_0_to_5(test_db):
     test_db_v0 = test_db("zigbee_20190417_v0.db")
 
-    with sqlite3.connect(test_db_v0) as conn:
+    with contextlib.closing(sqlite3.connect(test_db_v0)) as conn, conn:
         cur = conn.cursor()
         cur.execute("SELECT count(*) FROM devices")
         (num_devices_before_migration,) = cur.fetchone()
@@ -170,7 +171,7 @@ async def test_migration_0_to_5(test_db):
 async def test_migration_missing_neighbors_v3(test_db):
     test_db_v3 = test_db("simple_v3.sql")
 
-    with sqlite3.connect(test_db_v3) as conn:
+    with contextlib.closing(sqlite3.connect(test_db_v3)) as conn, conn:
         cur = conn.cursor()
         cur.execute("DROP TABLE neighbors")
 
@@ -183,7 +184,7 @@ async def test_migration_missing_neighbors_v3(test_db):
     await app.shutdown()
 
     # Version was upgraded
-    with sqlite3.connect(test_db_v3) as conn:
+    with contextlib.closing(sqlite3.connect(test_db_v3)) as conn, conn:
         cur = conn.cursor()
         cur.execute("PRAGMA user_version")
         assert cur.fetchone() == (zigpy.appdb.DB_VERSION,)
@@ -193,7 +194,7 @@ async def test_migration_missing_neighbors_v3(test_db):
 async def test_migration_bad_attributes(test_db, corrupt_device):
     test_db_bad_attrs = test_db("bad_attrs_v3.db")
 
-    with sqlite3.connect(test_db_bad_attrs) as conn:
+    with contextlib.closing(sqlite3.connect(test_db_bad_attrs)) as conn, conn:
         cur = conn.cursor()
         cur.execute("SELECT count(*) FROM devices")
         (num_devices_before_migration,) = cur.fetchone()
@@ -202,7 +203,7 @@ async def test_migration_bad_attributes(test_db, corrupt_device):
         (num_ep_before_migration,) = cur.fetchone()
 
     if corrupt_device:
-        with sqlite3.connect(test_db_bad_attrs) as conn:
+        with contextlib.closing(sqlite3.connect(test_db_bad_attrs)) as conn, conn:
             cur = conn.cursor()
             cur.execute("DELETE FROM endpoints WHERE ieee='60:a4:23:ff:fe:02:39:7b'")
             cur.execute("SELECT changes()")
@@ -230,7 +231,7 @@ async def test_migration_bad_attributes(test_db, corrupt_device):
         == num_ep_before_migration - deleted_eps
     )
 
-    with sqlite3.connect(test_db_bad_attrs) as conn:
+    with contextlib.closing(sqlite3.connect(test_db_bad_attrs)) as conn, conn:
         cur = conn.cursor()
         cur.execute("PRAGMA user_version")
 
@@ -242,7 +243,7 @@ async def test_migration_missing_node_descriptor(test_db, caplog):
     test_db_v3 = test_db("simple_v3.sql")
     ieee = "ec:1b:bd:ff:fe:54:4f:40"
 
-    with sqlite3.connect(test_db_v3) as conn:
+    with contextlib.closing(sqlite3.connect(test_db_v3)) as conn, conn:
         cur = conn.cursor()
         cur.execute("DELETE FROM node_descriptors WHERE ieee=?", [ieee])
 
@@ -258,7 +259,7 @@ async def test_migration_missing_node_descriptor(test_db, caplog):
     await app.shutdown()
 
     # The migration did not fabricate a node descriptor for the device
-    with sqlite3.connect(test_db_v3) as conn:
+    with contextlib.closing(sqlite3.connect(test_db_v3)) as conn, conn:
         cur = conn.cursor()
         cur.execute(
             f"SELECT * FROM node_descriptors{zigpy.appdb.DB_V} WHERE ieee=?", [ieee]
@@ -324,7 +325,7 @@ async def test_migration_failure_version_mismatch(test_db):
     await app.shutdown()
 
     # Downgrade it back to v7
-    with sqlite3.connect(test_db_v3) as conn:
+    with contextlib.closing(sqlite3.connect(test_db_v3)) as conn, conn:
         conn.execute("PRAGMA user_version=7")
 
     # Startup now fails due to the version mismatch
@@ -342,7 +343,7 @@ async def test_migration_downgrade_warning(test_db, caplog):
     await app.shutdown()
 
     # Upgrade it beyond our current version
-    with sqlite3.connect(test_db_v3) as conn:
+    with contextlib.closing(sqlite3.connect(test_db_v3)) as conn, conn:
         conn.execute("CREATE TABLE future_table_v100(column)")
         conn.execute("PRAGMA user_version=100")
 
@@ -354,7 +355,7 @@ async def test_migration_downgrade_warning(test_db, caplog):
     assert "Downgrading zigpy" in caplog.text
 
     # Ensure the version was not touched
-    with sqlite3.connect(test_db_v3) as conn:
+    with contextlib.closing(sqlite3.connect(test_db_v3)) as conn, conn:
         user_version = conn.execute("PRAGMA user_version").fetchone()[0]
 
     assert user_version == 100
@@ -366,7 +367,7 @@ async def test_v4_to_v5_migration_bad_neighbors(test_db, with_bad_neighbor):
 
     test_db_v4 = test_db("simple_v3_to_v4.sql")
 
-    with sqlite3.connect(test_db_v4) as conn:
+    with contextlib.closing(sqlite3.connect(test_db_v4)) as conn, conn:
         cur = conn.cursor()
 
         if with_bad_neighbor:
@@ -391,8 +392,8 @@ async def test_v4_to_v5_migration_bad_neighbors(test_db, with_bad_neighbor):
     app = await make_app_with_db(test_db_v4)
     await app.shutdown()
 
-    with sqlite3.connect(test_db_v4) as conn:
-        (num_new_neighbors,) = cur.execute(
+    with contextlib.closing(sqlite3.connect(test_db_v4)) as conn, conn:
+        (num_new_neighbors,) = conn.execute(
             f"SELECT count(*) FROM neighbors{zigpy.appdb.DB_V}"
         ).fetchone()
 
@@ -410,7 +411,7 @@ async def test_v4_to_v6_migration_missing_endpoints(test_db, with_quirk_attribut
     test_db_v3 = test_db("simple_v3.sql")
 
     if with_quirk_attribute:
-        with sqlite3.connect(test_db_v3) as conn:
+        with contextlib.closing(sqlite3.connect(test_db_v3)) as conn, conn:
             cur = conn.cursor()
             cur.execute(
                 """
@@ -541,7 +542,7 @@ async def test_unknown_manufacturer_code_migration(test_db, caplog):
     test_db_prod = test_db("zigbee_puddly2.db")
 
     # Count cached rows before migration
-    with sqlite3.connect(test_db_prod) as conn:
+    with contextlib.closing(sqlite3.connect(test_db_prod)) as conn, conn:
         cur = conn.cursor()
 
         cur.execute("SELECT COUNT(*) FROM attributes_cache_v13")
@@ -562,7 +563,7 @@ async def test_unknown_manufacturer_code_migration(test_db, caplog):
     await app.shutdown()
 
     # Count rows after migration
-    with sqlite3.connect(test_db_prod) as conn:
+    with contextlib.closing(sqlite3.connect(test_db_prod)) as conn, conn:
         cur = conn.cursor()
         cur.execute(f"SELECT COUNT(*) FROM attributes_cache{zigpy.appdb.DB_V}")
         after_total = cur.fetchone()[0]
@@ -616,7 +617,7 @@ async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
     app = await make_app_with_db(test_db_path, device_resolver=resolver)
 
     # Check that cached attributes on 0xFC00 got the device's manufacturer_id
-    with sqlite3.connect(test_db_path) as conn:
+    with contextlib.closing(sqlite3.connect(test_db_path)) as conn, conn:
         cur = conn.cursor()
         cur.execute(
             f"""
@@ -630,7 +631,7 @@ async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
     assert rows == [(0x130D,), (0x130D,), (0x130D,)]
 
     # The unsupported manufacturer-specific attr also got the correct manufacturer code
-    with sqlite3.connect(test_db_path) as conn:
+    with contextlib.closing(sqlite3.connect(test_db_path)) as conn, conn:
         cur = conn.cursor()
         cur.execute(
             f"""
@@ -732,7 +733,7 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
     app.device_initialized(dev)
     await app.shutdown()
 
-    with sqlite3.connect(db_path) as conn:
+    with contextlib.closing(sqlite3.connect(db_path)) as conn, conn:
         conn.executemany(
             f"INSERT INTO attributes_cache{zigpy.appdb.DB_V}"
             " (ieee, endpoint_id, cluster_type, cluster_id,"
@@ -769,7 +770,7 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
 
     await app.shutdown()
 
-    with sqlite3.connect(db_path) as conn:
+    with contextlib.closing(sqlite3.connect(db_path)) as conn, conn:
         # The disambiguated unmigrated row was deleted (a row with 0xABCD already existed)
         rows = conn.execute(
             f"SELECT manufacturer_code FROM attributes_cache{zigpy.appdb.DB_V}"

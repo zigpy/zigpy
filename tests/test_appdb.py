@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 from datetime import UTC, datetime, timedelta
 import pathlib
 import sqlite3
@@ -901,7 +902,7 @@ async def test_device_without_node_descriptor_not_persisted(tmp_path) -> None:
     app.device_initialized(dev)
     await app.shutdown()
 
-    with sqlite3.connect(str(db)) as conn:
+    with contextlib.closing(sqlite3.connect(str(db))) as conn, conn:
         cur = conn.cursor()
 
         # The device itself was persisted
@@ -1470,7 +1471,7 @@ async def test_quirk_virtual_endpoints_not_persisted(tmp_path) -> None:
     await app.shutdown()
 
     # Only the bare endpoint should have been persisted
-    with sqlite3.connect(str(db)) as conn:
+    with contextlib.closing(sqlite3.connect(str(db))) as conn, conn:
         cur = conn.cursor()
         cur.execute(
             f"SELECT endpoint_id FROM endpoints{zigpy.appdb.DB_V} ORDER BY endpoint_id"
