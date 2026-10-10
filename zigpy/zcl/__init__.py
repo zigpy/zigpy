@@ -541,9 +541,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         correctly. Other attributes, clusters, and cluster instances updated by the
         quirk are unaffected.
 
-        This is deliberately state of the cluster instance and not a context variable:
-        tasks and timers started by a quirk inherit context variables, which would
-        apply the above to unrelated updates performed later.
+        This state is intentionally kept on the cluster instance instead of in a
+        context variable: tasks and timers started by a quirk inherit context
+        variables, which would apply the above to unrelated updates performed later.
         """
         previous = self._quirk_attribute_updates.get(attrid, UNDEFINED)
         self._quirk_attribute_updates[attrid] = manufacturer_code
