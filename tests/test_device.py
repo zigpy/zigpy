@@ -951,7 +951,8 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     assert dev.application.send_packet.await_count == 0
     assert progress_callback.call_count == 0
     assert "OTA image_notify handler exception" in caplog.text
-    assert result != foundation.Status.SUCCESS
+    # The device never requested the image after the failed notify
+    assert result == foundation.Status.TIMEOUT
     cluster.image_notify = image_notify
     caplog.clear()
 
@@ -1341,7 +1342,8 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     assert dev.application.send_packet.await_count == 0
     assert progress_callback.call_count == 0
     assert "OTA image_notify handler exception" in caplog.text
-    assert result != foundation.Status.SUCCESS
+    # The device never requested the image after the failed notify
+    assert result == foundation.Status.TIMEOUT
     cluster.image_notify = image_notify
     caplog.clear()
 
