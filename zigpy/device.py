@@ -689,32 +689,32 @@ class ZigbeeDevice(BaseDevice):
         """Handle Poll Control check-in callback."""
         poll_control = self.find_cluster(cluster_id=PollControl.cluster_id)
 
+        # Initiate fast polling mode if we are initializing or waiting for requests to
+        # be sent
+        fast_poll = (
+            self.initializing
+            or self.reinterviewing
+            or self._concurrent_requests_semaphore.active_requests > 0
+            or self._fast_polling
+        )
+
         async with self._application.request_priority(t.PacketPriority.CRITICAL):
-            # Initiate fast polling mode if we are initializing or waiting for requests
-            # to be sent
-            if (
-                self.initializing
-                or self.reinterviewing
-                or self._concurrent_requests_semaphore.active_requests > 0
-                or self._fast_polling
-            ):
-                # Initiate fast polling mode if we are initializing or waiting for
-                # requests to be sent
+            try:
                 await poll_control.checkin_response(
-                    start_fast_polling=True,
-                    fast_poll_timeout=int(DEFAULT_FAST_POLL_TIMEOUT * 4),
+                    start_fast_polling=fast_poll,
+                    fast_poll_timeout=(
+                        int(DEFAULT_FAST_POLL_TIMEOUT * 4) if fast_poll else 0
+                    ),
                     tsn=zcl_hdr.tsn,
                     expect_reply=False,
                     disable_default_response=True,
+                    # The device is free to stop listening 7.68s after checking in,
+                    # any retry would arrive after it has gone back to sleep
+                    retries=0,
                 )
-            else:
-                await poll_control.checkin_response(
-                    start_fast_polling=False,
-                    fast_poll_timeout=0,
-                    tsn=zcl_hdr.tsn,
-                    expect_reply=False,
-                    disable_default_response=True,
-                )
+            except (TimeoutError, DeliveryError) as exc:
+                # The device is asleep or out of reach, it will check in again later
+                self.debug("Failed to send check-in response: %r", exc)
 
     async def begin_fast_polling(
         self, timeout: float = DEFAULT_FAST_POLL_TIMEOUT, *, reset_after: bool = True
