@@ -7,7 +7,12 @@ from unittest.mock import call
 
 import pytest
 
-from tests.conftest import make_node_desc, mock_attribute_reads
+from tests.conftest import (
+    add_initialized_device,
+    make_ieee,
+    make_node_desc,
+    mock_attribute_reads,
+)
 from zigpy import device, endpoint
 import zigpy.application
 from zigpy.datastructures import RequestLimiter
@@ -1795,6 +1800,7 @@ async def test_poll_control_checkin_callback(
                     tsn=0x12,
                     expect_reply=False,
                     disable_default_response=True,
+                    retries=0,
                 )
             ]
         else:
@@ -1805,8 +1811,85 @@ async def test_poll_control_checkin_callback(
                     tsn=0x12,
                     expect_reply=False,
                     disable_default_response=True,
+                    retries=0,
                 )
             ]
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        zigpy.exceptions.DeliveryError("Failed to send request: APS_NO_ACK"),
+        TimeoutError(),
+    ],
+)
+async def test_poll_control_checkin_callback_send_failure(
+    dev: device.Device, exc: Exception, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test a failed check-in response is logged at debug level and not raised."""
+    ep = dev.add_endpoint(1)
+    poll_control = ep.add_input_cluster(PollControl.cluster_id)
+    poll_control.checkin_response = AsyncMock(side_effect=exc)
+
+    zcl_hdr = foundation.ZCLHeader.cluster(
+        tsn=0x12, command_id=PollControl.ClientCommandDefs.checkin.id
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        await dev.poll_control_checkin_callback(
+            zcl_hdr, PollControl.ClientCommandDefs.checkin.schema()
+        )
+
+    assert len(poll_control.checkin_response.mock_calls) == 1
+    assert "Failed to send check-in response" in caplog.text
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+async def test_poll_control_checkin_response_not_retried(
+    app_mock: zigpy.application.ControllerApplication,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Test a check-in response that fails to send is not retried."""
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.EndDevice)
+    dev.endpoints[1].add_input_cluster(PollControl.cluster_id)
+
+    app_mock.send_packet = AsyncMock(
+        side_effect=zigpy.exceptions.DeliveryError(
+            "Failed to send request: APS_NO_ACK", status=0xB7
+        )
+    )
+
+    hdr = foundation.ZCLHeader.cluster(
+        tsn=0x12, command_id=PollControl.ClientCommandDefs.checkin.id
+    )
+    hdr.frame_control = hdr.frame_control.replace(
+        direction=foundation.Direction.Server_to_Client,
+        disable_default_response=True,
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        app_mock.packet_received(
+            t.ZigbeePacket(
+                src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+                src_ep=1,
+                dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+                dst_ep=1,
+                tsn=0x12,
+                profile_id=zha.PROFILE_ID,
+                cluster_id=PollControl.cluster_id,
+                data=t.SerializableBytes(hdr.serialize()),
+                lqi=255,
+                rssi=-30,
+            )
+        )
+
+        # Wait for the callback task to finish
+        await asyncio.gather(*app_mock._tasks)
+
+    assert len(app_mock.send_packet.mock_calls) == 1
+    assert "Failed to send check-in response" in caplog.text
+    assert "callback failed" not in caplog.text
 
 
 async def test_begin_fast_polling_with_cluster(dev: device.Device) -> None:
