@@ -932,11 +932,13 @@ def _make_sleepy_device(
     block_response_error: Exception | None = None,
     upgrade_end_response_delay: float = 0,
     logical_type: zdo_t.LogicalType = zdo_t.LogicalType.EndDevice,
+    wake_up_with_block: bool = False,
 ) -> tuple[zigpy.device.Device, Cluster, list[str], Callable[[], None]]:
     """Create a sleepy end device that only talks to us when it wants to.
 
     Returns the device, its OTA cluster, a log of OTA commands, and a callback that
-    makes the device query for the next image (i.e. it was woken up).
+    makes the device query for the next image (i.e. it was woken up). With
+    `wake_up_with_block`, the device instead starts by requesting the first block.
     """
     assert FW_IMAGE.firmware is not None
     header = FW_IMAGE.firmware.header
@@ -1036,7 +1038,16 @@ def _make_sleepy_device(
 
     app.send_packet = AsyncMock(side_effect=send_packet)
 
-    return dev, ota, log, query_next_image
+    def request_first_block() -> None:
+        log.append("image_block")
+        image_block(0)
+
+    return (
+        dev,
+        ota,
+        log,
+        request_first_block if wake_up_with_block else query_next_image,
+    )
 
 
 @patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.3)
@@ -1095,11 +1106,13 @@ async def test_ota_manager_notify_failure_timeout() -> None:
 @pytest.mark.parametrize(
     "logical_type", [zdo_t.LogicalType.EndDevice, zdo_t.LogicalType.Router]
 )
+@pytest.mark.parametrize("wake_up_with_block", [False, True])
 @patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.3)
 async def test_ota_manager_device_request_cancels_pending_notify(
     logical_type: zdo_t.LogicalType,
+    wake_up_with_block: bool,
 ) -> None:
-    """Test that the device querying while the image notify is pending cancels it."""
+    """Test that a device request while the image notify is pending cancels it."""
 
     notify_cancelled = asyncio.Event()
 
@@ -1112,7 +1125,7 @@ async def test_ota_manager_device_request_cancels_pending_notify(
             raise
 
     dev, _ota, log, wake_up = _make_sleepy_device(
-        image_notify, logical_type=logical_type
+        image_notify, logical_type=logical_type, wake_up_with_block=wake_up_with_block
     )
     asyncio.get_running_loop().call_later(0.1, wake_up)
 
@@ -1123,13 +1136,17 @@ async def test_ota_manager_device_request_cancels_pending_notify(
 
     assert status == foundation.Status.SUCCESS
     assert notify_cancelled.is_set()
-    assert not dev._requests
+    assert dev._concurrent_requests_semaphore.active_requests == 0
 
-    # The notify is not retried once the device has queried
+    # The notify is not retried once the device has sent its first request
+    first_request = (
+        ["image_block"]
+        if wake_up_with_block
+        else ["query_next_image", "query_next_image_response:SUCCESS"]
+    )
     assert log == [
         "image_notify",
-        "query_next_image",
-        "query_next_image_response:SUCCESS",
+        *first_request,
         "image_block_response:last",
         "upgrade_end",
         "upgrade_end_response",
@@ -1217,5 +1234,5 @@ async def test_ota_manager_cancelled_during_notify() -> None:
 
     assert notify_cancelled.is_set()
     assert not dev.ota_in_progress
-    assert not dev._requests
+    assert dev._concurrent_requests_semaphore.active_requests == 0
     assert log == ["image_notify"]
