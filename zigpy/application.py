@@ -693,12 +693,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                     group.remove_member(ep, suppress_event=True)
 
         # Remove old device data from DB (cascade deletes endpoints, clusters,
-        # attribute cache, group members, and relays).  We call _remove_device
-        # directly instead of the public device_removed() because we need the
-        # delete to complete before _finalize_device enqueues the save.
+        # attribute cache, group members, and relays).  The delete runs on the DB
+        # worker, before the save that _finalize_device enqueues.  Unlike the
+        # fire-and-forget device_removed(), we wait for it, so that a failed delete
+        # aborts the re-interview instead of being logged and then saved over.
         if self._dblistener is not None:
             old_device.remove_listener(self._dblistener)
-            await self._dblistener._remove_device(old_device)
+            await self._dblistener.remove_device(old_device)
 
         # Clean up old device's callbacks and tasks
         old_device.on_remove()
@@ -713,7 +714,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         new_device._reinterview_in_progress = False
 
         # Restore group memberships on the new device's matching endpoints.
-        # A group may have been removed while we were awaiting `_remove_device`,
+        # A group may have been removed while we were awaiting `remove_device`,
         # so guard against missing entries rather than aborting the reinterview.
         for ep_id, group_ids in old_group_memberships.items():
             if ep_id in new_device.endpoints:
