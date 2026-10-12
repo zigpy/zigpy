@@ -273,10 +273,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             await self.execute("PRAGMA wal_checkpoint;")
             await self._set_isolation_level("DEFERRED")
         finally:
-            await self._db.close()
-
-            # FIXME: aiosqlite's thread won't always be closed immediately
-            await asyncio.get_running_loop().run_in_executor(None, self._db.join)
+            try:
+                await self._db.close()
+            finally:
+                # `close()` can return before aiosqlite's worker thread has exited,
+                # and there is no public API to wait for it (omnilib/aiosqlite#387)
+                await asyncio.get_running_loop().run_in_executor(
+                    None, self._db._thread.join
+                )
 
     def register_cluster_events(self, cluster) -> None:
         cluster.on_event(AttributeReadEvent.event_type, self.on_attribute_read)

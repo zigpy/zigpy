@@ -2706,7 +2706,7 @@ async def test_shutdown_survives_failed_commit(tmp_path, caplog):
     await listener.shutdown()
 
     assert "Failed to commit pending changes during shutdown" in caplog.text
-    assert not listener._db.is_alive()
+    assert not listener._db._thread.is_alive()
     assert await _read_count(db, "groups") == 0
 
 
@@ -2721,7 +2721,35 @@ async def test_shutdown_closes_database_on_failure(tmp_path):
     with pytest.raises(RuntimeError):
         await listener.shutdown()
 
-    assert not listener._db.is_alive()
+    assert not listener._db._thread.is_alive()
+
+
+async def test_shutdown_joins_thread_when_close_fails(tmp_path):
+    """The worker thread must be joined even if closing the connection fails."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    conn = app._dblistener._db
+
+    # Fail aiosqlite's own close step, which still stops the worker thread. The
+    # connection is closed first so that it isn't leaked.
+    original_execute = conn._execute
+
+    async def failing_execute(fn, *args, **kwargs):
+        result = await original_execute(fn, *args, **kwargs)
+
+        if fn == conn._connection.close:
+            raise sqlite3.OperationalError("boom")
+
+        return result
+
+    conn._execute = failing_execute
+    conn._thread.join = MagicMock(wraps=conn._thread.join)
+
+    with pytest.raises(sqlite3.OperationalError):
+        await app._dblistener.shutdown()
+
+    conn._thread.join.assert_called_once_with()
+    assert not conn._thread.is_alive()
 
 
 async def test_shutdown_rolls_back_persistently_failing_commit(tmp_path, caplog):
@@ -2741,7 +2769,7 @@ async def test_shutdown_rolls_back_persistently_failing_commit(tmp_path, caplog)
     await listener.shutdown()
 
     assert "Failed to commit pending changes during shutdown" in caplog.text
-    assert not listener._db.is_alive()
+    assert not listener._db._thread.is_alive()
     assert await _read_count(db, "endpoints") == 0
 
 
