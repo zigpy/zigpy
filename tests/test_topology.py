@@ -408,27 +408,97 @@ async def test_periodic_scan_failure(mock_scan, topology):
     topology.stop_periodic_scans()
 
 
+class ControlledScans:
+    """Mock scans that run until the test finishes them."""
+
+    def __init__(self) -> None:
+        self.events: list[asyncio.Event] = []
+        self.released = False
+
+    async def scan(self, _devices) -> None:
+        self.events.append(asyncio.Event())
+
+        if not self.released:
+            await self.events[-1].wait()
+
+    async def wait_for(self, count: int) -> None:
+        async with asyncio.timeout(5):
+            while len(self.events) < count:
+                await asyncio.sleep(0.01)
+
+    async def cleanup(self, topology) -> None:
+        """Finish every scan and stop the scan loop, even if it ignores cancellation.
+
+        Keeps a failing test from leaving the loop scanning forever.
+        """
+        self.released = True
+
+        for event in self.events:
+            event.set()
+
+        loop_task = topology._scan_loop_task
+
+        async with asyncio.timeout(5):
+            while loop_task is not None and not loop_task.done():
+                loop_task.cancel()
+                await asyncio.sleep(0.01)
+
+
 async def test_periodic_scan_priority(topology):
-    async def _scan(_):
-        await asyncio.sleep(0.5)
+    scans = ControlledScans()
 
-    with mock.patch.object(topology, "_scan", side_effect=_scan) as mock_scan:
-        scan_task = asyncio.create_task(topology.scan())
-        await asyncio.sleep(0.1)
+    with mock.patch.object(topology, "_scan", side_effect=scans.scan) as mock_scan:
+        try:
+            scan_task = asyncio.create_task(topology.scan())
+            await scans.wait_for(1)
 
-        # Start a periodic scan. It won't have time to run yet, the old scan is running
-        topology.start_periodic_scans(0.05)
+            # Start a periodic scan. It won't run while the old scan is running.
+            topology.start_periodic_scans(0.01)
+            await asyncio.sleep(0.1)
+            assert len(scans.events) == 1
 
-        # Wait for the original scan to finish
-        await scan_task
+            # Once the original scan finishes, the periodic scan runs
+            scans.events[0].set()
+            await scan_task
+            await scans.wait_for(2)
 
-        # Start another scan, interrupting the periodic scan
-        await asyncio.sleep(0.15)
-        await topology.scan()
+            # Start another scan, interrupting the periodic scan. The loop keeps running.
+            manual_scan_task = asyncio.create_task(topology.scan())
+            await scans.wait_for(3)
+            await asyncio.sleep(0.05)
+            assert not topology._scan_loop_task.done()
 
-        # Now we can cancel the periodic scan
-        topology.stop_periodic_scans()
-        await asyncio.sleep(0)
+            # Now we can stop the periodic scans. `asyncio.wait` does not cancel the
+            # loop task if it times out.
+            topology.stop_periodic_scans()
+            await asyncio.wait([topology._scan_loop_task], timeout=5)
+            assert topology._scan_loop_task.cancelled()
+
+            scans.events[2].set()
+            await manual_scan_task
+        finally:
+            await scans.cleanup(topology)
 
     # Our two manual scans succeeded and the periodic one was attempted
     assert len(mock_scan.mock_calls) == 3
+
+
+async def test_stop_periodic_scans_during_scheduled_scan(topology):
+    """Stopping periodic scans during a scheduled scan stops the scan loop."""
+    scans = ControlledScans()
+
+    with mock.patch.object(topology, "_scan", side_effect=scans.scan):
+        try:
+            topology.start_periodic_scans(0.01)
+            await scans.wait_for(1)
+
+            topology.stop_periodic_scans()
+            await asyncio.wait([topology._scan_loop_task], timeout=5)
+            assert topology._scan_loop_task.cancelled()
+
+            # The scheduled scan was cancelled with the loop, and no new one starts
+            await asyncio.sleep(0.05)
+            assert len(scans.events) == 1
+            assert topology._scan_task.cancelled()
+        finally:
+            await scans.cleanup(topology)
