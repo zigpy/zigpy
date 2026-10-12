@@ -4,7 +4,6 @@ import collections
 from collections import defaultdict
 from collections.abc import Callable, Generator, Iterable, Sequence
 import contextlib
-from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import enum
@@ -82,55 +81,6 @@ def _chunk_records_by_size(
         chunk_size += record_size
 
     return chunks
-
-
-# Tracks (cluster_id, attrid) pairs for which AttributeUpdatedEvent should be suppressed.
-# Used during Report_Attributes handling to allow quirks that update other clusters or
-# other attributes to emit their own events while suppressing the direct report's event.
-_suppressed_attribute_updates: ContextVar[frozenset[tuple[int, int]]] = ContextVar(
-    "_suppressed_attribute_updates", default=frozenset()
-)
-
-# Tracks the (attribute_id, manufacturer_code) for the current attribute update operation.
-# Used to preserve manufacturer code context when calling _update_attribute,
-# so that manufacturer-specific attributes with conflicting IDs are stored correctly.
-# The manufacturer code is only applied when the attribute ID matches the original.
-_attribute_update_context: ContextVar[tuple[int, int | None] | None] = ContextVar(
-    "_attribute_update_context", default=None
-)
-
-
-@contextlib.contextmanager
-def _suppress_attribute_update_event(
-    cluster_id: int, attrid: int
-) -> Generator[None, None, None]:
-    """Suppress AttributeUpdatedEvent for a specific (cluster, attribute) pair."""
-    current = _suppressed_attribute_updates.get()
-    token = _suppressed_attribute_updates.set(current | {(cluster_id, attrid)})
-
-    try:
-        yield
-    finally:
-        _suppressed_attribute_updates.reset(token)
-
-
-@contextlib.contextmanager
-def _set_attribute_update_context(
-    attrid: int,
-    manufacturer_code: int | None,
-) -> Generator[None, None, None]:
-    """Set the attribute update context for preserving manufacturer code.
-
-    This allows quirks that call _update_attribute to preserve the manufacturer code,
-    ensuring manufacturer-specific attributes are stored with the correct cache key.
-    The manufacturer code is only applied when the attribute ID matches.
-    """
-    token = _attribute_update_context.set((attrid, manufacturer_code))
-
-    try:
-        yield
-    finally:
-        _attribute_update_context.reset(token)
 
 
 class ClusterType(enum.IntEnum):
@@ -556,6 +506,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             AttributeUnsupportedEvent.event_type, self._on_attribute_unsupported
         )
 
+        # Attribute IDs (and their manufacturer codes) that are currently being passed
+        # through a quirk's `_update_attribute`, see `_quirk_attribute_update`
+        self._quirk_attribute_updates: dict[int, int | None] = {}
+
     @property
     def _attr_cache(self) -> AttributeCache:
         """Attribute cache accessor."""
@@ -574,6 +528,34 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         for key, value in new_value.items():
             self._update_attribute(key, value)
 
+    @contextlib.contextmanager
+    def _quirk_attribute_update(
+        self, attrid: int, manufacturer_code: int | None
+    ) -> Generator[None, None, None]:
+        """Track a reported or read attribute passing through `_update_attribute`.
+
+        While active, `_update_attribute` calls with this attribute ID on this cluster
+        do not emit an `AttributeUpdatedEvent` (the caller emits the appropriate event
+        instead) and resolve the attribute definition with the manufacturer code, so
+        that manufacturer-specific attributes with conflicting IDs are stored
+        correctly. Other attributes, clusters, and cluster instances updated by the
+        quirk are unaffected.
+
+        This state is intentionally kept on the cluster instance instead of in a
+        context variable: tasks and timers started by a quirk inherit context
+        variables, which would apply the above to unrelated updates performed later.
+        """
+        previous = self._quirk_attribute_updates.get(attrid, UNDEFINED)
+        self._quirk_attribute_updates[attrid] = manufacturer_code
+
+        try:
+            yield
+        finally:
+            if previous is UNDEFINED:
+                del self._quirk_attribute_updates[attrid]
+            else:
+                self._quirk_attribute_updates[attrid] = previous
+
     def _legacy_apply_quirk_attribute_update(
         self, attr_def: foundation.ZCLAttributeDef, value: Any
     ) -> Any | None:
@@ -583,10 +565,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         """
         manufacturer_code = self._get_effective_manufacturer_code(attr_def)
 
-        with (
-            _suppress_attribute_update_event(self.cluster_id, attr_def.id),
-            _set_attribute_update_context(attr_def.id, manufacturer_code),
-        ):
+        with self._quirk_attribute_update(attr_def.id, manufacturer_code):
             self._update_attribute(attr_def.id, value)
 
         try:
@@ -1004,10 +983,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
                 if attr_def is None:
                     # Unknown attribute, update and emit reported event
-                    with (
-                        _suppress_attribute_update_event(self.cluster_id, attr.attrid),
-                        _set_attribute_update_context(attr.attrid, hdr.manufacturer),
-                    ):
+                    with self._quirk_attribute_update(attr.attrid, hdr.manufacturer):
                         self._update_attribute(attr.attrid, value)
 
                     self.emit(
@@ -1376,22 +1352,19 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     def _update_attribute(
         self, attrid: int | t.uint16_t | foundation.ZCLAttributeDef, value: Any
     ) -> None:
-        # Check if AttributeUpdatedEvent should be suppressed for this attribute.
-        # This is used during Report_Attributes handling to allow quirks that update
-        # other clusters or attributes to emit their own events.
-        suppressed = (self.cluster_id, attrid) in _suppressed_attribute_updates.get()
+        # If this attribute ID is currently being passed through a quirk (see
+        # `_quirk_attribute_update`), the `AttributeUpdatedEvent` is suppressed and the
+        # manufacturer code tracked for it is used to find the attribute. Other
+        # attributes and clusters updated by quirks emit their own events.
+        manufacturer_code: int | UndefinedType | None = UNDEFINED
 
-        # Get the manufacturer code from context if set (set by
-        # _legacy_apply_quirk_attribute_update to preserve manufacturer code).
-        # Only apply when the attribute ID matches the original to avoid affecting
-        # other attributes that quirks may update.
-        ctx = _attribute_update_context.get()
+        if isinstance(attrid, int):
+            manufacturer_code = self._quirk_attribute_updates.get(attrid, UNDEFINED)
+
+        suppressed = manufacturer_code is not UNDEFINED
 
         try:
-            if ctx is not None and ctx[0] == attrid:
-                attr_def = self.find_attribute(attrid, manufacturer_code=ctx[1])
-            else:
-                attr_def = self.find_attribute(attrid)
+            attr_def = self.find_attribute(attrid, manufacturer_code=manufacturer_code)
         except KeyError:
             if value is not None:
                 self._attr_cache.set_legacy_value(attrid, value)
