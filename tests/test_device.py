@@ -7,7 +7,12 @@ from unittest.mock import call
 
 import pytest
 
-from tests.conftest import make_node_desc, mock_attribute_reads
+from tests.conftest import (
+    add_initialized_device,
+    make_ieee,
+    make_node_desc,
+    mock_attribute_reads,
+)
 from zigpy import device, endpoint
 import zigpy.application
 from zigpy.datastructures import RequestLimiter
@@ -1807,6 +1812,50 @@ async def test_poll_control_checkin_callback(
                     disable_default_response=True,
                 )
             ]
+
+
+async def test_poll_control_checkin_only_checkin_response_sent(
+    app_mock: zigpy.application.ControllerApplication,
+) -> None:
+    """Test a check-in requesting a Default Response only gets a Check-in Response."""
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.EndDevice)
+    poll_control = dev.endpoints[1].add_input_cluster(PollControl.cluster_id)
+
+    app_mock.send_packet = AsyncMock()
+
+    hdr = foundation.ZCLHeader.cluster(
+        tsn=0x12, command_id=PollControl.ClientCommandDefs.checkin.id
+    )
+    hdr.frame_control = hdr.frame_control.replace(
+        direction=foundation.Direction.Server_to_Client,
+        disable_default_response=False,
+    )
+
+    app_mock.packet_received(
+        t.ZigbeePacket(
+            src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+            src_ep=1,
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+            dst_ep=1,
+            tsn=0x12,
+            profile_id=zha.PROFILE_ID,
+            cluster_id=PollControl.cluster_id,
+            data=t.SerializableBytes(hdr.serialize()),
+            lqi=255,
+            rssi=-30,
+        )
+    )
+
+    # Wait for the check-in callback and any Default Response task to finish
+    await asyncio.gather(*app_mock._tasks, *poll_control._tasks)
+
+    assert len(app_mock.send_packet.mock_calls) == 1
+    packet = app_mock.send_packet.mock_calls[0].args[0]
+    rsp_hdr, _ = foundation.ZCLHeader.deserialize(packet.data.serialize())
+    assert rsp_hdr.frame_control.is_cluster
+    assert rsp_hdr.command_id == PollControl.ServerCommandDefs.checkin_response.id
+    assert rsp_hdr.tsn == 0x12
 
 
 async def test_begin_fast_polling_with_cluster(dev: device.Device) -> None:

@@ -12,7 +12,7 @@ from zigpy import device, types, zcl
 import zigpy.endpoint
 from zigpy.ota import OTA, OtaImagesResult
 from zigpy.zcl import OtaImageAvailableEvent, OtaQueryCacheUpdatedEvent, foundation
-from zigpy.zcl.clusters.general import Basic, KeepAlive, Ota, Time
+from zigpy.zcl.clusters.general import Basic, KeepAlive, Ota, PollControl, Time
 import zigpy.zcl.clusters.security as sec
 from zigpy.zdo import types as zdo_t
 
@@ -763,3 +763,30 @@ def test_ias_zone_enum_subclass_zcl_type():
     """Test `IasZone.zone_type` is an enum16, not a uint16."""
 
     assert sec.IasZone.AttributeDefs.zone_type.zcl_type == foundation.DataTypeId.enum16
+
+
+def test_poll_control_checkin_no_default_response(dev):
+    """Test no Default Response is sent for a check-in, it gets a specific response."""
+    ep = dev.add_endpoint(1)
+    poll_control = ep.add_input_cluster(PollControl.cluster_id)
+
+    checkin_hdr = foundation.ZCLHeader.cluster(
+        tsn=0x12, command_id=PollControl.ClientCommandDefs.checkin.id
+    )
+    checkin_hdr.frame_control = checkin_hdr.frame_control.replace(
+        direction=foundation.Direction.Server_to_Client
+    )
+
+    # A Check-in Response we receive (same command ID, other direction) is unaffected
+    checkin_rsp_hdr = foundation.ZCLHeader.cluster(
+        tsn=0x13, command_id=PollControl.ServerCommandDefs.checkin_response.id
+    )
+
+    with patch.object(poll_control, "send_default_rsp") as send_default_rsp:
+        poll_control.handle_cluster_request(checkin_hdr, [])
+        assert send_default_rsp.mock_calls == []
+
+        poll_control.handle_cluster_request(checkin_rsp_hdr, [True, 0])
+        assert send_default_rsp.mock_calls == [
+            call(checkin_rsp_hdr, foundation.Status.SUCCESS)
+        ]

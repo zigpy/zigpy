@@ -2427,6 +2427,24 @@ class PollControl(Cluster):
     class ClientCommandDefs(BaseCommandDefs):
         checkin: Final = ZCLCommandDef(id=0x0000, schema={})
 
+    def handle_cluster_request(
+        self,
+        hdr: foundation.ZCLHeader,
+        args: list[Any],
+        *,
+        # This parameter is unused and kept only for backwards compatibility
+        dst_addressing: t.AddrMode | None = None,
+    ):
+        # Check-ins are answered with a Check-in Response by the device, a Default
+        # Response must not be sent in addition to a specific response
+        if (
+            hdr.direction == foundation.Direction.Server_to_Client
+            and hdr.command_id == self.ClientCommandDefs.checkin.id
+        ):
+            return
+
+        super().handle_cluster_request(hdr, args, dst_addressing=dst_addressing)
+
 
 class KeepAlive(Cluster):
     """Keep Alive cluster definition."""
