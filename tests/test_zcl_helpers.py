@@ -89,6 +89,24 @@ def test_cache_unsupported_attributes() -> None:
     assert not cache.is_unsupported(HelperCluster.AttributeDefs.attr2)
 
 
+def test_cache_clear_keeps_unsupported_when_asked() -> None:
+    """clear() drops unsupported marks by default and keeps them on request."""
+    endpoint = MagicMock(spec=zigpy.endpoint.Endpoint)
+    cache = HelperCluster(endpoint)._attr_cache
+
+    cache.set_value(HelperCluster.AttributeDefs.attr1, 1)
+    cache.mark_unsupported(HelperCluster.AttributeDefs.attr2)
+
+    # The quirk path: values are stale after a restore, the declarations are not.
+    cache.clear(include_unsupported=False)
+    assert cache.is_unsupported(HelperCluster.AttributeDefs.attr2)
+    with pytest.raises(KeyError):
+        cache.get_value(HelperCluster.AttributeDefs.attr1)
+
+    cache.clear()
+    assert not cache.is_unsupported(HelperCluster.AttributeDefs.attr2)
+
+
 def test_cache_dict_interface() -> None:
     """Test dict-like interface."""
     endpoint = MagicMock(spec=zigpy.endpoint.Endpoint)
@@ -178,3 +196,12 @@ def test_cache_clone() -> None:
     cache2.set_value(attr1, "modified")
     assert cache1.get_value(attr1) == "value1"
     assert cache2.get_value(attr1) == "modified"
+
+    # Destination unsupported marks survive the copy (quirk `__init__` then replace)
+    attr3 = HelperCluster.AttributeDefs.attr3
+    cluster3 = HelperCluster(endpoint)
+    cluster3._attr_cache.mark_unsupported(attr3)
+    cache3 = cache1.clone(cluster3)
+    assert cache3.is_unsupported(attr3)
+    assert cache3.is_unsupported(attr2)
+    assert cache3.get_value(attr1) == "value1"
