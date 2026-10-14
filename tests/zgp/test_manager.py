@@ -429,36 +429,27 @@ async def test_decommissioning_unknown_device(app, manager):
     assert len(app.send_packet.mock_calls) == 0
 
 
-async def test_pairing_encrypts_security_key(app, manager):
-    """GP Pairing must encrypt the security key before sending (A.3.7.1.2.3).
-
-    The key in the GP Pairing should NOT be the plaintext key; it must be
-    encrypted via encrypt_security_key(sourceID, key).
-    """
-
-    source_id = 0x12345678
-    plaintext_key = bytes(range(16))
-
+async def test_pairing_carries_key_in_the_clear(app, manager):
+    """GP Pairing carries the Sink Table key as-is, proxies store it unmodified."""
     dev = GreenPowerDevice(
-        app, application_id=ApplicationID.SrcID, src_id=SrcID(source_id)
+        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
     )
     dev.device_id = DeviceID.OnOffSwitch
-    dev.security_key = t.KeyData(plaintext_key)
+    dev.security_key = t.KeyData(range(16))
     dev.security_level = SecurityLevel.Encrypted
-    dev.security_key_type = SecurityKeyType.NoKey
+    dev.security_key_type = SecurityKeyType.IndividualKey
     dev.frame_counter = t.uint32_t(0)
 
     await manager.send_pairing(dev, add_sink=True)
 
-    assert app.send_packet.call_count == 1
-    sent_data = app.send_packet.call_args[0][0].data.serialize()
+    packet = app.send_packet.mock_calls[0].args[0]
+    _, data = foundation.ZCLHeader.deserialize(packet.data.serialize())
+    pairing, _ = PairingSchema.deserialize(data)
 
-    # The plaintext key must NOT appear in the sent packet
-    assert plaintext_key not in sent_data
-
-    # The encrypted key MUST appear instead
-    encrypted_key, _ = encrypt_security_key(source_id, plaintext_key)
-    assert bytes(encrypted_key) in sent_data
+    assert pairing.options.security_key_present
+    assert pairing.options.security_level == SecurityLevel.Encrypted
+    assert pairing.options.security_key_type == SecurityKeyType.IndividualKey
+    assert pairing.key == t.KeyData(range(16))
 
 
 @pytest.mark.parametrize(

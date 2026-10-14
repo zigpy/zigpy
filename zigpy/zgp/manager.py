@@ -33,7 +33,7 @@ from zigpy.zgp.commands import (
     GPCommissioningReplyOptions,
     GPCommissioningReplyPayload,
 )
-from zigpy.zgp.crypto import decrypt_security_key, encrypt_security_key
+from zigpy.zgp.crypto import decrypt_security_key
 from zigpy.zgp.types import (
     GP_CLUSTER_ID,
     GP_ENDPOINT,
@@ -441,16 +441,10 @@ class GreenPowerManager:
             schema_kwargs["frame_counter"] = t.uint32_t(device.frame_counter)
 
             if device.security_key is not None:
-                # Encrypt the key for transport in the GP Pairing (A.3.7.1.2.3).
-                # Proxies receive the encrypted key and decrypt it with the GP
-                # link key to populate their proxy tables.
-                #
-                # Like decryption during commissioning, this is cheaper inline than the
-                # executor handoff.
-                encrypted_key, _ = encrypt_security_key(
-                    device.src_id, bytes(device.security_key)
-                )
-                schema_kwargs["key"] = t.KeyData(encrypted_key)
+                # The GP Pairing carries the key from the Sink Table in the clear and
+                # proxies store it as-is (A.3.3.5.2). Only GPDFs protect the key with
+                # the TC-LK (A.3.7.1.2.3), the GP Pairing is protected by NWK security.
+                schema_kwargs["key"] = device.security_key
 
         await self._broadcast_command(
             GreenPowerProxy.ClientCommandDefs.pairing, **schema_kwargs
