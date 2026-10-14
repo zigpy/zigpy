@@ -102,6 +102,7 @@ def gp_packet_from_zcl(packet: t.ZigbeePacket) -> t.ZigbeeGpPacket:
         payload=t.SerializableBytes(bytes(command.payload)),
         frame_counter=command.frame_counter,
         security_level=command.options.security_level,
+        rx_after_tx=bool(command.options.rx_after_tx),
         security_key_type=command.options.security_key_type,
         # The proxy performed the security processing and echoes the key type it used
         # (A.3.3.4.1), so a tunneled frame that got this far is verified

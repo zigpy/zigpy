@@ -698,6 +698,18 @@ class ZigbeeGpPacket(BaseDataclassMixin):
     # The outcome of GPDF security processing, `None` if the radio does not report it
     security_status: SecurityStatus | None = dataclasses.field(default=None)
 
+    # Only set for a protected GPDF that was not security processed. Along with the
+    # header fields below, it lets the sink verify and decrypt the GPDF itself
+    mic: basic.uint32_t | None = dataclasses.field(default=None)
+
+    # GPDF NWK header fields that are authenticated by the MIC
+    auto_commissioning: bool | None = dataclasses.field(default=None)
+    rx_after_tx: bool | None = dataclasses.field(default=None)
+
+    # The SecurityKey sub-field: whether an individual rather than a shared key protects
+    # the GPDF (Table 12). Unlike `security_key_type`, it is known before processing
+    individual_key: bool | None = dataclasses.field(default=None)
+
     lqi: basic.uint8_t | None = dataclasses.field(default=None)
     rssi: basic.int8s | None = dataclasses.field(default=None)
 
@@ -721,6 +733,10 @@ class ZigbeeGpPacket(BaseDataclassMixin):
                 self.security_level,
                 self.security_key_type,
                 self.security_status,
+                self.mic,
+                self.auto_commissioning,
+                self.rx_after_tx,
+                self.individual_key,
                 self.lqi,
                 self.rssi,
                 self.gpp_distance,

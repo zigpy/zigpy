@@ -141,6 +141,7 @@ def test_notification(gpd_kwargs, expected_src_id, expected_ieee, expected_endpo
     assert gp_packet.rssi == -70
     assert gp_packet.lqi == 170
     assert gp_packet.gpp_short_addr == 0xAABB
+    assert gp_packet.rx_after_tx is False
 
 
 def test_commissioning_notification():
@@ -166,6 +167,7 @@ def test_commissioning_notification():
     assert gp_packet.rssi == -110
     assert gp_packet.lqi == 0
     assert gp_packet.gpp_short_addr == 0x1234
+    assert gp_packet.rx_after_tx is False
 
 
 def test_commissioning_notification_security_failed():
@@ -249,6 +251,7 @@ def test_notification_from_legacy_proxy():
     assert gp_packet.rssi is None
     assert gp_packet.gpp_distance == 0x42
     assert gp_packet.gpp_short_addr == 0xAABB
+    assert gp_packet.rx_after_tx is True
 
 
 @pytest.mark.parametrize(
