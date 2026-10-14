@@ -13,9 +13,10 @@ from tests.zgp.conftest import wait_for_gp_processing
 from zigpy.device import GreenPowerDevice
 from zigpy.profiles import zgp as zgp_profile
 import zigpy.types as t
+from zigpy.zcl import foundation
+from zigpy.zcl.clusters.greenpower import GreenPowerProxy, PairingSchema
 from zigpy.zgp.commands import GPGenericSwitchConfiguration
 from zigpy.zgp.crypto import encrypt_security_key
-from zigpy.zgp.manager import GreenPowerManager
 from zigpy.zgp.types import (
     GP_CLUSTER_ID,
     GP_ENDPOINT,
@@ -457,31 +458,60 @@ async def test_pairing_encrypts_security_key(app, manager):
     assert bytes(encrypted_key) in sent_data
 
 
-def test_client_frame():
-    frame = GreenPowerManager._build_zcl_frame(
-        command_id=0x02, is_client=True, payload=b"\xaa\xbb"
+@pytest.mark.parametrize(
+    ("send", "command"),
+    [
+        (
+            lambda manager: manager.permit_join(time_s=60),
+            GreenPowerProxy.ClientCommandDefs.proxy_commissioning_mode,
+        ),
+        (
+            lambda manager: manager._send_gp_response(
+                source_id=0x12345678,
+                gpd_command_id=GPDCommandID.ChannelConfiguration,
+                gpd_command_payload=bytes([0x14]),
+            ),
+            GreenPowerProxy.ClientCommandDefs.response,
+        ),
+    ],
+)
+async def test_commands_sent_server_to_client(app, manager, send, command):
+    """The sink is the GP cluster server, so commands to proxies are server-to-client."""
+    await send(manager)
+
+    packet = app.send_packet.mock_calls[0].args[0]
+    hdr, data = foundation.ZCLHeader.deserialize(packet.data.serialize())
+
+    assert hdr.frame_control.frame_type == foundation.FrameType.CLUSTER_COMMAND
+    assert hdr.direction == foundation.Direction.Server_to_Client
+    assert hdr.frame_control.disable_default_response
+    assert hdr.command_id == command.id
+    assert hdr.tsn == packet.tsn
+
+    command.schema.deserialize(data)
+
+
+async def test_pairing_sent_server_to_client(app, manager):
+    """GP Pairing (0x01) read client-to-server would be a GP Pairing Search."""
+    dev = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
     )
-    # frame_control: 0x01 (cluster-specific) | 0x10 (disable default resp) = 0x11
-    assert frame[0] == 0x11
-    assert frame[1] == 0x00  # seq_num
-    assert frame[2] == 0x02  # command_id
-    assert frame[3:] == b"\xaa\xbb"
+    dev.device_id = DeviceID.OnOffSwitch
+    dev.security_level = SecurityLevel.NoSecurity
+    dev.security_key_type = SecurityKeyType.NoKey
+    dev.frame_counter = t.uint32_t(0)
 
+    await manager.send_pairing(dev, add_sink=True)
 
-def test_server_frame():
-    frame = GreenPowerManager._build_zcl_frame(
-        command_id=0x00, is_client=False, payload=b"\xcc"
-    )
-    # frame_control: 0x01 | 0x08 (direction) | 0x10 = 0x19
-    assert frame[0] == 0x19
-    assert frame[2] == 0x00
+    packet = app.send_packet.mock_calls[0].args[0]
+    hdr, data = foundation.ZCLHeader.deserialize(packet.data.serialize())
 
+    assert hdr.direction == foundation.Direction.Server_to_Client
+    assert hdr.command_id == GreenPowerProxy.ClientCommandDefs.pairing.id
 
-def test_empty_payload():
-    frame = GreenPowerManager._build_zcl_frame(
-        command_id=0x06, is_client=True, payload=b""
-    )
-    assert len(frame) == 3
+    pairing, _ = PairingSchema.deserialize(data)
+    assert pairing.gpd_id == 0x12345678
+    assert pairing.options.add_sink
 
 
 async def test_channel_request_sends_response(app, manager):

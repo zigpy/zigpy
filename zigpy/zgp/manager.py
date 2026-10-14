@@ -20,11 +20,8 @@ from zigpy.zcl import foundation
 from zigpy.zcl.clusters.greenpower import (
     GreenPowerProxy,
     PairingOptions,
-    PairingSchema,
     ProxyCommissioningModeOptions,
-    ProxyCommissioningModeSchema,
     ResponseOptions,
-    ResponseSchema,
     TempMasterTxChannel,
 )
 from zigpy.zgp.commands import (
@@ -379,25 +376,10 @@ class GreenPowerManager:
             schema_kwargs["window"] = window
 
         try:
-            frame_data = self._build_zcl_frame(
-                command_id=GreenPowerProxy.ClientCommandDefs.proxy_commissioning_mode.id,
-                is_client=True,
-                payload=ProxyCommissioningModeSchema(**schema_kwargs).serialize(),
+            await self._broadcast_command(
+                GreenPowerProxy.ClientCommandDefs.proxy_commissioning_mode,
+                **schema_kwargs,
             )
-
-            packet = t.ZigbeePacket(
-                dst=t.AddrModeAddress(
-                    addr_mode=t.AddrMode.Broadcast,
-                    address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
-                ),
-                dst_ep=t.uint8_t(GP_ENDPOINT),
-                src_ep=t.uint8_t(GP_ENDPOINT),
-                profile_id=t.uint16_t(zgp_profile.PROFILE_ID),
-                cluster_id=t.uint16_t(GP_CLUSTER_ID),
-                data=t.SerializableBytes(frame_data),
-            )
-
-            await self._application.send_packet(packet)
         except Exception:  # noqa: BLE001
             LOGGER.warning(
                 "Failed to send GP Proxy Commissioning Mode",
@@ -472,25 +454,9 @@ class GreenPowerManager:
                 schema_kwargs["key"] = t.KeyData(encrypted_key)
 
         try:
-            frame_data = self._build_zcl_frame(
-                command_id=GreenPowerProxy.ClientCommandDefs.pairing.id,
-                is_client=True,
-                payload=PairingSchema(**schema_kwargs).serialize(),
+            await self._broadcast_command(
+                GreenPowerProxy.ClientCommandDefs.pairing, **schema_kwargs
             )
-
-            packet = t.ZigbeePacket(
-                dst=t.AddrModeAddress(
-                    addr_mode=t.AddrMode.Broadcast,
-                    address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
-                ),
-                dst_ep=t.uint8_t(GP_ENDPOINT),
-                src_ep=t.uint8_t(GP_ENDPOINT),
-                profile_id=t.uint16_t(zgp_profile.PROFILE_ID),
-                cluster_id=t.uint16_t(GP_CLUSTER_ID),
-                data=t.SerializableBytes(frame_data),
-            )
-
-            await self._application.send_packet(packet)
             LOGGER.debug(
                 "Sent GP Pairing for 0x%08X (add_sink=%s)",
                 device.src_id,
@@ -516,41 +482,22 @@ class GreenPowerManager:
         channel = self._application.state.network_info.channel
         temp_master = proxy_nwk or self._application.state.node_info.nwk
 
-        response = ResponseSchema(
-            options=ResponseOptions(
-                application_id=ApplicationID.SrcID,
-                transmit_on_endpoint_match=0,
-                _reserved=0,
-            ),
-            temp_master_short_addr=t.uint16_t(temp_master),
-            temp_master_tx_channel=TempMasterTxChannel(
-                transmit_channel=t.uint4_t(channel - 11), _reserved=0
-            ),
-            gpd_id=SrcID(source_id),
-            gpd_command_id=GPDCommandID(gpd_command_id),
-            gpd_command_payload=t.LVBytes(gpd_command_payload),
-        )
-
         try:
-            frame_data = self._build_zcl_frame(
-                command_id=GreenPowerProxy.ClientCommandDefs.response.id,
-                is_client=True,
-                payload=response.serialize(),
-            )
-
-            packet = t.ZigbeePacket(
-                dst=t.AddrModeAddress(
-                    addr_mode=t.AddrMode.Broadcast,
-                    address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
+            await self._broadcast_command(
+                GreenPowerProxy.ClientCommandDefs.response,
+                options=ResponseOptions(
+                    application_id=ApplicationID.SrcID,
+                    transmit_on_endpoint_match=0,
+                    _reserved=0,
                 ),
-                dst_ep=t.uint8_t(GP_ENDPOINT),
-                src_ep=t.uint8_t(GP_ENDPOINT),
-                profile_id=t.uint16_t(zgp_profile.PROFILE_ID),
-                cluster_id=t.uint16_t(GP_CLUSTER_ID),
-                data=t.SerializableBytes(frame_data),
+                temp_master_short_addr=t.uint16_t(temp_master),
+                temp_master_tx_channel=TempMasterTxChannel(
+                    transmit_channel=t.uint4_t(channel - 11), _reserved=0
+                ),
+                gpd_id=SrcID(source_id),
+                gpd_command_id=GPDCommandID(gpd_command_id),
+                gpd_command_payload=t.LVBytes(gpd_command_payload),
             )
-
-            await self._application.send_packet(packet)
             LOGGER.debug(
                 "Sent GP Response (cmd=0x%02X) for GPD 0x%08X via proxy 0x%04X",
                 gpd_command_id,
@@ -596,25 +543,32 @@ class GreenPowerManager:
 
     # --- Helpers ---
 
-    @staticmethod
-    def _build_zcl_frame(command_id: int, is_client: bool, payload: bytes) -> bytes:
-        """Build a ZCL frame for GP cluster commands."""
-        direction = (
-            foundation.Direction.Client_to_Server
-            if is_client
-            else foundation.Direction.Server_to_Client
-        )
+    async def _broadcast_command(
+        self, command: foundation.ZCLCommandDef, **kwargs: Any
+    ) -> None:
+        """Broadcast a GP cluster command from the sink to all proxies."""
+        tsn = self._application.get_sequence()
 
-        hdr = foundation.ZCLHeader(
-            frame_control=foundation.FrameControl(
-                frame_type=foundation.FrameType.CLUSTER_COMMAND,
-                is_manufacturer_specific=False,
-                direction=direction,
-                disable_default_response=True,
-                reserved=0b000,
-            ),
-            tsn=0,
-            command_id=command_id,
+        # The sink implements the server side of the GP cluster and the proxies the
+        # client side, so commands to proxies go server-to-client (Table 37)
+        hdr = foundation.ZCLHeader.cluster(
+            tsn=tsn,
+            command_id=command.id,
+            direction=foundation.Direction.Server_to_Client,
         )
+        request = command.schema(**kwargs)
 
-        return hdr.serialize() + payload
+        await self._application.send_packet(
+            t.ZigbeePacket(
+                dst=t.AddrModeAddress(
+                    addr_mode=t.AddrMode.Broadcast,
+                    address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
+                ),
+                dst_ep=t.uint8_t(GP_ENDPOINT),
+                src_ep=t.uint8_t(GP_ENDPOINT),
+                tsn=t.uint8_t(tsn),
+                profile_id=t.uint16_t(zgp_profile.PROFILE_ID),
+                cluster_id=t.uint16_t(GP_CLUSTER_ID),
+                data=t.SerializableBytes(hdr.serialize() + request.serialize()),
+            )
+        )
