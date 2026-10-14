@@ -211,6 +211,10 @@ class GreenPowerManager:
             if comm.extended_options.key_present and comm.security_key is not None:
                 if comm.extended_options.key_encrypted and comm.key_mic is not None:
                     mic_bytes = struct.pack("<I", comm.key_mic)
+
+                    # AES-CCM over 16 bytes takes ~20 us on a CM4. Offloading it to an
+                    # executor would cost ~200 us for the thread handoff alone, mostly
+                    # on the event loop itself.
                     try:
                         key_data = decrypt_security_key(
                             source_id, bytes(comm.security_key), mic_bytes
@@ -442,6 +446,9 @@ class GreenPowerManager:
                 # Encrypt the key for transport in the GP Pairing (A.3.7.1.2.3).
                 # Proxies receive the encrypted key and decrypt it with the GP
                 # link key to populate their proxy tables.
+                #
+                # Like decryption during commissioning, this is cheaper inline than the
+                # executor handoff.
                 encrypted_key, _ = encrypt_security_key(
                     device.src_id, bytes(device.security_key)
                 )
