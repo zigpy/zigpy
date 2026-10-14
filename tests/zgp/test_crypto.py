@@ -8,6 +8,7 @@ from cryptography.exceptions import InvalidTag
 import pytest
 
 from zigpy.zgp.crypto import (
+    build_gpdf_header,
     build_nonce,
     decrypt_payload,
     decrypt_security_key,
@@ -555,6 +556,57 @@ SPEC_PAYLOAD = b"\x20"
 # NWK ext FC is 0x10 for SecurityLevel 0b10 and 0x18 for 0b11 (A.1.5.4.2.2/.3.2)
 SPEC_HEADER_0B10 = gpdf_header(SPEC_SRC_ID, SPEC_FRAME_COUNTER, 0x10)
 SPEC_HEADER_0B11 = gpdf_header(SPEC_SRC_ID, SPEC_FRAME_COUNTER, 0x18)
+
+
+@pytest.mark.parametrize(
+    (
+        "security_level",
+        "individual_key",
+        "auto_commissioning",
+        "rx_after_tx",
+        "expected",
+    ),
+    [
+        # The headers of the A.1.5.4 test vectors
+        (SecurityLevel.FullFrameCounterAndMIC, False, False, False, SPEC_HEADER_0B10),
+        (SecurityLevel.Encrypted, False, False, False, SPEC_HEADER_0B11),
+        # SecurityKey, Auto-Commissioning and RxAfterTx sub-fields (A.1.4.1.2/.3)
+        (
+            SecurityLevel.Encrypted,
+            True,
+            False,
+            False,
+            gpdf_header(SPEC_SRC_ID, SPEC_FRAME_COUNTER, 0x38),
+        ),
+        (
+            SecurityLevel.Encrypted,
+            False,
+            False,
+            True,
+            gpdf_header(SPEC_SRC_ID, SPEC_FRAME_COUNTER, 0x58),
+        ),
+        (
+            SecurityLevel.Encrypted,
+            False,
+            True,
+            False,
+            b"\xcc" + SPEC_HEADER_0B11[1:],
+        ),
+    ],
+)
+def test_build_gpdf_header(
+    security_level, individual_key, auto_commissioning, rx_after_tx, expected
+):
+    header = build_gpdf_header(
+        SPEC_SRC_ID,
+        SPEC_FRAME_COUNTER,
+        security_level=security_level,
+        individual_key=individual_key,
+        auto_commissioning=auto_commissioning,
+        rx_after_tx=rx_after_tx,
+    )
+
+    assert header == expected
 
 
 def test_payload_encryption_spec_vector():

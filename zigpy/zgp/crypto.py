@@ -36,6 +36,29 @@ def build_nonce(source_id: int, frame_counter: int) -> bytes:
     )
 
 
+def build_gpdf_header(
+    source_id: int,
+    frame_counter: int,
+    *,
+    security_level: SecurityLevel,
+    individual_key: bool,
+    auto_commissioning: bool,
+    rx_after_tx: bool,
+) -> bytes:
+    """Build the NWK header of a protected GPDF sent by a SrcID GPD (A.1.4.1).
+
+    The header is authenticated as CCM* associated data but never transmitted
+    separately, so a sink rebuilds it from the GPDF's fields (A.1.5.4.3.3).
+    """
+    # Data frame, Zigbee protocol version 3, Extended NWK Frame Control present
+    nwk_fc = 0b0000_1100 | (auto_commissioning << 6) | (1 << 7)
+
+    # ApplicationID 0b000, Direction 0b0 (sent by the GPD)
+    ext_nwk_fc = (security_level << 3) | (individual_key << 5) | (rx_after_tx << 6)
+
+    return struct.pack("<BBII", nwk_fc, ext_nwk_fc, source_id, frame_counter)
+
+
 def _key_protection_nonce(
     source_id: int,
     direction: CommunicationDirection,
