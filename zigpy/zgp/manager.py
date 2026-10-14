@@ -46,7 +46,6 @@ from zigpy.zgp.types import (
     SecurityLevel,
     SrcID,
 )
-from zigpy.zgp.util import synthetic_ieee
 
 if TYPE_CHECKING:
     from zigpy.application import ControllerApplication
@@ -55,10 +54,11 @@ LOGGER = logging.getLogger(__name__)
 
 DEFAULT_COMMISSIONING_WINDOW_S: int = 180
 
+# Decommissioning is not one of them: it comes from a registered GPD, which checks its
+# freshness and security first (spec A.3.5.2.4)
 COMMISSIONING_COMMANDS: frozenset[GPDCommandID] = frozenset(
     {
         GPDCommandID.CommissioningRequest,
-        GPDCommandID.DecommissioningRequest,
         GPDCommandID.SuccessReport,
         GPDCommandID.ChannelRequest,
     }
@@ -152,8 +152,6 @@ class GreenPowerManager:
 
         if packet.command_id == GPDCommandID.CommissioningRequest:
             await self._process_commissioning(packet, proxy_nwk)
-        elif packet.command_id == GPDCommandID.DecommissioningRequest:
-            await self._process_decommissioning(packet.src_id)
         elif packet.command_id == GPDCommandID.ChannelRequest:
             await self._process_channel_request(packet, proxy_nwk)
         elif packet.command_id == GPDCommandID.SuccessReport:
@@ -264,27 +262,18 @@ class GreenPowerManager:
 
         LOGGER.info("GP device commissioned: %r", device)
 
-    async def _process_decommissioning(self, source_id: SrcID) -> None:
-        """Process a GP Decommissioning command (0xE1)."""
-        ieee = synthetic_ieee(source_id)
-
-        if ieee not in self._application.devices:
-            LOGGER.debug(
-                "GP Decommissioning for unknown device 0x%08X",
-                source_id,
-            )
-            return
-
-        device = self._application.devices[ieee]
-        assert isinstance(device, GreenPowerDevice)
-
-        await self.send_pairing(device, add_sink=False)
-        await self._application.remove(ieee)
-
-        LOGGER.info(
-            "GP device decommissioned: source_id=0x%08X",
-            source_id,
+    def decommission(self, device: GreenPowerDevice) -> None:
+        """Remove a GPD whose Decommissioning command (0xE1) passed its checks."""
+        self._create_task(
+            self._decommission(device),
+            f"gp_process_command-0x{GPDCommandID.DecommissioningRequest:02x}",
         )
+
+    async def _decommission(self, device: GreenPowerDevice) -> None:
+        await self.send_pairing(device, add_sink=False)
+        await self._application.remove(device.ieee)
+
+        LOGGER.info("GP device decommissioned: %r", device)
 
     async def _process_channel_request(
         self,

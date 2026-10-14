@@ -397,6 +397,12 @@ class GreenPowerDevice(BaseDevice):
         if packet.frame_counter is not None:
             self.frame_counter = packet.frame_counter
 
+        # A Decommissioning command is only acted upon once it passes the freshness and
+        # security checks above (spec A.3.5.2.4)
+        if packet.command_id == GPDCommandID.DecommissioningRequest:
+            self._application.green_power.decommission(self)
+            return
+
         command: t.Struct | None
 
         if packet.command_id in GPD_COMMAND_SCHEMAS:

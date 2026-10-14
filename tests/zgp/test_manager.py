@@ -6,6 +6,8 @@ import asyncio
 import struct
 from unittest.mock import call
 
+import pytest
+
 from tests.async_mock import AsyncMock
 from tests.zgp.conftest import wait_for_gp_processing
 from zigpy.device import GreenPowerDevice
@@ -287,26 +289,103 @@ async def test_commissioning_with_outgoing_counter_zero(app, manager):
     assert dev.frame_counter == 0
 
 
-async def test_decommission_known_device(app, manager):
-    """Decommissioning a known device should remove it."""
+@pytest.mark.parametrize(
+    (
+        "frame_counter",
+        "security_level",
+        "security_key_type",
+        "security_status",
+        "removed",
+    ),
+    [
+        (
+            11,
+            SecurityLevel.FullFrameCounterAndMIC,
+            SecurityKeyType.IndividualKey,
+            SecurityStatus.SecuritySuccess,
+            True,
+        ),
+        # Replayed frame counter
+        (
+            10,
+            SecurityLevel.FullFrameCounterAndMIC,
+            SecurityKeyType.IndividualKey,
+            SecurityStatus.SecuritySuccess,
+            False,
+        ),
+        # Unprotected frame for a GPD commissioned with security
+        (
+            11,
+            SecurityLevel.NoSecurity,
+            SecurityKeyType.NoKey,
+            SecurityStatus.NoSecurity,
+            False,
+        ),
+        # Another key type
+        (
+            11,
+            SecurityLevel.FullFrameCounterAndMIC,
+            SecurityKeyType.NWKKey,
+            SecurityStatus.SecuritySuccess,
+            False,
+        ),
+        # Failed security processing
+        (
+            11,
+            SecurityLevel.FullFrameCounterAndMIC,
+            SecurityKeyType.IndividualKey,
+            SecurityStatus.AuthFailure,
+            False,
+        ),
+    ],
+)
+async def test_decommissioning(
+    app,
+    manager,
+    frame_counter,
+    security_level,
+    security_key_type,
+    security_status,
+    removed,
+):
+    """Decommissioning is only acted upon if it passes the checks (A.3.5.2.4)."""
     dev = GreenPowerDevice(
         app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
     )
-    dev.security_level = SecurityLevel.NoSecurity
-    dev.security_key_type = SecurityKeyType.NoKey
+    dev.device_id = DeviceID.OnOffSwitch
+    dev.security_key = t.KeyData(range(16))
+    dev.security_level = SecurityLevel.FullFrameCounterAndMIC
+    dev.security_key_type = SecurityKeyType.IndividualKey
+    dev.frame_counter = t.uint32_t(10)
     app.devices[dev.ieee] = dev
 
-    await manager._process_decommissioning(SrcID(0x12345678))
+    app.gp_packet_received(
+        t.ZigbeeGpPacket(
+            application_id=ApplicationID.SrcID,
+            src_id=SrcID(0x12345678),
+            command_id=GPDCommandID.DecommissioningRequest,
+            frame_counter=t.uint32_t(frame_counter),
+            security_level=security_level,
+            security_key_type=security_key_type,
+            security_status=security_status,
+        )
+    )
+    await wait_for_gp_processing()
 
-    assert synthetic_ieee(0x12345678) not in app.devices
-    assert call("device_removed", dev) in app.listener_event.mock_calls
-    # GP Pairing (remove) should be sent
-    assert app.send_packet.call_count >= 1
+    assert (dev.ieee not in app.devices) is removed
+    assert (call("device_removed", dev) in app.listener_event.mock_calls) is removed
+
+    # GP Pairing (remove) is sent only for an accepted command
+    assert app.send_packet.call_count == int(removed)
 
 
-async def test_decommission_unknown_device(app, manager):
-    """Decommissioning unknown device should be a no-op."""
-    await manager._process_decommissioning(SrcID(0xDEADBEEF))
+async def test_decommissioning_unknown_device(app, manager):
+    """Decommissioning from an unknown GPD is ignored."""
+    app.gp_packet_received(
+        make_gp_packet(0xDEADBEEF, GPDCommandID.DecommissioningRequest)
+    )
+    await wait_for_gp_processing()
+
     assert len(app.send_packet.mock_calls) == 0
 
 
@@ -674,24 +753,6 @@ async def test_gp_packet_routes_commissioning(app, manager):
     await wait_for_gp_processing()
 
     assert synthetic_ieee(0xAAAA1111) in app.devices
-
-
-async def test_gp_packet_routes_decommissioning(app, manager):
-    """A DecommissioningRequest (0xE1) GPDF removes the device."""
-
-    dev = GreenPowerDevice(
-        app, application_id=ApplicationID.SrcID, src_id=SrcID(0xBBBB2222)
-    )
-    dev.security_level = SecurityLevel.NoSecurity
-    dev.security_key_type = SecurityKeyType.NoKey
-    app.devices[dev.ieee] = dev
-
-    app.gp_packet_received(
-        make_gp_packet(0xBBBB2222, GPDCommandID.DecommissioningRequest)
-    )
-    await wait_for_gp_processing()
-
-    assert synthetic_ieee(0xBBBB2222) not in app.devices
 
 
 async def test_gp_packet_routes_channel_request(app, manager):
