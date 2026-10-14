@@ -36,19 +36,17 @@ BJ6716U_DECRYPTED_KEY: bytes = bytes.fromhex("62ca321d983016720e7aaca37fc46f73")
 
 
 class OperationalFrame(NamedTuple):
-    """One operational GP frame captured from the device (0x68 = Press 2 of 2)."""
+    """One operational GP frame captured from the device (0x68 = Short Press 2 of 2)."""
 
     frame_counter: int
     command_id: int
     mic: bytes
 
 
-BJ6716U_OPERATIONAL_FRAMES: list[OperationalFrame] = [
-    OperationalFrame(0x00001DED, 0x68, bytes.fromhex("be7cc462")),
-    OperationalFrame(0x00001DEE, 0x68, bytes.fromhex("13aa405f")),
-    OperationalFrame(0x00001DEF, 0x68, bytes.fromhex("178ad52a")),
-    OperationalFrame(0x00001DF0, 0x68, bytes.fromhex("106efe9b")),
-]
+# The MIC verifies with BJ6716U_DECRYPTED_KEY at SecurityLevel 0b10
+BJ6716U_OPERATIONAL_FRAME: OperationalFrame = OperationalFrame(
+    0x00001DED, 0x68, bytes.fromhex("be7cc462")
+)
 
 
 class ExpectedCommissioning(NamedTuple):

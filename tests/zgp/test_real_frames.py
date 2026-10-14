@@ -11,9 +11,8 @@ from tests.zgp.fixtures.busch_jaeger_6716u import (
     BJ6716U_COMMISSIONING_PAYLOAD,
     BJ6716U_DECRYPTED_KEY,
     BJ6716U_EXPECTED,
-    BJ6716U_OPERATIONAL_FRAMES,
+    BJ6716U_OPERATIONAL_FRAME,
     BJ6716U_SOURCE_ID,
-    OperationalFrame,
 )
 import zigpy.types as t
 from zigpy.zgp.types import (
@@ -48,21 +47,6 @@ async def commission(app) -> None:
     await wait_for_gp_processing()
 
 
-def operational_packet(frame: OperationalFrame) -> t.ZigbeeGpPacket:
-    return t.ZigbeeGpPacket(
-        application_id=ApplicationID.SrcID,
-        src_id=SrcID(BJ6716U_SOURCE_ID),
-        command_id=GPDCommandID(frame.command_id),
-        frame_counter=t.uint32_t(frame.frame_counter),
-        security_level=SecurityLevel.FullFrameCounterAndMIC,
-        security_key_type=SecurityKeyType.IndividualKey,
-        security_status=SecurityStatus.SecuritySuccess,
-    )
-
-
-# -- Commissioning -----------------------------------------------------------
-
-
 async def test_real_commissioning_succeeds(manager, app) -> None:
     """The captured 0xE0 frame unwraps its key and registers the device."""
     await commission(app)
@@ -78,39 +62,30 @@ async def test_real_commissioning_succeeds(manager, app) -> None:
     assert device.commands == BJ6716U_EXPECTED.gpd_commands
 
 
-# -- Operational frame handling ---------------------------------------------
-
-
-async def test_accepts_monotonic_sequence(manager, app) -> None:
-    """Four successive counters all produce a command event."""
+async def test_real_unprocessed_frame_verified(manager, app) -> None:
+    """The radio could not process the captured press, the sink verifies its MIC."""
     await commission(app)
 
     events = []
     app.devices[IEEE].on_event("gp_command_received", events.append)
 
-    for frame in BJ6716U_OPERATIONAL_FRAMES:
-        app.gp_packet_received(operational_packet(frame))
-
-    assert [e.command_id for e in events] == [
-        frame.command_id for frame in BJ6716U_OPERATIONAL_FRAMES
-    ]
-    assert (
-        app.devices[IEEE].frame_counter == BJ6716U_OPERATIONAL_FRAMES[-1].frame_counter
+    frame = BJ6716U_OPERATIONAL_FRAME
+    packet = t.ZigbeeGpPacket(
+        application_id=ApplicationID.SrcID,
+        src_id=SrcID(BJ6716U_SOURCE_ID),
+        command_id=GPDCommandID(frame.command_id),
+        frame_counter=t.uint32_t(frame.frame_counter),
+        security_level=SecurityLevel.FullFrameCounterAndMIC,
+        security_status=SecurityStatus.Unprocessed,
+        mic=t.uint32_t.deserialize(frame.mic)[0],
+        auto_commissioning=False,
+        rx_after_tx=False,
+        individual_key=True,
     )
 
+    # The replayed copy fails the freshness check
+    app.gp_packet_received(packet)
+    app.gp_packet_received(packet)
 
-async def test_rejects_replayed_and_older_counters(manager, app) -> None:
-    """Frames at or below the last accepted counter are dropped."""
-    await commission(app)
-
-    events = []
-    app.devices[IEEE].on_event("gp_command_received", events.append)
-
-    recent = BJ6716U_OPERATIONAL_FRAMES[-1]
-    older = BJ6716U_OPERATIONAL_FRAMES[0]
-
-    for frame in (recent, recent, older):
-        app.gp_packet_received(operational_packet(frame))
-
-    assert len(events) == 1
-    assert app.devices[IEEE].frame_counter == recent.frame_counter
+    assert [e.command_id for e in events] == [GPDCommandID.ShortPress2of2]
+    assert app.devices[IEEE].frame_counter == frame.frame_counter

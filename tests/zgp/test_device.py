@@ -6,12 +6,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from tests.zgp.fixtures.busch_jaeger_6716u import (
-    BJ6716U_DECRYPTED_KEY,
-    BJ6716U_EXPECTED,
-    BJ6716U_OPERATIONAL_FRAMES,
-    BJ6716U_SOURCE_ID,
-)
 from zigpy.device import GreenPowerDevice
 import zigpy.types as t
 from zigpy.zgp.commands import GPGenericSwitchConfiguration, GPStepPayload
@@ -58,14 +52,13 @@ def make_packet(
     rssi: int = -50,
     application_id: ApplicationID = ApplicationID.SrcID,
     endpoint: int | None = None,
-    src_id: int = 0x12345678,
     mic: int | None = None,
     individual_key: bool | None = None,
 ) -> t.ZigbeeGpPacket:
     return t.ZigbeeGpPacket(
         timestamp=TIMESTAMP + offset,
         application_id=application_id,
-        src_id=SrcID(src_id) if application_id is ApplicationID.SrcID else None,
+        src_id=SrcID(0x12345678) if application_id is ApplicationID.SrcID else None,
         ieee=IEEE if application_id is ApplicationID.IEEE else None,
         endpoint=None if endpoint is None else t.uint8_t(endpoint),
         command_id=command_id,
@@ -330,37 +323,6 @@ def test_ieee_frame_endpoint_passthrough() -> None:
 
     assert len(events) == 1
     assert events[0].endpoint_id == 5
-
-
-def test_unprocessed_frame_real_capture() -> None:
-    """A Busch-Jaeger 6716 U frame the radio did not process is verified by the sink."""
-    device = GreenPowerDevice(
-        None, application_id=ApplicationID.SrcID, src_id=SrcID(BJ6716U_SOURCE_ID)
-    )
-    device.security_key = t.KeyData(BJ6716U_DECRYPTED_KEY)
-    device.security_level = SecurityLevel.FullFrameCounterAndMIC
-    device.security_key_type = SecurityKeyType.IndividualKey
-    device.frame_counter = t.uint32_t(BJ6716U_EXPECTED.outgoing_counter)
-
-    events = []
-    device.on_event("gp_command_received", events.append)
-
-    frame = BJ6716U_OPERATIONAL_FRAMES[0]
-    device.packet_received(
-        make_packet(
-            frame.frame_counter,
-            src_id=BJ6716U_SOURCE_ID,
-            command_id=GPDCommandID(frame.command_id),
-            security_level=SecurityLevel.FullFrameCounterAndMIC,
-            security_key_type=SecurityKeyType.NoKey,
-            security_status=SecurityStatus.Unprocessed,
-            mic=int.from_bytes(frame.mic, "little"),
-            individual_key=True,
-        )
-    )
-
-    assert [e.command_id for e in events] == [GPDCommandID.ShortPress2of2]
-    assert device.frame_counter == frame.frame_counter
 
 
 def encrypted_packet(frame_counter: int, **kwargs) -> t.ZigbeeGpPacket:
