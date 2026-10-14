@@ -1058,6 +1058,17 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             )
         )
 
+        await self.add_endpoint(
+            zdo_types.SimpleDescriptor(
+                endpoint=zigpy.zgp.types.GP_ENDPOINT,
+                profile=zigpy.profiles.zgp.PROFILE_ID,
+                device_type=zigpy.profiles.zgp.DeviceType.COMBO_BASIC,
+                device_version=0b0000,
+                input_clusters=[zigpy.zgp.types.GP_CLUSTER_ID],
+                output_clusters=[zigpy.zgp.types.GP_CLUSTER_ID],
+            )
+        )
+
         for endpoint in self.config[conf.CONF_ADDITIONAL_ENDPOINTS]:
             await self.add_endpoint(endpoint)
 
