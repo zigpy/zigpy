@@ -24,8 +24,10 @@ import zigpy.config as conf
 from zigpy.const import INTERFERENCE_MESSAGE
 from zigpy.datastructures import RequestLimiter
 import zigpy.device
+from zigpy.device import BaseDevice, GreenPowerDevice, ZigbeeDevice
 import zigpy.endpoint
 import zigpy.exceptions
+from zigpy.exceptions import GPSecurityProcessingFailed
 import zigpy.group
 import zigpy.listeners
 import zigpy.ota
@@ -38,7 +40,10 @@ import zigpy.zcl
 import zigpy.zdo
 import zigpy.zdo.types as zdo_types
 from zigpy.zgp.manager import GreenPowerManager
+import zigpy.zgp.tunneling
+import zigpy.zgp.types
 from zigpy.zgp.types import GP_CLUSTER_ID, GP_ENDPOINT
+import zigpy.zgp.util
 
 DEFAULT_ENDPOINT_ID = 1
 LOGGER = logging.getLogger(__name__)
@@ -50,6 +55,9 @@ TRANSIENT_CONNECTION_ERRORS = {
 ENERGY_SCAN_WARN_THRESHOLD = 0.75 * 255
 _R = TypeVar("_R")
 _P = ParamSpec("_P")
+
+DeviceResolver = Callable[[BaseDevice], BaseDevice]
+
 
 CHANNEL_CHANGE_BROADCAST_DELAY_S = 1.0
 CHANNEL_CHANGE_SETTINGS_RELOAD_DELAY_S = 1.0
@@ -71,7 +79,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     _probe_configs: list[dict[str, Any]] = []
 
     def __init__(self, config: dict) -> None:
-        self.devices: dict[t.EUI64, zigpy.device.Device] = {}
+        self.devices: dict[t.EUI64, BaseDevice] = {}
         self.state: zigpy.state.State = zigpy.state.State()
         self._listeners = {}
         self._config = self.SCHEMA(config)
@@ -80,9 +88,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._send_sequence = 0
         self._tasks: set[asyncio.Future[Any]] = set()
 
-        self._device_resolver: (
-            Callable[[zigpy.device.Device], zigpy.device.Device] | None
-        ) = None
+        self._device_resolver: DeviceResolver | None = None
         self._uninitialized_packet_handler: Callable[..., None] | None = None
 
         self._watchdog_task: asyncio.Task | None = None
@@ -98,7 +104,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.green_power: GreenPowerManager = GreenPowerManager(self)
 
         self._req_listeners: collections.defaultdict[
-            zigpy.device.Device | zigpy.listeners.AnyDeviceType,
+            BaseDevice | zigpy.listeners.AnyDeviceType,
             collections.deque[zigpy.listeners.BaseRequestListener],
         ] = collections.defaultdict(lambda: collections.deque([]))
 
@@ -114,7 +120,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     def wrap_callback(
         self,
-        src: zigpy.device.Device | zigpy.listeners.AnyDeviceType,
+        src: BaseDevice | zigpy.listeners.AnyDeviceType,
         callback: typing.Callable[_P, Any],
     ) -> typing.Callable[_P, None]:
         """Wrap a callback to log exceptions and run as task if needed."""
@@ -349,8 +355,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         config: dict,
         auto_form: bool = False,
         start_radio: bool = True,
-        device_resolver: Callable[[zigpy.device.Device], zigpy.device.Device]
-        | None = None,
+        device_resolver: DeviceResolver | None = None,
         uninitialized_packet_handler: Callable[..., None] | None = None,
     ) -> ControllerApplication:
         """Create new instance of application controller."""
@@ -617,17 +622,17 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             except Exception:  # noqa: BLE001
                 LOGGER.warning("Failed to disconnect from database", exc_info=True)
 
-    def add_device(self, ieee: t.EUI64, nwk: t.NWK) -> zigpy.device.Device:
+    def add_device(self, ieee: t.EUI64, nwk: t.NWK) -> ZigbeeDevice:
         """Creates a zigpy `Device` object with the provided IEEE and NWK addresses."""
 
         assert isinstance(ieee, t.EUI64)
         # TODO: Shut down existing device
 
-        dev = zigpy.device.Device(self, ieee, nwk)
+        dev = ZigbeeDevice(self, ieee, nwk)
         self.devices[ieee] = dev
         return dev
 
-    def _finalize_device(self, device: zigpy.device.Device) -> zigpy.device.Device:
+    def _finalize_device(self, device: BaseDevice) -> BaseDevice:
         """Resolve a device, persist to DB, and register the device."""
         self.listener_event("raw_device_initialized", device)
 
@@ -642,16 +647,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         return resolved
 
-    def _resolve_device(self, device: zigpy.device.Device) -> zigpy.device.Device:
+    def _resolve_device(self, device: BaseDevice) -> BaseDevice:
         """Resolve a freshly-constructed device into its final object."""
         if self._device_resolver is not None:
             return self._device_resolver(device)
         return device
 
-    def register_device_resolver(
-        self,
-        resolver: Callable[[zigpy.device.Device], zigpy.device.Device],
-    ) -> None:
+    def register_device_resolver(self, resolver: DeviceResolver) -> None:
         """Replace the callable that turns a raw device into its final object."""
         self._device_resolver = resolver
 
@@ -661,7 +663,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         """Register a handler for packets from not-yet-initialized devices."""
         self._uninitialized_packet_handler = handler
 
-    def device_initialized(self, device: zigpy.device.Device) -> None:
+    def device_initialized(self, device: BaseDevice) -> None:
         """Used by a device to signal that it is initialized"""
         LOGGER.debug("Device is initialized %s", device)
 
@@ -673,8 +675,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     async def _device_reinterviewed(
         self,
-        old_device: zigpy.device.Device,
-        shadow: zigpy.device.Device,
+        old_device: ZigbeeDevice,
+        shadow: ZigbeeDevice,
     ) -> None:
         """Swap an old device with a successfully re-interviewed shadow.
 
@@ -754,6 +756,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             LOGGER.debug("Device not found for removal: %s", ieee)
             return
 
+        if not isinstance(dev, ZigbeeDevice):
+            # A GPD is not on the network so there is nothing to notify
+            LOGGER.info("Removing device 0x%04x (%s)", dev.nwk, ieee)
+            self.devices.pop(ieee, None)
+            self.listener_event("device_removed", dev)
+            return
+
         dev.cancel_initialization()
 
         LOGGER.info("Removing device 0x%04x (%s)", dev.nwk, ieee)
@@ -789,7 +798,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     async def _remove_device(
         self,
-        device: zigpy.device.Device,
+        device: ZigbeeDevice,
         remove_children: bool = True,
         rejoin: bool = False,
     ) -> None:
@@ -808,7 +817,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     def deserialize(
         self,
-        sender: zigpy.device.Device,
+        sender: ZigbeeDevice,
         endpoint_id: t.uint8_t,
         cluster_id: t.uint16_t,
         data: bytes,
@@ -834,6 +843,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             LOGGER.info("New device 0x%04x (%s) joined the network", nwk, ieee)
             new_join = True
         else:
+            if not isinstance(dev, ZigbeeDevice):
+                LOGGER.warning(
+                    "Ignoring join announcement for non-Zigbee device %s", dev
+                )
+                return
+
             if handle_rejoin:
                 LOGGER.info("Device 0x%04x (%s) joined the network", nwk, ieee)
 
@@ -870,6 +885,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         try:
             dev = self.get_device(ieee=ieee)
         except KeyError:
+            return
+
+        if not isinstance(dev, ZigbeeDevice):
+            LOGGER.warning("Ignoring leave announcement for non-Zigbee device %s", dev)
             return
 
         dev._concurrent_requests_semaphore.cancel_waiting(
@@ -972,7 +991,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         raise NotImplementedError  # pragma: no cover
 
     @abc.abstractmethod
-    async def force_remove(self, dev: zigpy.device.Device):
+    async def force_remove(self, dev: ZigbeeDevice):
         """Instructs the radio to remove a device with a lower-level leave command. Not all
         radios implement this.
         """
@@ -1072,7 +1091,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         raise NotImplementedError  # pragma: no cover
 
-    def build_source_route_to(self, dest: zigpy.device.Device) -> list[t.NWK] | None:
+    def build_source_route_to(self, dest: ZigbeeDevice) -> list[t.NWK] | None:
         """Compute a source route to the destination device."""
 
         if dest.relays is None:
@@ -1083,7 +1102,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     async def request(
         self,
-        device: zigpy.device.Device,
+        device: ZigbeeDevice,
         profile: t.uint16_t,
         cluster: t.uint16_t,
         src_ep: t.uint8_t,
@@ -1097,6 +1116,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         ask_for_ack: bool | None = None,
         priority: int = t.PacketPriority.NORMAL,
         force_route_discovery: bool = False,
+        aps_encryption: bool = False,
     ) -> tuple[zigpy.zcl.foundation.Status, str]:
         """Submit and send data out as an unicast transmission.
         :param device: destination device
@@ -1110,6 +1130,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         :param use_ieee: use EUI64 for destination addressing
         :param extended_timeout: instruct the radio to use slower APS retries
         :param force_route_discovery: force route re-discovery for this transmission
+        :param aps_encryption: APS encrypt the transmission with the device's link key
         """
 
         if use_ieee:
@@ -1140,10 +1161,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if force_route_discovery:
             tx_options |= t.TransmitOptions.FORCE_ROUTE_DISCOVERY
 
-        if cluster == zigpy.zcl.clusters.general.ZigbeeDirectConfiguration.cluster_id:
-            # All interactions with the Zigbee Direct Configuration cluster require
-            # APS encryption (with the Trust Center link key, in a centralized
-            # security network)
+        if aps_encryption:
             tx_options |= t.TransmitOptions.APS_Encryption
 
         await self.send_packet(
@@ -1313,6 +1331,27 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         assert packet.src is not None
         assert packet.dst is not None
 
+        # Tunneled GP notifications arrive with the GPD's alias (or the forwarding
+        # proxy's own address) as the NWK source, so they must be diverted before
+        # the source device is resolved
+        if zigpy.zgp.tunneling.is_gp_tunnel_packet(packet):
+            try:
+                gp_packet = zigpy.zgp.tunneling.gp_packet_from_zcl(packet)
+            except GPSecurityProcessingFailed:
+                LOGGER.debug(
+                    "Proxy could not decrypt the tunneled GPDF %r",
+                    packet,
+                    exc_info=True,
+                )
+            except ValueError:
+                LOGGER.warning(
+                    "Failed to convert tunneled GP packet %r", packet, exc_info=True
+                )
+            else:
+                self.gp_packet_received(gp_packet)
+
+            return None
+
         # Peek into ZDO packets to handle possible ZDO notifications
         if zigpy.zdo.ZDO_ENDPOINT in (packet.src_ep, packet.dst_ep):
             self._maybe_parse_zdo(packet)
@@ -1334,6 +1373,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                     f"discover_unknown_device_from_packet-nwk={packet.src.address!r}",
                 )
 
+            return None
+
+        if not isinstance(device, ZigbeeDevice):
+            LOGGER.warning(
+                "Received a Zigbee packet from non-Zigbee device %s: %r", device, packet
+            )
             return None
 
         self.listener_event(
@@ -1400,9 +1445,37 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if not device.initializing and not device.is_initialized:
             device.schedule_initialize()
 
+    def gp_packet_received(self, packet: t.ZigbeeGpPacket) -> None:
+        """Notify zigpy of a received Green Power packet.
+
+        Radio libraries with a local GP stub call this directly with decoded GPDFs;
+        GP notifications tunneled over ZCL by remote proxies also converge here.
+        """
+        LOGGER.debug("Received a GP packet: %r", packet)
+
+        if packet.application_id is zigpy.zgp.types.ApplicationID.SrcID:
+            ieee = zigpy.zgp.util.synthetic_ieee(packet.src_id)
+        else:
+            ieee = packet.ieee
+
+        if ieee not in self.devices:
+            # Commissioning is what registers a GPD, and is not implemented yet
+            LOGGER.debug("Received a GP packet from an unknown device: %r", packet)
+            return
+
+        device = self.devices[ieee]
+
+        if not isinstance(device, GreenPowerDevice):
+            LOGGER.warning(
+                "Received a GP packet for non-GP device %s: %r", device, packet
+            )
+            return
+
+        device.packet_received(packet)
+
     def handle_message(
         self,
-        sender: zigpy.device.Device,
+        sender: ZigbeeDevice,
         profile: int,
         cluster: int,
         src_ep: int,
@@ -1433,9 +1506,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             )
         )
 
-    def get_device_with_address(
-        self, address: t.AddrModeAddress
-    ) -> zigpy.device.Device:
+    def get_device_with_address(self, address: t.AddrModeAddress) -> BaseDevice:
         """Gets a `Device` object using the provided address mode address."""
 
         if address.addr_mode == t.AddrMode.NWK:
@@ -1495,7 +1566,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     def register_callback_listener(
         self,
-        src: zigpy.device.Device | zigpy.listeners.AnyDeviceType,
+        src: BaseDevice | zigpy.listeners.AnyDeviceType,
         filters: list[zigpy.listeners.MatcherType],
         callback: typing.Callable[
             [
@@ -1529,7 +1600,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     @contextlib.contextmanager
     def callback_for_response(
         self,
-        src: zigpy.device.Device | zigpy.listeners.AnyDeviceType,
+        src: BaseDevice | zigpy.listeners.AnyDeviceType,
         filters: list[zigpy.listeners.MatcherType],
         callback: typing.Callable[
             [
@@ -1552,7 +1623,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     @contextlib.contextmanager
     def wait_for_response(
         self,
-        src: zigpy.device.Device | zigpy.listeners.AnyDeviceType,
+        src: BaseDevice | zigpy.listeners.AnyDeviceType,
         filters: list[zigpy.listeners.MatcherType],
     ) -> typing.Any:
         """Context manager to wait for a Zigbee response."""
@@ -1752,9 +1823,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._send_sequence = (self._send_sequence + 1) % 256
         return self._send_sequence
 
-    def get_device(
-        self, ieee: t.EUI64 = None, nwk: t.NWK | int = None
-    ) -> zigpy.device.Device:
+    def get_device(self, ieee: t.EUI64 = None, nwk: t.NWK | int = None) -> BaseDevice:
         """Looks up a device in the `devices` dictionary based either on its NWK or IEEE
         address.
         """
@@ -1770,7 +1839,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         # Unlike its IEEE address, a device's NWK address can change at runtime so this
         # is not as simple as building a second mapping
         for dev in self.devices.values():
-            if dev.nwk == nwk:
+            # NWK addressing is Zigbee-only: a GPD's derived NWK alias may collide
+            # with a real device's address (the spec tolerates this)
+            if isinstance(dev, ZigbeeDevice) and dev.nwk == nwk:
                 return dev
 
         raise KeyError(f"Device not found: nwk={nwk!r}, ieee={ieee!r}")
@@ -1803,9 +1874,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         return self._groups
 
     @property
-    def _device(self) -> zigpy.device.Device:
+    def _device(self) -> ZigbeeDevice:
         """The device being controlled."""
-        return self.get_device(ieee=self.state.node_info.ieee)
+        dev = self.get_device(ieee=self.state.node_info.ieee)
+
+        if not isinstance(dev, ZigbeeDevice):
+            raise TypeError(f"Coordinator {dev} is not a Zigbee device")
+
+        return dev
 
     def _persist_coordinator_model_strings_in_db(self) -> None:
         cluster = self._device.endpoints[1].add_input_cluster(

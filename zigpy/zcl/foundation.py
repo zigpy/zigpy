@@ -636,7 +636,10 @@ class DataType(DataTypeInfo, enum.Enum):
 
     @classmethod
     def from_type_id(cls: type[Self], type_id: DataTypeId) -> Self:
-        return cls._data_type_index()[type_id]
+        try:
+            return cls._data_type_index()[type_id]
+        except KeyError:
+            raise ValueError(f"Unknown ZCL data type ID: 0x{type_id:02X}") from None
 
 
 @dataclasses.dataclass()
@@ -781,7 +784,7 @@ class AttributeReportingConfig:
 
             try:
                 data_type = DataType.from_type_id(self.datatype)
-            except KeyError:
+            except ValueError:
                 _LOGGER.warning(
                     "Unknown ZCL type %d, not setting reportable change", self.datatype
                 )
@@ -814,7 +817,7 @@ class AttributeReportingConfig:
 
             try:
                 data_type = DataType.from_type_id(self.datatype)
-            except KeyError:
+            except ValueError:
                 _LOGGER.warning(
                     "Unknown ZCL type %d, cannot read reportable change", self.datatype
                 )

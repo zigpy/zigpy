@@ -239,7 +239,6 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*.py" = [
-    "F811",    # Redefinition of unused name from line N
     "PIE794",  # Class field defined multiple times
     "PLC0206", # Extracting value from dictionary without calling `.items()`
     "PLC0415", # `import` should be at the top-level of a file

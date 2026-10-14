@@ -252,3 +252,17 @@ def test_cv_warn_if_greater(value, limit, should_warn):
         with warnings.catch_warnings():
             warnings.simplefilter("error")
             assert validator(value) == value
+
+
+@pytest.mark.parametrize("value", [0, 0.5, 30, "60"])
+def test_schema_db_commit_interval(value):
+    """Test `database_commit_interval` accepts finite, non-negative values."""
+    config = zigpy.config.ZIGPY_SCHEMA({zigpy.config.CONF_DB_COMMIT_INTERVAL: value})
+    assert config[zigpy.config.CONF_DB_COMMIT_INTERVAL] == float(value)
+
+
+@pytest.mark.parametrize("value", [-1, "inf", float("inf"), "-inf", float("nan")])
+def test_schema_db_commit_interval_invalid(value):
+    """Test `database_commit_interval` rejects negative and non-finite values."""
+    with pytest.raises(vol.Invalid):
+        zigpy.config.ZIGPY_SCHEMA({zigpy.config.CONF_DB_COMMIT_INTERVAL: value})

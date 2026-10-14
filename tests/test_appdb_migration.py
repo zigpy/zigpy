@@ -8,7 +8,7 @@ from aiosqlite.context import contextmanager
 import pytest
 
 from tests.async_mock import AsyncMock, MagicMock, patch
-from tests.conftest import app, make_node_desc  # noqa: F401
+from tests.conftest import make_node_desc
 from tests.test_appdb import make_app_with_db
 import zigpy.appdb
 import zigpy.appdb_schemas
@@ -452,6 +452,7 @@ async def test_v5_to_v7_migration(test_db):
 async def test_migration_missing_tables(app):
     conn = MagicMock()
     conn.close = AsyncMock()
+    conn.in_transaction = False
 
     appdb = zigpy.appdb.PersistingListener(conn, app)
 

@@ -44,6 +44,7 @@ from .types import (  # noqa: F401
     GP_ENDPOINT,
     GP_GROUP_ID,
 )
+from .util import derive_alias, synthetic_ieee  # noqa: F401
 
 # GreenPowerManager is not imported here: it imports
 # zigpy.zcl.clusters.greenpower, which imports this package.

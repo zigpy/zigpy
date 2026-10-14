@@ -1,52 +1,10 @@
-import hashlib
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from tests.conftest import make_app
 from zigpy.ota import OtaImageWithMetadata
-import zigpy.ota.image
-from zigpy.ota.providers import BaseOtaImageMetadata
 from zigpy.zcl.clusters.general import Ota
-
-
-@pytest.fixture
-def image_with_metadata() -> OtaImageWithMetadata:
-    firmware = zigpy.ota.image.OTAImage(
-        header=zigpy.ota.image.OTAImageHeader(
-            upgrade_file_id=zigpy.ota.image.OTAImageHeader.MAGIC_VALUE,
-            file_version=0x12345678,
-            image_type=0x5678,
-            manufacturer_id=0x1234,
-            header_version=256,
-            header_length=60,
-            field_control=zigpy.ota.image.FieldControl.HARDWARE_VERSIONS_PRESENT,
-            minimum_hardware_version=1,
-            maximum_hardware_version=5,
-            stack_version=2,
-            header_string="This is a test header!",
-            image_size=60 + 2 + 4 + 8,
-        ),
-        subelements=[zigpy.ota.image.SubElement(tag_id=0x0000, data=b"fw_image")],
-    )
-
-    metadata = BaseOtaImageMetadata(
-        file_version=0x12345678,
-        manufacturer_id=0x1234,
-        image_type=0x5678,
-        checksum="sha256:" + hashlib.sha256(firmware.serialize()).hexdigest(),
-        file_size=len(firmware.serialize()),
-        manufacturer_names=("manufacturer1", "manufacturer2"),
-        model_names=("model1", "model2"),
-        changelog="Some simple changelog",
-        min_hardware_version=1,
-        max_hardware_version=5,
-        min_current_file_version=0x12345678 - 10,
-        max_current_file_version=0x12345678 - 2,
-        specificity=0,
-    )
-
-    return OtaImageWithMetadata(metadata=metadata, firmware=firmware)
 
 
 def test_ota_mirrored_metadata(image_with_metadata: OtaImageWithMetadata) -> None:

@@ -14,7 +14,7 @@ from zigpy.zcl.foundation import GENERAL_COMMANDS, GeneralCommand, Status as ZCL
 from zigpy.zdo.types import Status as ZDOStatus
 
 if TYPE_CHECKING:
-    from zigpy.device import Device
+    from zigpy.device import ZigbeeDevice
 
 LOGGER = logging.getLogger(__name__)
 
@@ -33,8 +33,8 @@ class Status(enum.IntEnum):
 class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     """An endpoint on a device on the network"""
 
-    def __init__(self, device: Device, endpoint_id: int) -> None:
-        self._device: Device = device
+    def __init__(self, device: ZigbeeDevice, endpoint_id: int) -> None:
+        self._device: ZigbeeDevice = device
         self._endpoint_id: int = endpoint_id
         self._listeners: dict = {}
 
@@ -219,6 +219,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         priority: int | None = None,
         retries: int | None = None,
         retry_delay: float | None = None,
+        aps_encryption: bool = False,
     ):
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
             cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
@@ -242,6 +243,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             priority=priority,
             retries=retries,
             retry_delay=retry_delay,
+            aps_encryption=aps_encryption,
         )
 
     async def reply(
@@ -257,6 +259,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         priority: int | None = None,
         retries: int | None = None,
         retry_delay: float | None = None,
+        aps_encryption: bool = False,
     ) -> None:
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
             cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
@@ -280,6 +283,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             priority=priority,
             retries=retries,
             retry_delay=retry_delay,
+            aps_encryption=aps_encryption,
         )
 
     def log(self, lvl: int, msg: str, *args: Any, **kwargs: Any) -> None:
@@ -288,7 +292,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         LOGGER.log(lvl, msg, *args, **kwargs)
 
     @property
-    def device(self) -> Device:
+    def device(self) -> ZigbeeDevice:
         return self._device
 
     @property
