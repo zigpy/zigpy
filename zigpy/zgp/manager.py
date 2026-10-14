@@ -420,6 +420,14 @@ class GreenPowerManager:
         """Broadcast a GP Pairing command telling proxies to add or remove a GPD."""
         assert device.src_id is not None
 
+        # The frame counter is the security frame counter of a protected GPD, or the MAC
+        # sequence number of an unprotected one if it increments it (A.3.3.5.2)
+        frame_counter_present = add_sink and (
+            device.security_level
+            in (SecurityLevel.FullFrameCounterAndMIC, SecurityLevel.Encrypted)
+            or device.mac_seq_num_capability
+        )
+
         # TODO: proxies forward with derived groupcast, a single NWK broadcast per GPDF.
         # Unicast forwarding through a chosen set of proxies needs zigpy to maintain
         # those proxies as the network changes, from its topology scans.
@@ -432,7 +440,7 @@ class GreenPowerManager:
             gpd_mac_seq_num_cap=int(device.mac_seq_num_capability),
             security_level=device.security_level,
             security_key_type=device.security_key_type,
-            security_frame_counter_present=int(add_sink),
+            security_frame_counter_present=int(frame_counter_present),
             security_key_present=int(add_sink and device.security_key is not None),
             assigned_alias_present=0,
             groupcast_radius_present=0,
@@ -448,7 +456,8 @@ class GreenPowerManager:
             schema_kwargs["sink_group"] = derived_group(device)
             schema_kwargs["device_id"] = t.uint8_t(device.device_id)
 
-            schema_kwargs["frame_counter"] = t.uint32_t(device.frame_counter)
+            if frame_counter_present:
+                schema_kwargs["frame_counter"] = t.uint32_t(device.frame_counter)
 
             if device.security_key is not None:
                 # The GP Pairing carries the key from the Sink Table in the clear and

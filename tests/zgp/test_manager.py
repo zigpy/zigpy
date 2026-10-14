@@ -429,6 +429,39 @@ async def test_decommissioning_unknown_device(app, manager):
     assert len(app.send_packet.mock_calls) == 0
 
 
+@pytest.mark.parametrize(
+    ("security_level", "mac_seq_num_capability", "frame_counter"),
+    [
+        (SecurityLevel.NoSecurity, False, None),
+        (SecurityLevel.NoSecurity, True, 1234),
+        (SecurityLevel.FullFrameCounterAndMIC, False, 1234),
+        (SecurityLevel.Encrypted, False, 1234),
+    ],
+)
+async def test_pairing_frame_counter_presence(
+    app, manager, security_level, mac_seq_num_capability, frame_counter
+):
+    """The frame counter is only sent if the GPD has one to check (A.3.3.5.2)."""
+    dev = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+    dev.device_id = DeviceID.OnOffSwitch
+    dev.mac_seq_num_capability = mac_seq_num_capability
+    dev.security_level = security_level
+    dev.security_key_type = SecurityKeyType.NoKey
+    dev.frame_counter = t.uint32_t(1234)
+
+    await manager.send_pairing(dev, add_sink=True)
+
+    packet = app.send_packet.mock_calls[0].args[0]
+    _, data = foundation.ZCLHeader.deserialize(packet.data.serialize())
+    pairing, rest = PairingSchema.deserialize(data)
+
+    assert not rest
+    assert pairing.options.security_frame_counter_present == (frame_counter is not None)
+    assert pairing.frame_counter == frame_counter
+
+
 async def test_pairing_carries_key_in_the_clear(app, manager):
     """GP Pairing carries the Sink Table key as-is, proxies store it unmodified."""
     dev = GreenPowerDevice(
