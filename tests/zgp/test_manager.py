@@ -7,19 +7,27 @@ from datetime import UTC, datetime
 import struct
 from unittest.mock import call
 
+import freezegun
 import pytest
 
 from tests.async_mock import AsyncMock
 from tests.zgp.conftest import wait_for_gp_processing
 from zigpy.device import GreenPowerDevice
-from zigpy.profiles import zgp as zgp_profile
 import zigpy.types as t
 from zigpy.zcl import foundation
-from zigpy.zcl.clusters.greenpower import GreenPowerProxy, PairingSchema, ResponseSchema
-from zigpy.zgp.commands import GPGenericSwitchConfiguration
+from zigpy.zcl.clusters.greenpower import (
+    GreenPowerProxy,
+    PairingSchema,
+    ProxyCommissioningModeSchema,
+    ResponseSchema,
+)
+from zigpy.zgp.commands import (
+    GPChannelConfigurationPayload,
+    GPCommissioningReplyPayload,
+    GPGenericSwitchConfiguration,
+)
 from zigpy.zgp.crypto import encrypt_security_key
 from zigpy.zgp.types import (
-    GP_CLUSTER_ID,
     GP_ENDPOINT,
     ApplicationID,
     CommunicationMode,
@@ -32,6 +40,9 @@ from zigpy.zgp.types import (
     SwitchType,
 )
 from zigpy.zgp.util import derive_alias, synthetic_ieee
+
+KEY = bytes(range(16))
+ENCRYPTED_KEY, KEY_MIC = encrypt_security_key(0x11223344, KEY)
 
 
 def make_gp_packet(
@@ -54,209 +65,199 @@ def make_gp_packet(
     )
 
 
-def test_gp_manager_creation(manager):
-    assert not manager.is_commissioning
+def sent_command(packet: t.ZigbeePacket, schema: type[t.Struct]) -> t.Struct:
+    _, data = foundation.ZCLHeader.deserialize(packet.data.serialize())
+    command, rest = schema.deserialize(data)
+    assert not rest
+
+    return command
 
 
-async def test_dupplication_first_notification_passes(manager):
-    """First occurrence of (sourceID, frameCounter) should pass."""
-    assert not manager._is_duplicate(0x12345678, 1)
-
-
-async def test_dupplication_second_notification_blocked(manager):
-    """Same (sourceID, frameCounter) within timeout should be blocked."""
-    assert not manager._is_duplicate(0x12345678, 1)
-    assert manager._is_duplicate(0x12345678, 1)
-
-
-async def test_dupplication_different_source_id_passes(manager):
-    """Different sourceID with same counter should pass."""
-    assert not manager._is_duplicate(0x11111111, 1)
-    assert not manager._is_duplicate(0x22222222, 1)
-
-
-async def test_dupplication_different_counter_passes(manager):
-    """Same sourceID with different counter should pass."""
-    assert not manager._is_duplicate(0x12345678, 1)
-    assert not manager._is_duplicate(0x12345678, 2)
-
-
-async def test_dupplication_expired_entry_passes(manager):
-    """Entries older than DEDUP_TIMEOUT_S should be purged."""
-    debouncer = manager._dedup_debouncer
-    manager._is_duplicate(0x12345678, 1)
-
-    # Fast-forward the debouncer's clock past the dedup window.
-    debouncer.clean(now=debouncer._loop.time() + manager.DEDUP_TIMEOUT_S + 1)
-
-    # Should pass again after expiry
-    assert not manager._is_duplicate(0x12345678, 1)
-
-
-async def test_commissioning_window(manager):
-    """Opening and closing commissioning window."""
-    assert not manager.is_commissioning
-
-    await manager.permit_join(time_s=60)
-    assert manager.is_commissioning
-
-    await manager.permit_join(time_s=0)
-    assert not manager.is_commissioning
-
-
-async def test_commissioning_sends_proxy_mode(app, manager):
-    """Opening commissioning should send ProxyCommissioningMode."""
-    await manager.permit_join(time_s=60)
-
-    assert app.send_packet.call_count == 1
-    sent_packet = app.send_packet.call_args[0][0]
-    assert sent_packet.dst_ep == GP_ENDPOINT
-    assert sent_packet.cluster_id == GP_CLUSTER_ID
-
-
-async def test_close_commissioning_sends_exit(app, manager):
-    """Closing commissioning should send ProxyCommissioningMode exit."""
-    await manager.permit_join(time_s=60)
-    app.send_packet.reset_mock()
-
-    await manager.permit_join(time_s=0)
-
-    assert app.send_packet.call_count == 1
-
-
-async def test_commissioning_window_timer_closes_on_expiry(app, manager, monkeypatch):
-    """The commissioning window auto-closes when its timer expires."""
-
-    async def _instant_sleep(_delay: float) -> None:
-        return None
-
-    monkeypatch.setattr("asyncio.sleep", _instant_sleep)
-
-    await manager.permit_join(time_s=60)
-    assert manager.is_commissioning
-    app.send_packet.reset_mock()
-
-    # With sleep patched, the timer task closes the window immediately.
-    await manager._commissioning_task
-
-    assert not manager.is_commissioning
-    assert manager._commissioning_window_end == 0
-    assert app.send_packet.call_count == 1
-
-
-async def test_process_commissioning_creates_device(app, manager):
-    """Commissioning command should create a GreenPowerDevice."""
-    # Open commissioning window
-    await manager.permit_join(time_s=60)
-    app.send_packet.reset_mock()
-
-    # Minimal commissioning payload: device_id=0x02, options=0x00
-    comm_payload = bytes([0x02, 0x00])
-
-    await manager._process_commissioning(
-        make_gp_packet(
-            0xAABBCCDD, GPDCommandID.CommissioningRequest, comm_payload, frame_counter=1
-        ),
-    )
-
-    # Device should be registered
-    dev = app.devices[synthetic_ieee(0xAABBCCDD)]
-    assert dev.device_id == 0x02
-    assert dev.src_id == 0xAABBCCDD
-
-    assert call("device_joined", dev) in app.listener_event.mock_calls
-    assert app.device_initialized.mock_calls == [call(dev)]
-
-    # GP Pairing should be sent
-    assert app.send_packet.call_count >= 1
-
-
-async def test_commissioning_ignored_when_window_closed(app, manager):
-    """Commissioning should be ignored if window is not open."""
-    comm_payload = bytes([0x02, 0x00])
-
-    await manager._process_commissioning(
-        make_gp_packet(
-            0xAABBCCDD, GPDCommandID.CommissioningRequest, comm_payload, frame_counter=1
-        ),
-    )
-
-    assert synthetic_ieee(0xAABBCCDD) not in app.devices
-    assert len(app.device_initialized.mock_calls) == 0
-
-
-async def test_commissioning_rejects_unspecified_source_id(app, manager):
-    """SourceID 0x00000000 is unspecified per ZGP spec and must be rejected."""
-    await manager.permit_join(time_s=60)
-    app.send_packet.reset_mock()
-
-    await manager._process_commissioning(
-        make_gp_packet(
-            0x00000000,
-            GPDCommandID.CommissioningRequest,
-            bytes([0x02, 0x00]),
-            frame_counter=1,
-        ),
-    )
-
-    assert synthetic_ieee(0x00000000) not in app.devices
-    assert len(app.device_initialized.mock_calls) == 0
-
-
-async def test_commissioning_with_security_key(app, manager):
-    """Commissioning with unencrypted security key.
-
-    Extended options byte 0xA3 = 0b10100011:
-    - Bits 0-1 = 0b11 = SecurityLevel.Encrypted (Table 54)
-    - Bits 2-4 = 0b000 = SecurityKeyType.NoKey (Table 54)
-    - Bit 5 = 1 = key_present
-    - Bit 6 = 0 = key_encrypted
-    - Bit 7 = 1 = outgoing_counter_present
-    """
-    await manager.permit_join(time_s=60)
-    app.send_packet.reset_mock()
-
-    security_key = bytes(range(16))
-    # options: bit 7 = extended present (Table 53) = 0x80
-    # extended: Encrypted + key_present + outgoing_counter_present = 0xA3 (Table 54)
-    comm_payload = bytes([0x02, 0x80, 0xA3]) + security_key + struct.pack("<I", 7)
-
-    await manager._process_commissioning(
-        make_gp_packet(
-            0x11223344, GPDCommandID.CommissioningRequest, comm_payload, frame_counter=5
-        ),
-    )
-
-    dev = app.devices[synthetic_ieee(0x11223344)]
-    assert bytes(dev.security_key) == security_key
-    assert dev.security_level == SecurityLevel.Encrypted
-    # Extended byte 0xA3: bits 2-4 = 0b000 = NoKey (Table 54)
-    assert dev.security_key_type == SecurityKeyType.NoKey
-    assert dev.frame_counter == 7
-
-
-@pytest.mark.parametrize(
-    "security_level",
-    [SecurityLevel.FullFrameCounterAndMIC, SecurityLevel.Encrypted],
-)
-async def test_commissioning_protected_without_outgoing_counter(
-    app, manager, security_level
-):
-    """A protected GPD must announce its frame counter (A.3.9.2.1.2)."""
-    await manager.permit_join(time_s=60)
-    app.send_packet.reset_mock()
-
-    # extended: security level, IndividualKey, key_present, no outgoing counter
-    ext_options = security_level | (SecurityKeyType.IndividualKey << 2) | (1 << 5)
-    comm_payload = bytes([0x02, 0x80, ext_options]) + bytes(range(16))
-
+async def commission(app, src_id: int, payload: bytes, **kwargs) -> None:
     app.gp_packet_received(
-        make_gp_packet(0x11223344, GPDCommandID.CommissioningRequest, comm_payload)
+        make_gp_packet(src_id, GPDCommandID.CommissioningRequest, payload, **kwargs)
     )
     await wait_for_gp_processing()
 
+
+async def test_permit_join_window(app, manager):
+    """Proxies are told to enter commissioning mode for the window, then to exit."""
+    await manager.permit_join(time_s=60)
+    assert manager.is_commissioning
+
+    await manager.permit_join(time_s=0)
+    assert not manager.is_commissioning
+
+    enter, exit_ = [
+        sent_command(c.args[0], ProxyCommissioningModeSchema)
+        for c in app.send_packet.mock_calls
+    ]
+
+    assert enter.options.enter
+    assert enter.window == 60
+    assert not exit_.options.enter
+    assert exit_.window is None
+
+
+async def test_permit_join_window_expires(app, manager):
+    """Proxies leave commissioning mode on their own when the window expires."""
+    with freezegun.freeze_time() as frozen:
+        await manager.permit_join(time_s=60)
+        app.send_packet.reset_mock()
+
+        frozen.tick(61)
+        assert not manager.is_commissioning
+
+        await commission(app, 0x11223344, b"\x02\x00")
+
     assert synthetic_ieee(0x11223344) not in app.devices
     assert len(app.send_packet.mock_calls) == 0
+
+
+async def test_permit_join_send_failure(app, manager):
+    """The window is not opened if the proxies could not be told about it."""
+    app.send_packet = AsyncMock(side_effect=TimeoutError)
+
+    with pytest.raises(TimeoutError):
+        await manager.permit_join(time_s=60)
+
+    assert not manager.is_commissioning
+
+
+async def test_commissioning_window_closed(app, manager):
+    await commission(app, 0x11223344, b"\x02\x00")
+
+    assert synthetic_ieee(0x11223344) not in app.devices
+    assert len(app.device_initialized.mock_calls) == 0
+
+
+@pytest.mark.parametrize(
+    ("payload", "frame_counter", "expected"),
+    [
+        # Minimal: DeviceID only. An unprotected GPD has no security frame counter, the
+        # GPDF's MAC sequence number is used instead
+        (
+            b"\x02\x00",
+            5,
+            {
+                "device_id": DeviceID.OnOffSwitch,
+                "security_level": SecurityLevel.NoSecurity,
+                "security_key_type": SecurityKeyType.NoKey,
+                "security_key": None,
+                "frame_counter": 5,
+            },
+        ),
+        # Extended options 0xA3: Encrypted, NoKey, key in the clear, outgoing counter
+        (
+            b"\x02\x80\xa3" + KEY + struct.pack("<I", 7),
+            1,
+            {
+                "security_level": SecurityLevel.Encrypted,
+                "security_key_type": SecurityKeyType.NoKey,
+                "security_key": t.KeyData(KEY),
+                "frame_counter": 7,
+            },
+        ),
+        # Extended options 0xE3: as above, but the key is protected with the TC-LK
+        (
+            b"\x02\x80\xe3" + ENCRYPTED_KEY + KEY_MIC + struct.pack("<I", 7),
+            1,
+            {"security_key": t.KeyData(KEY), "frame_counter": 7},
+        ),
+        # An outgoing counter of 0 is a valid counter, not an absent one
+        (
+            b"\x02\x80\x80" + struct.pack("<I", 0),
+            999,
+            {"frame_counter": 0},
+        ),
+        # Options 0x04: app info present; app info 0x10: switch information present.
+        # Switch information: length 2, 2 contacts as a button, no contacts closed
+        (
+            b"\x07\x04\x10\x02\x12\x00",
+            1,
+            {
+                "device_id": DeviceID.GenericSwitch,
+                "switch_configuration": GPGenericSwitchConfiguration(
+                    num_contacts=2, switch_type=SwitchType.Button, _reserved=0
+                ),
+            },
+        ),
+        # Options 0xC2: RxOn capable, fixed location
+        (
+            b"\x02\xc2\x00",
+            1,
+            {"rx_on_capability": True, "fixed_location": True},
+        ),
+    ],
+)
+async def test_commissioning(app, manager, payload, frame_counter, expected):
+    await manager.permit_join(time_s=60)
+
+    await commission(app, 0x11223344, payload, frame_counter=frame_counter)
+
+    dev = app.devices[synthetic_ieee(0x11223344)]
+
+    for name, value in expected.items():
+        assert getattr(dev, name) == value
+
+
+@pytest.mark.parametrize(
+    ("src_id", "payload"),
+    [
+        # SrcID 0x00000000 is unspecified (A.1.4.1.4)
+        (0x00000000, b"\x02\x00"),
+        # Truncated payload
+        (0x11223344, b"\xff"),
+        # The reserved security level 0b01 has no defined processing (A.1.4.1.3)
+        (0x11223344, b"\x02\x80\x01"),
+        # A protected GPD must announce its frame counter (A.3.9.2.1.2)
+        (0x11223344, b"\x02\x80\x32" + KEY),
+        (0x11223344, b"\x02\x80\x33" + KEY),
+        # The key MIC does not verify
+        (0x11223344, b"\x02\x80\xe3" + KEY + b"\xad\xde\xad\xde" + b"\x07\x00\x00\x00"),
+    ],
+)
+async def test_commissioning_rejected(app, manager, src_id, payload):
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
+    await commission(app, src_id, payload)
+
+    assert synthetic_ieee(src_id) not in app.devices
+    assert len(app.send_packet.mock_calls) == 0
+
+
+async def test_commissioning_registers_and_pairs(app, manager):
+    """A new GPD joins, and proxies are paired in derived groupcast mode."""
+    app.subscribe_to_multicast_group = AsyncMock(wraps=app.subscribe_to_multicast_group)
+
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
+    await commission(app, 0xAABBCCDD, b"\x02\x00")
+
+    dev = app.devices[synthetic_ieee(0xAABBCCDD)]
+    assert call("device_joined", dev) in app.listener_event.mock_calls
+    assert app.device_initialized.mock_calls == [call(dev)]
+
+    # The DGroupID is derived from the GPD ID like the alias (A.3.6.1.4), and the sink
+    # joins it to receive the groupcast GP Notifications
+    group = derive_alias(SrcID(0xAABBCCDD))
+    assert app.subscribe_to_multicast_group.mock_calls == [
+        call(group, endpoint_id=GP_ENDPOINT)
+    ]
+
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    pairing = sent_command(packet, PairingSchema)
+
+    assert pairing.options.add_sink
+    assert pairing.options.communication_mode == (
+        CommunicationMode.GroupcastForwardToDGroup
+    )
+    assert pairing.gpd_id == 0xAABBCCDD
+    assert pairing.sink_group == group
+    assert pairing.sink_ieee is None
+    assert pairing.sink_nwk_addr is None
 
 
 async def test_commissioning_records_link(app, manager):
@@ -280,44 +281,16 @@ async def test_commissioning_records_link(app, manager):
     assert dev.rssi == -70
 
 
-async def test_commissioning_with_outgoing_counter(app, manager):
-    """Commissioning with outgoing frame counter."""
-    await manager.permit_join(time_s=60)
-
-    # extended: outgoing_counter_present = 0x80
-    comm_payload = bytes([0x02, 0x80, 0x80]) + struct.pack("<I", 42)
-
-    await manager._process_commissioning(
-        make_gp_packet(
-            0x55667788, GPDCommandID.CommissioningRequest, comm_payload, frame_counter=1
-        ),
-    )
-
-    dev = app.devices[synthetic_ieee(0x55667788)]
-    assert dev.frame_counter == 42
-
-
 async def test_recommissioning_replaces_device(app, manager):
     """Re-commissioning swaps the device object, announced like a re-interview."""
     await manager.permit_join(time_s=60)
 
-    app.gp_packet_received(
-        make_gp_packet(0x12345678, GPDCommandID.CommissioningRequest, b"\x02\x00")
-    )
-    await wait_for_gp_processing()
+    await commission(app, 0x12345678, b"\x02\x00")
 
     old_device = app.devices[synthetic_ieee(0x12345678)]
     old_task = old_device.create_task(asyncio.Event().wait())
 
-    app.gp_packet_received(
-        make_gp_packet(
-            0x12345678,
-            GPDCommandID.CommissioningRequest,
-            b"\x07\x00",
-            frame_counter=2,
-        )
-    )
-    await wait_for_gp_processing()
+    await commission(app, 0x12345678, b"\x07\x00", frame_counter=2)
 
     new_device = app.devices[synthetic_ieee(0x12345678)]
     assert new_device is not old_device
@@ -332,49 +305,123 @@ async def test_recommissioning_replaces_device(app, manager):
     assert call("device_joined", new_device) not in app.listener_event.mock_calls
 
 
-async def test_commissioning_with_switch_information(app, manager):
-    """A GenericSwitch describes its contacts in the switch information field."""
+@pytest.mark.parametrize(
+    ("options", "gpp_short_addr", "temp_master"),
+    [
+        # RxOn capable, tunneled by a proxy
+        (0x82, 0x5678, 0x5678),
+        # RxOn capable, received directly by the coordinator
+        (0x82, None, 0x0000),
+        # Not RxOn capable: no Commissioning Reply
+        (0x80, 0x5678, None),
+    ],
+)
+async def test_commissioning_reply(app, manager, options, gpp_short_addr, temp_master):
+    """An RxOn GPD gets a reply through the proxy that tunneled its GPDF."""
     await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
 
-    # options: app_info_present (bit 2) = 0x04 (Table 53)
-    # app_info: switch_info_present (bit 4) = 0x10 (Figure 111)
-    # switch information: length 2, 2 contacts as a button, no contacts closed
-    comm_payload = bytes([0x07, 0x04, 0x10, 0x02, 0x12, 0x00])
-
-    await manager._process_commissioning(
-        make_gp_packet(0x66778899, GPDCommandID.CommissioningRequest, comm_payload),
+    await commission(
+        app, 0xAABBCCDD, bytes([0x02, options, 0x00]), gpp_short_addr=gpp_short_addr
     )
 
-    dev = app.devices[synthetic_ieee(0x66778899)]
-    assert dev.device_id == DeviceID.GenericSwitch
-    assert dev.switch_configuration == GPGenericSwitchConfiguration(
-        num_contacts=2, switch_type=SwitchType.Button, _reserved=0
-    )
+    *replies, _ = [c.args[0] for c in app.send_packet.mock_calls]
+
+    if temp_master is None:
+        assert replies == []
+        return
+
+    [reply] = replies
+    response = sent_command(reply, ResponseSchema)
+    assert response.temp_master_short_addr == temp_master
+    assert response.gpd_command_id == GPDCommandID.CommissioningReply
+    GPCommissioningReplyPayload.deserialize(response.gpd_command_payload)
 
 
-async def test_commissioning_with_outgoing_counter_zero(app, manager):
-    """Outgoing counter of 0 must be used, not confused with None.
-
-    Per the ZGP spec, outgoing_counter=0 is a valid initial frame
-    counter. It must not be treated as absent (Python falsy).
-    """
+async def test_duplicate_commissioning_dropped(app, manager):
+    """The same commissioning GPDF forwarded by two proxies is processed once."""
     await manager.permit_join(time_s=60)
 
-    # extended: outgoing_counter_present (bit 7) = 0x80
-    comm_payload = bytes([0x02, 0x80, 0x80]) + struct.pack("<I", 0)
+    packet = make_gp_packet(0xEEEE5555, GPDCommandID.CommissioningRequest, b"\x02\x00")
 
-    await manager._process_commissioning(
+    app.gp_packet_received(packet)
+    await wait_for_gp_processing()
+    app.gp_packet_received(packet)
+    await wait_for_gp_processing()
+
+    assert len(app.device_initialized.mock_calls) == 1
+
+
+async def test_ieee_addressing_ignored(app, manager):
+    """Commissioning GPDFs from IEEE-addressed GPDs are not supported."""
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
+    app.gp_packet_received(
+        t.ZigbeeGpPacket(
+            application_id=ApplicationID.IEEE,
+            ieee=t.EUI64.convert("11:22:33:44:55:66:77:88"),
+            endpoint=t.uint8_t(1),
+            command_id=GPDCommandID.CommissioningRequest,
+            payload=t.SerializableBytes(b"\x02\x00"),
+            frame_counter=t.uint32_t(1),
+        )
+    )
+    await wait_for_gp_processing()
+
+    assert len(app.device_initialized.mock_calls) == 0
+    assert len(app.send_packet.mock_calls) == 0
+
+
+async def test_success_report_ignored(app, manager):
+    app.gp_packet_received(make_gp_packet(0xDDDD4444, GPDCommandID.SuccessReport))
+    await wait_for_gp_processing()
+
+    assert synthetic_ieee(0xDDDD4444) not in app.devices
+    assert len(app.send_packet.mock_calls) == 0
+
+
+@pytest.mark.parametrize(
+    ("channel", "gpp_short_addr", "temp_master"),
+    [
+        (20, 0x1234, 0x1234),
+        (15, None, 0x0000),
+    ],
+)
+async def test_channel_request(app, manager, channel, gpp_short_addr, temp_master):
+    """A Channel Request is answered with the operational channel."""
+    app.state.network_info.channel = channel
+
+    # Channel Request: next channel 15, second next channel 20
+    app.gp_packet_received(
         make_gp_packet(
-            0x99887766,
-            GPDCommandID.CommissioningRequest,
-            comm_payload,
-            frame_counter=999,
-        ),
+            0x12345678,
+            GPDCommandID.ChannelRequest,
+            bytes([4 | (9 << 4)]),
+            gpp_short_addr=gpp_short_addr,
+        )
     )
+    await wait_for_gp_processing()
 
-    dev = app.devices[synthetic_ieee(0x99887766)]
-    # Must use outgoing_counter=0 from payload, NOT frame_counter=999
-    assert dev.frame_counter == 0
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    response = sent_command(packet, ResponseSchema)
+
+    assert response.temp_master_short_addr == temp_master
+    assert response.temp_master_tx_channel.transmit_channel == channel - 11
+    assert response.gpd_command_id == GPDCommandID.ChannelConfiguration
+
+    configuration, _ = GPChannelConfigurationPayload.deserialize(
+        response.gpd_command_payload
+    )
+    assert configuration.operational_channel == channel - 11
+    assert configuration.basic
+
+
+async def test_channel_request_invalid(app, manager):
+    app.gp_packet_received(make_gp_packet(0x12345678, GPDCommandID.ChannelRequest, b""))
+    await wait_for_gp_processing()
+
+    assert len(app.send_packet.mock_calls) == 0
 
 
 @pytest.mark.parametrize(
@@ -441,7 +488,7 @@ async def test_decommissioning(
         app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
     )
     dev.device_id = DeviceID.OnOffSwitch
-    dev.security_key = t.KeyData(range(16))
+    dev.security_key = t.KeyData(KEY)
     dev.security_level = SecurityLevel.FullFrameCounterAndMIC
     dev.security_key_type = SecurityKeyType.IndividualKey
     dev.frame_counter = t.uint32_t(10)
@@ -463,8 +510,14 @@ async def test_decommissioning(
     assert (dev.ieee not in app.devices) is removed
     assert (call("device_removed", dev) in app.listener_event.mock_calls) is removed
 
-    # GP Pairing (remove) is sent only for an accepted command
-    assert app.send_packet.call_count == int(removed)
+    if not removed:
+        assert len(app.send_packet.mock_calls) == 0
+        return
+
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    pairing = sent_command(packet, PairingSchema)
+    assert pairing.options.remove_gpd
+    assert pairing.gpd_id == 0x12345678
 
 
 async def test_decommissioning_unknown_device(app, manager):
@@ -475,304 +528,6 @@ async def test_decommissioning_unknown_device(app, manager):
     await wait_for_gp_processing()
 
     assert len(app.send_packet.mock_calls) == 0
-
-
-@pytest.mark.parametrize(
-    ("security_level", "mac_seq_num_capability", "frame_counter"),
-    [
-        (SecurityLevel.NoSecurity, False, None),
-        (SecurityLevel.NoSecurity, True, 1234),
-        (SecurityLevel.FullFrameCounterAndMIC, False, 1234),
-        (SecurityLevel.Encrypted, False, 1234),
-    ],
-)
-async def test_pairing_frame_counter_presence(
-    app, manager, security_level, mac_seq_num_capability, frame_counter
-):
-    """The frame counter is only sent if the GPD has one to check (A.3.3.5.2)."""
-    dev = GreenPowerDevice(
-        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
-    )
-    dev.device_id = DeviceID.OnOffSwitch
-    dev.mac_seq_num_capability = mac_seq_num_capability
-    dev.security_level = security_level
-    dev.security_key_type = SecurityKeyType.NoKey
-    dev.frame_counter = t.uint32_t(1234)
-
-    await manager.send_pairing(dev, add_sink=True)
-
-    packet = app.send_packet.mock_calls[0].args[0]
-    _, data = foundation.ZCLHeader.deserialize(packet.data.serialize())
-    pairing, rest = PairingSchema.deserialize(data)
-
-    assert not rest
-    assert pairing.options.security_frame_counter_present == (frame_counter is not None)
-    assert pairing.frame_counter == frame_counter
-
-
-async def test_pairing_carries_key_in_the_clear(app, manager):
-    """GP Pairing carries the Sink Table key as-is, proxies store it unmodified."""
-    dev = GreenPowerDevice(
-        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
-    )
-    dev.device_id = DeviceID.OnOffSwitch
-    dev.security_key = t.KeyData(range(16))
-    dev.security_level = SecurityLevel.Encrypted
-    dev.security_key_type = SecurityKeyType.IndividualKey
-    dev.frame_counter = t.uint32_t(0)
-
-    await manager.send_pairing(dev, add_sink=True)
-
-    packet = app.send_packet.mock_calls[0].args[0]
-    _, data = foundation.ZCLHeader.deserialize(packet.data.serialize())
-    pairing, _ = PairingSchema.deserialize(data)
-
-    assert pairing.options.security_key_present
-    assert pairing.options.security_level == SecurityLevel.Encrypted
-    assert pairing.options.security_key_type == SecurityKeyType.IndividualKey
-    assert pairing.key == t.KeyData(range(16))
-
-
-@pytest.mark.parametrize(
-    ("send", "command"),
-    [
-        (
-            lambda manager: manager.permit_join(time_s=60),
-            GreenPowerProxy.ClientCommandDefs.proxy_commissioning_mode,
-        ),
-        (
-            lambda manager: manager._send_gp_response(
-                source_id=0x12345678,
-                gpd_command_id=GPDCommandID.ChannelConfiguration,
-                gpd_command_payload=bytes([0x14]),
-            ),
-            GreenPowerProxy.ClientCommandDefs.response,
-        ),
-    ],
-)
-async def test_commands_sent_server_to_client(app, manager, send, command):
-    """The sink is the GP cluster server, so commands to proxies are server-to-client."""
-    await send(manager)
-
-    packet = app.send_packet.mock_calls[0].args[0]
-    hdr, data = foundation.ZCLHeader.deserialize(packet.data.serialize())
-
-    assert hdr.frame_control.frame_type == foundation.FrameType.CLUSTER_COMMAND
-    assert hdr.direction == foundation.Direction.Server_to_Client
-    assert hdr.frame_control.disable_default_response
-    assert hdr.command_id == command.id
-    assert hdr.tsn == packet.tsn
-
-    command.schema.deserialize(data)
-
-
-async def test_pairing_sent_server_to_client(app, manager):
-    """GP Pairing (0x01) read client-to-server would be a GP Pairing Search."""
-    dev = GreenPowerDevice(
-        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
-    )
-    dev.device_id = DeviceID.OnOffSwitch
-    dev.security_level = SecurityLevel.NoSecurity
-    dev.security_key_type = SecurityKeyType.NoKey
-    dev.frame_counter = t.uint32_t(0)
-
-    await manager.send_pairing(dev, add_sink=True)
-
-    packet = app.send_packet.mock_calls[0].args[0]
-    hdr, data = foundation.ZCLHeader.deserialize(packet.data.serialize())
-
-    assert hdr.direction == foundation.Direction.Server_to_Client
-    assert hdr.command_id == GreenPowerProxy.ClientCommandDefs.pairing.id
-
-    pairing, _ = PairingSchema.deserialize(data)
-    assert pairing.gpd_id == 0x12345678
-    assert pairing.options.add_sink
-
-
-async def test_channel_request_sends_response(app, manager):
-    """Channel Request should trigger a GP Response with Channel Config."""
-    # Channel Request payload: next_channel=15 (offset 4), second=20 (offset 9)
-    channel_req_payload = bytes([4 | (9 << 4)])
-
-    await manager._process_channel_request(
-        make_gp_packet(0x12345678, GPDCommandID.ChannelRequest, channel_req_payload),
-        proxy_nwk=0x1234,
-    )
-
-    # Should have sent a GP Response
-    assert app.send_packet.call_count == 1
-    sent = app.send_packet.call_args[0][0]
-    assert sent.dst_ep == GP_ENDPOINT
-    assert sent.cluster_id == GP_CLUSTER_ID
-
-
-async def test_channel_config_contains_correct_channel(app, manager):
-    """Channel Config payload must contain the coordinator's channel.
-
-    Per ZGP spec, GP Channel Configuration (0xF3) payload is 1 byte:
-    bits 0-3 = operational channel offset (channel - 11),
-    bit 4 = basic (1).
-    For channel 20: offset = 9, basic = 1 => byte = 0x19.
-    """
-    app.state.network_info.channel = 20
-
-    await manager._process_channel_request(
-        make_gp_packet(0x12345678, GPDCommandID.ChannelRequest, bytes([0x00])),
-        proxy_nwk=0x1234,
-    )
-
-    assert app.send_packet.call_count == 1
-    sent = app.send_packet.call_args[0][0]
-    zcl_data = sent.data.serialize()
-    # The GP Response wraps the Channel Config payload.
-    # Channel 20 => offset 9, basic=1 => 0x09 | 0x10 = 0x19
-    # This byte must appear in the serialized ZCL frame.
-    assert bytes([0x19]) in zcl_data
-
-
-async def test_channel_request_without_proxy(app, manager):
-    """Channel Request without proxy_nwk should use coordinator NWK."""
-    await manager._process_channel_request(
-        make_gp_packet(0x12345678, GPDCommandID.ChannelRequest, bytes([0x00])),
-        proxy_nwk=None,
-    )
-
-    assert app.send_packet.call_count == 1
-
-
-async def test_invalid_channel_request_ignored(app, manager):
-    """Invalid channel request payload should be ignored."""
-    await manager._process_channel_request(
-        make_gp_packet(0x12345678, GPDCommandID.ChannelRequest, b""),
-        proxy_nwk=0x1234,
-    )
-
-    assert len(app.send_packet.mock_calls) == 0
-
-
-async def test_rx_capable_gets_commissioning_reply(app, manager):
-    """RX-capable GPD commissioning should send a Commissioning Reply."""
-    await manager.permit_join(time_s=60)
-    app.send_packet.reset_mock()
-
-    # Commissioning with rx_on_capability=True (bit 1 of options)
-    # options: extended (bit 7) + rx_on (bit 1) = 0x82
-    comm_payload = bytes([0x02, 0x82, 0x00])
-
-    await manager._process_commissioning(
-        make_gp_packet(
-            0xAABBCCDD, GPDCommandID.CommissioningRequest, comm_payload, frame_counter=1
-        ),
-        proxy_nwk=0x1234,
-    )
-
-    # Should have sent: Commissioning Reply + GP Pairing = 2 packets
-    assert app.send_packet.call_count == 2
-
-    dev = app.devices[synthetic_ieee(0xAABBCCDD)]
-    assert dev.rx_on_capability is True
-
-
-async def test_non_rx_skips_commissioning_reply(app, manager):
-    """Non-RX GPD should NOT get a Commissioning Reply."""
-    await manager.permit_join(time_s=60)
-    app.send_packet.reset_mock()
-
-    # options: extended (bit 7) only, no rx_on = 0x80
-    comm_payload = bytes([0x02, 0x80, 0x00])
-
-    await manager._process_commissioning(
-        make_gp_packet(
-            0x11223344, GPDCommandID.CommissioningRequest, comm_payload, frame_counter=1
-        ),
-        proxy_nwk=0x1234,
-    )
-
-    # Should have sent: GP Pairing only = 1 packet
-    assert app.send_packet.call_count == 1
-
-
-@pytest.mark.parametrize(
-    ("gpp_short_addr", "temp_master"),
-    [
-        # Tunneled by a proxy
-        (0x5678, 0x5678),
-        # Received directly by the coordinator
-        (None, 0x0000),
-    ],
-)
-async def test_commissioning_uses_forwarding_proxy(
-    app, manager, gpp_short_addr, temp_master
-):
-    """The proxy that tunneled the Commissioning GPDF is the GP Response TempMaster."""
-    await manager.permit_join(time_s=60)
-    app.send_packet.reset_mock()
-
-    app.gp_packet_received(
-        make_gp_packet(
-            0xAABBCCDD,
-            GPDCommandID.CommissioningRequest,
-            bytes([0x02, 0x82, 0x00]),  # rx_on=True (bit 1, Table 53)
-            gpp_short_addr=gpp_short_addr,
-        )
-    )
-    await wait_for_gp_processing()
-
-    reply_packet, _ = [c.args[0] for c in app.send_packet.mock_calls]
-
-    _, data = foundation.ZCLHeader.deserialize(reply_packet.data.serialize())
-    response, _ = ResponseSchema.deserialize(data)
-    assert response.temp_master_short_addr == temp_master
-    assert response.gpd_command_id == GPDCommandID.CommissioningReply
-
-
-async def test_commissioning_pairs_derived_groupcast(app, manager):
-    """Proxies are paired in derived groupcast mode, and the sink joins the group."""
-    app.subscribe_to_multicast_group = AsyncMock(wraps=app.subscribe_to_multicast_group)
-
-    await manager.permit_join(time_s=60)
-    app.send_packet.reset_mock()
-
-    app.gp_packet_received(
-        make_gp_packet(0xAABBCCDD, GPDCommandID.CommissioningRequest, b"\x02\x00")
-    )
-    await wait_for_gp_processing()
-
-    # The DGroupID is derived from the GPD ID like the alias (A.3.6.1.4)
-    group = derive_alias(SrcID(0xAABBCCDD))
-    assert app.subscribe_to_multicast_group.mock_calls == [
-        call(group, endpoint_id=GP_ENDPOINT)
-    ]
-
-    [pairing_packet] = [c.args[0] for c in app.send_packet.mock_calls]
-    _, data = foundation.ZCLHeader.deserialize(pairing_packet.data.serialize())
-    pairing, _ = PairingSchema.deserialize(data)
-
-    assert pairing.options.communication_mode == (
-        CommunicationMode.GroupcastForwardToDGroup
-    )
-    assert pairing.sink_group == group
-    assert pairing.sink_ieee is None
-    assert pairing.sink_nwk_addr is None
-
-
-async def test_startup_joins_derived_groups(app, manager):
-    """Every commissioned GPD's derived group is joined once on startup."""
-    app.subscribe_to_multicast_group = AsyncMock(wraps=app.subscribe_to_multicast_group)
-
-    # The first two GPDs derive the same group
-    for src_id in (0x11112222, 0x33332222, 0x44445555):
-        dev = GreenPowerDevice(
-            app, application_id=ApplicationID.SrcID, src_id=SrcID(src_id)
-        )
-        app.devices[dev.ieee] = dev
-
-    await manager.startup()
-
-    assert app.subscribe_to_multicast_group.mock_calls == [
-        call(t.Group(0x2222), endpoint_id=GP_ENDPOINT),
-        call(t.Group(0x5555), endpoint_id=GP_ENDPOINT),
-    ]
 
 
 @pytest.mark.parametrize(
@@ -809,245 +564,133 @@ async def test_decommissioning_leaves_derived_group(
     )
 
 
-async def test_gp_response_packet_structure(app, manager):
-    """GP Response should be sent with correct endpoint/cluster/profile."""
-    await manager._send_gp_response(
-        source_id=0x12345678,
-        gpd_command_id=0xF3,
-        gpd_command_payload=bytes([0x14]),
-        proxy_nwk=0x1234,
-    )
+async def test_startup_joins_derived_groups(app, manager):
+    """Every commissioned GPD's derived group is joined once on startup."""
+    app.subscribe_to_multicast_group = AsyncMock(wraps=app.subscribe_to_multicast_group)
 
-    assert app.send_packet.call_count == 1
-    sent = app.send_packet.call_args[0][0]
-    assert sent.dst_ep == GP_ENDPOINT
-    assert sent.src_ep == GP_ENDPOINT
-    assert sent.cluster_id == GP_CLUSTER_ID
-    assert sent.profile_id == zgp_profile.PROFILE_ID
+    # The first two GPDs derive the same group
+    for src_id in (0x11112222, 0x33332222, 0x44445555):
+        dev = GreenPowerDevice(
+            app, application_id=ApplicationID.SrcID, src_id=SrcID(src_id)
+        )
+        app.devices[dev.ieee] = dev
 
+    await manager.startup()
 
-async def test_gp_response_without_proxy(app, manager):
-    """GP Response without proxy should use coordinator as temp master."""
-    await manager._send_gp_response(
-        source_id=0x12345678,
-        gpd_command_id=0xF0,
-        gpd_command_payload=bytes([0x00]),
-        proxy_nwk=None,
-    )
-
-    assert app.send_packet.call_count == 1
+    assert app.subscribe_to_multicast_group.mock_calls == [
+        call(t.Group(0x2222), endpoint_id=GP_ENDPOINT),
+        call(t.Group(0x5555), endpoint_id=GP_ENDPOINT),
+    ]
 
 
-async def test_commissioning_with_encrypted_key(app, manager):
-    """Commissioning with key_encrypted=True should decrypt the key.
-
-    Tests the path in _process_commissioning where the GPD provides
-    its security key encrypted with the GP link key.
-    """
-
+async def test_shutdown(app, manager):
+    """Shutdown closes the window and cancels commissioning still in progress."""
     await manager.permit_join(time_s=60)
-    app.send_packet.reset_mock()
 
-    source_id = 0x11223344
-    original_key = bytes(range(16))
-
-    # Encrypt the key as a GPD would during commissioning
-    encrypted_key, key_mic_bytes = encrypt_security_key(source_id, original_key)
-    key_mic_int = struct.unpack("<I", key_mic_bytes)[0]
-
-    # Extended: Encrypted(0b11) + key_present(bit5) + key_encrypted(bit6)
-    # + outgoing_counter_present(bit7) = 0xE3  (Table 54)
-    comm_payload = (
-        bytes([0x02, 0x80, 0xE3])
-        + encrypted_key
-        + struct.pack("<I", key_mic_int)
-        + struct.pack("<I", 7)
+    app.gp_packet_received(
+        make_gp_packet(0x11223344, GPDCommandID.CommissioningRequest, b"\x02\x00")
     )
-
-    await manager._process_commissioning(
-        make_gp_packet(
-            source_id, GPDCommandID.CommissioningRequest, comm_payload, frame_counter=1
-        ),
-    )
-
-    dev = app.devices[synthetic_ieee(source_id)]
-    # The key must be DECRYPTED to the original
-    assert bytes(dev.security_key) == original_key
-    assert dev.security_level == SecurityLevel.Encrypted
-
-
-async def test_shutdown_cancels_commissioning(manager):
-    """Shutdown should cancel the commissioning timer and reset state."""
-    await manager.permit_join(time_s=300)
-    assert manager.is_commissioning
-
     await manager.shutdown()
 
     assert not manager.is_commissioning
-    assert manager._commissioning_task is None
+    assert synthetic_ieee(0x11223344) not in app.devices
 
 
-async def test_shutdown_cancels_owned_tasks(manager):
-    """Shutdown must cancel tasks spawned by `_create_task`."""
-
-    async def never_finishes() -> None:
-        await asyncio.Event().wait()
-
-    task = manager._create_task(never_finishes(), name="stuck")
-    assert task in manager._tasks
-
-    await manager.shutdown()
-
-    assert task.cancelled()
-    assert not manager._tasks
-
-
-async def test_commissioning_with_corrupt_payload(app, manager):
-    """Corrupt commissioning payload must not create a device."""
-    await manager.permit_join(time_s=60)
-    app.send_packet.reset_mock()
-
-    await manager._process_commissioning(
-        make_gp_packet(
-            0x12345678, GPDCommandID.CommissioningRequest, b"\xff", frame_counter=1
-        ),
+@pytest.mark.parametrize(
+    ("security_level", "mac_seq_num_capability", "frame_counter"),
+    [
+        (SecurityLevel.NoSecurity, False, None),
+        (SecurityLevel.NoSecurity, True, 1234),
+        (SecurityLevel.FullFrameCounterAndMIC, False, 1234),
+        (SecurityLevel.Encrypted, False, 1234),
+    ],
+)
+async def test_pairing_frame_counter_presence(
+    app, manager, security_level, mac_seq_num_capability, frame_counter
+):
+    """The frame counter is only sent if the GPD has one to check (A.3.3.5.2)."""
+    dev = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
     )
+    dev.device_id = DeviceID.OnOffSwitch
+    dev.mac_seq_num_capability = mac_seq_num_capability
+    dev.security_level = security_level
+    dev.security_key_type = SecurityKeyType.NoKey
+    dev.frame_counter = t.uint32_t(1234)
 
-    assert synthetic_ieee(0x12345678) not in app.devices
+    await manager.send_pairing(dev, add_sink=True)
+
+    pairing = sent_command(app.send_packet.mock_calls[0].args[0], PairingSchema)
+
+    assert pairing.options.security_frame_counter_present == (frame_counter is not None)
+    assert pairing.frame_counter == frame_counter
 
 
-async def test_commissioning_with_bad_encrypted_key(app, manager):
-    """Invalid encrypted key MIC must reject commissioning."""
-
-    await manager.permit_join(time_s=60)
-
-    # Extended 0xE3: Encrypted + key_present + key_encrypted + outgoing_counter_present
-    # (Table 54)
-    bad_key = b"\x00" * 16
-    bad_mic = struct.pack("<I", 0xDEADDEAD)  # wrong MIC
-    comm_payload = bytes([0x02, 0x80, 0xE3]) + bad_key + bad_mic + struct.pack("<I", 7)
-
-    await manager._process_commissioning(
-        make_gp_packet(
-            0xBBBBBBBB, GPDCommandID.CommissioningRequest, comm_payload, frame_counter=1
-        ),
+async def test_pairing_carries_key_in_the_clear(app, manager):
+    """GP Pairing carries the Sink Table key as-is, proxies store it unmodified."""
+    dev = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
     )
+    dev.device_id = DeviceID.OnOffSwitch
+    dev.security_key = t.KeyData(KEY)
+    dev.security_level = SecurityLevel.Encrypted
+    dev.security_key_type = SecurityKeyType.IndividualKey
+    dev.frame_counter = t.uint32_t(0)
 
-    # Device must NOT be created when key decryption fails
-    assert synthetic_ieee(0xBBBBBBBB) not in app.devices
+    await manager.send_pairing(dev, add_sink=True)
+
+    pairing = sent_command(app.send_packet.mock_calls[0].args[0], PairingSchema)
+
+    assert pairing.options.security_key_present
+    assert pairing.options.security_level == SecurityLevel.Encrypted
+    assert pairing.options.security_key_type == SecurityKeyType.IndividualKey
+    assert pairing.key == t.KeyData(KEY)
 
 
-async def test_commissioning_with_reserved_security_level(app, manager):
-    """The reserved security level 0b01 must not commission a device (A.1.4.1.3)."""
-
+async def open_window(app, manager) -> None:
     await manager.permit_join(time_s=60)
 
-    # Extended 0x01: security level 0b01, no key material (Table 54)
-    comm_payload = bytes([0x02, 0x80, 0x01])
 
-    await manager._process_commissioning(
-        make_gp_packet(
-            0xCCCCCCCC, GPDCommandID.CommissioningRequest, comm_payload, frame_counter=1
-        ),
-    )
-
-    assert synthetic_ieee(0xCCCCCCCC) not in app.devices
-
-
-async def test_gp_packet_routes_commissioning(app, manager):
-    """A CommissioningRequest (0xE0) GPDF triggers commissioning."""
-
-    await manager.permit_join(time_s=60)
-    app.send_packet.reset_mock()
-
-    comm_inner = bytes([0x02, 0x00])  # device_id=2, options=0
-
+async def request_channel(app, manager) -> None:
     app.gp_packet_received(
-        make_gp_packet(0xAAAA1111, GPDCommandID.CommissioningRequest, comm_inner)
+        make_gp_packet(0x12345678, GPDCommandID.ChannelRequest, b"\x00")
     )
     await wait_for_gp_processing()
 
-    assert synthetic_ieee(0xAAAA1111) in app.devices
 
-
-async def test_gp_packet_routes_channel_request(app, manager):
-    """A ChannelRequest (0xE3) GPDF triggers a GP Response."""
-
-    app.gp_packet_received(
-        make_gp_packet(0xCCCC3333, GPDCommandID.ChannelRequest, bytes([0x00]))
+async def pair(app, manager) -> None:
+    dev = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
     )
-    await wait_for_gp_processing()
+    dev.device_id = DeviceID.OnOffSwitch
+    dev.security_level = SecurityLevel.NoSecurity
+    dev.security_key_type = SecurityKeyType.NoKey
 
-    # Should have sent a GP Response (Channel Configuration)
-    assert app.send_packet.call_count == 1
-
-
-async def test_gp_packet_routes_success_report(app, manager):
-    """A SuccessReport (0xE2) GPDF is accepted silently with no side effects."""
-
-    app.gp_packet_received(make_gp_packet(0xDDDD4444, GPDCommandID.SuccessReport))
-    await wait_for_gp_processing()
-
-    # No device created, nothing sent
-    assert synthetic_ieee(0xDDDD4444) not in app.devices
-    assert len(app.send_packet.mock_calls) == 0
+    await manager.send_pairing(dev, add_sink=True)
 
 
-async def test_gp_packet_duplicate_commissioning_dropped(app, manager):
-    """The same commissioning GPDF forwarded by two proxies is processed once."""
+@pytest.mark.parametrize(
+    ("send", "command"),
+    [
+        (open_window, GreenPowerProxy.ClientCommandDefs.proxy_commissioning_mode),
+        (request_channel, GreenPowerProxy.ClientCommandDefs.response),
+        # Read client-to-server, 0x01 would be a GP Pairing Search
+        (pair, GreenPowerProxy.ClientCommandDefs.pairing),
+    ],
+)
+async def test_commands_sent_server_to_client(app, manager, send, command):
+    """The sink is the GP cluster server, so commands to proxies are server-to-client."""
+    await send(app, manager)
 
-    await manager.permit_join(time_s=60)
-    app.send_packet.reset_mock()
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    hdr, _ = foundation.ZCLHeader.deserialize(packet.data.serialize())
 
-    packet = make_gp_packet(0xEEEE5555, GPDCommandID.CommissioningRequest, b"\x02\x00")
+    assert packet.dst.addr_mode == t.AddrMode.Broadcast
+    assert packet.src_ep == packet.dst_ep == GP_ENDPOINT
+    assert hdr.frame_control.frame_type == foundation.FrameType.CLUSTER_COMMAND
+    assert hdr.direction == foundation.Direction.Server_to_Client
+    assert hdr.frame_control.disable_default_response
+    assert hdr.command_id == command.id
+    assert hdr.tsn == packet.tsn
 
-    app.gp_packet_received(packet)
-    await wait_for_gp_processing()
-    app.gp_packet_received(packet)
-    await wait_for_gp_processing()
-
-    assert len(app.device_initialized.mock_calls) == 1
-
-
-async def test_gp_packet_ieee_addressing_ignored(app, manager):
-    """Commissioning GPDFs from IEEE-addressed GPDs are not supported."""
-
-    await manager.permit_join(time_s=60)
-    app.send_packet.reset_mock()
-
-    packet = t.ZigbeeGpPacket(
-        application_id=ApplicationID.IEEE,
-        ieee=t.EUI64.convert("11:22:33:44:55:66:77:88"),
-        endpoint=t.uint8_t(1),
-        command_id=GPDCommandID.CommissioningRequest,
-        payload=t.SerializableBytes(b"\x02\x00"),
-        frame_counter=t.uint32_t(1),
-    )
-
-    app.gp_packet_received(packet)
-    await wait_for_gp_processing()
-
-    assert len(app.device_initialized.mock_calls) == 0
-    assert len(app.send_packet.mock_calls) == 0
-
-
-async def test_proxy_commissioning_mode_send_failure(app, manager):
-    """The window is not opened if the proxies could not be told about it."""
-    app.send_packet = AsyncMock(side_effect=TimeoutError)
-
-    with pytest.raises(TimeoutError):
-        await manager.permit_join(time_s=60)
-
-    assert not manager.is_commissioning
-
-
-async def test_reopen_commissioning_cancels_previous(manager):
-    """Opening a new window cancels the previous timer."""
-    await manager.permit_join(time_s=300)
-    first_task = manager._commissioning_task
-
-    await manager.permit_join(time_s=60)
-    second_task = manager._commissioning_task
-
-    # Tasks must be different (new timer created)
-    assert second_task is not first_task
+    sent_command(packet, command.schema)
