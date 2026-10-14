@@ -244,6 +244,40 @@ async def test_commissioning_with_outgoing_counter(app, manager):
     assert dev.frame_counter == 42
 
 
+async def test_recommissioning_replaces_device(app, manager):
+    """Re-commissioning swaps the device object, announced like a re-interview."""
+    await manager.permit_join(time_s=60)
+
+    app.gp_packet_received(
+        make_gp_packet(0x12345678, GPDCommandID.CommissioningRequest, b"\x02\x00")
+    )
+    await wait_for_gp_processing()
+
+    old_device = app.devices[synthetic_ieee(0x12345678)]
+    old_task = old_device.create_task(asyncio.Event().wait())
+
+    app.gp_packet_received(
+        make_gp_packet(
+            0x12345678,
+            GPDCommandID.CommissioningRequest,
+            b"\x07\x00",
+            frame_counter=2,
+        )
+    )
+    await wait_for_gp_processing()
+
+    new_device = app.devices[synthetic_ieee(0x12345678)]
+    assert new_device is not old_device
+    assert new_device.device_id == DeviceID.GenericSwitch
+
+    # The old device object is cleaned up
+    await asyncio.sleep(0)
+    assert old_task.cancelled()
+
+    assert app.device_initialized.mock_calls == [call(old_device)]
+    assert call("device_reinterviewed", new_device) in app.listener_event.mock_calls
+
+
 async def test_commissioning_with_switch_information(app, manager):
     """A GenericSwitch describes its contacts in the switch information field."""
     await manager.permit_join(time_s=60)

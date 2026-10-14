@@ -735,6 +735,19 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
         self.listener_event("device_reinterviewed", new_device)
 
+    def gp_device_recommissioned(self, device: GreenPowerDevice) -> None:
+        """Replace an already commissioned GPD with its re-commissioned device object."""
+        old_device = self.devices[device.ieee]
+
+        if self._dblistener is not None:
+            old_device.remove_listener(self._dblistener)
+
+        old_device.on_remove()
+
+        # Listeners already know the device, so this is announced like a re-interview
+        new_device = self._finalize_device(device)
+        self.listener_event("device_reinterviewed", new_device)
+
     async def reinterview_device(self, ieee: t.EUI64) -> None:
         """Re-interview a device. Safe for sleepy end-devices.
 

@@ -253,7 +253,10 @@ class GreenPowerManager:
             else packet.frame_counter
         )
 
-        self._application.device_initialized(device)
+        if device.ieee in self._application.devices:
+            self._application.gp_device_recommissioned(device)
+        else:
+            self._application.device_initialized(device)
 
         if device.rx_on_capability:
             await self._send_commissioning_reply(source_id, proxy_nwk)
