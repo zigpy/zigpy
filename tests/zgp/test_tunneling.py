@@ -19,7 +19,6 @@ from zigpy.zcl.clusters.greenpower import (
 )
 from zigpy.zgp.tunneling import gp_packet_from_zcl, is_gp_tunnel_packet
 from zigpy.zgp.types import (
-    GP_CLUSTER_ID,
     GP_ENDPOINT,
     ApplicationID,
     GPDCommandID,
@@ -45,7 +44,7 @@ def make_tunnel_packet(command_id: int, payload: bytes, **kwargs) -> t.ZigbeePac
     return t.ZigbeePacket(
         timestamp=TIMESTAMP,
         profile_id=zigpy.profiles.zgp.PROFILE_ID,
-        cluster_id=GP_CLUSTER_ID,
+        cluster_id=GreenPowerProxy.cluster_id,
         src_ep=GP_ENDPOINT,
         dst_ep=GP_ENDPOINT,
         data=t.SerializableBytes(hdr.serialize() + payload),

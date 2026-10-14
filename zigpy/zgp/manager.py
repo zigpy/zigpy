@@ -34,7 +34,6 @@ from zigpy.zgp.commands import (
 )
 from zigpy.zgp.crypto import decrypt_security_key
 from zigpy.zgp.types import (
-    GP_CLUSTER_ID,
     GP_ENDPOINT,
     ApplicationID,
     CommunicationMode,
@@ -480,7 +479,7 @@ class GreenPowerManager:
                 src_ep=t.uint8_t(GP_ENDPOINT),
                 tsn=t.uint8_t(tsn),
                 profile_id=t.uint16_t(zgp_profile.PROFILE_ID),
-                cluster_id=t.uint16_t(GP_CLUSTER_ID),
+                cluster_id=GreenPowerProxy.cluster_id,
                 data=t.SerializableBytes(hdr.serialize() + request.serialize()),
             )
         )

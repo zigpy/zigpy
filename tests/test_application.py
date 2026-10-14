@@ -23,8 +23,8 @@ from zigpy.exceptions import (
 import zigpy.ota
 import zigpy.types as t
 from zigpy.zcl import clusters, foundation
+from zigpy.zcl.clusters.greenpower import GreenPowerProxy
 import zigpy.zdo.types as zdo_t
-from zigpy.zgp.types import GP_CLUSTER_ID
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
 from .conftest import (
@@ -97,7 +97,7 @@ async def test_permit_opens_gp_window(app, node):
     gp_packets = [
         c.args[0]
         for c in app.send_packet.mock_calls
-        if c.args[0].cluster_id == GP_CLUSTER_ID
+        if c.args[0].cluster_id == GreenPowerProxy.cluster_id
     ]
     assert len(gp_packets) == 1
     assert gp_packets[0].dst.addr_mode == t.AddrMode.Broadcast

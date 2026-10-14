@@ -37,6 +37,7 @@ import zigpy.topology
 import zigpy.types as t
 import zigpy.util
 import zigpy.zcl
+from zigpy.zcl.clusters.greenpower import GreenPowerProxy
 import zigpy.zdo
 import zigpy.zdo.types as zdo_types
 from zigpy.zgp.manager import COMMISSIONING_COMMANDS, GreenPowerManager
@@ -1064,8 +1065,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 profile=zigpy.profiles.zgp.PROFILE_ID,
                 device_type=zigpy.profiles.zgp.DeviceType.COMBO_BASIC,
                 device_version=0b0000,
-                input_clusters=[zigpy.zgp.types.GP_CLUSTER_ID],
-                output_clusters=[zigpy.zgp.types.GP_CLUSTER_ID],
+                input_clusters=[GreenPowerProxy.cluster_id],
+                output_clusters=[GreenPowerProxy.cluster_id],
             )
         )
 

@@ -17,7 +17,7 @@ from zigpy.zcl.clusters.greenpower import (
     GreenPowerProxy,
     NotificationSchema,
 )
-from zigpy.zgp.types import GP_CLUSTER_ID, GP_ENDPOINT, SecurityLevel, SecurityStatus
+from zigpy.zgp.types import GP_ENDPOINT, SecurityLevel, SecurityStatus
 
 TUNNELED_GPDF_COMMANDS: dict[
     int, type[NotificationSchema | CommissioningNotificationSchema]
@@ -38,7 +38,7 @@ def is_gp_tunnel_packet(packet: t.ZigbeePacket) -> bool:
     """
     if not (
         packet.profile_id == zigpy.profiles.zgp.PROFILE_ID
-        and packet.cluster_id == GP_CLUSTER_ID
+        and packet.cluster_id == GreenPowerProxy.cluster_id
         and packet.src_ep == GP_ENDPOINT
     ):
         return False

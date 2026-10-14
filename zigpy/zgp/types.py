@@ -7,7 +7,6 @@ from zigpy.types import basic
 
 __all__ = [
     "GP_ENDPOINT",
-    "GP_CLUSTER_ID",
     "GP_GROUP_ID",
     "DEFAULT_GP_LINK_KEY",
     "SrcID",
@@ -32,9 +31,6 @@ __all__ = [
 
 # Green Power endpoint as defined in the ZGP specification
 GP_ENDPOINT: int = 242
-
-# Green Power cluster ID
-GP_CLUSTER_ID: int = 0x0021
 
 # Green Power group ID used for groupcast forwarding
 GP_GROUP_ID: int = 0x0B84
