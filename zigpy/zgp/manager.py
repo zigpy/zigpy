@@ -37,7 +37,6 @@ from zigpy.zgp.crypto import decrypt_security_key
 from zigpy.zgp.types import (
     GP_CLUSTER_ID,
     GP_ENDPOINT,
-    GP_GROUP_ID,
     ApplicationID,
     CommunicationMode,
     GPDCommandID,
@@ -60,6 +59,13 @@ COMMISSIONING_COMMANDS: frozenset[GPDCommandID] = frozenset(
         GPDCommandID.ChannelRequest,
     }
 )
+
+
+def derived_group(device: GreenPowerDevice) -> t.Group:
+    """The DGroupID proxies forward a GPD's GPDFs to in derived groupcast mode."""
+    # Derived from the GPD ID exactly like the alias (A.3.6.1.4), and the device's NWK
+    # address is that alias
+    return t.Group(device.nwk)
 
 
 class GreenPowerManager:
@@ -89,6 +95,19 @@ class GreenPowerManager:
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
         return task
+
+    async def startup(self) -> None:
+        """Join the derived groups of all commissioned GPDs, to receive their GPDFs."""
+        groups = {
+            derived_group(device)
+            for device in self._application.devices.values()
+            if isinstance(device, GreenPowerDevice)
+        }
+
+        for group in sorted(groups):
+            await self._application.subscribe_to_multicast_group(
+                group, endpoint_id=GP_ENDPOINT
+            )
 
     async def shutdown(self) -> None:
         """Cancel pending work and reset state."""
@@ -262,7 +281,10 @@ class GreenPowerManager:
         if device.rx_on_capability:
             await self._send_commissioning_reply(source_id, proxy_nwk)
 
-        await self.send_pairing(device, add_sink=True, proxy_nwk=proxy_nwk)
+        await self._application.subscribe_to_multicast_group(
+            derived_group(device), endpoint_id=GP_ENDPOINT
+        )
+        await self.send_pairing(device, add_sink=True)
 
         LOGGER.info("GP device commissioned: %r", device)
 
@@ -276,6 +298,18 @@ class GreenPowerManager:
     async def _decommission(self, device: GreenPowerDevice) -> None:
         await self.send_pairing(device, add_sink=False)
         await self._application.remove(device.ieee)
+
+        group = derived_group(device)
+
+        # Distinct GPD IDs can derive the same group
+        if group not in {
+            derived_group(other)
+            for other in self._application.devices.values()
+            if isinstance(other, GreenPowerDevice)
+        }:
+            await self._application.unsubscribe_from_multicast_group(
+                group, endpoint_id=GP_ENDPOINT
+            )
 
         LOGGER.info("GP device decommissioned: %r", device)
 
@@ -382,35 +416,18 @@ class GreenPowerManager:
             **schema_kwargs,
         )
 
-    async def send_pairing(
-        self,
-        device: GreenPowerDevice,
-        add_sink: bool = True,
-        proxy_nwk: int | None = None,
-    ) -> None:
-        """Broadcast a GP Pairing command telling proxies to add or remove a GPD.
-
-        Uses UnicastLightweight when a proxy forwarded the commissioning
-        notification, since that proxy is a known unicast target; otherwise
-        falls back to GroupcastForwardToDGroup. Table 27 lists the possible
-        gpsCommunicationMode values; choosing between them per pairing is
-        this sink's own policy, not spec-mandated.
-        """
+    async def send_pairing(self, device: GreenPowerDevice, add_sink: bool) -> None:
+        """Broadcast a GP Pairing command telling proxies to add or remove a GPD."""
         assert device.src_id is not None
 
-        coordinator_ieee = self._application.state.node_info.ieee
-        coordinator_nwk = self._application.state.node_info.nwk
-
-        if proxy_nwk is not None:
-            comm_mode = CommunicationMode.UnicastLightweight
-        else:
-            comm_mode = CommunicationMode.GroupcastForwardToDGroup
-
+        # TODO: proxies forward with derived groupcast, a single NWK broadcast per GPDF.
+        # Unicast forwarding through a chosen set of proxies needs zigpy to maintain
+        # those proxies as the network changes, from its topology scans.
         options = PairingOptions(
             application_id=ApplicationID.SrcID,
             add_sink=int(add_sink),
             remove_gpd=int(not add_sink),
-            communication_mode=comm_mode,
+            communication_mode=CommunicationMode.GroupcastForwardToDGroup,
             gpd_fixed=int(device.fixed_location),
             gpd_mac_seq_num_cap=int(device.mac_seq_num_capability),
             security_level=device.security_level,
@@ -428,14 +445,7 @@ class GreenPowerManager:
         }
 
         if add_sink:
-            if comm_mode in (
-                CommunicationMode.Unicast,
-                CommunicationMode.UnicastLightweight,
-            ):
-                schema_kwargs["sink_ieee"] = coordinator_ieee
-                schema_kwargs["sink_nwk_addr"] = coordinator_nwk
-            else:
-                schema_kwargs["sink_group"] = t.Group(GP_GROUP_ID)
+            schema_kwargs["sink_group"] = derived_group(device)
             schema_kwargs["device_id"] = t.uint8_t(device.device_id)
 
             schema_kwargs["frame_counter"] = t.uint32_t(device.frame_counter)

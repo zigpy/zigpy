@@ -30,7 +30,7 @@ from zigpy.zgp.types import (
     SrcID,
     SwitchType,
 )
-from zigpy.zgp.util import synthetic_ieee
+from zigpy.zgp.util import derive_alias, synthetic_ieee
 
 
 def make_gp_packet(
@@ -612,16 +612,16 @@ async def test_non_rx_skips_commissioning_reply(app, manager):
 
 
 @pytest.mark.parametrize(
-    ("gpp_short_addr", "temp_master", "communication_mode"),
+    ("gpp_short_addr", "temp_master"),
     [
         # Tunneled by a proxy
-        (0x5678, 0x5678, CommunicationMode.UnicastLightweight),
+        (0x5678, 0x5678),
         # Received directly by the coordinator
-        (None, 0x0000, CommunicationMode.GroupcastForwardToDGroup),
+        (None, 0x0000),
     ],
 )
 async def test_commissioning_uses_forwarding_proxy(
-    app, manager, gpp_short_addr, temp_master, communication_mode
+    app, manager, gpp_short_addr, temp_master
 ):
     """The proxy that tunneled the Commissioning GPDF is the GP Response TempMaster."""
     await manager.permit_join(time_s=60)
@@ -637,16 +637,95 @@ async def test_commissioning_uses_forwarding_proxy(
     )
     await wait_for_gp_processing()
 
-    reply_packet, pairing_packet = [c.args[0] for c in app.send_packet.mock_calls]
+    reply_packet, _ = [c.args[0] for c in app.send_packet.mock_calls]
 
     _, data = foundation.ZCLHeader.deserialize(reply_packet.data.serialize())
     response, _ = ResponseSchema.deserialize(data)
     assert response.temp_master_short_addr == temp_master
     assert response.gpd_command_id == GPDCommandID.CommissioningReply
 
+
+async def test_commissioning_pairs_derived_groupcast(app, manager):
+    """Proxies are paired in derived groupcast mode, and the sink joins the group."""
+    app.subscribe_to_multicast_group = AsyncMock(wraps=app.subscribe_to_multicast_group)
+
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
+    app.gp_packet_received(
+        make_gp_packet(0xAABBCCDD, GPDCommandID.CommissioningRequest, b"\x02\x00")
+    )
+    await wait_for_gp_processing()
+
+    # The DGroupID is derived from the GPD ID like the alias (A.3.6.1.4)
+    group = derive_alias(SrcID(0xAABBCCDD))
+    assert app.subscribe_to_multicast_group.mock_calls == [
+        call(group, endpoint_id=GP_ENDPOINT)
+    ]
+
+    [pairing_packet] = [c.args[0] for c in app.send_packet.mock_calls]
     _, data = foundation.ZCLHeader.deserialize(pairing_packet.data.serialize())
     pairing, _ = PairingSchema.deserialize(data)
-    assert pairing.options.communication_mode == communication_mode
+
+    assert pairing.options.communication_mode == (
+        CommunicationMode.GroupcastForwardToDGroup
+    )
+    assert pairing.sink_group == group
+    assert pairing.sink_ieee is None
+    assert pairing.sink_nwk_addr is None
+
+
+async def test_startup_joins_derived_groups(app, manager):
+    """Every commissioned GPD's derived group is joined once on startup."""
+    app.subscribe_to_multicast_group = AsyncMock(wraps=app.subscribe_to_multicast_group)
+
+    # The first two GPDs derive the same group
+    for src_id in (0x11112222, 0x33332222, 0x44445555):
+        dev = GreenPowerDevice(
+            app, application_id=ApplicationID.SrcID, src_id=SrcID(src_id)
+        )
+        app.devices[dev.ieee] = dev
+
+    await manager.startup()
+
+    assert app.subscribe_to_multicast_group.mock_calls == [
+        call(t.Group(0x2222), endpoint_id=GP_ENDPOINT),
+        call(t.Group(0x5555), endpoint_id=GP_ENDPOINT),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("other_src_id", "unsubscribed"),
+    [
+        # No other GPD uses the group
+        (0x44445555, True),
+        # Another GPD derives the same group
+        (0x33332222, False),
+    ],
+)
+async def test_decommissioning_leaves_derived_group(
+    app, manager, other_src_id, unsubscribed
+):
+    """The sink leaves a derived group once no commissioned GPD uses it."""
+    app.unsubscribe_from_multicast_group = AsyncMock(
+        wraps=app.unsubscribe_from_multicast_group
+    )
+
+    for src_id in (0x11112222, other_src_id):
+        dev = GreenPowerDevice(
+            app, application_id=ApplicationID.SrcID, src_id=SrcID(src_id)
+        )
+        dev.security_level = SecurityLevel.NoSecurity
+        dev.security_key_type = SecurityKeyType.NoKey
+        app.devices[dev.ieee] = dev
+
+    manager.decommission(app.devices[synthetic_ieee(0x11112222)])
+    await wait_for_gp_processing()
+
+    assert synthetic_ieee(0x11112222) not in app.devices
+    assert app.unsubscribe_from_multicast_group.mock_calls == (
+        [call(t.Group(0x2222), endpoint_id=GP_ENDPOINT)] if unsubscribed else []
+    )
 
 
 async def test_gp_response_packet_structure(app, manager):

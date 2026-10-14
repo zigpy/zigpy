@@ -307,6 +307,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             LOGGER.warning("Failed to send startup broadcast: %s", e)
             LOGGER.warning(INTERFERENCE_MESSAGE)
 
+        await self.green_power.startup()
+
         if self.config[conf.CONF_NWK_BACKUP_ENABLED]:
             self.backups.start_periodic_backups(
                 # Config specifies the period in minutes, not seconds
