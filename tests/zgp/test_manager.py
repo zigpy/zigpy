@@ -687,20 +687,6 @@ async def test_gp_response_without_proxy(app, manager):
     assert app.send_packet.call_count == 1
 
 
-async def test_gp_response_send_failure(app, manager):
-    """GP Response send failure should be handled gracefully."""
-    app.send_packet = AsyncMock(side_effect=TimeoutError)
-
-    await manager._send_gp_response(
-        source_id=0x12345678,
-        gpd_command_id=0xF3,
-        gpd_command_payload=bytes([0x14]),
-        proxy_nwk=0x1234,
-    )
-
-    # Should not raise, just log warning
-
-
 async def test_commissioning_with_encrypted_key(app, manager):
     """Commissioning with key_encrypted=True should decrypt the key.
 
@@ -891,29 +877,13 @@ async def test_gp_packet_ieee_addressing_ignored(app, manager):
 
 
 async def test_proxy_commissioning_mode_send_failure(app, manager):
-    """ProxyCommissioningMode send failure still opens window locally."""
+    """The window is not opened if the proxies could not be told about it."""
     app.send_packet = AsyncMock(side_effect=TimeoutError)
 
-    await manager.permit_join(time_s=60)
+    with pytest.raises(TimeoutError):
+        await manager.permit_join(time_s=60)
 
-    # Window must be open locally despite send failure
-    assert manager.is_commissioning
-
-
-async def test_pairing_send_failure(app, manager):
-    """GP Pairing send failure must not crash the sink."""
-    app.send_packet = AsyncMock(side_effect=TimeoutError)
-
-    dev = GreenPowerDevice(
-        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x99998888)
-    )
-    dev.device_id = DeviceID.OnOffSwitch
-    dev.security_level = SecurityLevel.NoSecurity
-    dev.security_key_type = SecurityKeyType.NoKey
-    dev.frame_counter = t.uint32_t(0)
-
-    # Must not raise despite send_packet failure
-    await manager.send_pairing(dev, add_sink=True)
+    assert not manager.is_commissioning
 
 
 async def test_reopen_commissioning_cancels_previous(manager):

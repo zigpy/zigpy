@@ -12,6 +12,8 @@ import struct
 import time
 from typing import TYPE_CHECKING, Any
 
+from cryptography.exceptions import InvalidTag
+
 from zigpy.datastructures import Debouncer
 from zigpy.device import GreenPowerDevice
 from zigpy.profiles import zgp as zgp_profile
@@ -213,7 +215,7 @@ class GreenPowerManager:
                         key_data = decrypt_security_key(
                             source_id, bytes(comm.security_key), mic_bytes
                         )
-                    except Exception:  # noqa: BLE001
+                    except InvalidTag:
                         LOGGER.warning(
                             "Failed to decrypt security key from 0x%08X",
                             source_id,
@@ -324,11 +326,10 @@ class GreenPowerManager:
             await self._close_commissioning_window()
             return
 
-        self._commissioning_window_end = time.monotonic() + time_s
-
         LOGGER.info("Opening GP commissioning window for %d seconds", time_s)
 
         await self._send_proxy_commissioning_mode(enter=True, window=time_s)
+        self._commissioning_window_end = time.monotonic() + time_s
 
         if self._commissioning_task is not None:
             self._commissioning_task.cancel()
@@ -374,16 +375,10 @@ class GreenPowerManager:
         if has_window:
             schema_kwargs["window"] = window
 
-        try:
-            await self._broadcast_command(
-                GreenPowerProxy.ClientCommandDefs.proxy_commissioning_mode,
-                **schema_kwargs,
-            )
-        except Exception:  # noqa: BLE001
-            LOGGER.warning(
-                "Failed to send GP Proxy Commissioning Mode",
-                exc_info=True,
-            )
+        await self._broadcast_command(
+            GreenPowerProxy.ClientCommandDefs.proxy_commissioning_mode,
+            **schema_kwargs,
+        )
 
     async def send_pairing(
         self,
@@ -452,21 +447,14 @@ class GreenPowerManager:
                 )
                 schema_kwargs["key"] = t.KeyData(encrypted_key)
 
-        try:
-            await self._broadcast_command(
-                GreenPowerProxy.ClientCommandDefs.pairing, **schema_kwargs
-            )
-            LOGGER.debug(
-                "Sent GP Pairing for 0x%08X (add_sink=%s)",
-                device.src_id,
-                add_sink,
-            )
-        except Exception:  # noqa: BLE001
-            LOGGER.warning(
-                "Failed to send GP Pairing for 0x%08X",
-                device.src_id,
-                exc_info=True,
-            )
+        await self._broadcast_command(
+            GreenPowerProxy.ClientCommandDefs.pairing, **schema_kwargs
+        )
+        LOGGER.debug(
+            "Sent GP Pairing for 0x%08X (add_sink=%s)",
+            device.src_id,
+            add_sink,
+        )
 
     # --- GP Response (sink-to-GPD via proxy) ---
 
@@ -481,34 +469,27 @@ class GreenPowerManager:
         channel = self._application.state.network_info.channel
         temp_master = proxy_nwk or self._application.state.node_info.nwk
 
-        try:
-            await self._broadcast_command(
-                GreenPowerProxy.ClientCommandDefs.response,
-                options=ResponseOptions(
-                    application_id=ApplicationID.SrcID,
-                    transmit_on_endpoint_match=0,
-                    _reserved=0,
-                ),
-                temp_master_short_addr=t.uint16_t(temp_master),
-                temp_master_tx_channel=TempMasterTxChannel(
-                    transmit_channel=t.uint4_t(channel - 11), _reserved=0
-                ),
-                gpd_id=SrcID(source_id),
-                gpd_command_id=GPDCommandID(gpd_command_id),
-                gpd_command_payload=t.LVBytes(gpd_command_payload),
-            )
-            LOGGER.debug(
-                "Sent GP Response (cmd=0x%02X) for GPD 0x%08X via proxy 0x%04X",
-                gpd_command_id,
-                source_id,
-                temp_master,
-            )
-        except Exception:  # noqa: BLE001
-            LOGGER.warning(
-                "Failed to send GP Response for 0x%08X",
-                source_id,
-                exc_info=True,
-            )
+        await self._broadcast_command(
+            GreenPowerProxy.ClientCommandDefs.response,
+            options=ResponseOptions(
+                application_id=ApplicationID.SrcID,
+                transmit_on_endpoint_match=0,
+                _reserved=0,
+            ),
+            temp_master_short_addr=t.uint16_t(temp_master),
+            temp_master_tx_channel=TempMasterTxChannel(
+                transmit_channel=t.uint4_t(channel - 11), _reserved=0
+            ),
+            gpd_id=SrcID(source_id),
+            gpd_command_id=GPDCommandID(gpd_command_id),
+            gpd_command_payload=t.LVBytes(gpd_command_payload),
+        )
+        LOGGER.debug(
+            "Sent GP Response (cmd=0x%02X) for GPD 0x%08X via proxy 0x%04X",
+            gpd_command_id,
+            source_id,
+            temp_master,
+        )
 
     async def _send_commissioning_reply(
         self, source_id: int, proxy_nwk: int | None = None
