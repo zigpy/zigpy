@@ -705,6 +705,9 @@ class ZigbeeGpPacket(BaseDataclassMixin):
     # the value, the worse the link; interpretation is otherwise application-specific
     gpp_distance: basic.uint8_t | None = dataclasses.field(default=None)
 
+    # The proxy that tunneled the GPDF, `None` if the radio received it directly
+    gpp_short_addr: NWK | None = dataclasses.field(default=None)
+
     def __hash__(self) -> int:
         return hash(
             (
@@ -721,6 +724,7 @@ class ZigbeeGpPacket(BaseDataclassMixin):
                 self.lqi,
                 self.rssi,
                 self.gpp_distance,
+                self.gpp_short_addr,
             )
         )
 

@@ -14,13 +14,14 @@ from zigpy.device import GreenPowerDevice
 from zigpy.profiles import zgp as zgp_profile
 import zigpy.types as t
 from zigpy.zcl import foundation
-from zigpy.zcl.clusters.greenpower import GreenPowerProxy, PairingSchema
+from zigpy.zcl.clusters.greenpower import GreenPowerProxy, PairingSchema, ResponseSchema
 from zigpy.zgp.commands import GPGenericSwitchConfiguration
 from zigpy.zgp.crypto import encrypt_security_key
 from zigpy.zgp.types import (
     GP_CLUSTER_ID,
     GP_ENDPOINT,
     ApplicationID,
+    CommunicationMode,
     DeviceID,
     GPDCommandID,
     SecurityKeyType,
@@ -37,6 +38,7 @@ def make_gp_packet(
     command_id: GPDCommandID,
     payload: bytes = b"",
     frame_counter: int = 1,
+    gpp_short_addr: int | None = None,
 ) -> t.ZigbeeGpPacket:
     return t.ZigbeeGpPacket(
         application_id=ApplicationID.SrcID,
@@ -47,6 +49,7 @@ def make_gp_packet(
         security_level=SecurityLevel.NoSecurity,
         security_key_type=SecurityKeyType.NoKey,
         security_status=SecurityStatus.NoSecurity,
+        gpp_short_addr=None if gpp_short_addr is None else t.NWK(gpp_short_addr),
     )
 
 
@@ -617,37 +620,42 @@ async def test_non_rx_skips_commissioning_reply(app, manager):
     assert app.send_packet.call_count == 1
 
 
-async def test_commissioning_reply_uses_proxy_as_temp_master(app, manager):
-    """Commissioning Reply should be a GP Response (cmd 0x06) with 0xF0.
-
-    Per ZGP spec, the GP Commissioning Reply (0xF0) is sent via
-    GP Response (client cmd 0x06) through the temp master proxy.
-    The ZCL frame must contain:
-    - command_id 0x06 (GP Response) in byte 2
-    - gpd_command_id 0xF0 (Commissioning Reply) in the payload
-    """
+@pytest.mark.parametrize(
+    ("gpp_short_addr", "temp_master", "communication_mode"),
+    [
+        # Tunneled by a proxy
+        (0x5678, 0x5678, CommunicationMode.UnicastLightweight),
+        # Received directly by the coordinator
+        (None, 0x0000, CommunicationMode.GroupcastForwardToDGroup),
+    ],
+)
+async def test_commissioning_uses_forwarding_proxy(
+    app, manager, gpp_short_addr, temp_master, communication_mode
+):
+    """The proxy that tunneled the Commissioning GPDF is the GP Response TempMaster."""
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
 
-    comm_payload = bytes([0x02, 0x82, 0x00])  # rx_on=True (bit 1, Table 53)
-
-    await manager._process_commissioning(
+    app.gp_packet_received(
         make_gp_packet(
-            0xAABBCCDD, GPDCommandID.CommissioningRequest, comm_payload, frame_counter=1
-        ),
-        proxy_nwk=0x5678,
+            0xAABBCCDD,
+            GPDCommandID.CommissioningRequest,
+            bytes([0x02, 0x82, 0x00]),  # rx_on=True (bit 1, Table 53)
+            gpp_short_addr=gpp_short_addr,
+        )
     )
+    await wait_for_gp_processing()
 
-    # First packet = Commissioning Reply, second = GP Pairing
-    assert app.send_packet.call_count == 2
+    reply_packet, pairing_packet = [c.args[0] for c in app.send_packet.mock_calls]
 
-    # Verify first packet is GP Response (cmd 0x06) with gpd_cmd 0xF0
-    reply_packet = app.send_packet.call_args_list[0][0][0]
-    reply_data = reply_packet.data.serialize()
-    # ZCL byte 2 = command_id = 0x06 (GP Response)
-    assert reply_data[2] == 0x06
-    # The payload must contain 0xF0 (GP Commissioning Reply command)
-    assert bytes([0xF0]) in reply_data
+    _, data = foundation.ZCLHeader.deserialize(reply_packet.data.serialize())
+    response, _ = ResponseSchema.deserialize(data)
+    assert response.temp_master_short_addr == temp_master
+    assert response.gpd_command_id == GPDCommandID.CommissioningReply
+
+    _, data = foundation.ZCLHeader.deserialize(pairing_packet.data.serialize())
+    pairing, _ = PairingSchema.deserialize(data)
+    assert pairing.options.communication_mode == communication_mode
 
 
 async def test_gp_response_packet_structure(app, manager):

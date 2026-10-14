@@ -114,4 +114,7 @@ def gp_packet_from_zcl(packet: t.ZigbeePacket) -> t.ZigbeeGpPacket:
         rssi=rssi,
         # A Green Power 1.0 proxy sends a `Distance` byte instead of the GPP-GPD link
         gpp_distance=command.gpp_distance,
+        gpp_short_addr=(
+            None if command.gpp_short_addr is None else t.NWK(command.gpp_short_addr)
+        ),
     )

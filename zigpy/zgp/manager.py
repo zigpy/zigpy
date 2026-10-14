@@ -144,8 +144,7 @@ class GreenPowerManager:
         """Dispatch a commissioning GPDF by its command ID."""
         assert packet.src_id is not None
 
-        # TODO: `ZigbeeGpPacket` does not carry the address of the forwarding proxy
-        proxy_nwk = None
+        proxy_nwk = packet.gpp_short_addr
 
         if packet.command_id == GPDCommandID.CommissioningRequest:
             await self._process_commissioning(packet, proxy_nwk)
