@@ -159,6 +159,7 @@ async def test_process_commissioning_creates_device(app, manager):
     assert dev.device_id == 0x02
     assert dev.src_id == 0xAABBCCDD
 
+    assert call("device_joined", dev) in app.listener_event.mock_calls
     assert app.device_initialized.mock_calls == [call(dev)]
 
     # GP Pairing should be sent
@@ -276,6 +277,7 @@ async def test_recommissioning_replaces_device(app, manager):
 
     assert app.device_initialized.mock_calls == [call(old_device)]
     assert call("device_reinterviewed", new_device) in app.listener_event.mock_calls
+    assert call("device_joined", new_device) not in app.listener_event.mock_calls
 
 
 async def test_commissioning_with_switch_information(app, manager):

@@ -256,6 +256,7 @@ class GreenPowerManager:
         if device.ieee in self._application.devices:
             self._application.gp_device_recommissioned(device)
         else:
+            self._application.listener_event("device_joined", device)
             self._application.device_initialized(device)
 
         if device.rx_on_capability:
