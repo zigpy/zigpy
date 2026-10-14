@@ -24,6 +24,7 @@ import zigpy.ota
 import zigpy.types as t
 from zigpy.zcl import clusters, foundation
 import zigpy.zdo.types as zdo_t
+from zigpy.zgp.types import GP_CLUSTER_ID
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
 from .conftest import (
@@ -81,27 +82,37 @@ async def test_permit_broadcast(app):
     assert app.send_packet.mock_calls[0].args[0].dst.addr_mode == t.AddrMode.Broadcast
 
 
-async def test_permit_opens_gp_window(app):
-    """Broadcast permit should open the GP commissioning window too."""
-    app.green_power.permit_join = AsyncMock()
+@pytest.mark.parametrize("node", [None, make_ieee(), NCP_IEEE])
+async def test_permit_opens_gp_window(app, node):
+    """GP commissioning is network-wide, even when joining is limited to one node."""
+    app.devices[make_ieee()] = MagicMock()
+    app.devices[make_ieee()].zdo.permit = AsyncMock()
     app.permit_ncp = AsyncMock()
     app.send_packet = AsyncMock()
 
-    await app.permit(time_s=120)
+    await app.permit(time_s=60, node=node)
 
-    assert app.green_power.permit_join.mock_calls == [call(120)]
+    assert app.green_power.is_commissioning
+
+    gp_packets = [
+        c.args[0]
+        for c in app.send_packet.mock_calls
+        if c.args[0].cluster_id == GP_CLUSTER_ID
+    ]
+    assert len(gp_packets) == 1
+    assert gp_packets[0].dst.addr_mode == t.AddrMode.Broadcast
+
+    await app.green_power.shutdown()
 
 
-async def test_permit_node_also_opens_gp_window(app, ieee):
-    """Targeted permit must still open the GP window."""
-    app.devices[ieee] = MagicMock()
-    app.devices[ieee].zdo.permit = AsyncMock()
-    app.green_power.permit_join = AsyncMock()
-    app.permit_ncp = AsyncMock()
+async def test_permit_invalid_time_does_not_open_gp_window(app):
+    app.send_packet = AsyncMock()
 
-    await app.permit(time_s=60, node=ieee)
+    with pytest.raises(AssertionError):
+        await app.permit(time_s=255)
 
-    assert app.green_power.permit_join.mock_calls == [call(60)]
+    assert not app.green_power.is_commissioning
+    assert len(app.send_packet.mock_calls) == 0
 
 
 @patch("zigpy.device.Device.initialize", new_callable=AsyncMock)

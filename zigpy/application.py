@@ -1798,8 +1798,15 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     async def permit(self, time_s: int = 60, node: t.EUI64 | str | None = None) -> None:
         """Permit joining on a specific node or all router nodes."""
-        await self.permit_gp(time_s)
         assert 0 <= time_s <= 254
+
+        # TODO: GP commissioning is network-wide even when joining is limited to one
+        # node. GP has no concept of roaming or rerouting, so commissioning through a
+        # chosen set of proxies would leave zigpy to track and repair which proxies
+        # forward for each GPD. Until zigpy manages that state, only broadcast
+        # commissioning is supported.
+        await self.permit_gp(time_s)
+
         if node is not None:
             if not isinstance(node, t.EUI64):
                 node = t.EUI64([t.uint8_t(p) for p in node])
@@ -1827,7 +1834,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         )
         await self.permit_ncp(time_s)
 
-    async def permit_gp(self, time_s: int = 180) -> None:
+    async def permit_gp(self, time_s: int) -> None:
         """Open or close (``time_s=0``) the Green Power commissioning window."""
         await self.green_power.permit_join(time_s)
 

@@ -51,10 +51,8 @@ if TYPE_CHECKING:
 
 LOGGER = logging.getLogger(__name__)
 
-DEFAULT_COMMISSIONING_WINDOW_S: int = 180
-
-# Decommissioning is not one of them: it comes from a registered GPD, which checks its
-# freshness and security first (spec A.3.5.2.4)
+# GPDFs the manager handles. Decommissioning is not one of them: it comes from a
+# registered GPD, which checks its freshness and security first (spec A.3.5.2.4)
 COMMISSIONING_COMMANDS: frozenset[GPDCommandID] = frozenset(
     {
         GPDCommandID.CommissioningRequest,
@@ -324,7 +322,7 @@ class GreenPowerManager:
 
     # --- Commissioning window control ---
 
-    async def permit_join(self, time_s: int = DEFAULT_COMMISSIONING_WINDOW_S) -> None:
+    async def permit_join(self, time_s: int) -> None:
         """Open the GP commissioning window; time_s=0 closes it immediately."""
         if time_s == 0:
             await self._close_commissioning_window()
