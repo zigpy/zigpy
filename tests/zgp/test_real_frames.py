@@ -10,13 +10,13 @@ from tests.zgp.conftest import wait_for_gp_processing
 from tests.zgp.fixtures.busch_jaeger_6716u import (
     BJ6716U_COMMISSIONING_PAYLOAD,
     BJ6716U_DECRYPTED_KEY,
-    BJ6716U_EXPECTED,
     BJ6716U_OPERATIONAL_FRAME,
     BJ6716U_SOURCE_ID,
 )
 import zigpy.types as t
 from zigpy.zgp.types import (
     ApplicationID,
+    DeviceID,
     GPDCommandID,
     SecurityKeyType,
     SecurityLevel,
@@ -53,13 +53,18 @@ async def test_real_commissioning_succeeds(manager, app) -> None:
 
     device = app.devices[IEEE]
     assert device.src_id == BJ6716U_SOURCE_ID
-    assert device.device_id == BJ6716U_EXPECTED.device_id
+    assert device.device_id == DeviceID.OnOffSwitch
     assert device.security_key == t.KeyData(BJ6716U_DECRYPTED_KEY)
     assert device.security_level == SecurityLevel.FullFrameCounterAndMIC
     assert device.security_key_type == SecurityKeyType.IndividualKey
     # The advertised OutgoingCounter wins over the notification frame counter.
-    assert device.frame_counter == BJ6716U_EXPECTED.outgoing_counter
-    assert device.commands == BJ6716U_EXPECTED.gpd_commands
+    assert device.frame_counter == 0x00001DEC
+    assert device.commands == [
+        *range(0x10, 0x18),  # Recall Scene 0-7
+        GPDCommandID.Toggle,
+        GPDCommandID.Press1of1,
+        *range(0x62, 0x69),  # Press 1 of 2 to Short Press 2 of 2
+    ]
 
 
 async def test_real_unprocessed_frame_verified(manager, app) -> None:
