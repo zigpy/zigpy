@@ -1,7 +1,7 @@
-"""Green Power Manager: processes GP frames on cluster 0x0021, endpoint 242.
+"""Green Power Manager: commissioning of Green Power devices.
 
-Manages GP device lifecycle (commissioning, decommissioning) and dispatches
-GP commands to listeners.
+Opens and closes the GP commissioning window, handles the GPD commissioning commands
+(0xE0-0xE3), and sends the GP cluster commands that configure proxies.
 """
 
 from __future__ import annotations
@@ -13,13 +13,12 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from zigpy.datastructures import Debouncer
-from zigpy.event import EventBase
+from zigpy.device import GreenPowerDevice
 from zigpy.profiles import zgp as zgp_profile
 import zigpy.types as t
 from zigpy.zcl import foundation
 from zigpy.zcl.clusters.greenpower import (
     GreenPowerProxy,
-    NotificationOptions,
     PairingOptions,
     PairingSchema,
     ProxyCommissioningModeOptions,
@@ -29,7 +28,6 @@ from zigpy.zcl.clusters.greenpower import (
     TempMasterTxChannel,
 )
 from zigpy.zgp.commands import (
-    GPD_COMMAND_SCHEMAS,
     GPChannelConfigurationPayload,
     GPChannelRequestPayload,
     GPCommissioningPayload,
@@ -37,24 +35,18 @@ from zigpy.zgp.commands import (
     GPCommissioningReplyPayload,
 )
 from zigpy.zgp.crypto import decrypt_security_key, encrypt_security_key
-from zigpy.zgp.device import GPDevice
-from zigpy.zgp.events import (
-    CommandReceived,
-    DeviceJoined,
-    DeviceLeft,
-    RawCommandReceived,
-)
-from zigpy.zgp.proxy import GPProxyTable
-import zigpy.zgp.types as zgptypes
 from zigpy.zgp.types import (
     GP_CLUSTER_ID,
     GP_ENDPOINT,
     GP_GROUP_ID,
+    ApplicationID,
     CommunicationMode,
     GPDCommandID,
     SecurityKeyType,
     SecurityLevel,
+    SrcID,
 )
+from zigpy.zgp.util import synthetic_ieee
 
 if TYPE_CHECKING:
     from zigpy.application import ControllerApplication
@@ -63,9 +55,18 @@ LOGGER = logging.getLogger(__name__)
 
 DEFAULT_COMMISSIONING_WINDOW_S: int = 180
 
+COMMISSIONING_COMMANDS: frozenset[GPDCommandID] = frozenset(
+    {
+        GPDCommandID.CommissioningRequest,
+        GPDCommandID.DecommissioningRequest,
+        GPDCommandID.SuccessReport,
+        GPDCommandID.ChannelRequest,
+    }
+)
 
-class GreenPowerManager(EventBase):
-    """Central manager for Green Power protocol handling, attached to the app.
+
+class GreenPowerManager:
+    """Commissions Green Power devices, attached to the app.
 
     Limitation: only ApplicationID.SrcID (0b000) is supported. GPDs using
     ApplicationID.IEEE (0b010) are not handled.
@@ -75,18 +76,14 @@ class GreenPowerManager(EventBase):
     DEDUP_TIMEOUT_S: float = 2.0
 
     def __init__(self, application: ControllerApplication) -> None:
-        super().__init__()
         self._application = application
-        self._devices: dict[int, GPDevice] = {}  # sourceID -> GPDevice
         self._commissioning_window_end: float = 0
         self._commissioning_task: asyncio.Task[None] | None = None
         # Background tasks spawned from incoming frames; tracked so shutdown
         # can cancel everything instead of leaving work attached to the app.
         self._tasks: set[asyncio.Task[Any]] = set()
-        self.proxy_table: GPProxyTable = GPProxyTable()
-        # Duplicate filtering via zigpy's shared Debouncer implementation
-        # (spec A.3.6.1.2): same (sourceID, frame_counter) key seen again
-        # inside DEDUP_TIMEOUT_S is a retransmission from a different proxy.
+        # Commissioning GPDFs come from GPDs that are not registered yet, so
+        # `GreenPowerDevice` cannot filter their duplicates (spec A.3.6.1.2)
         self._dedup_debouncer: Debouncer = Debouncer()
 
     def _create_task(self, coro: Any, name: str | None = None) -> asyncio.Task[Any]:
@@ -111,20 +108,11 @@ class GreenPowerManager(EventBase):
         self._tasks.clear()
 
     @property
-    def devices(self) -> dict[int, GPDevice]:
-        """Return the dictionary of commissioned GP devices."""
-        return self._devices
-
-    @property
     def is_commissioning(self) -> bool:
         """Return True if the GP commissioning window is currently open."""
         return time.monotonic() < self._commissioning_window_end
 
-    def get_device(self, source_id: int) -> GPDevice | None:
-        """Get a commissioned GP device by sourceID."""
-        return self._devices.get(source_id)
-
-    def _is_duplicate(self, source_id: int, frame_counter: int) -> bool:
+    def _is_duplicate(self, source_id: SrcID, frame_counter: int | None) -> bool:
         """Drop a (sourceID, frame_counter) pair reforwarded by a proxy (A.3.6.1.2)."""
         filtered = self._dedup_debouncer.filter(
             (source_id, frame_counter), self.DEDUP_TIMEOUT_S
@@ -137,176 +125,49 @@ class GreenPowerManager(EventBase):
             )
         return filtered
 
-    def add_device(self, device: GPDevice) -> None:
-        """Add or update a GP device in the registry."""
-        self._devices[device.source_id] = device
-
-    def remove_device(self, source_id: int) -> GPDevice | None:
-        """Remove a GP device from the registry."""
-        return self._devices.pop(source_id, None)
-
     # --- Frame processing ---
 
-    def handle_packet(self, packet: t.ZigbeePacket) -> bool:
-        """Process a GP frame packet, dispatching async work as background tasks."""
-        if packet.dst_ep != GP_ENDPOINT or packet.cluster_id != GP_CLUSTER_ID:
-            return False
+    def packet_received(self, packet: t.ZigbeeGpPacket) -> None:
+        """Process a commissioning GPDF, dispatching async work as a background task."""
+        if packet.application_id is not ApplicationID.SrcID:
+            LOGGER.debug("Ignoring GP packet with unsupported addressing: %r", packet)
+            return
 
-        try:
-            data = packet.data.serialize()
-            hdr, zcl_payload = foundation.ZCLHeader.deserialize(data)
-        except ValueError:
-            LOGGER.debug("Error processing GP packet", exc_info=True)
-            return False
+        assert packet.src_id is not None
 
-        if hdr.frame_control.frame_type != foundation.FrameType.CLUSTER_COMMAND:
-            LOGGER.debug("GP frame is not cluster-specific, ignoring")
-            return False
-
-        is_server_to_client = (
-            hdr.frame_control.direction == foundation.Direction.Server_to_Client
-        )
-
-        proxy_nwk: int | None = None
-        if packet.src and packet.src.addr_mode == t.AddrMode.NWK:
-            assert isinstance(packet.src.address, t.NWK)
-            proxy_nwk = int(packet.src.address)
+        if self._is_duplicate(packet.src_id, packet.frame_counter):
+            return
 
         self._create_task(
-            self._process_zcl_command(
-                hdr.command_id, zcl_payload, is_server_to_client, proxy_nwk
-            ),
-            f"gp_process_command-0x{hdr.command_id:02x}",
-        )
-        return True
-
-    async def _process_zcl_command(
-        self,
-        command_id: int,
-        payload: bytes,
-        is_server_to_client: bool,
-        proxy_nwk: int | None,
-    ) -> None:
-        """Dispatch a parsed ZCL command on the GP cluster.
-
-        Only server-to-sink commands are consumed; client commands are only sent.
-        """
-        if is_server_to_client:
-            LOGGER.debug(
-                "Received GP client command 0x%02X (unexpected direction)",
-                command_id,
-            )
-            return
-
-        server_cmds = GreenPowerProxy.ServerCommandDefs
-        if command_id == server_cmds.notification.id:
-            await self._handle_gp_notification(payload, proxy_nwk)
-        elif command_id == server_cmds.commissioning_notification.id:
-            await self._handle_commissioning_notification(payload, proxy_nwk)
-        else:
-            LOGGER.debug("Unhandled GP server command: 0x%02X", command_id)
-
-    async def _handle_gp_notification(
-        self, payload: bytes, proxy_nwk: int | None
-    ) -> None:
-        """Handle a GP Notification command (server command 0x00), the main data path."""
-        try:
-            notification = GreenPowerProxy.NotificationSchema.deserialize(payload)[0]
-        except (ValueError, IndexError):
-            LOGGER.warning("Failed to parse GP Notification payload")
-            return
-
-        source_id = int(notification.gpd_id)
-        gpd_command_id = int(notification.command_id)
-        gpd_payload = bytes(notification.payload) if notification.payload else b""
-        frame_counter = int(notification.frame_counter)
-
-        LOGGER.debug(
-            "GP Notification: source_id=0x%08X, cmd=0x%02X, counter=%d",
-            source_id,
-            gpd_command_id,
-            frame_counter,
+            self._process_commissioning_command(packet),
+            f"gp_process_command-0x{packet.command_id:02x}",
         )
 
-        if proxy_nwk is not None:
-            self.proxy_table.add_or_update(
-                source_id=source_id,
-                proxy_nwk=proxy_nwk,
-                frame_counter=frame_counter,
-            )
+    async def _process_commissioning_command(self, packet: t.ZigbeeGpPacket) -> None:
+        """Dispatch a commissioning GPDF by its command ID."""
+        assert packet.src_id is not None
 
-        # Duplicate filtering: when multiple proxies forward the same GPD
-        # frame, only process the first one (spec A.3.6.1.2)
-        if self._is_duplicate(source_id, frame_counter):
-            return
+        # TODO: `ZigbeeGpPacket` does not carry the address of the forwarding proxy
+        proxy_nwk = None
 
-        if gpd_command_id == GPDCommandID.CommissioningRequest:
-            await self._process_commissioning(
-                source_id, frame_counter, gpd_payload, proxy_nwk
-            )
-            return
-
-        if gpd_command_id == GPDCommandID.DecommissioningRequest:
-            await self._process_decommissioning(source_id)
-            return
-
-        if gpd_command_id == GPDCommandID.ChannelRequest:
-            await self._process_channel_request(source_id, gpd_payload, proxy_nwk)
-            return
-
-        if gpd_command_id == GPDCommandID.SuccessReport:
-            LOGGER.debug("GP Success from 0x%08X", source_id)
-            return
-
-        if not self._security_matches(source_id, notification.options):
-            return
-
-        await self._dispatch_gp_command(
-            source_id, frame_counter, gpd_command_id, gpd_payload
-        )
-
-    async def _handle_commissioning_notification(  # pragma: no cover
-        self, payload: bytes, proxy_nwk: int | None
-    ) -> None:
-        """Handle a GP Commissioning Notification command (server command 0x04)."""
-        try:
-            notification = GreenPowerProxy.CommissioningNotificationSchema.deserialize(
-                payload
-            )[0]
-        except (ValueError, IndexError):
-            LOGGER.warning("Failed to parse GP Commissioning Notification")
-            return
-
-        source_id = int(notification.gpd_id)
-        gpd_command_id = int(notification.command_id)
-        gpd_payload = bytes(notification.payload) if notification.payload else b""
-        frame_counter = int(notification.frame_counter)
-
-        LOGGER.debug(
-            "GP Commissioning Notification: source_id=0x%08X, cmd=0x%02X",
-            source_id,
-            gpd_command_id,
-        )
-
-        if gpd_command_id == GPDCommandID.CommissioningRequest:
-            await self._process_commissioning(
-                source_id, frame_counter, gpd_payload, proxy_nwk
-            )
-        elif gpd_command_id == GPDCommandID.DecommissioningRequest:
-            await self._process_decommissioning(source_id)
-        elif gpd_command_id == GPDCommandID.ChannelRequest:
-            await self._process_channel_request(source_id, gpd_payload, proxy_nwk)
+        if packet.command_id == GPDCommandID.CommissioningRequest:
+            await self._process_commissioning(packet, proxy_nwk)
+        elif packet.command_id == GPDCommandID.DecommissioningRequest:
+            await self._process_decommissioning(packet.src_id)
+        elif packet.command_id == GPDCommandID.ChannelRequest:
+            await self._process_channel_request(packet, proxy_nwk)
+        elif packet.command_id == GPDCommandID.SuccessReport:
+            LOGGER.debug("GP Success from 0x%08X", packet.src_id)
 
     # --- Commissioning ---
 
     async def _process_commissioning(
-        self,
-        source_id: int,
-        frame_counter: int,
-        payload: bytes,
-        proxy_nwk: int | None = None,
+        self, packet: t.ZigbeeGpPacket, proxy_nwk: int | None = None
     ) -> None:
         """Process a GP Commissioning command (0xE0): create device, pair, reply."""
+        source_id = packet.src_id
+        assert source_id is not None
+
         if not self.is_commissioning:
             LOGGER.debug(
                 "GP Commissioning from 0x%08X ignored: window not open",
@@ -321,7 +182,7 @@ class GreenPowerManager(EventBase):
             return
 
         try:
-            comm, _ = GPCommissioningPayload.deserialize(payload)
+            comm, _ = GPCommissioningPayload.deserialize(packet.payload.serialize())
         except (ValueError, IndexError):
             LOGGER.warning(
                 "Failed to parse GP Commissioning payload from 0x%08X",
@@ -369,69 +230,75 @@ class GreenPowerManager(EventBase):
                 else:
                     security_key = t.KeyData(comm.security_key)
 
-        device = GPDevice(
-            source_id=source_id,
-            device_id=comm.device_id,
-            security_key=security_key,
-            security_level=security_level,
-            security_key_type=security_key_type,
-            frame_counter=(
-                comm.outgoing_counter
-                if comm.outgoing_counter is not None
-                else frame_counter
-            ),
-            manufacturer_id=comm.manufacturer_id,
-            model_id=comm.model_id,
-            gpd_commands=list(comm.gpd_commands or []),
-            server_clusters=list(comm.server_clusters or []),
-            client_clusters=list(comm.client_clusters or []),
-            mac_seq_num_capability=bool(comm.options.mac_seq_num_capability),
-            rx_on_capability=bool(comm.options.rx_on_capability),
-            fixed_location=bool(comm.options.fixed_location),
+        device = GreenPowerDevice(
+            self._application, application_id=ApplicationID.SrcID, src_id=source_id
+        )
+        device.device_id = comm.device_id
+        device.gpd_manufacturer_id = comm.manufacturer_id
+        device.gpd_model_id = comm.model_id
+        device.commands = [GPDCommandID(cmd) for cmd in comm.gpd_commands or []]
+        device.server_cluster_ids = list(comm.server_clusters or [])
+        device.client_cluster_ids = list(comm.client_clusters or [])
+
+        if comm.switch_information is not None:
+            device.switch_configuration = comm.switch_information.configuration
+
+        device.mac_seq_num_capability = bool(comm.options.mac_seq_num_capability)
+        device.rx_on_capability = bool(comm.options.rx_on_capability)
+        device.fixed_location = bool(comm.options.fixed_location)
+        device.security_key = security_key
+        device.security_key_type = security_key_type
+        device.security_level = security_level
+        device.frame_counter = (
+            comm.outgoing_counter
+            if comm.outgoing_counter is not None
+            else packet.frame_counter
         )
 
-        self.add_device(device)
+        self._application.device_initialized(device)
 
         if device.rx_on_capability:
             await self._send_commissioning_reply(source_id, proxy_nwk)
 
         await self.send_pairing(device, add_sink=True, proxy_nwk=proxy_nwk)
 
-        self.emit(DeviceJoined.event_type, DeviceJoined(device_ieee=str(device.ieee)))
+        LOGGER.info("GP device commissioned: %r", device)
 
-        LOGGER.info(
-            "GP device commissioned: %r",
-            device,
-        )
-
-    async def _process_decommissioning(self, source_id: int) -> None:
+    async def _process_decommissioning(self, source_id: SrcID) -> None:
         """Process a GP Decommissioning command (0xE1)."""
-        device = self.remove_device(source_id)
+        ieee = synthetic_ieee(source_id)
 
-        if device is not None:
-            self.proxy_table.remove_by_source_id(source_id)
-            await self.send_pairing(device, add_sink=False)
-            self.emit(DeviceLeft.event_type, DeviceLeft(device_ieee=str(device.ieee)))
-
-            LOGGER.info(
-                "GP device decommissioned: source_id=0x%08X",
-                source_id,
-            )
-        else:
+        if ieee not in self._application.devices:
             LOGGER.debug(
                 "GP Decommissioning for unknown device 0x%08X",
                 source_id,
             )
+            return
+
+        device = self._application.devices[ieee]
+        assert isinstance(device, GreenPowerDevice)
+
+        await self.send_pairing(device, add_sink=False)
+        await self._application.remove(ieee)
+
+        LOGGER.info(
+            "GP device decommissioned: source_id=0x%08X",
+            source_id,
+        )
 
     async def _process_channel_request(
         self,
-        source_id: int,
-        payload: bytes,
+        packet: t.ZigbeeGpPacket,
         proxy_nwk: int | None = None,
     ) -> None:
         """Process a GP Channel Request (0xE3) by replying with Channel Configuration."""
+        source_id = packet.src_id
+        assert source_id is not None
+
         try:
-            channel_req, _ = GPChannelRequestPayload.deserialize(payload)
+            channel_req, _ = GPChannelRequestPayload.deserialize(
+                packet.payload.serialize()
+            )
         except (ValueError, IndexError):
             LOGGER.warning("Failed to parse Channel Request from 0x%08X", source_id)
             return
@@ -458,121 +325,6 @@ class GreenPowerManager(EventBase):
             gpd_command_id=GPDCommandID.ChannelConfiguration,
             gpd_command_payload=channel_config.serialize(),
             proxy_nwk=proxy_nwk,
-        )
-
-    # --- Command dispatch ---
-
-    def _security_matches(self, source_id: int, options: NotificationOptions) -> bool:
-        """Compare a notification's security level with the GPD's (A.3.5.2.5).
-
-        Runs before dispatch, so a rejected frame never reaches the frame
-        counter. A.3.5.2.5 orders the checks the same way.
-        """
-        device = self.get_device(source_id)
-        if device is None:
-            # Nothing to compare against; _dispatch_gp_command reports it
-            return True
-
-        # A.3.5.2.5 compares the SecurityKeyType too, from the Sink Table. Only
-        # a radio holding that table can: EZSP fills the sub-field from the
-        # NCP's own tables, which zigpy never programs, so it arrives as NoKey
-        # and comparing it would drop every frame from a secured GPD.
-        if options.security_level == device.security_level:
-            return True
-
-        LOGGER.warning(
-            "GP command from 0x%08X announces level %s, commissioned with %s",
-            source_id,
-            options.security_level,
-            device.security_level,
-        )
-        return False
-
-    async def _dispatch_gp_command(
-        self,
-        source_id: int,
-        frame_counter: int,
-        command_id: int,
-        payload: bytes,
-    ) -> None:
-        """Dispatch a GP data command: verify the device and the counter, then emit."""
-        device = self.get_device(source_id)
-
-        if device is None:
-            LOGGER.debug(
-                "GP command from unknown device 0x%08X (cmd=0x%02X)",
-                source_id,
-                command_id,
-            )
-            return
-
-        if not device.update_frame_counter(frame_counter):
-            return
-
-        self._emit_gp_command(device, GPDCommandID(command_id), payload)
-
-    def _emit_gp_command(
-        self, device: GPDevice, command_id: GPDCommandID, payload: bytes
-    ) -> None:
-        """Parse a GP command payload, emitting CommandReceived or RawCommandReceived.
-
-        The payload is whatever the forwarding GPP security-processed: a GP
-        Notification carries neither the MIC nor the RxAfterTx bit (Figures
-        23/24), so the CCM* header of the original GPDF cannot be rebuilt here.
-        """
-        device_ieee = str(device.ieee)
-        schema = GPD_COMMAND_SCHEMAS.get(command_id)
-
-        if schema is None:
-            LOGGER.debug(
-                "No payload schema for GP command 0x%02X from 0x%08X",
-                command_id,
-                device.source_id,
-            )
-            self.emit(
-                RawCommandReceived.event_type,
-                RawCommandReceived(
-                    device_ieee=device_ieee,
-                    command_id=command_id,
-                    payload=payload,
-                ),
-            )
-            return
-
-        try:
-            parsed, rest = schema.deserialize(payload)
-        except (ValueError, KeyError, IndexError):
-            LOGGER.warning(
-                "Failed to parse GP command 0x%02X from 0x%08X with %s",
-                command_id,
-                device.source_id,
-                schema.__name__,
-                exc_info=True,
-            )
-            self.emit(
-                RawCommandReceived.event_type,
-                RawCommandReceived(
-                    device_ieee=device_ieee,
-                    command_id=command_id,
-                    payload=payload,
-                ),
-            )
-            return
-
-        if rest:
-            LOGGER.debug(
-                "Data remains after deserializing GP command 0x%02X: %r",
-                command_id,
-                rest,
-            )
-
-        self.emit(
-            CommandReceived.event_type,
-            CommandReceived(
-                device_ieee=device_ieee,
-                command_id=command_id,
-                payload=parsed,
-            ),
         )
 
     # --- Commissioning window control ---
@@ -661,7 +413,7 @@ class GreenPowerManager(EventBase):
 
     async def send_pairing(
         self,
-        device: GPDevice,
+        device: GreenPowerDevice,
         add_sink: bool = True,
         proxy_nwk: int | None = None,
     ) -> None:
@@ -673,6 +425,8 @@ class GreenPowerManager(EventBase):
         gpsCommunicationMode values; choosing between them per pairing is
         this sink's own policy, not spec-mandated.
         """
+        assert device.src_id is not None
+
         coordinator_ieee = self._application.state.node_info.ieee
         coordinator_nwk = self._application.state.node_info.nwk
 
@@ -682,7 +436,7 @@ class GreenPowerManager(EventBase):
             comm_mode = CommunicationMode.GroupcastForwardToDGroup
 
         options = PairingOptions(
-            application_id=zgptypes.ApplicationID.SrcID,
+            application_id=ApplicationID.SrcID,
             add_sink=int(add_sink),
             remove_gpd=int(not add_sink),
             communication_mode=comm_mode,
@@ -699,7 +453,7 @@ class GreenPowerManager(EventBase):
 
         schema_kwargs: dict[str, Any] = {
             "options": options,
-            "gpd_id": zgptypes.DeviceID(device.source_id),
+            "gpd_id": device.src_id,
         }
 
         if add_sink:
@@ -720,7 +474,7 @@ class GreenPowerManager(EventBase):
                 # Proxies receive the encrypted key and decrypt it with the GP
                 # link key to populate their proxy tables.
                 encrypted_key, _ = encrypt_security_key(
-                    device.source_id, bytes(device.security_key)
+                    device.src_id, bytes(device.security_key)
                 )
                 schema_kwargs["key"] = t.KeyData(encrypted_key)
 
@@ -746,13 +500,13 @@ class GreenPowerManager(EventBase):
             await self._application.send_packet(packet)
             LOGGER.debug(
                 "Sent GP Pairing for 0x%08X (add_sink=%s)",
-                device.source_id,
+                device.src_id,
                 add_sink,
             )
         except Exception:  # noqa: BLE001
             LOGGER.warning(
                 "Failed to send GP Pairing for 0x%08X",
-                device.source_id,
+                device.src_id,
                 exc_info=True,
             )
 
@@ -771,7 +525,7 @@ class GreenPowerManager(EventBase):
 
         response = ResponseSchema(
             options=ResponseOptions(
-                application_id=zgptypes.ApplicationID.SrcID,
+                application_id=ApplicationID.SrcID,
                 transmit_on_endpoint_match=0,
                 _reserved=0,
             ),
@@ -779,8 +533,8 @@ class GreenPowerManager(EventBase):
             temp_master_tx_channel=TempMasterTxChannel(
                 transmit_channel=t.uint4_t(channel - 11), _reserved=0
             ),
-            gpd_id=zgptypes.DeviceID(source_id),
-            gpd_command_id=t.uint8_t(gpd_command_id),
+            gpd_id=SrcID(source_id),
+            gpd_command_id=GPDCommandID(gpd_command_id),
             gpd_command_payload=t.LVBytes(gpd_command_payload),
         )
 

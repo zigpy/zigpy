@@ -89,7 +89,7 @@ async def test_permit_opens_gp_window(app):
 
     await app.permit(time_s=120)
 
-    app.green_power.permit_join.assert_called_once_with(120)
+    assert app.green_power.permit_join.mock_calls == [call(120)]
 
 
 async def test_permit_node_also_opens_gp_window(app, ieee):
@@ -101,7 +101,7 @@ async def test_permit_node_also_opens_gp_window(app, ieee):
 
     await app.permit(time_s=60, node=ieee)
 
-    app.green_power.permit_join.assert_called_once_with(60)
+    assert app.green_power.permit_join.mock_calls == [call(60)]
 
 
 @patch("zigpy.device.Device.initialize", new_callable=AsyncMock)

@@ -4,224 +4,51 @@ from __future__ import annotations
 
 import asyncio
 import struct
+from unittest.mock import call
 
 from tests.async_mock import AsyncMock
+from tests.zgp.conftest import wait_for_gp_processing
+from zigpy.device import GreenPowerDevice
 from zigpy.profiles import zgp as zgp_profile
 import zigpy.types as t
-from zigpy.zcl import foundation
-from zigpy.zcl.clusters.greenpower import NotificationOptions, NotificationSchema
-from zigpy.zgp.commands import (
-    GPAttributeReportingPayload,
-    GPContactStatusPayload,
-    GPNoPayload,
-)
+from zigpy.zgp.commands import GPGenericSwitchConfiguration
 from zigpy.zgp.crypto import encrypt_security_key
-from zigpy.zgp.device import GPDevice
-from zigpy.zgp.events import (
-    CommandReceived,
-    DeviceJoined,
-    DeviceLeft,
-    RawCommandReceived,
-)
 from zigpy.zgp.manager import GreenPowerManager
-import zigpy.zgp.types as zgptypes
 from zigpy.zgp.types import (
     GP_CLUSTER_ID,
     GP_ENDPOINT,
+    ApplicationID,
+    DeviceID,
     GPDCommandID,
     SecurityKeyType,
     SecurityLevel,
+    SecurityStatus,
+    SrcID,
+    SwitchType,
 )
+from zigpy.zgp.util import synthetic_ieee
 
 
-def _make_gp_notification_packet(
-    source_id: int,
-    command_id: int,
+def make_gp_packet(
+    src_id: int,
+    command_id: GPDCommandID,
     payload: bytes = b"",
     frame_counter: int = 1,
-    proxy_nwk: int = 0x1234,
-) -> t.ZigbeePacket:
-    """Build a ZigbeePacket containing a GP Notification.
-
-    Constructs a minimal ZCL cluster-specific server command (0x00)
-    wrapping a GP Notification with the given GPD command.
-    """
-
-    options = NotificationOptions(
-        application_id=zgptypes.ApplicationID.SrcID,
-        also_unicast=0,
-        also_derived_group=0,
-        also_commissioned_group=0,
-        security_level=zgptypes.SecurityLevel.NoSecurity,
-        security_key_type=zgptypes.SecurityKeyType.NoKey,
-        appoint_temp_master=0,
-        tx_queue_full=0,
-        _reserved=0,
-    )
-
-    notification = NotificationSchema(
-        options=options,
-        gpd_id=zgptypes.DeviceID(source_id),
+) -> t.ZigbeeGpPacket:
+    return t.ZigbeeGpPacket(
+        application_id=ApplicationID.SrcID,
+        src_id=SrcID(src_id),
+        command_id=command_id,
+        payload=t.SerializableBytes(payload),
         frame_counter=t.uint32_t(frame_counter),
-        command_id=t.uint8_t(command_id),
-        payload=t.LVBytes(payload),
-    )
-
-    # ZCL frame: frame_control + seq_num + command_id(0x00) + notification payload
-    zcl_frame = bytes([0x01, 0x00, 0x00]) + notification.serialize()
-
-    return t.ZigbeePacket(
-        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=t.NWK(proxy_nwk)),
-        src_ep=t.uint8_t(GP_ENDPOINT),
-        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=t.NWK(0x0000)),
-        dst_ep=t.uint8_t(GP_ENDPOINT),
-        profile_id=t.uint16_t(zgp_profile.PROFILE_ID),
-        cluster_id=t.uint16_t(GP_CLUSTER_ID),
-        data=t.SerializableBytes(zcl_frame),
+        security_level=SecurityLevel.NoSecurity,
+        security_key_type=SecurityKeyType.NoKey,
+        security_status=SecurityStatus.NoSecurity,
     )
 
 
 def test_gp_manager_creation(manager):
-    assert manager.devices == {}
     assert not manager.is_commissioning
-
-
-def test_gp_manager_add_device(manager):
-    dev = GPDevice(source_id=0x12345678, device_id=0x02)
-    manager.add_device(dev)
-    assert manager.get_device(0x12345678) is dev
-    assert len(manager.devices) == 1
-
-
-def test_gp_manager_remove_device(manager):
-    dev = GPDevice(source_id=0x12345678, device_id=0x02)
-    manager.add_device(dev)
-    removed = manager.remove_device(0x12345678)
-    assert removed is dev
-    assert manager.get_device(0x12345678) is None
-
-
-def test_gp_manager_remove_nonexistent_device(manager):
-    removed = manager.remove_device(0xDEADBEEF)
-    assert removed is None
-
-
-def test_gp_manager_get_device_nonexistent(manager):
-    assert manager.get_device(0xDEADBEEF) is None
-
-
-def test_rejects_non_gp_packet(manager):
-    """Non-GP packets should be rejected."""
-    packet = t.ZigbeePacket(
-        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=t.NWK(0x1234)),
-        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=t.NWK(0x0000)),
-        dst_ep=t.uint8_t(1),  # Not GP endpoint
-        cluster_id=t.uint16_t(0x0006),  # On/Off cluster
-        data=t.SerializableBytes(b"\x00\x00\x00"),
-    )
-    assert manager.handle_packet(packet) is False
-
-
-def test_rejects_wrong_cluster(manager):
-    packet = t.ZigbeePacket(
-        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=t.NWK(0x1234)),
-        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=t.NWK(0x0000)),
-        dst_ep=t.uint8_t(GP_ENDPOINT),
-        cluster_id=t.uint16_t(0x0006),  # Wrong cluster
-        data=t.SerializableBytes(b"\x00\x00\x00"),
-    )
-    assert manager.handle_packet(packet) is False
-
-
-def test_rejects_too_short_data(manager):
-    packet = t.ZigbeePacket(
-        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=t.NWK(0x1234)),
-        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=t.NWK(0x0000)),
-        dst_ep=t.uint8_t(GP_ENDPOINT),
-        cluster_id=t.uint16_t(GP_CLUSTER_ID),
-        data=t.SerializableBytes(b"\x00\x00"),  # Too short
-    )
-    assert manager.handle_packet(packet) is False
-
-
-def test_rejects_non_cluster_specific(manager):
-    packet = t.ZigbeePacket(
-        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=t.NWK(0x1234)),
-        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=t.NWK(0x0000)),
-        dst_ep=t.uint8_t(GP_ENDPOINT),
-        cluster_id=t.uint16_t(GP_CLUSTER_ID),
-        data=t.SerializableBytes(b"\x00\x00\x00"),  # frame_control bit 0 = 0
-    )
-    assert manager.handle_packet(packet) is False
-
-
-async def test_accepts_gp_notification(manager):
-    packet = _make_gp_notification_packet(
-        source_id=0x12345678,
-        command_id=GPDCommandID.Toggle,
-    )
-    assert manager.handle_packet(packet) is True
-
-
-async def test_dispatch_known_device(manager, gp_events):
-    """Commands from known devices should fire a CommandReceived event."""
-    dev = GPDevice(source_id=0x12345678, device_id=0x02, frame_counter=0)
-    manager.add_device(dev)
-
-    await manager._dispatch_gp_command(
-        source_id=0x12345678,
-        frame_counter=1,
-        command_id=GPDCommandID.Toggle,
-        payload=b"",
-    )
-
-    commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
-    assert len(commands) == 1
-    assert commands[0].device_ieee == str(dev.ieee)
-    assert commands[0].command_id is GPDCommandID.Toggle
-    assert commands[0].payload == GPNoPayload()
-
-
-async def test_dispatch_unknown_device_ignored(manager, gp_events):
-    """Commands from unknown devices should be ignored."""
-    await manager._dispatch_gp_command(
-        source_id=0xDEADBEEF,
-        frame_counter=1,
-        command_id=GPDCommandID.Toggle,
-        payload=b"",
-    )
-
-    assert gp_events == []
-
-
-async def test_dispatch_replay_rejected(manager, gp_events):
-    """Replayed frames (same or lower counter) should be rejected."""
-    dev = GPDevice(source_id=0x12345678, device_id=0x02, frame_counter=10)
-    manager.add_device(dev)
-
-    await manager._dispatch_gp_command(
-        source_id=0x12345678,
-        frame_counter=10,  # Same as stored
-        command_id=GPDCommandID.Toggle,
-        payload=b"",
-    )
-
-    assert gp_events == []
-
-
-async def test_dispatch_increments_counter(manager):
-    """Successful dispatch should update the frame counter."""
-    dev = GPDevice(source_id=0x12345678, device_id=0x02, frame_counter=0)
-    manager.add_device(dev)
-
-    await manager._dispatch_gp_command(
-        source_id=0x12345678,
-        frame_counter=42,
-        command_id=GPDCommandID.Toggle,
-        payload=b"",
-    )
-
-    assert dev.frame_counter == 42
 
 
 async def test_dupplication_first_notification_passes(manager):
@@ -310,8 +137,8 @@ async def test_commissioning_window_timer_closes_on_expiry(app, manager, monkeyp
     assert app.send_packet.call_count == 1
 
 
-async def test_process_commissioning_creates_device(app, manager, gp_events):
-    """Commissioning command should create a GPDevice."""
+async def test_process_commissioning_creates_device(app, manager):
+    """Commissioning command should create a GreenPowerDevice."""
     # Open commissioning window
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
@@ -320,51 +147,52 @@ async def test_process_commissioning_creates_device(app, manager, gp_events):
     comm_payload = bytes([0x02, 0x00])
 
     await manager._process_commissioning(
-        source_id=0xAABBCCDD,
-        frame_counter=1,
-        payload=comm_payload,
+        make_gp_packet(
+            0xAABBCCDD, GPDCommandID.CommissioningRequest, comm_payload, frame_counter=1
+        ),
     )
 
     # Device should be registered
-    dev = manager.get_device(0xAABBCCDD)
-    assert dev is not None
+    dev = app.devices[synthetic_ieee(0xAABBCCDD)]
     assert dev.device_id == 0x02
-    assert dev.source_id == 0xAABBCCDD
+    assert dev.src_id == 0xAABBCCDD
 
-    joined = [e for _, e in gp_events if isinstance(e, DeviceJoined)]
-    assert joined == [DeviceJoined(device_ieee=str(dev.ieee))]
+    assert app.device_initialized.mock_calls == [call(dev)]
 
     # GP Pairing should be sent
     assert app.send_packet.call_count >= 1
 
 
-async def test_commissioning_ignored_when_window_closed(manager, gp_events):
+async def test_commissioning_ignored_when_window_closed(app, manager):
     """Commissioning should be ignored if window is not open."""
     comm_payload = bytes([0x02, 0x00])
 
     await manager._process_commissioning(
-        source_id=0xAABBCCDD,
-        frame_counter=1,
-        payload=comm_payload,
+        make_gp_packet(
+            0xAABBCCDD, GPDCommandID.CommissioningRequest, comm_payload, frame_counter=1
+        ),
     )
 
-    assert manager.get_device(0xAABBCCDD) is None
-    assert gp_events == []
+    assert synthetic_ieee(0xAABBCCDD) not in app.devices
+    assert len(app.device_initialized.mock_calls) == 0
 
 
-async def test_commissioning_rejects_unspecified_source_id(app, manager, gp_events):
+async def test_commissioning_rejects_unspecified_source_id(app, manager):
     """SourceID 0x00000000 is unspecified per ZGP spec and must be rejected."""
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
 
     await manager._process_commissioning(
-        source_id=0x00000000,
-        frame_counter=1,
-        payload=bytes([0x02, 0x00]),
+        make_gp_packet(
+            0x00000000,
+            GPDCommandID.CommissioningRequest,
+            bytes([0x02, 0x00]),
+            frame_counter=1,
+        ),
     )
 
-    assert manager.get_device(0x00000000) is None
-    assert not any(isinstance(e, DeviceJoined) for _, e in gp_events)
+    assert synthetic_ieee(0x00000000) not in app.devices
+    assert len(app.device_initialized.mock_calls) == 0
 
 
 async def test_commissioning_with_security_key(app, manager):
@@ -385,20 +213,19 @@ async def test_commissioning_with_security_key(app, manager):
     comm_payload = bytes([0x02, 0x80, 0x23]) + security_key
 
     await manager._process_commissioning(
-        source_id=0x11223344,
-        frame_counter=5,
-        payload=comm_payload,
+        make_gp_packet(
+            0x11223344, GPDCommandID.CommissioningRequest, comm_payload, frame_counter=5
+        ),
     )
 
-    dev = manager.get_device(0x11223344)
-    assert dev is not None
+    dev = app.devices[synthetic_ieee(0x11223344)]
     assert bytes(dev.security_key) == security_key
     assert dev.security_level == SecurityLevel.Encrypted
     # Extended byte 0x23: bits 2-4 = 0b000 = NoKey (Table 54)
     assert dev.security_key_type == SecurityKeyType.NoKey
 
 
-async def test_commissioning_with_outgoing_counter(manager):
+async def test_commissioning_with_outgoing_counter(app, manager):
     """Commissioning with outgoing frame counter."""
     await manager.permit_join(time_s=60)
 
@@ -406,17 +233,36 @@ async def test_commissioning_with_outgoing_counter(manager):
     comm_payload = bytes([0x02, 0x80, 0x80]) + struct.pack("<I", 42)
 
     await manager._process_commissioning(
-        source_id=0x55667788,
-        frame_counter=1,
-        payload=comm_payload,
+        make_gp_packet(
+            0x55667788, GPDCommandID.CommissioningRequest, comm_payload, frame_counter=1
+        ),
     )
 
-    dev = manager.get_device(0x55667788)
-    assert dev is not None
+    dev = app.devices[synthetic_ieee(0x55667788)]
     assert dev.frame_counter == 42
 
 
-async def test_commissioning_with_outgoing_counter_zero(manager):
+async def test_commissioning_with_switch_information(app, manager):
+    """A GenericSwitch describes its contacts in the switch information field."""
+    await manager.permit_join(time_s=60)
+
+    # options: app_info_present (bit 2) = 0x04 (Table 53)
+    # app_info: switch_info_present (bit 4) = 0x10 (Figure 111)
+    # switch information: length 2, 2 contacts as a button, no contacts closed
+    comm_payload = bytes([0x07, 0x04, 0x10, 0x02, 0x12, 0x00])
+
+    await manager._process_commissioning(
+        make_gp_packet(0x66778899, GPDCommandID.CommissioningRequest, comm_payload),
+    )
+
+    dev = app.devices[synthetic_ieee(0x66778899)]
+    assert dev.device_id == DeviceID.GenericSwitch
+    assert dev.switch_configuration == GPGenericSwitchConfiguration(
+        num_contacts=2, switch_type=SwitchType.Button, _reserved=0
+    )
+
+
+async def test_commissioning_with_outgoing_counter_zero(app, manager):
     """Outgoing counter of 0 must be used, not confused with None.
 
     Per the ZGP spec, outgoing_counter=0 is a valid initial frame
@@ -428,35 +274,40 @@ async def test_commissioning_with_outgoing_counter_zero(manager):
     comm_payload = bytes([0x02, 0x80, 0x80]) + struct.pack("<I", 0)
 
     await manager._process_commissioning(
-        source_id=0x99887766,
-        frame_counter=999,  # GP Notification frame counter
-        payload=comm_payload,
+        make_gp_packet(
+            0x99887766,
+            GPDCommandID.CommissioningRequest,
+            comm_payload,
+            frame_counter=999,
+        ),
     )
 
-    dev = manager.get_device(0x99887766)
-    assert dev is not None
+    dev = app.devices[synthetic_ieee(0x99887766)]
     # Must use outgoing_counter=0 from payload, NOT frame_counter=999
     assert dev.frame_counter == 0
 
 
-async def test_decommission_known_device(app, manager, gp_events):
+async def test_decommission_known_device(app, manager):
     """Decommissioning a known device should remove it."""
-    dev = GPDevice(source_id=0x12345678, device_id=0x02)
-    manager.add_device(dev)
+    dev = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+    dev.security_level = SecurityLevel.NoSecurity
+    dev.security_key_type = SecurityKeyType.NoKey
+    app.devices[dev.ieee] = dev
 
-    await manager._process_decommissioning(0x12345678)
+    await manager._process_decommissioning(SrcID(0x12345678))
 
-    assert manager.get_device(0x12345678) is None
-    left = [e for _, e in gp_events if isinstance(e, DeviceLeft)]
-    assert left == [DeviceLeft(device_ieee=str(dev.ieee))]
+    assert synthetic_ieee(0x12345678) not in app.devices
+    assert call("device_removed", dev) in app.listener_event.mock_calls
     # GP Pairing (remove) should be sent
     assert app.send_packet.call_count >= 1
 
 
-async def test_decommission_unknown_device(manager, gp_events):
+async def test_decommission_unknown_device(app, manager):
     """Decommissioning unknown device should be a no-op."""
-    await manager._process_decommissioning(0xDEADBEEF)
-    assert gp_events == []
+    await manager._process_decommissioning(SrcID(0xDEADBEEF))
+    assert len(app.send_packet.mock_calls) == 0
 
 
 async def test_pairing_encrypts_security_key(app, manager):
@@ -469,14 +320,14 @@ async def test_pairing_encrypts_security_key(app, manager):
     source_id = 0x12345678
     plaintext_key = bytes(range(16))
 
-    dev = GPDevice(
-        source_id=source_id,
-        device_id=0x02,
-        security_key=plaintext_key,
-        security_level=SecurityLevel.Encrypted,
-        security_key_type=SecurityKeyType.NoKey,
+    dev = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=SrcID(source_id)
     )
-    manager.add_device(dev)
+    dev.device_id = DeviceID.OnOffSwitch
+    dev.security_key = t.KeyData(plaintext_key)
+    dev.security_level = SecurityLevel.Encrypted
+    dev.security_key_type = SecurityKeyType.NoKey
+    dev.frame_counter = t.uint32_t(0)
 
     await manager.send_pairing(dev, add_sink=True)
 
@@ -524,8 +375,7 @@ async def test_channel_request_sends_response(app, manager):
     channel_req_payload = bytes([4 | (9 << 4)])
 
     await manager._process_channel_request(
-        source_id=0x12345678,
-        payload=channel_req_payload,
+        make_gp_packet(0x12345678, GPDCommandID.ChannelRequest, channel_req_payload),
         proxy_nwk=0x1234,
     )
 
@@ -547,8 +397,7 @@ async def test_channel_config_contains_correct_channel(app, manager):
     app.state.network_info.channel = 20
 
     await manager._process_channel_request(
-        source_id=0x12345678,
-        payload=bytes([0x00]),
+        make_gp_packet(0x12345678, GPDCommandID.ChannelRequest, bytes([0x00])),
         proxy_nwk=0x1234,
     )
 
@@ -564,8 +413,7 @@ async def test_channel_config_contains_correct_channel(app, manager):
 async def test_channel_request_without_proxy(app, manager):
     """Channel Request without proxy_nwk should use coordinator NWK."""
     await manager._process_channel_request(
-        source_id=0x12345678,
-        payload=bytes([0x00]),
+        make_gp_packet(0x12345678, GPDCommandID.ChannelRequest, bytes([0x00])),
         proxy_nwk=None,
     )
 
@@ -575,12 +423,11 @@ async def test_channel_request_without_proxy(app, manager):
 async def test_invalid_channel_request_ignored(app, manager):
     """Invalid channel request payload should be ignored."""
     await manager._process_channel_request(
-        source_id=0x12345678,
-        payload=b"",
+        make_gp_packet(0x12345678, GPDCommandID.ChannelRequest, b""),
         proxy_nwk=0x1234,
     )
 
-    app.send_packet.assert_not_called()
+    assert len(app.send_packet.mock_calls) == 0
 
 
 async def test_rx_capable_gets_commissioning_reply(app, manager):
@@ -593,17 +440,16 @@ async def test_rx_capable_gets_commissioning_reply(app, manager):
     comm_payload = bytes([0x02, 0x82, 0x00])
 
     await manager._process_commissioning(
-        source_id=0xAABBCCDD,
-        frame_counter=1,
-        payload=comm_payload,
+        make_gp_packet(
+            0xAABBCCDD, GPDCommandID.CommissioningRequest, comm_payload, frame_counter=1
+        ),
         proxy_nwk=0x1234,
     )
 
     # Should have sent: Commissioning Reply + GP Pairing = 2 packets
     assert app.send_packet.call_count == 2
 
-    dev = manager.get_device(0xAABBCCDD)
-    assert dev is not None
+    dev = app.devices[synthetic_ieee(0xAABBCCDD)]
     assert dev.rx_on_capability is True
 
 
@@ -616,9 +462,9 @@ async def test_non_rx_skips_commissioning_reply(app, manager):
     comm_payload = bytes([0x02, 0x80, 0x00])
 
     await manager._process_commissioning(
-        source_id=0x11223344,
-        frame_counter=1,
-        payload=comm_payload,
+        make_gp_packet(
+            0x11223344, GPDCommandID.CommissioningRequest, comm_payload, frame_counter=1
+        ),
         proxy_nwk=0x1234,
     )
 
@@ -641,9 +487,9 @@ async def test_commissioning_reply_uses_proxy_as_temp_master(app, manager):
     comm_payload = bytes([0x02, 0x82, 0x00])  # rx_on=True (bit 1, Table 53)
 
     await manager._process_commissioning(
-        source_id=0xAABBCCDD,
-        frame_counter=1,
-        payload=comm_payload,
+        make_gp_packet(
+            0xAABBCCDD, GPDCommandID.CommissioningRequest, comm_payload, frame_counter=1
+        ),
         proxy_nwk=0x5678,
     )
 
@@ -702,272 +548,6 @@ async def test_gp_response_send_failure(app, manager):
     # Should not raise, just log warning
 
 
-async def test_dispatch_secured_payload_is_not_truncated(manager, gp_events):
-    """A secured GPD's payload must reach listeners in full, byte for byte.
-
-    The GP Notification has no MIC field (Figure 23), so the trailing bytes of
-    the payload are command data, never a MIC to strip: here they are the
-    4-byte value of the reported attribute, and must survive intact in the
-    parsed struct rather than being dropped.
-    """
-
-    source_id = 0xAABBCCDD
-    # cluster_id=0x0000, one attribute: attrid=0x0021, type=uint32, value=0x01020304
-    payload = bytes([0x00, 0x00, 0x21, 0x00, 0x23, 0x04, 0x03, 0x02, 0x01])
-
-    dev = GPDevice(
-        source_id=source_id,
-        device_id=0x02,
-        security_key=bytes(range(16)),
-        security_level=SecurityLevel.Encrypted,
-        frame_counter=0,
-    )
-    manager.add_device(dev)
-
-    await manager._dispatch_gp_command(
-        source_id=source_id,
-        frame_counter=5,
-        command_id=GPDCommandID.AttributeReporting,
-        payload=payload,
-    )
-
-    commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
-    assert commands == [
-        CommandReceived(
-            device_ieee=str(dev.ieee),
-            command_id=GPDCommandID.AttributeReporting,
-            payload=GPAttributeReportingPayload(
-                cluster_id=0x0000,
-                attributes=[
-                    foundation.Attribute(
-                        attrid=0x0021,
-                        value=foundation.TypeValue(
-                            type=0x23, value=t.uint32_t(0x01020304)
-                        ),
-                    )
-                ],
-            ),
-        )
-    ]
-
-
-async def test_dispatch_unmapped_command_id_emits_raw(manager, gp_events):
-    """A command ID with no GPD_COMMAND_SCHEMAS entry falls back to RawCommandReceived.
-
-    GPDCommandID.AnyCommand (0xFF) is a Translation-Table pseudo-ID: it is
-    never a real GPD command, so it has no schema entry.
-    """
-    dev = GPDevice(source_id=0x12345678, device_id=0x02, frame_counter=0)
-    manager.add_device(dev)
-
-    await manager._dispatch_gp_command(
-        source_id=0x12345678,
-        frame_counter=1,
-        command_id=GPDCommandID.AnyCommand,
-        payload=b"\x01\x02",
-    )
-
-    assert gp_events == [
-        (
-            RawCommandReceived.event_type,
-            RawCommandReceived(
-                device_ieee=str(dev.ieee),
-                command_id=GPDCommandID.AnyCommand,
-                payload=b"\x01\x02",
-            ),
-        )
-    ]
-
-
-async def test_dispatch_explicit_none_schema_emits_raw(manager, gp_events):
-    """A command mapped to an explicit None schema falls back to RawCommandReceived.
-
-    GPDCommandID.WriteAttributes is a known command whose payload parser is
-    not implemented yet (see the TODO in GPD_COMMAND_SCHEMAS).
-    """
-    dev = GPDevice(source_id=0x12345678, device_id=0x02, frame_counter=0)
-    manager.add_device(dev)
-
-    await manager._dispatch_gp_command(
-        source_id=0x12345678,
-        frame_counter=1,
-        command_id=GPDCommandID.WriteAttributes,
-        payload=b"\x00",
-    )
-
-    assert gp_events == [
-        (
-            RawCommandReceived.event_type,
-            RawCommandReceived(
-                device_ieee=str(dev.ieee),
-                command_id=GPDCommandID.WriteAttributes,
-                payload=b"\x00",
-            ),
-        )
-    ]
-
-
-async def test_dispatch_deserialize_failure_emits_raw(manager, gp_events):
-    """A covered command whose payload fails to parse falls back to RawCommandReceived.
-
-    Attribute type ID 0x02 is not a valid ZCL data type, so
-    DataType.from_type_id raises KeyError while parsing the attribute record.
-    """
-    dev = GPDevice(source_id=0x12345678, device_id=0x02, frame_counter=0)
-    manager.add_device(dev)
-
-    payload = bytes([0x00, 0x00, 0x21, 0x00, 0x02])
-
-    await manager._dispatch_gp_command(
-        source_id=0x12345678,
-        frame_counter=1,
-        command_id=GPDCommandID.AttributeReporting,
-        payload=payload,
-    )
-
-    assert gp_events == [
-        (
-            RawCommandReceived.event_type,
-            RawCommandReceived(
-                device_ieee=str(dev.ieee),
-                command_id=GPDCommandID.AttributeReporting,
-                payload=payload,
-            ),
-        )
-    ]
-
-
-async def test_dispatch_trailing_remainder_is_still_parsed(manager, gp_events):
-    """Bytes left over after a successful parse do not block the event.
-
-    GPNoPayload consumes nothing, so a non-empty payload for a payloadless
-    command like Toggle is entirely a trailing remainder; being strict about
-    it would drop real button presses from vendor-extended frames.
-    """
-    dev = GPDevice(source_id=0x12345678, device_id=0x02, frame_counter=0)
-    manager.add_device(dev)
-
-    await manager._dispatch_gp_command(
-        source_id=0x12345678,
-        frame_counter=1,
-        command_id=GPDCommandID.Toggle,
-        payload=b"\xaa\xbb",
-    )
-
-    commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
-    assert commands == [
-        CommandReceived(
-            device_ieee=str(dev.ieee),
-            command_id=GPDCommandID.Toggle,
-            payload=GPNoPayload(),
-        )
-    ]
-
-
-async def test_dispatch_fielded_payload_happy_path(manager, gp_events):
-    """A command with a fielded payload parses into its structured type."""
-    dev = GPDevice(source_id=0x12345678, device_id=0x02, frame_counter=0)
-    manager.add_device(dev)
-
-    await manager._dispatch_gp_command(
-        source_id=0x12345678,
-        frame_counter=1,
-        command_id=GPDCommandID.Press8BitVector,
-        payload=bytes([0x05]),
-    )
-
-    commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
-    assert commands == [
-        CommandReceived(
-            device_ieee=str(dev.ieee),
-            command_id=GPDCommandID.Press8BitVector,
-            payload=GPContactStatusPayload(contact_status=0x05),
-        )
-    ]
-
-
-def _secured_device(manager, frame_counter: int = 10) -> GPDevice:
-    dev = GPDevice(
-        source_id=0x12345678,
-        device_id=0x02,
-        security_key=bytes(range(16)),
-        security_level=SecurityLevel.Encrypted,
-        security_key_type=SecurityKeyType.IndividualKey,
-        frame_counter=frame_counter,
-    )
-    manager.add_device(dev)
-    return dev
-
-
-def _notification(
-    source_id: int,
-    security_level: SecurityLevel,
-    security_key_type: SecurityKeyType,
-    frame_counter: int,
-) -> bytes:
-    options = NotificationOptions(
-        application_id=zgptypes.ApplicationID.SrcID,
-        also_unicast=0,
-        also_derived_group=0,
-        also_commissioned_group=0,
-        security_level=security_level,
-        security_key_type=security_key_type,
-        appoint_temp_master=0,
-        tx_queue_full=0,
-        _reserved=0,
-    )
-    return NotificationSchema(
-        options=options,
-        gpd_id=zgptypes.DeviceID(source_id),
-        frame_counter=t.uint32_t(frame_counter),
-        command_id=t.uint8_t(GPDCommandID.Toggle),
-        payload=t.LVBytes(b""),
-    ).serialize()
-
-
-async def test_notification_security_level_mismatch_dropped(manager, gp_events):
-    """A notification announcing another security level is dropped (A.3.5.2.5).
-
-    The frame counter must not advance either, or a forged notification would
-    lock out the real device.
-    """
-
-    dev = _secured_device(manager)
-    payload = _notification(
-        dev.source_id,
-        SecurityLevel.NoSecurity,
-        SecurityKeyType.NoKey,
-        frame_counter=9999,
-    )
-
-    await manager._handle_gp_notification(payload, proxy_nwk=0x1111)
-
-    assert gp_events == []
-    assert dev.frame_counter == 10
-
-
-async def test_notification_key_type_mismatch_delivered(manager, gp_events):
-    """The announced key type is not compared: a proxy reports its own.
-
-    EZSP fills it from the NCP's tables, which zigpy never programs, so it
-    arrives as NoKey for a GPD commissioned with an individual key.
-    """
-
-    dev = _secured_device(manager)
-    payload = _notification(
-        dev.source_id,
-        SecurityLevel.Encrypted,
-        SecurityKeyType.NoKey,
-        frame_counter=11,
-    )
-
-    await manager._handle_gp_notification(payload, proxy_nwk=0x1111)
-
-    commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
-    assert [c.command_id for c in commands] == [GPDCommandID.Toggle]
-    assert dev.frame_counter == 11
-
-
 async def test_commissioning_with_encrypted_key(app, manager):
     """Commissioning with key_encrypted=True should decrypt the key.
 
@@ -992,23 +572,15 @@ async def test_commissioning_with_encrypted_key(app, manager):
     )
 
     await manager._process_commissioning(
-        source_id=source_id,
-        frame_counter=1,
-        payload=comm_payload,
+        make_gp_packet(
+            source_id, GPDCommandID.CommissioningRequest, comm_payload, frame_counter=1
+        ),
     )
 
-    dev = manager.get_device(source_id)
-    assert dev is not None
+    dev = app.devices[synthetic_ieee(source_id)]
     # The key must be DECRYPTED to the original
     assert bytes(dev.security_key) == original_key
     assert dev.security_level == SecurityLevel.Encrypted
-
-
-# NOTE: _handle_commissioning_notification (server cmd 0x04) cannot be
-# tested because CommissioningNotificationOptions in greenpower.py has
-# a bit-field alignment issue (18 bits instead of 16), preventing the
-# schema from serializing/deserializing. The fix belongs in the cluster
-# definition (PR #1659), not in the GP manager module.
 
 
 async def test_shutdown_cancels_commissioning(manager):
@@ -1037,70 +609,21 @@ async def test_shutdown_cancels_owned_tasks(manager):
     assert not manager._tasks
 
 
-async def test_dedup_in_notification_flow(manager, gp_events):
-    """Duplicate filtering should work within _handle_gp_notification.
-
-    When two proxies forward the same GPD frame, only the first
-    should dispatch a command.
-    """
-    source_id = 0x12345678
-    dev = GPDevice(source_id=source_id, device_id=0x02, frame_counter=0)
-    manager.add_device(dev)
-
-    options = NotificationOptions(
-        application_id=zgptypes.ApplicationID.SrcID,
-        also_unicast=0,
-        also_derived_group=0,
-        also_commissioned_group=0,
-        security_level=zgptypes.SecurityLevel.NoSecurity,
-        security_key_type=zgptypes.SecurityKeyType.NoKey,
-        appoint_temp_master=0,
-        tx_queue_full=0,
-        _reserved=0,
-    )
-    notification = NotificationSchema(
-        options=options,
-        gpd_id=zgptypes.DeviceID(source_id),
-        frame_counter=t.uint32_t(1),
-        command_id=t.uint8_t(GPDCommandID.Toggle),
-        payload=t.LVBytes(b""),
-    )
-    payload = notification.serialize()
-
-    # First proxy delivers
-    await manager._handle_gp_notification(payload, proxy_nwk=0x1111)
-    # Second proxy delivers same frame
-    await manager._handle_gp_notification(payload, proxy_nwk=0x2222)
-
-    commands = [e for _, e in gp_events if isinstance(e, CommandReceived)]
-    assert len(commands) == 1
-    assert commands[0].device_ieee == str(dev.ieee)
-
-
-async def test_notification_with_corrupt_payload(manager, gp_events):
-    """Corrupt GP Notification payload must be ignored, no event fired."""
-    await manager._handle_gp_notification(
-        payload=b"\xff\xff",  # too short / invalid for NotificationSchema
-        proxy_nwk=0x1234,
-    )
-    assert gp_events == []
-
-
 async def test_commissioning_with_corrupt_payload(app, manager):
     """Corrupt commissioning payload must not create a device."""
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
 
     await manager._process_commissioning(
-        source_id=0x12345678,
-        frame_counter=1,
-        payload=b"\xff",  # too short for GPCommissioningPayload
+        make_gp_packet(
+            0x12345678, GPDCommandID.CommissioningRequest, b"\xff", frame_counter=1
+        ),
     )
 
-    assert manager.get_device(0x12345678) is None
+    assert synthetic_ieee(0x12345678) not in app.devices
 
 
-async def test_commissioning_with_bad_encrypted_key(manager):
+async def test_commissioning_with_bad_encrypted_key(app, manager):
     """Invalid encrypted key MIC must reject commissioning."""
 
     await manager.permit_join(time_s=60)
@@ -1111,16 +634,16 @@ async def test_commissioning_with_bad_encrypted_key(manager):
     comm_payload = bytes([0x02, 0x80, 0x63]) + bad_key + bad_mic
 
     await manager._process_commissioning(
-        source_id=0xBBBBBBBB,
-        frame_counter=1,
-        payload=comm_payload,
+        make_gp_packet(
+            0xBBBBBBBB, GPDCommandID.CommissioningRequest, comm_payload, frame_counter=1
+        ),
     )
 
     # Device must NOT be created when key decryption fails
-    assert manager.get_device(0xBBBBBBBB) is None
+    assert synthetic_ieee(0xBBBBBBBB) not in app.devices
 
 
-async def test_commissioning_with_reserved_security_level(manager):
+async def test_commissioning_with_reserved_security_level(app, manager):
     """The reserved security level 0b01 must not commission a device (A.1.4.1.3)."""
 
     await manager.permit_join(time_s=60)
@@ -1129,165 +652,107 @@ async def test_commissioning_with_reserved_security_level(manager):
     comm_payload = bytes([0x02, 0x80, 0x01])
 
     await manager._process_commissioning(
-        source_id=0xCCCCCCCC,
-        frame_counter=1,
-        payload=comm_payload,
+        make_gp_packet(
+            0xCCCCCCCC, GPDCommandID.CommissioningRequest, comm_payload, frame_counter=1
+        ),
     )
 
-    assert manager.get_device(0xCCCCCCCC) is None
+    assert synthetic_ieee(0xCCCCCCCC) not in app.devices
 
 
-async def test_unhandled_server_command_ignored(manager, gp_events):
-    """Unknown server command (e.g. PairingSearch 0x01) is ignored."""
-    await manager._process_zcl_command(
-        command_id=0x01,  # GP Pairing Search, not implemented
-        payload=b"\x00" * 10,
-        is_server_to_client=False,
-        proxy_nwk=0x1234,
-    )
-    assert gp_events == []
-
-
-async def test_unexpected_client_direction_ignored(manager, gp_events):
-    """Client-to-server direction (server→client) in reception is unexpected."""
-    await manager._process_zcl_command(
-        command_id=0x01,
-        payload=b"\x00" * 10,
-        is_server_to_client=True,  # unexpected for reception
-        proxy_nwk=0x1234,
-    )
-    assert gp_events == []
-
-
-async def test_commissioning_notification_cmd_routed(manager, gp_events):
-    """Server cmd 0x04 is routed to _handle_commissioning_notification.
-
-    The handler itself has a schema bug (pragma: no cover) but the
-    dispatch path in _process_zcl_command must be exercised.
-    """
-    # The handler will fail to parse (schema bug) and return silently
-    await manager._process_zcl_command(
-        command_id=0x04,
-        payload=b"\x00" * 20,  # arbitrary, will fail parsing
-        is_server_to_client=False,
-        proxy_nwk=0x1234,
-    )
-    # No crash, no event — the schema parse failure is expected
-    assert gp_events == []
-
-
-async def test_notification_routes_commissioning(app, manager):
-    """GP Notification carrying CommissioningRequest (0xE0) triggers commissioning."""
+async def test_gp_packet_routes_commissioning(app, manager):
+    """A CommissioningRequest (0xE0) GPDF triggers commissioning."""
 
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
 
     comm_inner = bytes([0x02, 0x00])  # device_id=2, options=0
 
-    options = NotificationOptions(
-        application_id=zgptypes.ApplicationID.SrcID,
-        also_unicast=0,
-        also_derived_group=0,
-        also_commissioned_group=0,
-        security_level=zgptypes.SecurityLevel.NoSecurity,
-        security_key_type=zgptypes.SecurityKeyType.NoKey,
-        appoint_temp_master=0,
-        tx_queue_full=0,
-        _reserved=0,
+    app.gp_packet_received(
+        make_gp_packet(0xAAAA1111, GPDCommandID.CommissioningRequest, comm_inner)
     )
-    notif = NotificationSchema(
-        options=options,
-        gpd_id=zgptypes.DeviceID(0xAAAA1111),
-        frame_counter=t.uint32_t(1),
-        command_id=t.uint8_t(GPDCommandID.CommissioningRequest),
-        payload=t.LVBytes(comm_inner),
+    await wait_for_gp_processing()
+
+    assert synthetic_ieee(0xAAAA1111) in app.devices
+
+
+async def test_gp_packet_routes_decommissioning(app, manager):
+    """A DecommissioningRequest (0xE1) GPDF removes the device."""
+
+    dev = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=SrcID(0xBBBB2222)
     )
-    await manager._handle_gp_notification(notif.serialize(), proxy_nwk=0x1234)
+    dev.security_level = SecurityLevel.NoSecurity
+    dev.security_key_type = SecurityKeyType.NoKey
+    app.devices[dev.ieee] = dev
 
-    assert manager.get_device(0xAAAA1111) is not None
-
-
-async def test_notification_routes_decommissioning(manager):
-    """GP Notification with DecommissioningRequest (0xE1) removes device."""
-
-    dev = GPDevice(source_id=0xBBBB2222, device_id=0x02)
-    manager.add_device(dev)
-
-    options = NotificationOptions(
-        application_id=zgptypes.ApplicationID.SrcID,
-        also_unicast=0,
-        also_derived_group=0,
-        also_commissioned_group=0,
-        security_level=zgptypes.SecurityLevel.NoSecurity,
-        security_key_type=zgptypes.SecurityKeyType.NoKey,
-        appoint_temp_master=0,
-        tx_queue_full=0,
-        _reserved=0,
+    app.gp_packet_received(
+        make_gp_packet(0xBBBB2222, GPDCommandID.DecommissioningRequest)
     )
-    notif = NotificationSchema(
-        options=options,
-        gpd_id=zgptypes.DeviceID(0xBBBB2222),
-        frame_counter=t.uint32_t(1),
-        command_id=t.uint8_t(GPDCommandID.DecommissioningRequest),
-        payload=t.LVBytes(b""),
+    await wait_for_gp_processing()
+
+    assert synthetic_ieee(0xBBBB2222) not in app.devices
+
+
+async def test_gp_packet_routes_channel_request(app, manager):
+    """A ChannelRequest (0xE3) GPDF triggers a GP Response."""
+
+    app.gp_packet_received(
+        make_gp_packet(0xCCCC3333, GPDCommandID.ChannelRequest, bytes([0x00]))
     )
-    await manager._handle_gp_notification(notif.serialize(), proxy_nwk=0x1234)
-
-    assert manager.get_device(0xBBBB2222) is None
-
-
-async def test_notification_routes_channel_request(app, manager):
-    """GP Notification with ChannelRequest (0xE3) triggers a GP Response."""
-
-    options = NotificationOptions(
-        application_id=zgptypes.ApplicationID.SrcID,
-        also_unicast=0,
-        also_derived_group=0,
-        also_commissioned_group=0,
-        security_level=zgptypes.SecurityLevel.NoSecurity,
-        security_key_type=zgptypes.SecurityKeyType.NoKey,
-        appoint_temp_master=0,
-        tx_queue_full=0,
-        _reserved=0,
-    )
-    notif = NotificationSchema(
-        options=options,
-        gpd_id=zgptypes.DeviceID(0xCCCC3333),
-        frame_counter=t.uint32_t(1),
-        command_id=t.uint8_t(GPDCommandID.ChannelRequest),
-        payload=t.LVBytes(bytes([0x00])),
-    )
-    await manager._handle_gp_notification(notif.serialize(), proxy_nwk=0x1234)
+    await wait_for_gp_processing()
 
     # Should have sent a GP Response (Channel Configuration)
-    assert app.send_packet.call_count >= 1
+    assert app.send_packet.call_count == 1
 
 
-async def test_notification_routes_success_report(manager, gp_events):
-    """GP SuccessReport (0xE2) is accepted silently with no side effects."""
+async def test_gp_packet_routes_success_report(app, manager):
+    """A SuccessReport (0xE2) GPDF is accepted silently with no side effects."""
 
-    options = NotificationOptions(
-        application_id=zgptypes.ApplicationID.SrcID,
-        also_unicast=0,
-        also_derived_group=0,
-        also_commissioned_group=0,
-        security_level=zgptypes.SecurityLevel.NoSecurity,
-        security_key_type=zgptypes.SecurityKeyType.NoKey,
-        appoint_temp_master=0,
-        tx_queue_full=0,
-        _reserved=0,
-    )
-    notif = NotificationSchema(
-        options=options,
-        gpd_id=zgptypes.DeviceID(0xDDDD4444),
+    app.gp_packet_received(make_gp_packet(0xDDDD4444, GPDCommandID.SuccessReport))
+    await wait_for_gp_processing()
+
+    # No device created, nothing sent
+    assert synthetic_ieee(0xDDDD4444) not in app.devices
+    assert len(app.send_packet.mock_calls) == 0
+
+
+async def test_gp_packet_duplicate_commissioning_dropped(app, manager):
+    """The same commissioning GPDF forwarded by two proxies is processed once."""
+
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
+    packet = make_gp_packet(0xEEEE5555, GPDCommandID.CommissioningRequest, b"\x02\x00")
+
+    app.gp_packet_received(packet)
+    await wait_for_gp_processing()
+    app.gp_packet_received(packet)
+    await wait_for_gp_processing()
+
+    assert len(app.device_initialized.mock_calls) == 1
+
+
+async def test_gp_packet_ieee_addressing_ignored(app, manager):
+    """Commissioning GPDFs from IEEE-addressed GPDs are not supported."""
+
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
+    packet = t.ZigbeeGpPacket(
+        application_id=ApplicationID.IEEE,
+        ieee=t.EUI64.convert("11:22:33:44:55:66:77:88"),
+        endpoint=t.uint8_t(1),
+        command_id=GPDCommandID.CommissioningRequest,
+        payload=t.SerializableBytes(b"\x02\x00"),
         frame_counter=t.uint32_t(1),
-        command_id=t.uint8_t(GPDCommandID.SuccessReport),
-        payload=t.LVBytes(b""),
     )
-    await manager._handle_gp_notification(notif.serialize(), proxy_nwk=0x1234)
 
-    # No device created, no command dispatched
-    assert gp_events == []
+    app.gp_packet_received(packet)
+    await wait_for_gp_processing()
+
+    assert len(app.device_initialized.mock_calls) == 0
+    assert len(app.send_packet.mock_calls) == 0
 
 
 async def test_proxy_commissioning_mode_send_failure(app, manager):
@@ -1304,8 +769,13 @@ async def test_pairing_send_failure(app, manager):
     """GP Pairing send failure must not crash the sink."""
     app.send_packet = AsyncMock(side_effect=TimeoutError)
 
-    dev = GPDevice(source_id=0x99998888, device_id=0x02)
-    manager.add_device(dev)
+    dev = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x99998888)
+    )
+    dev.device_id = DeviceID.OnOffSwitch
+    dev.security_level = SecurityLevel.NoSecurity
+    dev.security_key_type = SecurityKeyType.NoKey
+    dev.frame_counter = t.uint32_t(0)
 
     # Must not raise despite send_packet failure
     await manager.send_pairing(dev, add_sink=True)

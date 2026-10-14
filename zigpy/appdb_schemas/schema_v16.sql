@@ -221,22 +221,25 @@ CREATE UNIQUE INDEX ota_query_cache_idx_v16
 -- Green Power devices
 DROP TABLE IF EXISTS gp_devices_v16;
 CREATE TABLE gp_devices_v16 (
-    source_id INTEGER NOT NULL,
-    device_id INTEGER NOT NULL,
-    security_key TEXT,
-    security_level INTEGER NOT NULL,
-    security_key_type INTEGER NOT NULL,
-    frame_counter INTEGER NOT NULL,
-    manufacturer_id INTEGER,
-    model_id INTEGER,
-    gpd_commands TEXT NOT NULL,
-    server_clusters TEXT NOT NULL,
-    client_clusters TEXT NOT NULL,
+    ieee ieee NOT NULL,
+    application_id INTEGER NOT NULL,
+    src_id INTEGER,
+    device_id INTEGER,
+    gpd_manufacturer_id INTEGER,
+    gpd_model_id INTEGER,
+    commands TEXT NOT NULL,
+    server_cluster_ids TEXT NOT NULL,
+    client_cluster_ids TEXT NOT NULL,
+    switch_configuration INTEGER,
     mac_seq_num_capability INTEGER NOT NULL,
     rx_on_capability INTEGER NOT NULL,
     fixed_location INTEGER NOT NULL,
+    security_key BLOB,
+    security_key_type INTEGER,
+    security_level INTEGER,
+    frame_counter INTEGER,
     last_seen REAL NOT NULL
 );
 
 CREATE UNIQUE INDEX gp_devices_idx_v16
-    ON gp_devices_v16(source_id);
+    ON gp_devices_v16(ieee);

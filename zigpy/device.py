@@ -266,6 +266,10 @@ class GreenPowerDevice(BaseDevice):
         # Whether the GPD uses an incremental (rather than random) MAC sequence number
         self.mac_seq_num_capability: bool = False
 
+        # Whether the GPD can receive after transmitting, and whether it is stationary
+        self.rx_on_capability: bool = False
+        self.fixed_location: bool = False
+
         # Security material for decoding subsequent data frames.
         self.security_key: t.KeyData | None = None
         self.security_key_type: SecurityKeyType | None = None

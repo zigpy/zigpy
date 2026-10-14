@@ -39,10 +39,9 @@ import zigpy.util
 import zigpy.zcl
 import zigpy.zdo
 import zigpy.zdo.types as zdo_types
-from zigpy.zgp.manager import GreenPowerManager
+from zigpy.zgp.manager import COMMISSIONING_COMMANDS, GreenPowerManager
 import zigpy.zgp.tunneling
 import zigpy.zgp.types
-from zigpy.zgp.types import GP_CLUSTER_ID, GP_ENDPOINT
 import zigpy.zgp.util
 
 DEFAULT_ENDPOINT_ID = 1
@@ -189,13 +188,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.groups.add_listener(self._dblistener)
         self.backups.add_listener(self._dblistener)
         self.topology.add_listener(self._dblistener)
-        self._dblistener.subscribe_to_green_power(self.green_power)
 
     def _remove_db_listeners(self):
         if self._dblistener is None:
             return
 
-        self._dblistener.unsubscribe_from_green_power()
         self.topology.remove_listener(self._dblistener)
         self.backups.remove_listener(self._dblistener)
         self.groups.remove_listener(self._dblistener)
@@ -644,6 +641,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.devices[resolved.ieee] = resolved
         if self._dblistener is not None:
             resolved.add_context_listener(self._dblistener)
+
+            if isinstance(resolved, GreenPowerDevice):
+                self._dblistener.register_gp_device_events(resolved)
 
         return resolved
 
@@ -1356,11 +1356,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if zigpy.zdo.ZDO_ENDPOINT in (packet.src_ep, packet.dst_ep):
             self._maybe_parse_zdo(packet)
 
-        # Intercept Green Power frames (endpoint 242, cluster 0x0021)
-        if packet.dst_ep == GP_ENDPOINT and packet.cluster_id == GP_CLUSTER_ID:
-            if self.green_power.handle_packet(packet):
-                return None
-
         try:
             device = self.get_device_with_address(packet.src)
         except KeyError:
@@ -1458,8 +1453,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         else:
             ieee = packet.ieee
 
+        # Commissioning GPDFs come from GPDs that are not registered yet
+        if packet.command_id in COMMISSIONING_COMMANDS:
+            self.green_power.packet_received(packet)
+            return
+
         if ieee not in self.devices:
-            # Commissioning is what registers a GPD, and is not implemented yet
             LOGGER.debug("Received a GP packet from an unknown device: %r", packet)
             return
 

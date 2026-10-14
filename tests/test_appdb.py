@@ -46,10 +46,16 @@ from zigpy.zcl import (
 from zigpy.zcl.clusters.general import Basic, Identify, OnOff, Ota
 from zigpy.zcl.foundation import Status as ZCLStatus, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
-from zigpy.zgp.commands import GPNoPayload
-from zigpy.zgp.device import GPDevice
-from zigpy.zgp.events import CommandReceived, DeviceJoined, DeviceLeft
-from zigpy.zgp.types import ApplicationID, GPDCommandID, SrcID
+from zigpy.zgp.commands import GPGenericSwitchConfiguration
+from zigpy.zgp.types import (
+    ApplicationID,
+    DeviceID,
+    GPDCommandID,
+    SecurityKeyType,
+    SecurityLevel,
+    SrcID,
+    SwitchType,
+)
 
 pytestmark = pytest.mark.usefixtures("auto_kill_aiosqlite")
 
@@ -2149,134 +2155,146 @@ async def test_get_last_ota_query_cmd_returns_none(tmp_path):
     await app.shutdown()
 
 
-async def test_gp_device_round_trip(tmp_path):
-    """Emit DeviceJoined, shutdown, reopen - device restored with all fields intact."""
-    SOURCE_ID = 0x0040F4E4
-    KEY = bytes(range(16))
+GP_SOURCE_ID = SrcID(0x0040F4E4)
 
+
+@pytest.mark.parametrize(
+    "attrs",
+    [
+        {},
+        {
+            "device_id": DeviceID.GenericSwitch,
+            "gpd_manufacturer_id": t.uint16_t(0x1021),
+            "gpd_model_id": t.uint16_t(0x0002),
+            "commands": [GPDCommandID.Press1of1, GPDCommandID.Release1of1],
+            "server_cluster_ids": [t.uint16_t(0x0006)],
+            "client_cluster_ids": [t.uint16_t(0x0008), t.uint16_t(0x0300)],
+            "switch_configuration": GPGenericSwitchConfiguration(
+                num_contacts=2, switch_type=SwitchType.Button, _reserved=0
+            ),
+            "mac_seq_num_capability": True,
+            "rx_on_capability": True,
+            "fixed_location": True,
+            "security_key": t.KeyData(range(16)),
+            "security_key_type": SecurityKeyType.IndividualKey,
+            "security_level": SecurityLevel.FullFrameCounterAndMIC,
+            "frame_counter": t.uint32_t(99),
+            "last_seen": datetime(2026, 10, 14, 12, 0, 0, tzinfo=UTC),
+        },
+    ],
+)
+async def test_gp_device_round_trip(tmp_path, attrs):
+    """A commissioned GPD is restored with all fields intact."""
     db = tmp_path / "test.db"
     app = await make_app_with_db(db)
 
-    device = GPDevice(
-        source_id=SOURCE_ID,
-        device_id=2,
-        security_key=t.KeyData(KEY),
-        frame_counter=99,
-        manufacturer_id=0x1021,
-        model_id=0x0002,
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
     )
-    device.last_seen = datetime.now(UTC)
-    last_seen = device.last_seen
-    app.green_power.add_device(device)
-    app.green_power.emit(
-        DeviceJoined.event_type, DeviceJoined(device_ieee=str(device.ieee))
-    )
+
+    for name, value in attrs.items():
+        setattr(device, name, value)
+
+    app.device_initialized(device)
     await app.shutdown()
 
     app2 = await make_app_with_db(db)
-    assert SOURCE_ID in app2.green_power.devices
-    restored = app2.green_power.devices[SOURCE_ID]
-    assert restored.source_id == SOURCE_ID
-    assert bytes(restored.security_key) == KEY
-    assert restored.frame_counter == 99
-    assert isinstance(restored.last_seen, float)
-    assert abs(restored.last_seen - last_seen) < 0.01
-    assert restored.manufacturer_id == 0x1021
-    assert isinstance(restored.manufacturer_id, int)
-    assert restored.model_id == 0x0002
-    assert isinstance(restored.model_id, int)
+    restored = app2.devices[device.ieee]
+
+    assert isinstance(restored, GreenPowerDevice)
+    assert restored.nwk == device.nwk
+    assert restored.last_seen == device.last_seen
+    assert restored.get_signature() == device.get_signature()
+
+    for name in (
+        "rx_on_capability",
+        "fixed_location",
+        "security_key",
+        "security_key_type",
+        "security_level",
+        "frame_counter",
+    ):
+        assert getattr(restored, name) == getattr(device, name)
+
     await app2.shutdown()
 
 
 async def test_gp_frame_counter_persists_per_press(tmp_path):
-    """A per-press CommandReceived persists the advanced frame counter.
+    """Every accepted GPDF persists the advanced frame counter.
 
     Without it, the stored counter is frozen at the join-time value and the
     replay-protection baseline reverts to stale on every restart.
     """
-    SOURCE_ID = 0x0040F4E4
-
     db = tmp_path / "test.db"
     app = await make_app_with_db(db)
 
-    device = GPDevice(source_id=SOURCE_ID, device_id=2, frame_counter=99)
-    app.green_power.add_device(device)
-    app.green_power.emit(
-        DeviceJoined.event_type, DeviceJoined(device_ieee=str(device.ieee))
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
     )
+    device.security_level = SecurityLevel.NoSecurity
+    device.security_key_type = SecurityKeyType.NoKey
+    device.frame_counter = t.uint32_t(99)
+    app.device_initialized(device)
 
-    # Simulate a button press: the manager advances the counter (replay
-    # protection) before emitting CommandReceived (manager.py _dispatch_gp_command).
-    assert device.update_frame_counter(150)
-    app.green_power.emit(
-        CommandReceived.event_type,
-        CommandReceived(
-            device_ieee=str(device.ieee),
-            command_id=GPDCommandID(0x22),
-            payload=GPNoPayload(),
-        ),
+    app.gp_packet_received(
+        t.ZigbeeGpPacket(
+            application_id=ApplicationID.SrcID,
+            src_id=GP_SOURCE_ID,
+            command_id=GPDCommandID.Toggle,
+            frame_counter=t.uint32_t(150),
+            security_level=SecurityLevel.NoSecurity,
+            security_key_type=SecurityKeyType.NoKey,
+        )
     )
     await app.shutdown()
 
     app2 = await make_app_with_db(db)
-    restored = app2.green_power.devices[SOURCE_ID]
-    assert restored.frame_counter == 150  # not the stale join-time 99
+    assert app2.devices[device.ieee].frame_counter == 150  # not the stale 99
     await app2.shutdown()
 
 
-async def test_gp_device_decommission(tmp_path):
-    """DeviceJoined then DeviceLeft -> device absent after reopen."""
-    SOURCE_ID = 0x0040F4E4
-
+async def test_gp_device_remove(tmp_path):
+    """A removed GPD is absent after reopen."""
     db = tmp_path / "test.db"
     app = await make_app_with_db(db)
 
-    device = GPDevice(source_id=SOURCE_ID, device_id=2)
-    app.green_power.add_device(device)
-    app.green_power.emit(
-        DeviceJoined.event_type, DeviceJoined(device_ieee=str(device.ieee))
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
     )
-    app.green_power.emit(
-        DeviceLeft.event_type, DeviceLeft(device_ieee=str(device.ieee))
-    )
+    app.device_initialized(device)
+    await app.remove(device.ieee)
     await app.shutdown()
 
     app2 = await make_app_with_db(db)
-    assert SOURCE_ID not in app2.green_power.devices
+    assert device.ieee not in app2.devices
     await app2.shutdown()
 
 
 async def test_gp_device_recommission_updates_security_key(tmp_path):
-    """Re-commissioning (second DeviceJoined) must update the stored security key."""
-    SOURCE_ID = 0x0040F4E4
-    OLD_KEY = bytes(range(16))
-    NEW_KEY = bytes(range(16, 32))
+    """Re-commissioning must update the stored security key."""
+    OLD_KEY = t.KeyData(range(16))
+    NEW_KEY = t.KeyData(range(16, 32))
 
     db = tmp_path / "test.db"
     app = await make_app_with_db(db)
-
-    device = GPDevice(source_id=SOURCE_ID, device_id=2, security_key=t.KeyData(OLD_KEY))
-    app.green_power.add_device(device)
-    app.green_power.emit(
-        DeviceJoined.event_type, DeviceJoined(device_ieee=str(device.ieee))
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
     )
+    device.security_key = OLD_KEY
+    app.device_initialized(device)
     await app.shutdown()
 
-    # Re-commission with a different key (same source_id).
+    # Re-commission with a different key (same SrcID)
     app2 = await make_app_with_db(db)
-    recommissioned = GPDevice(
-        source_id=SOURCE_ID, device_id=2, security_key=t.KeyData(NEW_KEY)
+    device = GreenPowerDevice(
+        app2, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
     )
-    app2.green_power.add_device(recommissioned)
-    app2.green_power.emit(
-        DeviceJoined.event_type,
-        DeviceJoined(device_ieee=str(recommissioned.ieee)),
-    )
+    device.security_key = NEW_KEY
+    app2.device_initialized(device)
     await app2.shutdown()
 
     app3 = await make_app_with_db(db)
-    restored = app3.green_power.devices[SOURCE_ID]
-    assert bytes(restored.security_key) == NEW_KEY
+    assert app3.devices[device.ieee].security_key == NEW_KEY
     await app3.shutdown()
 
 
