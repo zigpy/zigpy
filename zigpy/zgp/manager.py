@@ -8,14 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import struct
 import time
 from typing import TYPE_CHECKING, Any
 
 from cryptography.exceptions import InvalidTag
 
 from zigpy.datastructures import Debouncer
-from zigpy.device import GreenPowerDevice
+from zigpy.device import GP_DUPLICATE_TIMEOUT, GreenPowerDevice
 from zigpy.profiles import zgp as zgp_profile
 import zigpy.types as t
 from zigpy.zcl import foundation
@@ -42,7 +41,6 @@ from zigpy.zgp.types import (
     GPDCommandID,
     SecurityKeyType,
     SecurityLevel,
-    SrcID,
 )
 
 if TYPE_CHECKING:
@@ -75,26 +73,18 @@ class GreenPowerManager:
     ApplicationID.IEEE (0b010) are not handled.
     """
 
-    # Duplicate filtering window per ZGP spec A.3.6.1.2
-    DEDUP_TIMEOUT_S: float = 2.0
-
     def __init__(self, application: ControllerApplication) -> None:
         self._application = application
         self._commissioning_window_end: float = 0
-        self._commissioning_task: asyncio.Task[None] | None = None
-        # Background tasks spawned from incoming frames; tracked so shutdown
-        # can cancel everything instead of leaving work attached to the app.
         self._tasks: set[asyncio.Task[Any]] = set()
         # Commissioning GPDFs come from GPDs that are not registered yet, so
         # `GreenPowerDevice` cannot filter their duplicates (spec A.3.6.1.2)
         self._dedup_debouncer: Debouncer = Debouncer()
 
-    def _create_task(self, coro: Any, name: str | None = None) -> asyncio.Task[Any]:
-        """Create a task owned by the manager, tracked until completion."""
+    def _create_task(self, coro: Any, name: str) -> None:
         task = asyncio.get_running_loop().create_task(coro, name=name)
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
-        return task
 
     async def startup(self) -> None:
         """Join the derived groups of all commissioned GPDs, to receive their GPDFs."""
@@ -110,73 +100,55 @@ class GreenPowerManager:
             )
 
     async def shutdown(self) -> None:
-        """Cancel pending work and reset state."""
-        if self._commissioning_task is not None:
-            self._commissioning_task.cancel()
-            self._commissioning_task = None
+        """Cancel commissioning in progress and close the window."""
         self._commissioning_window_end = 0
 
-        pending = list(self._tasks)
-        for task in pending:
+        for task in self._tasks:
             task.cancel()
-        if pending:
-            await asyncio.gather(*pending, return_exceptions=True)
-        self._tasks.clear()
+
+        await asyncio.gather(*self._tasks, return_exceptions=True)
 
     @property
     def is_commissioning(self) -> bool:
         """Return True if the GP commissioning window is currently open."""
         return time.monotonic() < self._commissioning_window_end
 
-    def _is_duplicate(self, source_id: SrcID, frame_counter: int | None) -> bool:
-        """Drop a (sourceID, frame_counter) pair reforwarded by a proxy (A.3.6.1.2)."""
-        filtered = self._dedup_debouncer.filter(
-            (source_id, frame_counter), self.DEDUP_TIMEOUT_S
-        )
-        if filtered:
-            LOGGER.debug(
-                "GP dedup: dropping duplicate from 0x%08X (fc=%d)",
-                source_id,
-                frame_counter,
-            )
-        return filtered
+    async def permit_join(self, time_s: int) -> None:
+        """Open the GP commissioning window; time_s=0 closes it immediately."""
+        if time_s == 0:
+            self._commissioning_window_end = 0
+            await self._send_proxy_commissioning_mode(window=None)
+            return
 
-    # --- Frame processing ---
+        # Proxies leave commissioning mode on their own once the window expires
+        # (A.3.6.3.2), so only an explicit close needs telling them
+        await self._send_proxy_commissioning_mode(window=time_s)
+        self._commissioning_window_end = time.monotonic() + time_s
 
     def packet_received(self, packet: t.ZigbeeGpPacket) -> None:
-        """Process a commissioning GPDF, dispatching async work as a background task."""
+        """Process a commissioning GPDF."""
         if packet.application_id is not ApplicationID.SrcID:
             LOGGER.debug("Ignoring GP packet with unsupported addressing: %r", packet)
             return
 
-        assert packet.src_id is not None
-
-        if self._is_duplicate(packet.src_id, packet.frame_counter):
+        if self._dedup_debouncer.filter(
+            (packet.src_id, packet.frame_counter),
+            GP_DUPLICATE_TIMEOUT.total_seconds(),
+        ):
+            LOGGER.debug("Dropping duplicate GP packet: %r", packet)
             return
 
-        self._create_task(
-            self._process_commissioning_command(packet),
-            f"gp_process_command-0x{packet.command_id:02x}",
-        )
-
-    async def _process_commissioning_command(self, packet: t.ZigbeeGpPacket) -> None:
-        """Dispatch a commissioning GPDF by its command ID."""
-        assert packet.src_id is not None
-
-        proxy_nwk = packet.gpp_short_addr
-
         if packet.command_id == GPDCommandID.CommissioningRequest:
-            await self._process_commissioning(packet, proxy_nwk)
+            coro = self._process_commissioning(packet)
         elif packet.command_id == GPDCommandID.ChannelRequest:
-            await self._process_channel_request(packet, proxy_nwk)
-        elif packet.command_id == GPDCommandID.SuccessReport:
-            LOGGER.debug("GP Success from 0x%08X", packet.src_id)
+            coro = self._process_channel_request(packet)
+        else:
+            LOGGER.debug("Ignoring GP packet: %r", packet)
+            return
 
-    # --- Commissioning ---
+        self._create_task(coro, f"gp_process_command-0x{packet.command_id:02x}")
 
-    async def _process_commissioning(
-        self, packet: t.ZigbeeGpPacket, proxy_nwk: int | None = None
-    ) -> None:
+    async def _process_commissioning(self, packet: t.ZigbeeGpPacket) -> None:
         """Process a GP Commissioning command (0xE0): create device, pair, reply."""
         source_id = packet.src_id
         assert source_id is not None
@@ -202,12 +174,6 @@ class GreenPowerManager:
                 source_id,
             )
             return
-
-        LOGGER.info(
-            "GP device commissioning: source_id=0x%08X, device_id=0x%02X",
-            source_id,
-            comm.device_id,
-        )
 
         security_level = SecurityLevel.NoSecurity
         security_key_type = SecurityKeyType.NoKey
@@ -237,28 +203,26 @@ class GreenPowerManager:
                 return
 
             security_key_type = comm.extended_options.key_type
+            security_key = comm.security_key
 
-            if comm.extended_options.key_present and comm.security_key is not None:
-                if comm.extended_options.key_encrypted and comm.key_mic is not None:
-                    mic_bytes = struct.pack("<I", comm.key_mic)
-
-                    # AES-CCM over 16 bytes takes ~20 us on a CM4. Offloading it to an
-                    # executor would cost ~200 us for the thread handoff alone, mostly
-                    # on the event loop itself.
-                    try:
-                        key_data = decrypt_security_key(
-                            source_id, bytes(comm.security_key), mic_bytes
-                        )
-                    except InvalidTag:
-                        LOGGER.warning(
-                            "Failed to decrypt security key from 0x%08X",
+            # The key MIC is only present if the key is protected with the TC-LK
+            if comm.key_mic is not None:
+                # AES-CCM over 16 bytes takes ~20 us on a CM4. Offloading it to an
+                # executor would cost ~200 us for the thread handoff alone, mostly on
+                # the event loop itself.
+                try:
+                    security_key = t.KeyData(
+                        decrypt_security_key(
                             source_id,
-                            exc_info=True,
+                            comm.security_key.serialize(),
+                            comm.key_mic.serialize(),
                         )
-                        return
-                    security_key = t.KeyData(key_data)
-                else:
-                    security_key = t.KeyData(comm.security_key)
+                    )
+                except InvalidTag:
+                    LOGGER.warning(
+                        "Failed to decrypt security key from 0x%08X", source_id
+                    )
+                    return
 
         device = GreenPowerDevice(
             self._application, application_id=ApplicationID.SrcID, src_id=source_id
@@ -299,7 +263,7 @@ class GreenPowerManager:
             self._application.device_initialized(device)
 
         if device.rx_on_capability:
-            await self._send_commissioning_reply(source_id, proxy_nwk)
+            await self._send_commissioning_reply(packet)
 
         await self._application.subscribe_to_multicast_group(
             derived_group(device), endpoint_id=GP_ENDPOINT
@@ -333,33 +297,19 @@ class GreenPowerManager:
 
         LOGGER.info("GP device decommissioned: %r", device)
 
-    async def _process_channel_request(
-        self,
-        packet: t.ZigbeeGpPacket,
-        proxy_nwk: int | None = None,
-    ) -> None:
+    async def _process_channel_request(self, packet: t.ZigbeeGpPacket) -> None:
         """Process a GP Channel Request (0xE3) by replying with Channel Configuration."""
         source_id = packet.src_id
         assert source_id is not None
 
+        # The GPD's preferred channels do not matter, it is told the operational one
         try:
-            channel_req, _ = GPChannelRequestPayload.deserialize(
-                packet.payload.serialize()
-            )
+            GPChannelRequestPayload.deserialize(packet.payload.serialize())
         except (ValueError, IndexError):
             LOGGER.warning("Failed to parse Channel Request from 0x%08X", source_id)
             return
 
         channel = self._application.state.network_info.channel
-
-        LOGGER.debug(
-            "GP Channel Request from 0x%08X: next=%d, second=%d, "
-            "responding with channel %d",
-            source_id,
-            channel_req.next_channel + 11,
-            channel_req.second_next_channel + 11,
-            channel,
-        )
 
         channel_config = GPChannelConfigurationPayload(
             operational_channel=channel - 11,
@@ -368,72 +318,24 @@ class GreenPowerManager:
         )
 
         await self._send_gp_response(
-            source_id=source_id,
-            gpd_command_id=GPDCommandID.ChannelConfiguration,
-            gpd_command_payload=channel_config.serialize(),
-            proxy_nwk=proxy_nwk,
+            packet, GPDCommandID.ChannelConfiguration, channel_config.serialize()
         )
-
-    # --- Commissioning window control ---
-
-    async def permit_join(self, time_s: int) -> None:
-        """Open the GP commissioning window; time_s=0 closes it immediately."""
-        if time_s == 0:
-            await self._close_commissioning_window()
-            return
-
-        LOGGER.info("Opening GP commissioning window for %d seconds", time_s)
-
-        await self._send_proxy_commissioning_mode(enter=True, window=time_s)
-        self._commissioning_window_end = time.monotonic() + time_s
-
-        if self._commissioning_task is not None:
-            self._commissioning_task.cancel()
-
-        self._commissioning_task = self._create_task(
-            self._commissioning_window_timer(time_s),
-            name="gp_commissioning_window_timer",
-        )
-
-    async def _commissioning_window_timer(self, time_s: int) -> None:
-        """Timer task that closes the commissioning window after expiry."""
-        try:
-            await asyncio.sleep(time_s)
-            await self._close_commissioning_window()
-        except asyncio.CancelledError:
-            pass
-
-    async def _close_commissioning_window(self) -> None:
-        """Close the GP commissioning window."""
-        self._commissioning_window_end = 0
-
-        LOGGER.info("Closing GP commissioning window")
-
-        await self._send_proxy_commissioning_mode(enter=False)
 
     # --- Outgoing GP commands ---
 
-    async def _send_proxy_commissioning_mode(
-        self, enter: bool, window: int | None = None
-    ) -> None:
-        """Broadcast a GP Proxy Commissioning Mode command to enter or exit."""
-        has_window = enter and window is not None
-        options = ProxyCommissioningModeOptions(
-            enter=int(enter),
-            commissioning_window_present=int(has_window),
-            exit_mode=0,  # exit on window expiry only
-            channel_present=0,
-            unicast=0,
-            _reserved=0,
-        )
-
-        schema_kwargs: dict[str, Any] = {"options": options}
-        if has_window:
-            schema_kwargs["window"] = window
-
+    async def _send_proxy_commissioning_mode(self, window: int | None) -> None:
+        """Broadcast a GP Proxy Commissioning Mode command, to exit if no window."""
         await self._broadcast_command(
             GreenPowerProxy.ClientCommandDefs.proxy_commissioning_mode,
-            **schema_kwargs,
+            options=ProxyCommissioningModeOptions(
+                enter=int(window is not None),
+                commissioning_window_present=int(window is not None),
+                exit_mode=0,
+                channel_present=0,
+                unicast=0,
+                _reserved=0,
+            ),
+            window=window,
         )
 
     async def send_pairing(self, device: GreenPowerDevice, add_sink: bool) -> None:
@@ -498,14 +400,19 @@ class GreenPowerManager:
 
     async def _send_gp_response(
         self,
-        source_id: int,
-        gpd_command_id: int,
+        packet: t.ZigbeeGpPacket,
+        gpd_command_id: GPDCommandID,
         gpd_command_payload: bytes,
-        proxy_nwk: int | None = None,
     ) -> None:
-        """Send a GP Response (0x06) instructing a proxy to transmit a GPDF."""
+        """Send a GP Response (0x06) instructing a proxy to transmit a GPDF to a GPD."""
+        # The proxy that heard the GPD transmits in its receive window. A GPDF the
+        # coordinator received directly has no forwarding proxy.
+        if packet.gpp_short_addr is not None:
+            temp_master = packet.gpp_short_addr
+        else:
+            temp_master = self._application.state.node_info.nwk
+
         channel = self._application.state.network_info.channel
-        temp_master = proxy_nwk or self._application.state.node_info.nwk
 
         await self._broadcast_command(
             GreenPowerProxy.ClientCommandDefs.response,
@@ -518,31 +425,18 @@ class GreenPowerManager:
             temp_master_tx_channel=TempMasterTxChannel(
                 transmit_channel=t.uint4_t(channel - 11), _reserved=0
             ),
-            gpd_id=SrcID(source_id),
-            gpd_command_id=GPDCommandID(gpd_command_id),
+            gpd_id=packet.src_id,
+            gpd_command_id=gpd_command_id,
             gpd_command_payload=t.LVBytes(gpd_command_payload),
         )
-        LOGGER.debug(
-            "Sent GP Response (cmd=0x%02X) for GPD 0x%08X via proxy 0x%04X",
-            gpd_command_id,
-            source_id,
-            temp_master,
-        )
 
-    async def _send_commissioning_reply(
-        self, source_id: int, proxy_nwk: int | None = None
-    ) -> None:
-        """Send a GP Commissioning Reply (0xF0) to an RX-capable GPD.
+    async def _send_commissioning_reply(self, packet: t.ZigbeeGpPacket) -> None:
+        """Send a GP Commissioning Reply (0xF0) to an RxOn capable GPD.
 
-        This sink does not provision a security key in the Commissioning
-        Reply; the GPD must already hold a pre-shared key or use no security.
+        This sink does not provision a security key in the Commissioning Reply; the
+        GPD must already hold a pre-shared key or use no security.
         """
-        LOGGER.info(
-            "Sending GP Commissioning Reply to RX-capable GPD 0x%08X",
-            source_id,
-        )
-
-        commissioning_reply = GPCommissioningReplyPayload(
+        reply = GPCommissioningReplyPayload(
             options=GPCommissioningReplyOptions(
                 pan_id_present=0,
                 security_key_present=0,
@@ -553,10 +447,7 @@ class GreenPowerManager:
         )
 
         await self._send_gp_response(
-            source_id=source_id,
-            gpd_command_id=GPDCommandID.CommissioningReply,
-            gpd_command_payload=commissioning_reply.serialize(),
-            proxy_nwk=proxy_nwk,
+            packet, GPDCommandID.CommissioningReply, reply.serialize()
         )
 
     # --- Helpers ---
