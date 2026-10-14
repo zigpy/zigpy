@@ -14,8 +14,8 @@ def manager(app) -> GreenPowerManager:
     """Return the GP manager attached to the test application.
 
     A valid operational Zigbee channel (15) is pinned on the app state so
-    GP responses that encode ``channel - 11`` don't underflow. Individual
-    tests remain free to overwrite ``app.state.network_info.channel``.
+    GP responses that encode `channel - 11` don't underflow. Individual
+    tests remain free to overwrite `app.state.network_info.channel`.
     """
     app.state.network_info.channel = 15
     return app.green_power

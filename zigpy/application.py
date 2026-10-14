@@ -1835,7 +1835,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         await self.permit_ncp(time_s)
 
     async def permit_gp(self, time_s: int) -> None:
-        """Open or close (``time_s=0``) the Green Power commissioning window."""
+        """Open or close (`time_s=0`) the Green Power commissioning window."""
         await self.green_power.permit_join(time_s)
 
     def get_sequence(self) -> int:

@@ -734,7 +734,7 @@ async def test_shutdown_cancels_commissioning(manager):
 
 
 async def test_shutdown_cancels_owned_tasks(manager):
-    """Shutdown must cancel tasks spawned by ``_create_task``."""
+    """Shutdown must cancel tasks spawned by `_create_task`."""
 
     async def never_finishes() -> None:
         await asyncio.Event().wait()
