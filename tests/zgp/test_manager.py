@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 import struct
 from unittest.mock import call
 
@@ -205,19 +206,20 @@ async def test_commissioning_rejects_unspecified_source_id(app, manager):
 async def test_commissioning_with_security_key(app, manager):
     """Commissioning with unencrypted security key.
 
-    Extended options byte 0x23 = 0b00100011:
+    Extended options byte 0xA3 = 0b10100011:
     - Bits 0-1 = 0b11 = SecurityLevel.Encrypted (Table 54)
     - Bits 2-4 = 0b000 = SecurityKeyType.NoKey (Table 54)
     - Bit 5 = 1 = key_present
-    - Bits 6-7 = 0
+    - Bit 6 = 0 = key_encrypted
+    - Bit 7 = 1 = outgoing_counter_present
     """
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
 
     security_key = bytes(range(16))
     # options: bit 7 = extended present (Table 53) = 0x80
-    # extended: Encrypted + key_present = 0x03 | 0x20 = 0x23 (Table 54)
-    comm_payload = bytes([0x02, 0x80, 0x23]) + security_key
+    # extended: Encrypted + key_present + outgoing_counter_present = 0xA3 (Table 54)
+    comm_payload = bytes([0x02, 0x80, 0xA3]) + security_key + struct.pack("<I", 7)
 
     await manager._process_commissioning(
         make_gp_packet(
@@ -228,8 +230,54 @@ async def test_commissioning_with_security_key(app, manager):
     dev = app.devices[synthetic_ieee(0x11223344)]
     assert bytes(dev.security_key) == security_key
     assert dev.security_level == SecurityLevel.Encrypted
-    # Extended byte 0x23: bits 2-4 = 0b000 = NoKey (Table 54)
+    # Extended byte 0xA3: bits 2-4 = 0b000 = NoKey (Table 54)
     assert dev.security_key_type == SecurityKeyType.NoKey
+    assert dev.frame_counter == 7
+
+
+@pytest.mark.parametrize(
+    "security_level",
+    [SecurityLevel.FullFrameCounterAndMIC, SecurityLevel.Encrypted],
+)
+async def test_commissioning_protected_without_outgoing_counter(
+    app, manager, security_level
+):
+    """A protected GPD must announce its frame counter (A.3.9.2.1.2)."""
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
+    # extended: security level, IndividualKey, key_present, no outgoing counter
+    ext_options = security_level | (SecurityKeyType.IndividualKey << 2) | (1 << 5)
+    comm_payload = bytes([0x02, 0x80, ext_options]) + bytes(range(16))
+
+    app.gp_packet_received(
+        make_gp_packet(0x11223344, GPDCommandID.CommissioningRequest, comm_payload)
+    )
+    await wait_for_gp_processing()
+
+    assert synthetic_ieee(0x11223344) not in app.devices
+    assert len(app.send_packet.mock_calls) == 0
+
+
+async def test_commissioning_records_link(app, manager):
+    """The commissioning GPDF is the latest reception from the GPD."""
+    await manager.permit_join(time_s=60)
+
+    packet = make_gp_packet(
+        0x11223344, GPDCommandID.CommissioningRequest, b"\x02\x00"
+    ).replace(
+        timestamp=datetime(2026, 10, 14, 12, 0, 0, tzinfo=UTC),
+        lqi=t.uint8_t(170),
+        rssi=t.int8s(-70),
+    )
+
+    app.gp_packet_received(packet)
+    await wait_for_gp_processing()
+
+    dev = app.devices[synthetic_ieee(0x11223344)]
+    assert dev.last_seen == packet.timestamp.timestamp()
+    assert dev.lqi == 170
+    assert dev.rssi == -70
 
 
 async def test_commissioning_with_outgoing_counter(app, manager):
@@ -808,9 +856,12 @@ async def test_commissioning_with_encrypted_key(app, manager):
     key_mic_int = struct.unpack("<I", key_mic_bytes)[0]
 
     # Extended: Encrypted(0b11) + key_present(bit5) + key_encrypted(bit6)
-    # = 0x03 | 0x20 | 0x40 = 0x63  (Table 54)
+    # + outgoing_counter_present(bit7) = 0xE3  (Table 54)
     comm_payload = (
-        bytes([0x02, 0x80, 0x63]) + encrypted_key + struct.pack("<I", key_mic_int)
+        bytes([0x02, 0x80, 0xE3])
+        + encrypted_key
+        + struct.pack("<I", key_mic_int)
+        + struct.pack("<I", 7)
     )
 
     await manager._process_commissioning(
@@ -870,10 +921,11 @@ async def test_commissioning_with_bad_encrypted_key(app, manager):
 
     await manager.permit_join(time_s=60)
 
-    # Extended 0x63: Encrypted + key_present + key_encrypted (Table 54)
+    # Extended 0xE3: Encrypted + key_present + key_encrypted + outgoing_counter_present
+    # (Table 54)
     bad_key = b"\x00" * 16
     bad_mic = struct.pack("<I", 0xDEADDEAD)  # wrong MIC
-    comm_payload = bytes([0x02, 0x80, 0x63]) + bad_key + bad_mic
+    comm_payload = bytes([0x02, 0x80, 0xE3]) + bad_key + bad_mic + struct.pack("<I", 7)
 
     await manager._process_commissioning(
         make_gp_packet(

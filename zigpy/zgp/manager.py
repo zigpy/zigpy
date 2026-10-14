@@ -223,6 +223,19 @@ class GreenPowerManager:
                     source_id,
                 )
                 return
+
+            if (
+                security_level != SecurityLevel.NoSecurity
+                and comm.outgoing_counter is None
+            ):
+                # A protected GPD must announce its security frame counter, without it
+                # the commissioning check fails (A.3.9.2.1.2)
+                LOGGER.warning(
+                    "GP Commissioning from 0x%08X has no outgoing frame counter",
+                    source_id,
+                )
+                return
+
             security_key_type = comm.extended_options.key_type
 
             if comm.extended_options.key_present and comm.security_key is not None:
@@ -266,11 +279,18 @@ class GreenPowerManager:
         device.security_key = security_key
         device.security_key_type = security_key_type
         device.security_level = security_level
+        # An unprotected GPD has no security frame counter, the GPDF carries its MAC
+        # sequence number instead
         device.frame_counter = (
             comm.outgoing_counter
             if comm.outgoing_counter is not None
             else packet.frame_counter
         )
+
+        # The commissioning GPDF is the latest reception from the GPD
+        device.last_seen = packet.timestamp
+        device.lqi = packet.lqi
+        device.rssi = packet.rssi
 
         if device.ieee in self._application.devices:
             self._application.gp_device_recommissioned(device)
