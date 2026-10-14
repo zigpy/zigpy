@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 import zigpy.types as t
 from zigpy.zgp.types import (
     DEFAULT_GP_LINK_KEY,
-    GP_CLUSTER_ID,
     GP_ENDPOINT,
     GP_GROUP_ID,
     ApplicationID,
@@ -22,10 +21,6 @@ from zigpy.zgp.types import (
 
 def test_gp_endpoint():
     assert GP_ENDPOINT == 242
-
-
-def test_gp_cluster_id():
-    assert GP_CLUSTER_ID == 0x0021
 
 
 def test_gp_group_id():

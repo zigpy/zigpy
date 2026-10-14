@@ -9,6 +9,7 @@ import pytest
 from zigpy.device import GreenPowerDevice
 import zigpy.types as t
 from zigpy.zgp.commands import GPGenericSwitchConfiguration, GPStepPayload
+from zigpy.zgp.crypto import build_gpdf_header, encrypt_payload
 from zigpy.zgp.types import (
     ApplicationID,
     GPDCommandID,
@@ -51,6 +52,8 @@ def make_packet(
     rssi: int = -50,
     application_id: ApplicationID = ApplicationID.SrcID,
     endpoint: int | None = None,
+    mic: int | None = None,
+    individual_key: bool | None = None,
 ) -> t.ZigbeeGpPacket:
     return t.ZigbeeGpPacket(
         timestamp=TIMESTAMP + offset,
@@ -64,6 +67,10 @@ def make_packet(
         security_level=security_level,
         security_key_type=security_key_type,
         security_status=security_status,
+        mic=None if mic is None else t.uint32_t(mic),
+        auto_commissioning=None if mic is None else False,
+        rx_after_tx=None if mic is None else False,
+        individual_key=individual_key,
         lqi=t.uint8_t(lqi),
         rssi=t.int8s(rssi),
     )
@@ -252,7 +259,6 @@ def test_security_mismatch_is_dropped(
         (SecurityStatus.NoSecurity, True),
         (SecurityStatus.CounterFailure, False),
         (SecurityStatus.AuthFailure, False),
-        (SecurityStatus.Unprocessed, False),
     ],
 )
 def test_security_status_gate(device, events, security_status, delivered) -> None:
@@ -317,3 +323,85 @@ def test_ieee_frame_endpoint_passthrough() -> None:
 
     assert len(events) == 1
     assert events[0].endpoint_id == 5
+
+
+def encrypted_packet(frame_counter: int, **kwargs) -> t.ZigbeeGpPacket:
+    """Encrypt a Step Up command as a GPD would, with an individual key."""
+    header = build_gpdf_header(
+        0x12345678,
+        frame_counter,
+        security_level=SecurityLevel.Encrypted,
+        individual_key=True,
+        auto_commissioning=False,
+        rx_after_tx=False,
+    )
+    ciphertext, mic = encrypt_payload(
+        0x12345678,
+        frame_counter,
+        bytes(range(16)),
+        bytes([GPDCommandID.StepUp]) + b"\x05\x0a\x00",
+        header=header,
+        security_level=SecurityLevel.Encrypted,
+    )
+
+    return make_packet(
+        frame_counter,
+        **{
+            "command_id": GPDCommandID(ciphertext[0]),
+            "payload": ciphertext[1:],
+            "security_key_type": SecurityKeyType.NoKey,
+            "security_status": SecurityStatus.Unprocessed,
+            "mic": int.from_bytes(mic, "little"),
+            "individual_key": True,
+            **kwargs,
+        },
+    )
+
+
+def commission_individual_key(device: GreenPowerDevice) -> None:
+    device.security_key = t.KeyData(range(16))
+    device.security_level = SecurityLevel.Encrypted
+    device.security_key_type = SecurityKeyType.IndividualKey
+
+
+def test_unprocessed_frame_decrypted(device, events) -> None:
+    """A protected frame the radio did not process is decrypted by the sink."""
+    commission_individual_key(device)
+
+    device.packet_received(encrypted_packet(1000))
+
+    assert len(events) == 1
+    assert events[0].command_id == GPDCommandID.StepUp
+    assert events[0].command == GPStepPayload(step_size=5, transition_time=10)
+    assert device.frame_counter == 1000
+
+
+@pytest.mark.parametrize(
+    "packet_kwargs",
+    [
+        # Tampered MIC
+        {"mic": 0xDEADBEEF},
+        # Protected with a shared key, the GPD was commissioned with an individual one
+        {"individual_key": False},
+        # Another security level than the commissioned one
+        {"security_level": SecurityLevel.FullFrameCounterAndMIC},
+    ],
+)
+def test_unprocessed_frame_rejected(device, events, packet_kwargs) -> None:
+    """A frame that does not verify with the commissioned key is dropped."""
+    commission_individual_key(device)
+    device.frame_counter = t.uint32_t(10)
+
+    device.packet_received(encrypted_packet(1000, **packet_kwargs))
+
+    assert len(events) == 0
+    assert device.frame_counter == 10
+
+
+def test_unprocessed_frame_without_key(device, events) -> None:
+    """Without a commissioned key, a protected frame cannot be verified."""
+    commission_security(device)
+
+    device.packet_received(encrypted_packet(1000))
+
+    assert len(events) == 0

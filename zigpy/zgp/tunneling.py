@@ -17,7 +17,7 @@ from zigpy.zcl.clusters.greenpower import (
     GreenPowerProxy,
     NotificationSchema,
 )
-from zigpy.zgp.types import GP_CLUSTER_ID, GP_ENDPOINT, SecurityLevel, SecurityStatus
+from zigpy.zgp.types import GP_ENDPOINT, SecurityLevel, SecurityStatus
 
 TUNNELED_GPDF_COMMANDS: dict[
     int, type[NotificationSchema | CommissioningNotificationSchema]
@@ -38,7 +38,7 @@ def is_gp_tunnel_packet(packet: t.ZigbeePacket) -> bool:
     """
     if not (
         packet.profile_id == zigpy.profiles.zgp.PROFILE_ID
-        and packet.cluster_id == GP_CLUSTER_ID
+        and packet.cluster_id == GreenPowerProxy.cluster_id
         and packet.src_ep == GP_ENDPOINT
     ):
         return False
@@ -102,6 +102,7 @@ def gp_packet_from_zcl(packet: t.ZigbeePacket) -> t.ZigbeeGpPacket:
         payload=t.SerializableBytes(bytes(command.payload)),
         frame_counter=command.frame_counter,
         security_level=command.options.security_level,
+        rx_after_tx=bool(command.options.rx_after_tx),
         security_key_type=command.options.security_key_type,
         # The proxy performed the security processing and echoes the key type it used
         # (A.3.3.4.1), so a tunneled frame that got this far is verified
@@ -114,4 +115,7 @@ def gp_packet_from_zcl(packet: t.ZigbeePacket) -> t.ZigbeeGpPacket:
         rssi=rssi,
         # A Green Power 1.0 proxy sends a `Distance` byte instead of the GPP-GPD link
         gpp_distance=command.gpp_distance,
+        gpp_short_addr=(
+            None if command.gpp_short_addr is None else t.NWK(command.gpp_short_addr)
+        ),
     )

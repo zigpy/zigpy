@@ -23,6 +23,7 @@ from zigpy.exceptions import (
 import zigpy.ota
 import zigpy.types as t
 from zigpy.zcl import clusters, foundation
+from zigpy.zcl.clusters.greenpower import GreenPowerProxy
 import zigpy.zdo.types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
@@ -73,10 +74,45 @@ async def test_permit_broadcast(app):
     app.permit_ncp = AsyncMock()
     app.send_packet = AsyncMock()
     await app.permit(time_s=30)
-    assert app.send_packet.call_count == 1
+    # Two broadcasts: standard Mgmt_Permit_Joining_req plus the GP
+    # ProxyCommissioningMode that opens the GP commissioning window.
+    assert app.send_packet.call_count == 2
     assert app.permit_ncp.call_count == 1
 
     assert app.send_packet.mock_calls[0].args[0].dst.addr_mode == t.AddrMode.Broadcast
+
+
+@pytest.mark.parametrize("node", [None, make_ieee(), NCP_IEEE])
+async def test_permit_opens_gp_window(app, node):
+    """GP commissioning is network-wide, even when joining is limited to one node."""
+    app.devices[make_ieee()] = MagicMock()
+    app.devices[make_ieee()].zdo.permit = AsyncMock()
+    app.permit_ncp = AsyncMock()
+    app.send_packet = AsyncMock()
+
+    await app.permit(time_s=60, node=node)
+
+    assert app.green_power.is_commissioning
+
+    gp_packets = [
+        c.args[0]
+        for c in app.send_packet.mock_calls
+        if c.args[0].cluster_id == GreenPowerProxy.cluster_id
+    ]
+    assert len(gp_packets) == 1
+    assert gp_packets[0].dst.addr_mode == t.AddrMode.Broadcast
+
+    await app.green_power.shutdown()
+
+
+async def test_permit_invalid_time_does_not_open_gp_window(app):
+    app.send_packet = AsyncMock()
+
+    with pytest.raises(AssertionError):
+        await app.permit(time_s=255)
+
+    assert not app.green_power.is_commissioning
+    assert len(app.send_packet.mock_calls) == 0
 
 
 @patch("zigpy.device.Device.initialize", new_callable=AsyncMock)

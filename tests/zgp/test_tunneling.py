@@ -19,7 +19,6 @@ from zigpy.zcl.clusters.greenpower import (
 )
 from zigpy.zgp.tunneling import gp_packet_from_zcl, is_gp_tunnel_packet
 from zigpy.zgp.types import (
-    GP_CLUSTER_ID,
     GP_ENDPOINT,
     ApplicationID,
     GPDCommandID,
@@ -45,7 +44,7 @@ def make_tunnel_packet(command_id: int, payload: bytes, **kwargs) -> t.ZigbeePac
     return t.ZigbeePacket(
         timestamp=TIMESTAMP,
         profile_id=zigpy.profiles.zgp.PROFILE_ID,
-        cluster_id=GP_CLUSTER_ID,
+        cluster_id=GreenPowerProxy.cluster_id,
         src_ep=GP_ENDPOINT,
         dst_ep=GP_ENDPOINT,
         data=t.SerializableBytes(hdr.serialize() + payload),
@@ -140,6 +139,8 @@ def test_notification(gpd_kwargs, expected_src_id, expected_ieee, expected_endpo
     # GPPGPDLink 20 * 2 - 110 = -70 dBm, High spread over the 0-255 LQI range
     assert gp_packet.rssi == -70
     assert gp_packet.lqi == 170
+    assert gp_packet.gpp_short_addr == 0xAABB
+    assert gp_packet.rx_after_tx is False
 
 
 def test_commissioning_notification():
@@ -164,6 +165,8 @@ def test_commissioning_notification():
     assert gp_packet.security_key_type == SecurityKeyType.NoKey
     assert gp_packet.rssi == -110
     assert gp_packet.lqi == 0
+    assert gp_packet.gpp_short_addr == 0x1234
+    assert gp_packet.rx_after_tx is False
 
 
 def test_commissioning_notification_security_failed():
@@ -225,6 +228,7 @@ def test_notification_without_proxy_info():
     assert gp_packet.lqi is None
     assert gp_packet.rssi is None
     assert gp_packet.gpp_distance is None
+    assert gp_packet.gpp_short_addr is None
 
 
 def test_notification_from_legacy_proxy():
@@ -245,6 +249,8 @@ def test_notification_from_legacy_proxy():
     assert gp_packet.lqi is None
     assert gp_packet.rssi is None
     assert gp_packet.gpp_distance == 0x42
+    assert gp_packet.gpp_short_addr == 0xAABB
+    assert gp_packet.rx_after_tx is True
 
 
 @pytest.mark.parametrize(

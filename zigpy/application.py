@@ -37,8 +37,10 @@ import zigpy.topology
 import zigpy.types as t
 import zigpy.util
 import zigpy.zcl
+from zigpy.zcl.clusters.greenpower import GreenPowerProxy
 import zigpy.zdo
 import zigpy.zdo.types as zdo_types
+from zigpy.zgp.manager import COMMISSIONING_COMMANDS, GreenPowerManager
 import zigpy.zgp.tunneling
 import zigpy.zgp.types
 import zigpy.zgp.util
@@ -99,6 +101,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.ota = zigpy.ota.OTA(self._config[conf.CONF_OTA], self)
         self.backups: zigpy.backups.BackupManager = zigpy.backups.BackupManager(self)
         self.topology: zigpy.topology.Topology = zigpy.topology.Topology(self)
+        self.green_power: GreenPowerManager = GreenPowerManager(self)
 
         self._req_listeners: collections.defaultdict[
             BaseDevice | zigpy.listeners.AnyDeviceType,
@@ -304,6 +307,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             # due to interference
             LOGGER.warning("Failed to send startup broadcast: %s", e)
             LOGGER.warning(INTERFERENCE_MESSAGE)
+
+        await self.green_power.startup()
 
         if self.config[conf.CONF_NWK_BACKUP_ENABLED]:
             self.backups.start_periodic_backups(
@@ -592,6 +597,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.ota.stop_periodic_broadcasts()
         self.backups.stop_periodic_backups()
         self.topology.stop_periodic_scans()
+        await self.green_power.shutdown()
 
         for device in self.devices.values():
             try:
@@ -638,6 +644,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.devices[resolved.ieee] = resolved
         if self._dblistener is not None:
             resolved.add_context_listener(self._dblistener)
+
+            if isinstance(resolved, GreenPowerDevice):
+                self._dblistener.register_gp_device_events(resolved)
 
         return resolved
 
@@ -727,6 +736,19 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         if self._dblistener is not None and new_device._relays is not None:
             self._dblistener.device_relays_updated(new_device, new_device._relays)
 
+        self.listener_event("device_reinterviewed", new_device)
+
+    def gp_device_recommissioned(self, device: GreenPowerDevice) -> None:
+        """Replace an already commissioned GPD with its re-commissioned device object."""
+        old_device = self.devices[device.ieee]
+
+        if self._dblistener is not None:
+            old_device.remove_listener(self._dblistener)
+
+        old_device.on_remove()
+
+        # Listeners already know the device, so this is announced like a re-interview
+        new_device = self._finalize_device(device)
         self.listener_event("device_reinterviewed", new_device)
 
     async def reinterview_device(self, ieee: t.EUI64) -> None:
@@ -1034,6 +1056,17 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                 device_version=0b0000,
                 input_clusters=[zigpy.zcl.clusters.general.Basic.cluster_id],
                 output_clusters=[],
+            )
+        )
+
+        await self.add_endpoint(
+            zdo_types.SimpleDescriptor(
+                endpoint=zigpy.zgp.types.GP_ENDPOINT,
+                profile=zigpy.profiles.zgp.PROFILE_ID,
+                device_type=zigpy.profiles.zgp.DeviceType.COMBO_BASIC,
+                device_version=0b0000,
+                input_clusters=[GreenPowerProxy.cluster_id],
+                output_clusters=[GreenPowerProxy.cluster_id],
             )
         )
 
@@ -1447,8 +1480,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         else:
             ieee = packet.ieee
 
+        # Commissioning GPDFs come from GPDs that are not registered yet
+        if packet.command_id in COMMISSIONING_COMMANDS:
+            self.green_power.packet_received(packet)
+            return
+
         if ieee not in self.devices:
-            # Commissioning is what registers a GPD, and is not implemented yet
             LOGGER.debug("Received a GP packet from an unknown device: %r", packet)
             return
 
@@ -1776,6 +1813,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
     async def permit(self, time_s: int = 60, node: t.EUI64 | str | None = None) -> None:
         """Permit joining on a specific node or all router nodes."""
         assert 0 <= time_s <= 254
+
+        # TODO: GP commissioning is network-wide even when joining is limited to one
+        # node. GP has no concept of roaming or rerouting, so commissioning through a
+        # chosen set of proxies would leave zigpy to track and repair which proxies
+        # forward for each GPD. Until zigpy manages that state, only broadcast
+        # commissioning is supported.
+        await self.permit_gp(time_s)
+
         if node is not None:
             if not isinstance(node, t.EUI64):
                 node = t.EUI64([t.uint8_t(p) for p in node])
@@ -1802,6 +1847,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             broadcast_address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
         )
         await self.permit_ncp(time_s)
+
+    async def permit_gp(self, time_s: int) -> None:
+        """Open or close (`time_s=0`) the Green Power commissioning window."""
+        await self.green_power.permit_join(time_s)
 
     def get_sequence(self) -> int:
         self._send_sequence = (self._send_sequence + 1) % 256

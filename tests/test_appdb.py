@@ -46,7 +46,16 @@ from zigpy.zcl import (
 from zigpy.zcl.clusters.general import Basic, Identify, OnOff, Ota
 from zigpy.zcl.foundation import Status as ZCLStatus, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
-from zigpy.zgp.types import ApplicationID, SrcID
+from zigpy.zgp.commands import GPGenericSwitchConfiguration
+from zigpy.zgp.types import (
+    ApplicationID,
+    DeviceID,
+    GPDCommandID,
+    SecurityKeyType,
+    SecurityLevel,
+    SrcID,
+    SwitchType,
+)
 
 pytestmark = pytest.mark.usefixtures("auto_kill_aiosqlite")
 
@@ -2144,6 +2153,149 @@ async def test_get_last_ota_query_cmd_returns_none(tmp_path):
     assert dev.get_last_ota_query_cmd() is None
 
     await app.shutdown()
+
+
+GP_SOURCE_ID = SrcID(0x0040F4E4)
+
+
+@pytest.mark.parametrize(
+    "attrs",
+    [
+        {},
+        {
+            "device_id": DeviceID.GenericSwitch,
+            "gpd_manufacturer_id": t.uint16_t(0x1021),
+            "gpd_model_id": t.uint16_t(0x0002),
+            "commands": [GPDCommandID.Press1of1, GPDCommandID.Release1of1],
+            "server_cluster_ids": [t.uint16_t(0x0006)],
+            "client_cluster_ids": [t.uint16_t(0x0008), t.uint16_t(0x0300)],
+            "switch_configuration": GPGenericSwitchConfiguration(
+                num_contacts=2, switch_type=SwitchType.Button, _reserved=0
+            ),
+            "mac_seq_num_capability": True,
+            "rx_on_capability": True,
+            "fixed_location": True,
+            "security_key": t.KeyData(range(16)),
+            "security_key_type": SecurityKeyType.IndividualKey,
+            "security_level": SecurityLevel.FullFrameCounterAndMIC,
+            "frame_counter": t.uint32_t(99),
+            "last_seen": datetime(2026, 10, 14, 12, 0, 0, tzinfo=UTC),
+        },
+    ],
+)
+async def test_gp_device_round_trip(tmp_path, attrs):
+    """A commissioned GPD is restored with all fields intact."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
+    )
+
+    for name, value in attrs.items():
+        setattr(device, name, value)
+
+    app.device_initialized(device)
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    restored = app2.devices[device.ieee]
+
+    assert isinstance(restored, GreenPowerDevice)
+    assert restored.nwk == device.nwk
+    assert restored.last_seen == device.last_seen
+    assert restored.get_signature() == device.get_signature()
+
+    for name in (
+        "rx_on_capability",
+        "fixed_location",
+        "security_key",
+        "security_key_type",
+        "security_level",
+        "frame_counter",
+    ):
+        assert getattr(restored, name) == getattr(device, name)
+
+    await app2.shutdown()
+
+
+async def test_gp_frame_counter_persists_per_press(tmp_path):
+    """Every accepted GPDF persists the advanced frame counter.
+
+    Without it, the stored counter is frozen at the join-time value and the
+    replay-protection baseline reverts to stale on every restart.
+    """
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
+    )
+    device.security_level = SecurityLevel.NoSecurity
+    device.security_key_type = SecurityKeyType.NoKey
+    device.frame_counter = t.uint32_t(99)
+    app.device_initialized(device)
+
+    app.gp_packet_received(
+        t.ZigbeeGpPacket(
+            application_id=ApplicationID.SrcID,
+            src_id=GP_SOURCE_ID,
+            command_id=GPDCommandID.Toggle,
+            frame_counter=t.uint32_t(150),
+            security_level=SecurityLevel.NoSecurity,
+            security_key_type=SecurityKeyType.NoKey,
+        )
+    )
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    assert app2.devices[device.ieee].frame_counter == 150  # not the stale 99
+    await app2.shutdown()
+
+
+async def test_gp_device_remove(tmp_path):
+    """A removed GPD is absent after reopen."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
+    )
+    app.device_initialized(device)
+    await app.remove(device.ieee)
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    assert device.ieee not in app2.devices
+    await app2.shutdown()
+
+
+async def test_gp_device_recommission_updates_security_key(tmp_path):
+    """Re-commissioning must update the stored security key."""
+    OLD_KEY = t.KeyData(range(16))
+    NEW_KEY = t.KeyData(range(16, 32))
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
+    )
+    device.security_key = OLD_KEY
+    app.device_initialized(device)
+    await app.shutdown()
+
+    # Re-commission with a different key (same SrcID)
+    app2 = await make_app_with_db(db)
+    device = GreenPowerDevice(
+        app2, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
+    )
+    device.security_key = NEW_KEY
+    app2.device_initialized(device)
+    await app2.shutdown()
+
+    app3 = await make_app_with_db(db)
+    assert app3.devices[device.ieee].security_key == NEW_KEY
+    await app3.shutdown()
 
 
 def _add_joined_device(app):

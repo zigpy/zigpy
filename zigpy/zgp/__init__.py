@@ -37,10 +37,8 @@ from .crypto import (  # noqa: F401
     encrypt_security_key,
 )
 from .types import *  # noqa: F403, F401
-from .types import (  # noqa: F401
-    DEFAULT_GP_LINK_KEY,
-    GP_CLUSTER_ID,
-    GP_ENDPOINT,
-    GP_GROUP_ID,
-)
+from .types import DEFAULT_GP_LINK_KEY, GP_ENDPOINT, GP_GROUP_ID  # noqa: F401
 from .util import derive_alias, synthetic_ieee  # noqa: F401
+
+# GreenPowerManager is not imported here: it imports
+# zigpy.zcl.clusters.greenpower, which imports this package.
