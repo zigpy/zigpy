@@ -1,22 +1,21 @@
-"""Commissioning and operational tests driven by frames from a real Busch-Jaeger 6716 U.
+"""Commissioning and operational tests driven by frames captured from real GPDs.
 
-These pin behaviour against actual hardware. The frames were captured below the
-bellows EZSP layer and are fed in as the `ZigbeeGpPacket`s a radio library delivers.
+The coordinator's radio received every GPDF directly, without the security processing
+it lacks the keys for, so the sink has to verify (and decrypt) each one itself.
 """
 
 from __future__ import annotations
 
+import pytest
+
 from tests.zgp.conftest import wait_for_gp_processing
-from tests.zgp.fixtures.busch_jaeger_6716u import (
-    BJ6716U_COMMISSIONING_PAYLOAD,
-    BJ6716U_DECRYPTED_KEY,
-    BJ6716U_OPERATIONAL_FRAME,
-    BJ6716U_SOURCE_ID,
-)
+from tests.zgp.fixtures import CapturedFrame, CapturedGPD
+from tests.zgp.fixtures.enocean_ptm215z import PTM215Z
+from tests.zgp.fixtures.enocean_ptm216z import PTM216Z
+from tests.zgp.fixtures.moes_3_gang import MOES_3_GANG
 import zigpy.types as t
 from zigpy.zgp.types import (
     ApplicationID,
-    DeviceID,
     GPDCommandID,
     SecurityKeyType,
     SecurityLevel,
@@ -25,72 +24,92 @@ from zigpy.zgp.types import (
 )
 from zigpy.zgp.util import synthetic_ieee
 
-IEEE = synthetic_ieee(BJ6716U_SOURCE_ID)
+pytestmark = pytest.mark.parametrize(
+    "gpd",
+    [
+        pytest.param(PTM215Z, id="enocean_ptm215z"),
+        pytest.param(PTM216Z, id="enocean_ptm216z"),
+        pytest.param(MOES_3_GANG, id="moes_3_gang"),
+    ],
+)
 
 
-async def commission(app) -> None:
+async def commission(app, gpd: CapturedGPD) -> None:
     await app.green_power.permit_join(time_s=60)
 
     app.gp_packet_received(
         t.ZigbeeGpPacket(
             application_id=ApplicationID.SrcID,
-            src_id=SrcID(BJ6716U_SOURCE_ID),
+            src_id=SrcID(gpd.src_id),
             command_id=GPDCommandID.CommissioningRequest,
-            payload=t.SerializableBytes(BJ6716U_COMMISSIONING_PAYLOAD),
-            frame_counter=t.uint32_t(0xFFFFFFFF),
+            payload=t.SerializableBytes(gpd.commissioning_payload),
+            frame_counter=t.uint32_t(gpd.commissioning_sequence_number),
             security_level=SecurityLevel.NoSecurity,
-            security_key_type=SecurityKeyType.NoKey,
             security_status=SecurityStatus.NoSecurity,
         )
     )
-
     await wait_for_gp_processing()
 
 
-async def test_real_commissioning_succeeds(manager, app) -> None:
-    """The captured 0xE0 frame unwraps its key and registers the device."""
-    await commission(app)
-
-    device = app.devices[IEEE]
-    assert device.src_id == BJ6716U_SOURCE_ID
-    assert device.device_id == DeviceID.OnOffSwitch
-    assert device.security_key == t.KeyData(BJ6716U_DECRYPTED_KEY)
-    assert device.security_level == SecurityLevel.FullFrameCounterAndMIC
-    assert device.security_key_type == SecurityKeyType.IndividualKey
-    # The advertised OutgoingCounter wins over the notification frame counter.
-    assert device.frame_counter == 0x00001DEC
-    assert device.commands == [
-        *range(0x10, 0x18),  # Recall Scene 0-7
-        GPDCommandID.Toggle,
-        GPDCommandID.Press1of1,
-        *range(0x62, 0x69),  # Press 1 of 2 to Short Press 2 of 2
-    ]
-
-
-async def test_real_unprocessed_frame_verified(manager, app) -> None:
-    """The radio could not process the captured press, the sink verifies its MIC."""
-    await commission(app)
-
-    events = []
-    app.devices[IEEE].on_event("gp_command_received", events.append)
-
-    frame = BJ6716U_OPERATIONAL_FRAME
-    packet = t.ZigbeeGpPacket(
+def unprocessed_packet(gpd: CapturedGPD, frame: CapturedFrame) -> t.ZigbeeGpPacket:
+    return t.ZigbeeGpPacket(
         application_id=ApplicationID.SrcID,
-        src_id=SrcID(BJ6716U_SOURCE_ID),
+        src_id=SrcID(gpd.src_id),
         command_id=GPDCommandID(frame.command_id),
+        payload=t.SerializableBytes(frame.payload),
         frame_counter=t.uint32_t(frame.frame_counter),
-        security_level=SecurityLevel.FullFrameCounterAndMIC,
+        security_level=gpd.security_level,
         security_status=SecurityStatus.Unprocessed,
-        mic=t.uint32_t.deserialize(frame.mic)[0],
+        mic=t.uint32_t(frame.mic),
         auto_commissioning=False,
         rx_after_tx=False,
         individual_key=True,
     )
 
-    # The replayed copy fails the freshness check
-    app.gp_packet_received(packet)
-    app.gp_packet_received(packet)
 
-    assert [e.command_id for e in events] == [GPDCommandID.ShortPress2of2]
-    assert app.devices[IEEE].frame_counter == frame.frame_counter
+async def test_commissioning(manager, app, gpd) -> None:
+    """The commissioning payload's key is unwrapped and the device registered."""
+    await commission(app, gpd)
+
+    device = app.devices[synthetic_ieee(gpd.src_id)]
+    assert device.device_id == gpd.device_id
+    assert device.security_level == gpd.security_level
+    assert device.security_key_type == SecurityKeyType.IndividualKey
+    assert device.security_key == t.KeyData(gpd.key)
+    assert device.frame_counter == gpd.outgoing_counter
+
+    for name, value in gpd.attributes.items():
+        assert getattr(device, name) == value
+
+
+async def test_frames(manager, app, gpd) -> None:
+    """Every captured GPDF verifies with the unwrapped key and is delivered."""
+    await commission(app, gpd)
+
+    device = app.devices[synthetic_ieee(gpd.src_id)]
+    events = []
+    device.on_event("gp_command_received", events.append)
+
+    for frame in gpd.frames:
+        app.gp_packet_received(unprocessed_packet(gpd, frame))
+
+    assert [(e.command_id, e.command) for e in events] == [
+        (frame.expected_command_id, frame.expected_command) for frame in gpd.frames
+    ]
+    assert device.frame_counter == gpd.frames[-1].frame_counter
+
+
+async def test_replayed_frames_dropped(manager, app, gpd) -> None:
+    """A repeated GPDF and GPDFs older than the commissioning fail the freshness check."""
+    await commission(app, gpd)
+    app.gp_packet_received(unprocessed_packet(gpd, gpd.frames[0]))
+
+    device = app.devices[synthetic_ieee(gpd.src_id)]
+    events = []
+    device.on_event("gp_command_received", events.append)
+
+    for frame in [gpd.frames[0], *gpd.stale_frames]:
+        app.gp_packet_received(unprocessed_packet(gpd, frame))
+
+    assert events == []
+    assert device.frame_counter == gpd.frames[0].frame_counter
