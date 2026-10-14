@@ -39,6 +39,7 @@ from zigpy.zgp.types import (
     ApplicationID,
     CommunicationMode,
     GPDCommandID,
+    ProxyCommissioningModeExitMode,
     SecurityKeyType,
     SecurityLevel,
 )
@@ -330,7 +331,9 @@ class GreenPowerManager:
             options=ProxyCommissioningModeOptions(
                 enter=int(window is not None),
                 commissioning_window_present=int(window is not None),
-                exit_mode=0,
+                # Without it, proxies may ignore the exit command and stay in
+                # commissioning mode until the window expires (Figure 57)
+                exit_mode=ProxyCommissioningModeExitMode.OnExplicitExit,
                 channel_present=0,
                 unicast=0,
                 _reserved=0,

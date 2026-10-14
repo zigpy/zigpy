@@ -33,6 +33,7 @@ from zigpy.zgp.types import (
     CommunicationMode,
     DeviceID,
     GPDCommandID,
+    ProxyCommissioningModeExitMode,
     SecurityKeyType,
     SecurityLevel,
     SecurityStatus,
@@ -94,6 +95,7 @@ async def test_permit_join_window(app, manager):
     ]
 
     assert enter.options.enter
+    assert enter.options.exit_mode == ProxyCommissioningModeExitMode.OnExplicitExit
     assert enter.window == 60
     assert not exit_.options.enter
     assert exit_.window is None
