@@ -1092,6 +1092,8 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
 @patch("zigpy.device.AFTER_OTA_ATTR_READ_DELAY", 0.01)
 async def test_update_device_firmware_server_ota_cluster(dev):
     """Test that devices exposing OTA only as a server cluster can be updated."""
+    dev.application.devices[dev.ieee] = dev
+
     ep = dev.add_endpoint(1)
     ep.status = endpoint.Status.ZDO_INIT
     ep.profile_id = 260
@@ -1169,8 +1171,11 @@ async def test_update_device_firmware_server_ota_cluster(dev):
     }
 
     # Emulate a device that runs an OTA client but describes it as a server cluster
+    sent_directions = set()
+
     async def send_packet(packet: t.ZigbeePacket) -> None:
         hdr, cmd = cluster.deserialize(packet.data.serialize())
+        sent_directions.add(hdr.direction)
 
         if isinstance(cmd, Ota.ImageNotifyCommand):
             reply = make_packet(
@@ -1249,6 +1254,9 @@ async def test_update_device_firmware_server_ota_cluster(dev):
     await asyncio.sleep(0)
 
     assert result == foundation.Status.SUCCESS
+
+    # Frames are sent to the device's OTA client, not to a server
+    assert sent_directions == {foundation.Direction.Server_to_Client}
 
     # The post-OTA cleanup ran on the server cluster
     assert len(cleared_events) == 1
