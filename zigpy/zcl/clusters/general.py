@@ -2033,6 +2033,15 @@ class Ota(Cluster):
         super().__init__(*args, **kwargs)
         self.last_query_cmd: QueryNextImageCommand | None = None
 
+    @property
+    def send_direction(self) -> foundation.Direction:
+        """Return the direction of frames sent to this cluster.
+
+        zigpy only implements the OTA server role, so frames are always sent to the
+        device's OTA client, even for devices that expose it as a server cluster.
+        """
+        return foundation.Direction.Server_to_Client
+
     class AttributeDefs(BaseAttributeDefs):
         upgrade_server_id: Final = ZCLAttributeDef(
             id=0x0000, type=t.EUI64, access="r", mandatory=True
