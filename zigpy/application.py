@@ -7,7 +7,7 @@ import collections
 from collections.abc import AsyncGenerator, Callable, Coroutine
 import contextlib
 import contextvars
-from datetime import UTC, datetime
+from datetime import UTC, datetime, tzinfo
 import errno
 import inspect
 import logging
@@ -33,6 +33,7 @@ import zigpy.listeners
 import zigpy.ota
 import zigpy.profiles
 import zigpy.state
+from zigpy.time import TimeService
 import zigpy.topology
 import zigpy.types as t
 import zigpy.util
@@ -85,6 +86,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._groups = zigpy.group.Groups(self)
         self._send_sequence = 0
         self._tasks: set[asyncio.Future[Any]] = set()
+        self._time_service = TimeService()
 
         self._device_resolver: DeviceResolver | None = None
         self._uninitialized_packet_handler: Callable[..., None] | None = None
@@ -352,9 +354,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         start_radio: bool = True,
         device_resolver: DeviceResolver | None = None,
         uninitialized_packet_handler: Callable[..., None] | None = None,
+        *,
+        local_timezone: tzinfo | None = None,
     ) -> ControllerApplication:
         """Create new instance of application controller."""
         app = cls(config)
+        app.local_timezone = local_timezone
 
         if device_resolver is not None:
             app.register_device_resolver(device_resolver)
@@ -368,6 +373,16 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             await app.startup(auto_form=auto_form)
 
         return app
+
+    @property
+    def local_timezone(self) -> tzinfo | None:
+        """Return the configured local timezone, or None for system-local time."""
+        return self._time_service.timezone
+
+    @local_timezone.setter
+    def local_timezone(self, zone: tzinfo | None) -> None:
+        """Set the local timezone and invalidate cached DST rules."""
+        self._time_service.timezone = zone
 
     async def energy_scan(
         self, channels: t.Channels, duration_exp: int, count: int

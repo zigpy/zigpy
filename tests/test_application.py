@@ -6,6 +6,7 @@ import errno
 import logging
 from unittest import mock
 from unittest.mock import ANY, Mock, PropertyMock, call
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -56,6 +57,43 @@ async def test_permit(app, ieee):
     await app.permit(node=NCP_IEEE)
     assert app.devices[ieee].zdo.permit.call_count == 1
     assert app.permit_ncp.call_count == 1
+
+
+async def test_local_timezone(app):
+    zone = ZoneInfo("Europe/Berlin")
+    app.local_timezone = zone
+    now = datetime(2026, 7, 15, tzinfo=UTC)
+    first = await app._time_service.async_snapshot(now)
+    assert first.time_zone == 3600
+    assert first.dst_shift == 3600
+
+    zone = ZoneInfo("Australia/Sydney")
+    app.local_timezone = zone
+    changed = await app._time_service.async_snapshot(now)
+    assert changed.time_zone == 36000
+    assert changed.dst_start != first.dst_start
+
+    app.local_timezone = None
+    assert app._time_service._cache is None
+    assert not (await app._time_service.async_snapshot(now)).authoritative
+
+
+async def test_new_local_timezone():
+    zone = ZoneInfo("Europe/Berlin")
+    config = {conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"}}
+    resolver = Mock()
+    packet_handler = Mock()
+    with (
+        patch.object(App, "_load_db", new_callable=AsyncMock),
+        patch.object(App, "startup", new_callable=AsyncMock) as startup,
+    ):
+        application = await App.new(
+            config, False, False, resolver, packet_handler, local_timezone=zone
+        )
+    assert application.local_timezone is zone
+    assert application._device_resolver is resolver
+    assert application._uninitialized_packet_handler is packet_handler
+    startup.assert_not_called()
 
 
 async def test_permit_delivery_failure(app, ieee):

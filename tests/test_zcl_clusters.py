@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone, tzinfo
+import io
 import re
+import struct
+import threading
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -11,6 +14,7 @@ import pytest
 from zigpy import device, types, zcl
 import zigpy.endpoint
 from zigpy.ota import OTA, OtaImagesResult
+from zigpy.time import INVALID_TIME, MAX_TIME, ZIGBEE_EPOCH, TimeService, zigbee_time
 from zigpy.zcl import OtaImageAvailableEvent, OtaQueryCacheUpdatedEvent, foundation
 from zigpy.zcl.clusters.general import Basic, KeepAlive, Ota, Time
 import zigpy.zcl.clusters.security as sec
@@ -91,11 +95,19 @@ async def read_attributes(cluster, attribute_ids: list[int]) -> dict[int, Any]:
 
     command = schema(attribute_ids=attribute_ids)
 
-    with patch.object(cluster, "reply") as reply_mock:
-        cluster.handle_message(hdr, command)
-        call = reply_mock.mock_calls[0]
+    response = asyncio.get_running_loop().create_future()
 
-    return call.args[2](call.args[3])
+    async def capture_reply(*args, **kwargs):
+        response.set_result((args, kwargs))
+
+    with patch.object(cluster, "reply", side_effect=capture_reply):
+        cluster.handle_message(hdr, command)
+        args, kwargs = await asyncio.wait_for(response, timeout=10)
+
+    assert args[0] is True
+    assert args[1] == foundation.GeneralCommand.Read_Attributes_rsp
+    assert kwargs["tsn"] == hdr.tsn
+    return args[2](args[3])
 
 
 async def test_basic_cluster():
@@ -170,44 +182,6 @@ async def test_keepalive_cluster() -> None:
     )
 
 
-def _make_patched_datetime(fake_now):
-    """Create a PatchedDatetime class that returns `fake_now` as the current time."""
-
-    class PatchedDatetime(datetime):
-        _fake_now = fake_now
-
-        def astimezone(self):
-            return self.replace(tzinfo=self._fake_now.tzinfo)
-
-        @classmethod
-        def now(cls, tzinfo=None):
-            if tzinfo is None:
-                return cls(
-                    cls._fake_now.year,
-                    cls._fake_now.month,
-                    cls._fake_now.day,
-                    cls._fake_now.hour,
-                    cls._fake_now.minute,
-                    cls._fake_now.second,
-                )
-            else:
-                assert tzinfo is UTC
-                return (
-                    cls(
-                        cls._fake_now.year,
-                        cls._fake_now.month,
-                        cls._fake_now.day,
-                        cls._fake_now.hour,
-                        cls._fake_now.minute,
-                        cls._fake_now.second,
-                        tzinfo=tzinfo,
-                    )
-                    - cls._fake_now.utcoffset()
-                )
-
-    return PatchedDatetime
-
-
 @pytest.mark.parametrize(
     ("fake_now", "expected_utc", "expected_tz", "expected_standard", "expected_local"),
     [
@@ -240,10 +214,12 @@ def _make_patched_datetime(fake_now):
     ],
 )
 async def test_time_cluster(
-    fake_now, expected_utc, expected_tz, expected_standard, expected_local
+    fake_now, expected_utc, expected_tz, expected_standard, expected_local, app_mock
 ):
     ep = MagicMock()
     ep.reply = AsyncMock()
+    ep.device.application = app_mock
+    app_mock.local_timezone = fake_now.tzinfo
 
     cluster = Time(ep)
 
@@ -251,9 +227,8 @@ async def test_time_cluster(
         foundation.GeneralCommand.Read_Attributes_rsp
     ].schema
 
-    PatchedDatetime = _make_patched_datetime(fake_now)
-
-    with patch("zigpy.zcl.clusters.general.datetime", PatchedDatetime):
+    with patch("zigpy.zcl.clusters.general.datetime", wraps=datetime) as clock:
+        clock.now.return_value = fake_now.astimezone(UTC)
         # Supported attributes
         rsp1 = await read_attributes(
             cluster,
@@ -321,6 +296,398 @@ async def test_time_cluster(
             )
         ]
     )
+
+
+async def test_time_cluster_dst_attributes(app_mock):
+    ep = MagicMock()
+    ep.reply = AsyncMock()
+    ep.device.application = app_mock
+    cluster = Time(ep)
+
+    response = await read_attributes(cluster, [0x0003, 0x0004, 0x0005])
+
+    assert [record.status for record in response.status_records] == [
+        foundation.Status.SUCCESS,
+        foundation.Status.SUCCESS,
+        foundation.Status.SUCCESS,
+    ]
+
+
+@pytest.mark.parametrize(
+    ("zone_name", "instant", "start", "end", "shift"),
+    [
+        ("Europe/Berlin", "2026-01-15", "2026-03-29T01:00", "2026-10-25T01:00", 3600),
+        ("Europe/Berlin", "2026-07-15", "2026-03-29T01:00", "2026-10-25T01:00", 3600),
+        ("Europe/Berlin", "2026-12-15", "2027-03-28T01:00", "2027-10-31T01:00", 3600),
+        (
+            "America/Los_Angeles",
+            "2026-07-15",
+            "2026-03-08T10:00",
+            "2026-11-01T09:00",
+            3600,
+        ),
+        (
+            "Australia/Sydney",
+            "2026-01-15",
+            "2025-10-04T16:00",
+            "2026-04-04T16:00",
+            3600,
+        ),
+        (
+            "Australia/Sydney",
+            "2026-07-15",
+            "2026-10-03T16:00",
+            "2027-04-03T16:00",
+            3600,
+        ),
+        (
+            "Australia/Sydney",
+            "2026-12-15",
+            "2026-10-03T16:00",
+            "2027-04-03T16:00",
+            3600,
+        ),
+        (
+            "Australia/Lord_Howe",
+            "2026-01-15",
+            "2025-10-04T15:30",
+            "2026-04-04T15:00",
+            1800,
+        ),
+        ("Australia/Sydney", "2000-01-02", "2000-01-01", "2000-03-25T16:00", 3600),
+    ],
+)
+async def test_time_cluster_dst_period(zone_name, instant, start, end, shift, app_mock):
+    zone = ZoneInfo(zone_name)
+    now = datetime.fromisoformat(instant).replace(tzinfo=UTC)
+    ep = MagicMock()
+    ep.reply = AsyncMock()
+    ep.device.application = app_mock
+    app_mock.local_timezone = zone
+    service = app_mock._time_service
+    cluster = Time(ep)
+
+    with patch("zigpy.zcl.clusters.general.datetime", wraps=datetime) as clock:
+        clock.now.return_value = now
+        response = await read_attributes(cluster, list(range(8)))
+        clock.now.assert_called_once_with(UTC)
+
+    assert all(
+        record.status == foundation.Status.SUCCESS for record in response.status_records
+    )
+    values = {record.attrid: record.value.value for record in response.status_records}
+    assert values[3] == zigbee_time(datetime.fromisoformat(start).replace(tzinfo=UTC))
+    assert values[4] == zigbee_time(datetime.fromisoformat(end).replace(tzinfo=UTC)) - 1
+    assert values[5] == shift
+    assert response.status_records[3].value.type == foundation.DataTypeId.uint32
+    assert response.status_records[4].value.type == foundation.DataTypeId.uint32
+    assert response.status_records[5].value.type == foundation.DataTypeId.int32
+    assert values[6] == values[0] + values[2]
+    assert values[7] == values[6] + (
+        shift if values[3] <= values[0] <= values[4] else 0
+    )
+    assert values[7] == zigbee_time(now + now.astimezone(zone).utcoffset())
+    assert cluster._read_snapshot is None
+    assert service._cache is not None
+
+
+@pytest.mark.parametrize(
+    "zone", [UTC, timezone(timedelta(hours=5, minutes=30)), ZoneInfo("Asia/Tokyo")]
+)
+def test_time_service_no_dst(zone):
+    now = datetime(2026, 7, 15, tzinfo=UTC)
+    snapshot = TimeService(zone).snapshot(now)
+    assert snapshot.authoritative
+    assert (snapshot.dst_start, snapshot.dst_end, snapshot.dst_shift) == (
+        INVALID_TIME,
+        INVALID_TIME,
+        0,
+    )
+    assert snapshot.standard_time == snapshot.local_time
+    assert snapshot.local_time == snapshot.time + snapshot.time_zone
+
+
+@pytest.mark.parametrize(
+    "zone_name",
+    [
+        "Europe/Berlin",
+        "Australia/Sydney",
+        "Australia/Lord_Howe",
+        "Europe/Dublin",
+        "Africa/Casablanca",
+    ],
+)
+def test_time_service_transition_boundaries(zone_name):
+    zone = ZoneInfo(zone_name)
+    service = TimeService(zone)
+    for start, end, offset, shift in service._scan_periods(zone, 2026)[1:-1]:
+        for transition in (start, end):
+            for seconds in (-1, 0, 1):
+                now = transition + timedelta(seconds=seconds)
+                snapshot = service.snapshot(now)
+                current_shift = int(
+                    (now.astimezone(zone).dst() or timedelta(0)).total_seconds()
+                )
+                advertised_shift = (
+                    snapshot.dst_shift
+                    if snapshot.dst_start <= snapshot.time <= snapshot.dst_end
+                    else 0
+                )
+                assert snapshot.authoritative
+                assert advertised_shift == current_shift
+                assert snapshot.local_time == snapshot.standard_time + current_shift
+                assert snapshot.local_time == zigbee_time(
+                    now + now.astimezone(zone).utcoffset()
+                )
+
+
+def test_time_service_cache_and_timezone_change():
+    zone = ZoneInfo("Europe/Berlin")
+    service = TimeService(zone)
+    with patch.object(
+        TimeService, "_scan_periods", wraps=service._scan_periods
+    ) as scan:
+        winter = service.snapshot(datetime(2026, 1, 15, tzinfo=UTC))
+        summer = service.snapshot(datetime(2026, 7, 15, tzinfo=UTC))
+        assert winter.dst_start == summer.dst_start
+        assert winter.dst_shift == summer.dst_shift == 3600
+        assert scan.call_count == 1
+        assert service.snapshot(datetime(2026, 1, 15, tzinfo=UTC)) == winter
+        service.snapshot(datetime(2027, 1, 15, tzinfo=UTC))
+        assert scan.call_count == 2
+        zone = ZoneInfo("Australia/Sydney")
+        service.timezone = zone
+        changed = service.snapshot(datetime(2027, 1, 15, tzinfo=UTC))
+        assert changed.time_zone == 36000
+        assert scan.call_count == 3
+        service.clear_cache()
+        assert service.snapshot(datetime(2027, 1, 15, tzinfo=UTC)) == changed
+        assert scan.call_count == 4
+
+
+def test_time_service_negative_dst():
+    start = datetime(2026, 3, 1, tzinfo=UTC)
+    end = datetime(2026, 6, 1, tzinfo=UTC)
+    header = b"TZif\0" + bytes(15) + struct.pack(">6I", 0, 0, 0, 3, 2, 8)
+    transitions = struct.pack(
+        ">3i",
+        int(datetime(2025, 1, 1, tzinfo=UTC).timestamp()),
+        int(start.timestamp()),
+        int(end.timestamp()),
+    )
+    offsets = struct.pack(">iBBiBB", 3600, 0, 0, 0, 1, 4)
+    zone = ZoneInfo.from_file(
+        io.BytesIO(header + transitions + b"\0\1\0" + offsets + b"STD\0DST\0")
+    )
+    service = TimeService(zone)
+    now = datetime(2026, 4, 15, tzinfo=UTC)
+    snapshot = service.snapshot(now)
+    assert snapshot.time_zone == 3600
+    assert snapshot.dst_shift == -3600
+    assert snapshot.local_time == snapshot.time
+    assert snapshot.dst_start == zigbee_time(start)
+    assert snapshot.dst_end == zigbee_time(end) - 1
+    assert types.int32s.deserialize(types.int32s(snapshot.dst_shift).serialize()) == (
+        -3600,
+        b"",
+    )
+
+
+@pytest.mark.parametrize("seconds", [-0.5, -1, INVALID_TIME, INVALID_TIME + 1])
+def test_time_service_out_of_range(seconds):
+    snapshot = TimeService(UTC).snapshot(ZIGBEE_EPOCH + timedelta(seconds=seconds))
+    assert snapshot.time == INVALID_TIME
+    assert not snapshot.authoritative
+
+
+@pytest.mark.parametrize("seconds", [0, 1, MAX_TIME])
+def test_time_service_valid_range(seconds):
+    snapshot = TimeService(UTC).snapshot(ZIGBEE_EPOCH + timedelta(seconds=seconds))
+    assert snapshot.time == seconds
+    assert snapshot.authoritative
+
+
+def test_time_service_missing_timezone():
+    now = datetime(2026, 7, 15, tzinfo=UTC)
+    snapshot = TimeService().snapshot(now)
+    assert not snapshot.authoritative
+    assert snapshot.local_time == zigbee_time(now + now.astimezone().utcoffset())
+    assert snapshot.dst_start == snapshot.dst_end == INVALID_TIME
+
+
+def test_time_service_standard_offset_change():
+    zone = ZoneInfo("Europe/Berlin")
+    now = datetime(2026, 1, 15, tzinfo=UTC)
+    start = datetime(2026, 3, 1, tzinfo=UTC)
+    end = datetime(2026, 10, 1, tzinfo=UTC)
+    periods = [
+        (datetime(2026, 1, 1, tzinfo=UTC), start, 3600, 0),
+        (start, end, 10800, 3600),
+        (end, datetime(2027, 1, 1, tzinfo=UTC), 7200, 0),
+    ]
+    service = TimeService(zone)
+    with patch.object(TimeService, "_scan_periods", return_value=periods):
+        snapshot = service.snapshot(now)
+    assert snapshot.time_zone == 3600
+    assert snapshot.dst_start == snapshot.dst_end == INVALID_TIME
+    assert snapshot.dst_shift == 0
+
+
+@pytest.mark.parametrize("valid_clock", [True, False])
+async def test_time_cluster_status(valid_clock, app_mock):
+    ep = MagicMock()
+    ep.device.application = app_mock
+    cluster = Time(ep)
+    now = datetime(2026 if valid_clock else 1999, 7, 15, tzinfo=UTC)
+    with patch("zigpy.zcl.clusters.general.datetime", wraps=datetime) as clock:
+        clock.now.return_value = now
+        response = await read_attributes(cluster, [0, 1, 3, 4, 5])
+    values = {record.attrid: record.value.value for record in response.status_records}
+    assert values[1] == (Time.TimeStatus.Master if valid_clock else 0)
+    assert values[3] == values[4] == INVALID_TIME
+    assert values[5] == 0
+
+
+def test_time_service_unbounded_dst():
+    class PermanentDST(tzinfo):
+        def utcoffset(self, value):
+            return timedelta(hours=2)
+
+        def dst(self, value):
+            return timedelta(hours=1)
+
+    snapshot = TimeService(PermanentDST()).snapshot(datetime(2026, 7, 15, tzinfo=UTC))
+    assert snapshot.authoritative
+    assert snapshot.dst_start == 0
+    assert snapshot.dst_end == MAX_TIME
+    assert snapshot.dst_shift == 3600
+
+
+async def test_time_service_concurrent_reads():
+    zone = ZoneInfo("Europe/Berlin")
+    main_thread = threading.get_ident()
+
+    service = TimeService(zone)
+    original_scan = service._scan_periods
+
+    def scan(*args, **kwargs):
+        assert threading.get_ident() != main_thread
+        return original_scan(*args, **kwargs)
+
+    now = datetime(2026, 7, 15, tzinfo=UTC)
+    with patch.object(TimeService, "_scan_periods", side_effect=scan) as scan_mock:
+        results = await asyncio.gather(
+            *(service.async_snapshot(now) for index in range(5))
+        )
+    assert all(result == results[0] for result in results)
+    assert scan_mock.call_count == 1
+
+
+@pytest.mark.parametrize("zone", [None, UTC, ZoneInfo("Europe/Berlin")])
+async def test_time_service_cached_reads_stay_on_loop(zone):
+    service = TimeService(zone)
+    now = datetime(2026, 7, 15, tzinfo=UTC)
+    expected = service.snapshot(now)
+    loop = asyncio.get_running_loop()
+    with patch.object(loop, "run_in_executor") as executor:
+        assert await service.async_snapshot(now) == expected
+    executor.assert_not_called()
+
+
+async def test_time_service_cancelled_discovery():
+    zone = ZoneInfo("Europe/Berlin")
+    service = TimeService(zone)
+    now = datetime(2026, 7, 15, tzinfo=UTC)
+    periods = service._discover_periods(zone, now)
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
+    submitted = asyncio.Event()
+
+    def submit(*args):
+        submitted.set()
+        return future
+
+    with patch.object(loop, "run_in_executor", side_effect=submit) as executor:
+        reader = asyncio.create_task(service.async_snapshot(now))
+        await asyncio.wait_for(submitted.wait(), timeout=1)
+        reader.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await reader
+        assert not future.cancelled()
+        assert service._cache is None
+        future.set_result(periods)
+        result = await service.async_snapshot(now)
+    assert result.dst_shift == 3600
+    assert executor.call_count == 1
+
+
+async def test_time_service_invalidation_during_discovery():
+    zone = ZoneInfo("Europe/Berlin")
+    service = TimeService(zone)
+    now = datetime(2026, 7, 15, tzinfo=UTC)
+    periods = service._discover_periods(zone, now)
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
+    submitted = asyncio.Event()
+
+    def submit(*args):
+        submitted.set()
+        return future
+
+    with patch.object(loop, "run_in_executor", side_effect=submit):
+        reader = asyncio.create_task(service.async_snapshot(now))
+        await asyncio.wait_for(submitted.wait(), timeout=1)
+        service.timezone = ZoneInfo("Asia/Tokyo")
+        future.set_result(periods)
+        old = await reader
+    assert old.time_zone == 3600
+    assert service._cache is None
+    current = await service.async_snapshot(now)
+    assert current.time_zone == 32400
+    assert current.dst_shift == 0
+
+
+async def test_time_cluster_shared_service(app_mock):
+    zone = ZoneInfo("Europe/Berlin")
+    app_mock.local_timezone = zone
+    endpoints = [MagicMock(), MagicMock()]
+    for endpoint in endpoints:
+        endpoint.device.application = app_mock
+        endpoint.reply = AsyncMock()
+    clusters = [Time(endpoint) for endpoint in endpoints]
+    with patch.object(
+        TimeService,
+        "_scan_periods",
+        wraps=app_mock._time_service._scan_periods,
+    ) as scan:
+        responses = await asyncio.gather(
+            *(read_attributes(cluster, [3, 4, 5]) for cluster in clusters)
+        )
+    assert scan.call_count == 1
+    assert responses[0] == responses[1]
+    serialized = responses[0].serialize()
+    assert type(responses[0]).deserialize(serialized) == (responses[0], b"")
+
+
+async def test_time_cluster_snapshot_cleanup(app_mock):
+    ep = MagicMock()
+    ep.device.application = app_mock
+    cluster = Time(ep)
+    header = foundation.ZCLHeader.general(1, foundation.GeneralCommand.Read_Attributes)
+    with patch.object(
+        cluster, "handle_read_attribute_time", side_effect=RuntimeError("read failed")
+    ):
+        with pytest.raises(RuntimeError, match="read failed"):
+            await cluster._handle_time_read(header, MagicMock(attribute_ids=[0]), None)
+    assert cluster._read_snapshot is None
+
+
+async def test_time_cluster_other_commands():
+    cluster = Time(MagicMock())
+    header = foundation.ZCLHeader.general(1, foundation.GeneralCommand.Default_Response)
+    with patch.object(zcl.Cluster, "handle_cluster_general_request") as handler:
+        cluster.handle_cluster_general_request(header, [])
+    handler.assert_called_once_with(header, [], dst_addressing=None)
 
 
 @pytest.fixture
