@@ -681,6 +681,22 @@ class ZigbeeDevice(BaseDevice):
             f"Cluster {cluster_id:#06x} not found in any endpoint of device {self}"
         )
 
+    def find_ota_cluster(self) -> Cluster:
+        """Find the OTA cluster, falling back to a server cluster.
+
+        OTA is a client cluster on the device, but some devices expose it as a server
+        cluster instead. Runtime routing also falls back to the server cluster for
+        those, so OTA is handled through whichever cluster actually exists.
+        """
+        try:
+            return self.find_cluster(
+                cluster_id=Ota.cluster_id, cluster_type=ClusterType.Client
+            )
+        except ValueError:
+            return self.find_cluster(
+                cluster_id=Ota.cluster_id, cluster_type=ClusterType.Server
+            )
+
     async def poll_control_checkin_callback(
         self,
         zcl_hdr: foundation.ZCLHeader,
@@ -853,9 +869,7 @@ class ZigbeeDevice(BaseDevice):
                         self.manufacturer = manufacturer
 
         try:
-            ota = self.find_cluster(
-                cluster_id=Ota.cluster_id, cluster_type=ClusterType.Client
-            )
+            ota = self.find_ota_cluster()
         except ValueError:
             self.debug("Device does not support OTA cluster")
         else:
@@ -1328,9 +1342,7 @@ class ZigbeeDevice(BaseDevice):
             return result
 
         # Clear the current file version when the update succeeds
-        ota = self.find_cluster(
-            cluster_id=Ota.cluster_id, cluster_type=ClusterType.Client
-        )
+        ota = self.find_ota_cluster()
         ota.update_attribute(Ota.AttributeDefs.current_file_version.id, None)
         ota.last_query_cmd = None
         ota.emit(

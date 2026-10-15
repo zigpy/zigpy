@@ -632,6 +632,35 @@ async def test_update_device_firmware_no_ota_cluster(dev):
         await dev.update_firmware(mock_image, sentinel.progress_callback)
 
 
+@pytest.mark.parametrize(
+    ("has_client", "has_server", "expected_type"),
+    [
+        (True, True, ClusterType.Client),
+        (True, False, ClusterType.Client),
+        (False, True, ClusterType.Server),
+    ],
+)
+def test_find_ota_cluster(dev, has_client, has_server, expected_type):
+    """Test that the OTA cluster lookup prefers a client cluster."""
+    ep = dev.add_endpoint(1)
+
+    if has_client:
+        ep.add_output_cluster(Ota.cluster_id)
+
+    if has_server:
+        ep.add_input_cluster(Ota.cluster_id)
+
+    assert dev.find_ota_cluster().cluster_type == expected_type
+
+
+def test_find_ota_cluster_missing(dev):
+    """Test that the OTA cluster lookup raises when there is no OTA cluster."""
+    dev.add_endpoint(1)
+
+    with pytest.raises(ValueError, match="Cluster 0x0019 not found"):
+        dev.find_ota_cluster()
+
+
 async def test_update_device_firmware_already_in_progress(dev, caplog):
     """Test that device firmware updates no ops when update is in progress."""
     dev.ota_in_progress = True
@@ -1057,6 +1086,178 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     assert "OTA image_block handler[MALFORMED_COMMAND] exception" in caplog.text
     assert result == foundation.Status.MALFORMED_COMMAND
     cluster.image_block_response = image_block_response
+
+
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
+@patch("zigpy.device.AFTER_OTA_ATTR_READ_DELAY", 0.01)
+async def test_update_device_firmware_server_ota_cluster(dev):
+    """Test that devices exposing OTA only as a server cluster can be updated."""
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    cluster = ep.add_input_cluster(Ota.cluster_id)
+    cluster.update_attribute(Ota.AttributeDefs.current_file_version.id, 0x00000001)
+    dev.reinterview = AsyncMock()
+    dev.application.ota.get_ota_images = AsyncMock(
+        return_value=OtaImagesResult(upgrades=(), downgrades=())
+    )
+
+    fw_image = zigpy.ota.OtaImageWithMetadata(
+        metadata=zigpy.ota.providers.BaseOtaImageMetadata(
+            file_version=0x12345678,
+            manufacturer_id=0x1234,
+            image_type=0x90,
+        ),
+        firmware=zigpy.ota.image.OTAImage(
+            header=zigpy.ota.image.OTAImageHeader(
+                upgrade_file_id=zigpy.ota.image.OTAImageHeader.MAGIC_VALUE,
+                file_version=0x12345678,
+                image_type=0x90,
+                manufacturer_id=0x1234,
+                header_version=256,
+                header_length=56,
+                field_control=0,
+                stack_version=2,
+                header_string="This is a test header!",
+                image_size=56 + 2 + 4 + 8,
+            ),
+            subelements=[zigpy.ota.image.SubElement(tag_id=0x0000, data=b"fw_image")],
+        ),
+    )
+    header = fw_image.firmware.header
+
+    def make_packet(
+        general: bool,
+        cmd_name: str | foundation.GeneralCommand,
+        tsn: int | None = None,
+        **kwargs,
+    ) -> t.ZigbeePacket:
+        if general:
+            command_id = cmd_name
+            schema = foundation.GENERAL_COMMANDS[cmd_name].schema
+        else:
+            command_id = cluster.commands_by_name[cmd_name].id
+            schema = cluster.commands_by_name[cmd_name].schema
+
+        hdr, cmd = cluster._create_request(
+            general=general,
+            command_id=command_id,
+            schema=schema,
+            tsn=tsn,
+            disable_default_response=general,
+            direction=foundation.Direction.Client_to_Server,
+            args=(),
+            kwargs=kwargs,
+        )
+
+        return t.ZigbeePacket(
+            src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+            src_ep=1,
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+            dst_ep=1,
+            tsn=hdr.tsn,
+            profile_id=260,
+            cluster_id=cluster.cluster_id,
+            data=t.SerializableBytes(hdr.serialize() + cmd.serialize()),
+            lqi=255,
+            rssi=-30,
+        )
+
+    image_kwargs = {
+        "manufacturer_code": header.manufacturer_id,
+        "image_type": header.image_type,
+    }
+
+    # Emulate a device that runs an OTA client but describes it as a server cluster
+    async def send_packet(packet: t.ZigbeePacket) -> None:
+        hdr, cmd = cluster.deserialize(packet.data.serialize())
+
+        if isinstance(cmd, Ota.ImageNotifyCommand):
+            reply = make_packet(
+                False,
+                "query_next_image",
+                field_control=Ota.QueryNextImageCommand.FieldControl(0),
+                current_file_version=0x00000001,
+                **image_kwargs,
+            )
+        elif isinstance(cmd, Ota.ClientCommandDefs.query_next_image_response.schema):
+            if cmd.status != foundation.Status.SUCCESS:
+                return
+
+            reply = make_packet(
+                False,
+                "image_block",
+                field_control=Ota.ImageBlockCommand.FieldControl(0),
+                file_version=header.file_version,
+                file_offset=0,
+                maximum_data_size=40,
+                **image_kwargs,
+            )
+        elif isinstance(cmd, Ota.ClientCommandDefs.image_block_response.schema):
+            offset = cmd.file_offset + len(cmd.image_data)
+
+            if offset < header.image_size:
+                reply = make_packet(
+                    False,
+                    "image_block",
+                    field_control=Ota.ImageBlockCommand.FieldControl(0),
+                    file_version=header.file_version,
+                    file_offset=offset,
+                    maximum_data_size=40,
+                    **image_kwargs,
+                )
+            else:
+                reply = make_packet(
+                    False,
+                    "upgrade_end",
+                    status=foundation.Status.SUCCESS,
+                    file_version=header.file_version,
+                    **image_kwargs,
+                )
+        elif isinstance(
+            cmd,
+            foundation.GENERAL_COMMANDS[
+                foundation.GeneralCommand.Read_Attributes
+            ].schema,
+        ):
+            reply = make_packet(
+                True,
+                foundation.GeneralCommand.Read_Attributes_rsp,
+                tsn=hdr.tsn,
+                status_records=[
+                    foundation.ReadAttributeRecord(
+                        attrid=Ota.AttributeDefs.current_file_version.id,
+                        status=foundation.Status.SUCCESS,
+                        value=foundation.TypeValue(
+                            type=foundation.DataTypeId.uint32,
+                            value=header.file_version,
+                        ),
+                    )
+                ],
+            )
+        else:
+            return
+
+        dev.application.packet_received(reply)
+
+    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+
+    cleared_events = []
+    cluster.on_event(OtaQueryCacheClearedEvent.event_type, cleared_events.append)
+
+    result = await dev.update_firmware(fw_image)
+    await asyncio.sleep(0)
+
+    assert result == foundation.Status.SUCCESS
+
+    # The post-OTA cleanup ran on the server cluster
+    assert len(cleared_events) == 1
+    assert cleared_events[0].endpoint_id == 1
+    assert (
+        cluster._attr_cache[Ota.AttributeDefs.current_file_version.id]
+        == header.file_version
+    )
+    assert len(dev.reinterview.mock_calls) == 1
 
 
 @patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
