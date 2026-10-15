@@ -869,7 +869,9 @@ class ZigbeeDevice(BaseDevice):
                         self.manufacturer = manufacturer
 
         try:
-            ota = self.find_ota_cluster()
+            ota = self.find_cluster(
+                cluster_id=Ota.cluster_id, cluster_type=ClusterType.Client
+            )
         except ValueError:
             self.debug("Device does not support OTA cluster")
         else:

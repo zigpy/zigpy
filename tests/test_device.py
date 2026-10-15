@@ -166,6 +166,30 @@ async def test_initialize_image_notify_failure_does_not_block(
     ota.image_notify.assert_awaited_once()
 
 
+async def test_initialize_coordinator_no_ota_traffic(
+    app: zigpy.application.ControllerApplication,
+) -> None:
+    """Test that the coordinator's own server OTA cluster is not queried on startup."""
+    dev = app.add_device(nwk=app.state.node_info.nwk, ieee=app.state.node_info.ieee)
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Coordinator)
+    dev.model = "Model"
+    dev.manufacturer = "Manufacturer"
+
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+    ep.add_input_cluster(Basic.cluster_id)
+    ep.add_input_cluster(Ota.cluster_id)
+
+    await dev.initialize()
+
+    assert dev.status == device.Status.ENDPOINTS_INIT
+    assert not [
+        packet
+        for packet in (c.args[0] for c in app.send_packet.mock_calls)
+        if packet.cluster_id == Ota.cluster_id
+    ]
+
+
 async def test_initialize_read_ota_unsupported(
     app: zigpy.application.ControllerApplication,
 ) -> None:
@@ -633,24 +657,27 @@ async def test_update_device_firmware_no_ota_cluster(dev):
 
 
 @pytest.mark.parametrize(
-    ("has_client", "has_server", "expected_type"),
+    ("client_ep", "server_ep", "expected"),
     [
-        (True, True, ClusterType.Client),
-        (True, False, ClusterType.Client),
-        (False, True, ClusterType.Server),
+        (1, 1, (1, ClusterType.Client)),
+        (1, None, (1, ClusterType.Client)),
+        (None, 1, (1, ClusterType.Server)),
+        (2, 1, (2, ClusterType.Client)),
     ],
 )
-def test_find_ota_cluster(dev, has_client, has_server, expected_type):
-    """Test that the OTA cluster lookup prefers a client cluster."""
-    ep = dev.add_endpoint(1)
+def test_find_ota_cluster(dev, client_ep, server_ep, expected):
+    """Test that the OTA cluster lookup prefers a client cluster on any endpoint."""
+    for ep_id in sorted({client_ep, server_ep} - {None}):
+        ep = dev.add_endpoint(ep_id)
 
-    if has_client:
-        ep.add_output_cluster(Ota.cluster_id)
+        if ep_id == client_ep:
+            ep.add_output_cluster(Ota.cluster_id)
 
-    if has_server:
-        ep.add_input_cluster(Ota.cluster_id)
+        if ep_id == server_ep:
+            ep.add_input_cluster(Ota.cluster_id)
 
-    assert dev.find_ota_cluster().cluster_type == expected_type
+    cluster = dev.find_ota_cluster()
+    assert (cluster.endpoint.endpoint_id, cluster.cluster_type) == expected
 
 
 def test_find_ota_cluster_missing(dev):

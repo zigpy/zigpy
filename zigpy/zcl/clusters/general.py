@@ -2037,8 +2037,8 @@ class Ota(Cluster):
     def send_direction(self) -> foundation.Direction:
         """Return the direction of frames sent to this cluster.
 
-        The coordinator is always the OTA server, even for devices that expose their
-        OTA client as a server cluster.
+        zigpy only implements the OTA server role, so frames are always sent to the
+        device's OTA client, even for devices that expose it as a server cluster.
         """
         return foundation.Direction.Server_to_Client
 
