@@ -384,22 +384,26 @@ async def test_success_report_ignored(app, manager):
 
 
 @pytest.mark.parametrize(
-    ("channel", "gpp_short_addr", "temp_master"),
+    ("channel", "next_channel", "gpp_short_addr", "temp_master"),
     [
-        (20, 0x1234, 0x1234),
-        (15, None, 0x0000),
+        (20, 15, 0x1234, 0x1234),
+        (15, 25, None, 0x0000),
     ],
 )
-async def test_channel_request(app, manager, channel, gpp_short_addr, temp_master):
-    """A Channel Request is answered with the operational channel."""
+async def test_channel_request(
+    app, manager, channel, next_channel, gpp_short_addr, temp_master
+):
+    """A Channel Request is answered with the operational channel, on the GPD's."""
     app.state.network_info.channel = channel
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
 
-    # Channel Request: next channel 15, second next channel 20
+    # Channel Request: next channel, then second next channel 26
     app.gp_packet_received(
         make_gp_packet(
             0x12345678,
             GPDCommandID.ChannelRequest,
-            bytes([4 | (9 << 4)]),
+            bytes([(next_channel - 11) | (15 << 4)]),
             gpp_short_addr=gpp_short_addr,
         )
     )
@@ -409,7 +413,7 @@ async def test_channel_request(app, manager, channel, gpp_short_addr, temp_maste
     response = sent_command(packet, ResponseSchema)
 
     assert response.temp_master_short_addr == temp_master
-    assert response.temp_master_tx_channel.transmit_channel == channel - 11
+    assert response.temp_master_tx_channel.transmit_channel == next_channel - 11
     assert response.gpd_command_id == GPDCommandID.ChannelConfiguration
 
     configuration, _ = GPChannelConfigurationPayload.deserialize(

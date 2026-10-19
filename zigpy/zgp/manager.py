@@ -323,8 +323,13 @@ class GreenPowerManager:
             _reserved=0,
         )
 
+        # The GPD listens on the channel of its next attempt, not the operational one
+        # (A.3.9.1 7.d.iv)
         await self._send_gp_response(
-            packet, GPDCommandID.ChannelConfiguration, channel_config.serialize()
+            packet,
+            GPDCommandID.ChannelConfiguration,
+            channel_config.serialize(),
+            tx_channel=request.next_channel + 11,
         )
 
     # --- Outgoing GP commands ---
@@ -411,6 +416,7 @@ class GreenPowerManager:
         packet: t.ZigbeeGpPacket,
         gpd_command_id: GPDCommandID,
         gpd_command_payload: bytes,
+        tx_channel: int,
     ) -> None:
         """Send a GP Response (0x06) instructing a proxy to transmit a GPDF to a GPD."""
         # The proxy that heard the GPD transmits in its receive window. A GPDF the
@@ -419,8 +425,6 @@ class GreenPowerManager:
             temp_master = packet.gpp_short_addr
         else:
             temp_master = self._application.state.node_info.nwk
-
-        channel = self._application.state.network_info.channel
 
         await self._broadcast_command(
             GreenPowerProxy.ClientCommandDefs.response,
@@ -431,7 +435,7 @@ class GreenPowerManager:
             ),
             temp_master_short_addr=t.uint16_t(temp_master),
             temp_master_tx_channel=TempMasterTxChannel(
-                transmit_channel=t.uint4_t(channel - 11), _reserved=0
+                transmit_channel=t.uint4_t(tx_channel - 11), _reserved=0
             ),
             gpd_id=packet.src_id,
             gpd_command_id=gpd_command_id,
@@ -455,7 +459,10 @@ class GreenPowerManager:
         )
 
         await self._send_gp_response(
-            packet, GPDCommandID.CommissioningReply, reply.serialize()
+            packet,
+            GPDCommandID.CommissioningReply,
+            reply.serialize(),
+            tx_channel=self._application.state.network_info.channel,
         )
 
     # --- Helpers ---
