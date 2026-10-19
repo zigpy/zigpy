@@ -253,6 +253,23 @@ class GreenPowerManager:
             security_key=security_key,
         )
 
+        # Commissioning GPDFs are unprotected, so one can be replayed with an older
+        # outgoing counter. A GPD keeping its key never resets its security frame
+        # counter (A.3.9.1 step 15.c), so a re-commissioned GPD keeps the higher one.
+        if device.ieee in self._application.devices and device.security_level in (
+            SecurityLevel.FullFrameCounterAndMIC,
+            SecurityLevel.Encrypted,
+        ):
+            registered = self._application.devices[device.ieee]
+            assert isinstance(registered, GreenPowerDevice)
+
+            if registered.security_key == device.security_key:
+                assert registered.frame_counter is not None
+                assert device.frame_counter is not None
+                device.frame_counter = max(
+                    registered.frame_counter, device.frame_counter
+                )
+
         # The triggering GPDF's RxAfterTx, not RxOnCapability, says whether the GPD
         # listens for a Commissioning Reply (A.3.9.1 13.j). Bidirectional commissioning
         # then finishes with the GPD's Success GPDF (A.3.9.1 18-19).

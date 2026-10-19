@@ -357,6 +357,37 @@ async def test_recommissioning_replaces_device(app, manager):
 
 
 @pytest.mark.parametrize(
+    ("payload", "outgoing_counter", "frame_counter"),
+    [
+        # A replayed Commissioning GPDF with an older counter keeps the newer one
+        (b"\x02\x80\xa3" + KEY, 50, 100),
+        (b"\x02\x80\xa3" + KEY, 200, 200),
+        # Extended options 0xA2: FullFrameCounterAndMIC
+        (b"\x02\x80\xa2" + KEY, 50, 100),
+        # Another key is another GPD security context
+        (b"\x02\x80\xa3" + bytes(range(16, 32)), 50, 50),
+        # Without a key, there is no security frame counter (extended options 0x80)
+        (b"\x02\x80\x80", 50, 50),
+    ],
+)
+async def test_recommissioning_keeps_frame_counter(
+    app, manager, payload, outgoing_counter, frame_counter
+):
+    """Re-commissioning cannot lower the replay baseline of a protected GPD."""
+    await manager.permit_join(time_s=60)
+
+    await commission(app, 0x11223344, b"\x02\x80\xa3" + KEY + struct.pack("<I", 100))
+    await commission(
+        app,
+        0x11223344,
+        payload + struct.pack("<I", outgoing_counter),
+        frame_counter=2,
+    )
+
+    assert app.devices[synthetic_ieee(0x11223344)].frame_counter == frame_counter
+
+
+@pytest.mark.parametrize(
     ("options", "rx_after_tx", "gpp_short_addr", "temp_master"),
     [
         # RxAfterTx, tunneled by a proxy
