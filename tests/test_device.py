@@ -12,6 +12,7 @@ from zigpy import device, endpoint
 import zigpy.application
 from zigpy.datastructures import RequestLimiter
 import zigpy.exceptions
+from zigpy.listeners import ZCLFrame
 from zigpy.ota import OtaImagesResult
 import zigpy.ota.image
 from zigpy.profiles import zha
@@ -1531,23 +1532,65 @@ async def test_debouncing(dev):
         rssi=-63,
     )
 
-    packet_received = MagicMock()
+    packet_received = MagicMock(return_value=None)
 
-    with dev.application.callback_for_response(
-        src=dev,
-        filters=[lambda hdr, cmd: True],
-        callback=packet_received,
-    ):
-        for i in range(10):
-            new_packet = packet.replace(
-                timestamp=None,
-                tsn=packet.tsn + i,
-                lqi=packet.lqi + i,
-                rssi=packet.rssi + i,
-            )
-            dev.packet_received(new_packet)
+    unsubscribe = dev.application.frame_listeners.subscribe(
+        ZCLFrame, packet_received, ieee=dev.ieee
+    )
+
+    for i in range(10):
+        new_packet = packet.replace(
+            timestamp=None,
+            tsn=packet.tsn + i,
+            lqi=packet.lqi + i,
+            rssi=packet.rssi + i,
+        )
+        dev.packet_received(new_packet)
+
+    unsubscribe()
 
     assert len(packet_received.mock_calls) == 1
+
+
+async def test_poll_control_checkin_once(dev: device.Device) -> None:
+    """A check-in is answered once, by the object that received it."""
+    # A re-interview creates a shadow device with the same IEEE address
+    shadow = device.Device(dev.application, dev.ieee, dev.nwk)
+
+    for obj in (dev, shadow):
+        poll_control = obj.add_endpoint(1).add_input_cluster(PollControl.cluster_id)
+        poll_control.checkin_response = AsyncMock()
+
+    hdr = foundation.ZCLHeader.cluster(
+        tsn=0x12,
+        command_id=PollControl.ClientCommandDefs.checkin.id,
+        direction=foundation.Direction.Server_to_Client,
+    )
+    command = PollControl.ClientCommandDefs.checkin.schema()
+    packet = t.ZigbeePacket(
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+        src_ep=1,
+        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+        dst_ep=1,
+        tsn=0x12,
+        profile_id=260,
+        cluster_id=PollControl.cluster_id,
+        data=t.SerializableBytes(hdr.serialize() + command.serialize()),
+    )
+
+    dev.application.frame_listeners.dispatch(
+        ZCLFrame(device=shadow, packet=packet, header=hdr, command=command)
+    )
+    await asyncio.gather(
+        *(
+            task
+            for task in asyncio.all_tasks()
+            if task.get_name().startswith("frame_callback")
+        )
+    )
+
+    assert len(dev.endpoints[1].poll_control.checkin_response.mock_calls) == 0
+    assert len(shadow.endpoints[1].poll_control.checkin_response.mock_calls) == 1
 
 
 async def test_device_concurrency(dev: device.Device) -> None:
@@ -1782,9 +1825,21 @@ async def test_poll_control_checkin_callback(
             command_id=PollControl.ClientCommandDefs.checkin.id,
         )
         command = PollControl.ClientCommandDefs.checkin.schema()
+        packet = t.ZigbeePacket(
+            src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+            src_ep=1,
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+            dst_ep=1,
+            tsn=0x12,
+            profile_id=260,
+            cluster_id=PollControl.cluster_id,
+            data=t.SerializableBytes(zcl_hdr.serialize() + command.serialize()),
+        )
 
         # Test the callback
-        await dev.poll_control_checkin_callback(zcl_hdr, command)
+        await dev.poll_control_checkin_callback(
+            ZCLFrame(device=dev, packet=packet, header=zcl_hdr, command=command)
+        )
 
         # Verify the correct response was sent
         if expected_fast_poll:
