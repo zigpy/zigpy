@@ -779,6 +779,16 @@ async def test_bidirectional_commissioning_through_proxy_rejected(
     assert len(app.send_packet.mock_calls) == 0
 
 
+async def advance(frozen, seconds: int) -> None:
+    """Advance the frozen clock and run the loop timers that came due."""
+    frozen.tick(seconds)
+
+    # The loop runs due timers after the callbacks already scheduled, so it takes a
+    # second iteration to resume after them
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+
 async def close_window(manager, frozen) -> None:
     await manager.permit_join(time_s=0)
 
@@ -789,18 +799,18 @@ async def close_and_reopen_window(manager, frozen) -> None:
 
 
 async def expire_window(manager, frozen) -> None:
-    frozen.tick(61)
+    await advance(frozen, 61)
 
 
 async def expire_and_reopen_window(manager, frozen) -> None:
-    frozen.tick(61)
+    await advance(frozen, 61)
     await manager.permit_join(time_s=60)
 
 
 async def extend_window(manager, frozen) -> None:
-    frozen.tick(30)
+    await advance(frozen, 30)
     await manager.permit_join(time_s=60)
-    frozen.tick(45)
+    await advance(frozen, 45)
 
 
 @pytest.mark.parametrize(
@@ -811,8 +821,8 @@ async def extend_window(manager, frozen) -> None:
         (close_and_reopen_window, False),
         # The Success GPDF is only accepted in commissioning mode (A.3.9.1 step 18.a)
         (expire_window, False),
-        # A client may keep re-requesting the window, with lapses in between
-        (expire_and_reopen_window, True),
+        # An abandoned commissioning does not take over the GPD in later windows
+        (expire_and_reopen_window, False),
         (extend_window, True),
     ],
 )

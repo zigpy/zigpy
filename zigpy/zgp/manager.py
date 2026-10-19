@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from typing import TYPE_CHECKING, Any
 
 from cryptography.exceptions import InvalidTag
@@ -134,14 +133,14 @@ class GreenPowerManager(CreateTaskMixin):
 
     def __init__(self, application: ControllerApplication) -> None:
         self._application = application
-        # A `time.monotonic()` deadline, unaffected by wall clock adjustments
-        self._commissioning_window_end: float = 0
+        # Closes the commissioning window when it expires
+        self._window_timer: asyncio.TimerHandle | None = None
         self._tasks: set[asyncio.Task[Any]] = set()
         # Commissioning GPDFs come from GPDs that are not registered yet, so
         # `GreenPowerDevice` cannot filter their duplicates (spec A.3.6.1.2)
         self._dedup_debouncer: Debouncer = Debouncer()
-        # GPDs in bidirectional commissioning, until their Success GPDF arrives. They
-        # outlive a lapse of the window, which a client may keep re-requesting.
+        # GPDs in bidirectional commissioning, until their Success GPDF arrives or the
+        # window closes
         self._pending_devices: dict[t.EUI64, GreenPowerDevice] = {}
 
     async def startup(self) -> None:
@@ -159,8 +158,7 @@ class GreenPowerManager(CreateTaskMixin):
 
     async def shutdown(self) -> None:
         """Cancel commissioning in progress and close the window."""
-        self._commissioning_window_end = 0
-        self._pending_devices.clear()
+        self._close_window()
 
         for task in self._tasks:
             task.cancel()
@@ -170,20 +168,34 @@ class GreenPowerManager(CreateTaskMixin):
     @property
     def is_commissioning(self) -> bool:
         """Return True if the GP commissioning window is currently open."""
-        return time.monotonic() < self._commissioning_window_end
+        return self._window_timer is not None
+
+    def _close_window(self) -> None:
+        """Close the GP commissioning window, ending commissioning in progress."""
+        if self._window_timer is not None:
+            self._window_timer.cancel()
+            self._window_timer = None
+
+        self._pending_devices.clear()
 
     async def permit_join(self, time_s: int) -> None:
         """Open the GP commissioning window; time_s=0 closes it immediately."""
         if time_s == 0:
-            self._commissioning_window_end = 0
-            self._pending_devices.clear()
+            self._close_window()
             await self._send_proxy_commissioning_mode(window=None)
             return
 
         # Proxies leave commissioning mode on their own once the window expires
         # (A.3.6.3.2), so only an explicit close needs telling them
         await self._send_proxy_commissioning_mode(window=time_s)
-        self._commissioning_window_end = time.monotonic() + time_s
+
+        # Extending an open window keeps commissioning in progress
+        if self._window_timer is not None:
+            self._window_timer.cancel()
+
+        self._window_timer = asyncio.get_running_loop().call_later(
+            time_s, self._close_window
+        )
 
     def get_pending_device(self, ieee: t.EUI64) -> GreenPowerDevice | None:
         """Return the GPD in bidirectional commissioning, while the window is open."""
