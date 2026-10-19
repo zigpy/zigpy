@@ -275,13 +275,13 @@ class GreenPowerManager:
     def decommission(self, device: GreenPowerDevice) -> None:
         """Remove a GPD whose Decommissioning command (0xE1) passed its checks."""
         self._create_task(
-            self._decommission(device),
+            self._application.remove(device.ieee),
             f"gp_process_command-0x{GPDCommandID.DecommissioningRequest:02x}",
         )
 
-    async def _decommission(self, device: GreenPowerDevice) -> None:
+    async def unpair(self, device: GreenPowerDevice) -> None:
+        """Remove a GPD from all proxies and leave its derived group, once removed."""
         await self.send_pairing(device, add_sink=False)
-        await self._application.remove(device.ieee)
 
         group = derived_group(device)
 
@@ -295,7 +295,7 @@ class GreenPowerManager:
                 group, endpoint_id=GP_ENDPOINT
             )
 
-        LOGGER.info("GP device decommissioned: %r", device)
+        LOGGER.info("GP device unpaired: %r", device)
 
     async def _process_channel_request(self, packet: t.ZigbeeGpPacket) -> None:
         """Process a GP Channel Request (0xE3) by replying with Channel Configuration."""

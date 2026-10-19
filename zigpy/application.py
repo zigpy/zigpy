@@ -772,11 +772,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             LOGGER.debug("Device not found for removal: %s", ieee)
             return
 
-        if not isinstance(dev, ZigbeeDevice):
-            # A GPD is not on the network so there is nothing to notify
+        if isinstance(dev, GreenPowerDevice):
             LOGGER.info("Removing device 0x%04x (%s)", dev.nwk, ieee)
             self.devices.pop(ieee, None)
             self.listener_event("device_removed", dev)
+            await self.green_power.unpair(dev)
             return
 
         dev.cancel_initialization()

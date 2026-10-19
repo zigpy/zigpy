@@ -7,8 +7,10 @@ from unittest.mock import call
 
 import pytest
 
+from tests.async_mock import AsyncMock
 from tests.conftest import add_initialized_device, make_ieee
 from tests.zgp.test_device import commission_individual_key, encrypted_packet
+from tests.zgp.test_manager import sent_command
 from tests.zgp.test_tunneling import (
     COMMISSIONING_NOTIFICATION_ID,
     NOTIFICATION_ID,
@@ -21,8 +23,10 @@ import zigpy.types as t
 from zigpy.zcl.clusters.greenpower import (
     CommissioningNotificationSchema,
     NotificationSchema,
+    PairingSchema,
 )
 from zigpy.zgp.types import (
+    GP_ENDPOINT,
     ApplicationID,
     GPDCommandID,
     GPDCommandPayload,
@@ -179,10 +183,26 @@ async def test_zigbee_packet_from_gp_device(app, gpd, caplog):
 
 
 async def test_remove_gpd(app, gpd):
+    """Removing a GPD also removes it from the proxies and leaves its group."""
+    gpd.security_level = SecurityLevel.NoSecurity
+    gpd.security_key_type = SecurityKeyType.NoKey
+    app.unsubscribe_from_multicast_group = AsyncMock(
+        wraps=app.unsubscribe_from_multicast_group
+    )
+
     await app.remove(gpd.ieee)
 
     assert gpd.ieee not in app.devices
     assert call("device_removed", gpd) in app.listener_event.mock_calls
+
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    pairing = sent_command(packet, PairingSchema)
+    assert pairing.options.remove_gpd
+    assert pairing.gpd_id == 0x12345678
+
+    assert app.unsubscribe_from_multicast_group.mock_calls == [
+        call(t.Group(gpd.nwk), endpoint_id=GP_ENDPOINT)
+    ]
 
 
 async def test_reinterview_gpd(app, gpd):

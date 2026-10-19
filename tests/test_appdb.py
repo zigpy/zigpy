@@ -2261,6 +2261,8 @@ async def test_gp_device_remove(tmp_path):
     device = GreenPowerDevice(
         app, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
     )
+    device.security_level = SecurityLevel.NoSecurity
+    device.security_key_type = SecurityKeyType.NoKey
     app.device_initialized(device)
     await app.remove(device.ieee)
     await app.shutdown()
