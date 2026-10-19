@@ -1,5 +1,6 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
+import logging
 import pathlib
 import sqlite3
 import time
@@ -2759,3 +2760,108 @@ async def test_load_with_green_power_device(tmp_path):
     assert app.devices[gpd.ieee] is gpd
 
     await app.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("exc", "level", "message"),
+    [
+        (sqlite3.OperationalError("boom"), logging.DEBUG, "Error handling '_fail'"),
+        (ValueError("boom"), logging.ERROR, "Unexpected error while processing _fail"),
+    ],
+)
+async def test_worker_logs_handler_errors(tmp_path, caplog, exc, level, message):
+    """Errors from handlers are logged and the worker continues."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    listener = app._dblistener
+
+    listener._fail = AsyncMock(side_effect=exc)
+
+    with caplog.at_level(logging.DEBUG, logger="zigpy.appdb"):
+        listener.enqueue("_fail")
+        async with asyncio.timeout(5):
+            await listener._callback_handlers.join()
+
+    assert any(
+        record.levelno == level and message in record.getMessage()
+        for record in caplog.records
+    )
+    assert not listener._worker_task.done()
+
+    del listener._fail
+    await app.shutdown()
+
+
+async def test_worker_unknown_handler(tmp_path, caplog):
+    """An unknown handler name is logged and does not stop the worker."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    listener = app._dblistener
+
+    with caplog.at_level(logging.DEBUG, logger="zigpy.appdb"):
+        listener.enqueue("_does_not_exist")
+        async with asyncio.timeout(5):
+            await listener._callback_handlers.join()
+
+    assert "Unexpected error while processing _does_not_exist" in caplog.text
+    assert not listener._worker_task.done()
+
+    await app.shutdown()
+
+
+async def test_worker_stopped(tmp_path, caplog):
+    """A worker that stops is logged, and `shutdown()` does not wait for it."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    listener = app._dblistener
+
+    handler_started = asyncio.Event()
+
+    async def _blocking_handler():
+        handler_started.set()
+        await asyncio.Event().wait()
+
+    listener._blocking_handler = _blocking_handler
+    listener.enqueue("_blocking_handler")
+    async with asyncio.timeout(5):
+        await handler_started.wait()
+
+    # A second event is queued behind the blocked handler
+    listener.enqueue("_flush_commit")
+
+    with caplog.at_level(logging.ERROR, logger="zigpy.appdb"):
+        listener._worker_task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            async with asyncio.timeout(5):
+                await listener._worker_task
+
+    # The worker stopped while the listener was running, which is logged
+    assert "Database worker stopped unexpectedly, discarding 1 queued" in caplog.text
+
+    # New events are discarded, since nothing would ever mark them done
+    listener.enqueue("_flush_commit")
+    assert listener._callback_handlers.empty()
+
+    # Shutdown does not wait for the handlers the stopped worker never finished.
+    # `app.shutdown()` would swallow any error, so shut the listener down directly.
+    async with asyncio.timeout(5):
+        await listener.shutdown()
+
+    with pytest.raises(ValueError, match="no active connection"):
+        listener._db.in_transaction  # noqa: B018
+
+    del listener._blocking_handler
+
+
+async def test_worker_normal_shutdown_not_logged(tmp_path, caplog):
+    """A normal shutdown is not reported as an unexpected stop of the worker."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    listener = app._dblistener
+
+    with caplog.at_level(logging.ERROR, logger="zigpy.appdb"):
+        await app.shutdown()
+
+    assert listener._worker_task.cancelled()
+    assert "stopped unexpectedly" not in caplog.text
