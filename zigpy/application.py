@@ -40,7 +40,7 @@ import zigpy.zcl
 from zigpy.zcl.clusters.greenpower import GreenPowerProxy
 import zigpy.zdo
 import zigpy.zdo.types as zdo_types
-from zigpy.zgp.manager import COMMISSIONING_COMMANDS, GreenPowerManager
+from zigpy.zgp.manager import GreenPowerManager
 import zigpy.zgp.tunneling
 import zigpy.zgp.types
 import zigpy.zgp.util
@@ -1487,22 +1487,33 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             and packet.security_level is zigpy.zgp.types.SecurityLevel.Encrypted
         )
 
-        # Commissioning GPDFs come from GPDs that are not registered yet
-        if packet.command_id in COMMISSIONING_COMMANDS and not encrypted:
+        # Commissioning GPDFs come from GPDs that are not registered yet, or replace a
+        # registered one. Decommissioning and Success are not handled by the manager:
+        # they come from a known GPD, which checks their freshness and security
+        # first (spec A.3.5.2.4, A.3.9.1 step 18.b).
+        if not encrypted and packet.command_id in (
+            zigpy.zgp.types.GPDCommandID.CommissioningRequest,
+            zigpy.zgp.types.GPDCommandID.ChannelRequest,
+        ):
             self.green_power.packet_received(packet)
             return
 
-        if ieee not in self.devices:
-            LOGGER.debug("Received a GP packet from an unknown device: %r", packet)
-            return
+        # A GPD in bidirectional commissioning is not registered until its Success
+        # GPDF arrives, and a re-commissioned one must be checked with its new keys
+        device = self.green_power.get_pending_device(ieee)
 
-        device = self.devices[ieee]
+        if device is None:
+            if ieee not in self.devices:
+                LOGGER.debug("Received a GP packet from an unknown device: %r", packet)
+                return
 
-        if not isinstance(device, GreenPowerDevice):
-            LOGGER.warning(
-                "Received a GP packet for non-GP device %s: %r", device, packet
-            )
-            return
+            device = self.devices[ieee]
+
+            if not isinstance(device, GreenPowerDevice):
+                LOGGER.warning(
+                    "Received a GP packet for non-GP device %s: %r", device, packet
+                )
+                return
 
         device.packet_received(packet)
 

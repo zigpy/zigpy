@@ -26,7 +26,8 @@ from zigpy.zgp.commands import (
     GPCommissioningReplyPayload,
     GPGenericSwitchConfiguration,
 )
-from zigpy.zgp.crypto import encrypt_security_key
+from zigpy.zgp.crypto import build_gpdf_header, encrypt_payload, encrypt_security_key
+from zigpy.zgp.manager import derived_group
 from zigpy.zgp.types import (
     GP_ENDPOINT,
     ApplicationID,
@@ -44,6 +45,9 @@ from zigpy.zgp.util import derive_alias, synthetic_ieee
 
 KEY = bytes(range(16))
 ENCRYPTED_KEY, KEY_MIC = encrypt_security_key(0x11223344, KEY)
+
+# Extended options 0xB3: Encrypted, IndividualKey, key in the clear, outgoing counter 7
+ENCRYPTED_COMMISSIONING = b"\x02\x80\xb3" + KEY + struct.pack("<I", 7)
 
 
 def make_gp_packet(
@@ -65,6 +69,43 @@ def make_gp_packet(
         security_status=SecurityStatus.NoSecurity,
         gpp_short_addr=None if gpp_short_addr is None else t.NWK(gpp_short_addr),
         rx_after_tx=rx_after_tx,
+    )
+
+
+def encrypted_success_packet(
+    src_id: int, frame_counter: int, key: bytes = KEY
+) -> t.ZigbeeGpPacket:
+    """A Success GPDF encrypted with an individual key, not processed by the radio."""
+    header = build_gpdf_header(
+        src_id,
+        frame_counter,
+        security_level=SecurityLevel.Encrypted,
+        individual_key=True,
+        auto_commissioning=False,
+        rx_after_tx=False,
+    )
+    ciphertext, mic = encrypt_payload(
+        src_id,
+        frame_counter,
+        key,
+        bytes([GPDCommandID.SuccessReport]),
+        header=header,
+        security_level=SecurityLevel.Encrypted,
+    )
+
+    return t.ZigbeeGpPacket(
+        application_id=ApplicationID.SrcID,
+        src_id=SrcID(src_id),
+        command_id=GPDCommandID(ciphertext[0]),
+        payload=t.SerializableBytes(ciphertext[1:]),
+        frame_counter=t.uint32_t(frame_counter),
+        security_level=SecurityLevel.Encrypted,
+        security_key_type=SecurityKeyType.NoKey,
+        security_status=SecurityStatus.Unprocessed,
+        mic=t.uint32_t(int.from_bytes(mic, "little")),
+        auto_commissioning=False,
+        rx_after_tx=False,
+        individual_key=True,
     )
 
 
@@ -338,13 +379,16 @@ async def test_commissioning_reply(
         rx_after_tx=rx_after_tx,
     )
 
-    *replies, _ = [c.args[0] for c in app.send_packet.mock_calls]
+    packets = [c.args[0] for c in app.send_packet.mock_calls]
 
     if temp_master is None:
-        assert replies == []
+        # Unidirectional commissioning: the GPD is paired right away
+        [pairing] = packets
+        sent_command(pairing, PairingSchema)
         return
 
-    [reply] = replies
+    # Bidirectional commissioning: the GPD is paired once its Success GPDF arrives
+    [reply] = packets
     response = sent_command(reply, ResponseSchema)
     assert response.temp_master_short_addr == temp_master
     assert response.gpd_command_id == GPDCommandID.CommissioningReply
@@ -389,7 +433,7 @@ async def test_commissioning_reply_options(
 
     await commission(app, 0x11223344, payload, rx_after_tx=True)
 
-    reply, _ = [c.args[0] for c in app.send_packet.mock_calls]
+    [reply] = [c.args[0] for c in app.send_packet.mock_calls]
     response = sent_command(reply, ResponseSchema)
     command, rest = GPCommissioningReplyPayload.deserialize(
         response.gpd_command_payload
@@ -400,6 +444,153 @@ async def test_commissioning_reply_options(
     assert command.options.key_type == security_key_type
     assert not command.options.pan_id_present
     assert not command.options.security_key_present
+
+
+@pytest.mark.parametrize(
+    ("payload", "success"),
+    [
+        (
+            b"\x02\x00",
+            make_gp_packet(0x11223344, GPDCommandID.SuccessReport, b"\xff", 2),
+        ),
+        (ENCRYPTED_COMMISSIONING, encrypted_success_packet(0x11223344, 8)),
+    ],
+)
+async def test_bidirectional_commissioning(app, manager, payload, success):
+    """A GPD listening for a reply is paired once its Success GPDF arrives (A.3.9.1)."""
+    app.subscribe_to_multicast_group = AsyncMock(wraps=app.subscribe_to_multicast_group)
+
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
+    await commission(app, 0x11223344, payload, rx_after_tx=True)
+
+    # Only the Commissioning Reply is sent, the GPD is not registered yet
+    [reply] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert sent_command(reply, ResponseSchema).gpd_command_id == (
+        GPDCommandID.CommissioningReply
+    )
+    assert synthetic_ieee(0x11223344) not in app.devices
+    assert len(app.device_initialized.mock_calls) == 0
+    assert len(app.subscribe_to_multicast_group.mock_calls) == 0
+    app.send_packet.reset_mock()
+
+    app.gp_packet_received(success)
+    await wait_for_gp_processing()
+
+    dev = app.devices[synthetic_ieee(0x11223344)]
+    assert app.device_initialized.mock_calls == [call(dev)]
+    assert app.subscribe_to_multicast_group.mock_calls == [
+        call(derived_group(dev), endpoint_id=GP_ENDPOINT)
+    ]
+
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert sent_command(packet, PairingSchema).options.add_sink
+    app.send_packet.reset_mock()
+
+    # The GPD can repeat its Success GPDF with an incremented frame counter
+    app.gp_packet_received(
+        success.replace(frame_counter=t.uint32_t(success.frame_counter + 1))
+        if success.security_level is SecurityLevel.NoSecurity
+        else encrypted_success_packet(0x11223344, 9)
+    )
+    await wait_for_gp_processing()
+
+    assert len(app.send_packet.mock_calls) == 0
+    assert app.device_initialized.mock_calls == [call(dev)]
+
+
+@pytest.mark.parametrize(
+    "success",
+    [
+        # Not the commissioned key
+        encrypted_success_packet(0x11223344, 8, key=bytes(16)),
+        # Not fresher than the outgoing counter of the Commissioning GPDF (A.3.9.2)
+        encrypted_success_packet(0x11223344, 7),
+        # Not protected as agreed
+        make_gp_packet(0x11223344, GPDCommandID.SuccessReport, b"\xff", 8),
+    ],
+)
+async def test_bidirectional_commissioning_success_rejected(app, manager, success):
+    """A Success GPDF that fails its checks does not finish commissioning."""
+    await manager.permit_join(time_s=60)
+    await commission(app, 0x11223344, ENCRYPTED_COMMISSIONING, rx_after_tx=True)
+    app.send_packet.reset_mock()
+
+    app.gp_packet_received(success)
+    await wait_for_gp_processing()
+
+    assert synthetic_ieee(0x11223344) not in app.devices
+    assert len(app.send_packet.mock_calls) == 0
+
+
+async def close_window(manager, frozen) -> None:
+    await manager.permit_join(time_s=0)
+
+
+async def expire_window(manager, frozen) -> None:
+    frozen.tick(61)
+
+
+@pytest.mark.parametrize("end_window", [close_window, expire_window])
+async def test_bidirectional_commissioning_window_ends(app, manager, end_window):
+    """Commissioning fails if the window ends before the Success GPDF arrives."""
+    with freezegun.freeze_time() as frozen:
+        await manager.permit_join(time_s=60)
+        await commission(app, 0x11223344, ENCRYPTED_COMMISSIONING, rx_after_tx=True)
+
+        await end_window(manager, frozen)
+
+        # A reopened window does not resume the failed commissioning
+        await manager.permit_join(time_s=60)
+        app.send_packet.reset_mock()
+
+        app.gp_packet_received(encrypted_success_packet(0x11223344, 8))
+        await wait_for_gp_processing()
+
+    assert synthetic_ieee(0x11223344) not in app.devices
+    assert len(app.device_initialized.mock_calls) == 0
+    assert len(app.send_packet.mock_calls) == 0
+
+
+async def test_bidirectional_recommissioning(app, manager):
+    """A re-commissioned GPD keeps its registration until its Success GPDF arrives."""
+    await manager.permit_join(time_s=60)
+    await commission(app, 0x11223344, b"\x02\x00")
+    old_device = app.devices[synthetic_ieee(0x11223344)]
+
+    await commission(
+        app, 0x11223344, ENCRYPTED_COMMISSIONING, frame_counter=2, rx_after_tx=True
+    )
+    assert app.devices[synthetic_ieee(0x11223344)] is old_device
+
+    app.gp_packet_received(encrypted_success_packet(0x11223344, 8))
+    await wait_for_gp_processing()
+
+    new_device = app.devices[synthetic_ieee(0x11223344)]
+    assert new_device is not old_device
+    assert new_device.security_level == SecurityLevel.Encrypted
+    assert call("device_reinterviewed", new_device) in app.listener_event.mock_calls
+
+
+async def test_bidirectional_commissioning_fallback(app, manager):
+    """A GPD falling back to unidirectional commissioning is paired right away."""
+    await manager.permit_join(time_s=60)
+    await commission(app, 0x11223344, ENCRYPTED_COMMISSIONING, rx_after_tx=True)
+    await commission(
+        app, 0x11223344, ENCRYPTED_COMMISSIONING, frame_counter=2, rx_after_tx=False
+    )
+
+    dev = app.devices[synthetic_ieee(0x11223344)]
+    assert app.device_initialized.mock_calls == [call(dev)]
+    app.send_packet.reset_mock()
+
+    # Its Success GPDF no longer finishes anything
+    app.gp_packet_received(encrypted_success_packet(0x11223344, 8))
+    await wait_for_gp_processing()
+
+    assert app.devices[synthetic_ieee(0x11223344)] is dev
+    assert len(app.send_packet.mock_calls) == 0
 
 
 async def test_duplicate_commissioning_dropped(app, manager):
