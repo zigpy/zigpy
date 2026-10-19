@@ -95,12 +95,8 @@ def _key_protection_nonce(
     counter + 1).
     """
     if direction == CommunicationDirection.GPDtoGPP:
-        if frame_counter is not None:
-            raise ValueError("frame_counter only applies to the GPPtoGPD direction")
         return build_nonce(source_id, source_id)
 
-    if frame_counter is None:
-        raise ValueError("frame_counter is required for the GPPtoGPD direction")
     return struct.pack(
         "<IIIB", 0x00000000, source_id, frame_counter, GP_SECURITY_CONTROL_BYTE
     )
@@ -123,11 +119,6 @@ def encrypt_security_key(
 
     Returns (encrypted_key, 4-byte MIC).
     """
-    if len(security_key) != 16:
-        raise ValueError(f"Security key must be 16 bytes, got {len(security_key)}")
-    if len(link_key) != 16:
-        raise ValueError(f"Link key must be 16 bytes, got {len(link_key)}")
-
     nonce = _key_protection_nonce(source_id, direction, frame_counter)
     # CCM* associated data for ApplicationID=0b000 is the SrcID (A.3.7.1.2.3)
     header = struct.pack("<I", source_id)
@@ -157,13 +148,6 @@ def decrypt_security_key(
     `GPPtoGPD` unwraps the key from a GP Commissioning Reply and requires
     `frame_counter` (the value from the reply's Frame Counter field).
     """
-    if len(encrypted_key) != 16:
-        raise ValueError(f"Encrypted key must be 16 bytes, got {len(encrypted_key)}")
-    if len(mic) != 4:
-        raise ValueError(f"MIC must be 4 bytes, got {len(mic)}")
-    if len(link_key) != 16:
-        raise ValueError(f"Link key must be 16 bytes, got {len(link_key)}")
-
     nonce = _key_protection_nonce(source_id, direction, frame_counter)
     # CCM* associated data for ApplicationID=0b000 is the SrcID (A.3.7.1.2.3)
     header = struct.pack("<I", source_id)
@@ -189,15 +173,7 @@ def encrypt_payload(
     Returns (output_payload, mic); output_payload is the plaintext for
     the auth-only level.
     """
-    if len(security_key) != 16:
-        raise ValueError(f"Security key must be 16 bytes, got {len(security_key)}")
-    if not header:
-        raise ValueError("GPDF header must not be empty")
-
-    mic_length = SECURITY_LEVEL_MIC_LENGTH.get(security_level)
-    if mic_length is None:
-        raise ValueError(f"Cannot encrypt with security level {security_level!r}")
-
+    mic_length = SECURITY_LEVEL_MIC_LENGTH[security_level]
     nonce = build_nonce(source_id, frame_counter)
     aesccm = AESCCM(security_key, tag_length=mic_length)
 
@@ -232,17 +208,7 @@ def decrypt_payload(
 
     Returns the plaintext; raises InvalidTag if the MIC does not verify.
     """
-    if len(security_key) != 16:
-        raise ValueError(f"Security key must be 16 bytes, got {len(security_key)}")
-    if not header:
-        raise ValueError("GPDF header must not be empty")
-
-    mic_length = SECURITY_LEVEL_MIC_LENGTH.get(security_level)
-    if mic_length is None:
-        raise ValueError(f"Cannot decrypt with security level {security_level!r}")
-    if len(mic) != mic_length:
-        raise ValueError(f"MIC must be {mic_length} bytes, got {len(mic)}")
-
+    mic_length = SECURITY_LEVEL_MIC_LENGTH[security_level]
     nonce = build_nonce(source_id, frame_counter)
     aesccm = AESCCM(security_key, tag_length=mic_length)
 
