@@ -86,6 +86,16 @@ def commissioning_security(
 
     security_key = comm.security_key
 
+    # Without a key, every later GPDF of a protected GPD fails verification. This sink
+    # neither provisions keys nor derives them from the network key, so a GPD that does
+    # not supply its own key is dropped, even if it requests one (A.3.9.1 step 13.g).
+    if security_level != SecurityLevel.NoSecurity and security_key is None:
+        LOGGER.warning(
+            "GP Commissioning from 0x%08X has no security key",
+            source_id,
+        )
+        return None
+
     # The key MIC is only present if the key is protected with the TC-LK
     if comm.key_mic is not None:
         # AES-CCM over 16 bytes takes ~20 us on a CM4. Offloading it to an

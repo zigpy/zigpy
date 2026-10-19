@@ -260,6 +260,12 @@ async def test_commissioning(app, manager, payload, frame_counter, expected):
         (0x11223344, b"\x02\x80\x33" + KEY),
         # The key MIC does not verify
         (0x11223344, b"\x02\x80\xe3" + KEY + b"\xad\xde\xad\xde" + b"\x07\x00\x00\x00"),
+        # A protected GPD without a key (A.3.9.1 step 13.g). Extended options 0x93 and
+        # 0x92: Encrypted or FullFrameCounterAndMIC, IndividualKey, outgoing counter
+        (0x11223344, b"\x02\x80\x93" + struct.pack("<I", 7)),
+        (0x11223344, b"\x02\x80\x92" + struct.pack("<I", 7)),
+        # Options 0xA0: requesting a key does not help, this sink provisions none
+        (0x11223344, b"\x02\xa0\x93" + struct.pack("<I", 7)),
     ],
 )
 async def test_commissioning_rejected(app, manager, src_id, payload):
