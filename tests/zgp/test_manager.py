@@ -11,7 +11,7 @@ import freezegun
 import pytest
 
 from tests.async_mock import AsyncMock
-from tests.zgp.conftest import wait_for_commissioning, wait_for_gp_processing
+from tests.zgp.conftest import wait_for_gp_processing
 from zigpy.device import GreenPowerDevice
 import zigpy.types as t
 from zigpy.zcl import foundation
@@ -121,7 +121,7 @@ async def commission(app, src_id: int, payload: bytes, **kwargs) -> None:
     app.gp_packet_received(
         make_gp_packet(src_id, GPDCommandID.CommissioningRequest, payload, **kwargs)
     )
-    await wait_for_gp_processing(app)
+    await wait_for_gp_processing()
 
 
 async def test_permit_join_window(app, manager):
@@ -318,7 +318,7 @@ async def test_commissioning_records_link(app, manager):
     )
 
     app.gp_packet_received(packet)
-    await wait_for_gp_processing(app)
+    await wait_for_gp_processing()
 
     dev = app.devices[synthetic_ieee(0x11223344)]
     assert dev.last_seen == packet.timestamp.timestamp()
@@ -476,7 +476,7 @@ async def test_bidirectional_commissioning(app, manager, payload, success):
     app.send_packet.reset_mock()
 
     app.gp_packet_received(success)
-    await wait_for_commissioning()
+    await wait_for_gp_processing()
 
     dev = app.devices[synthetic_ieee(0x11223344)]
     assert app.device_initialized.mock_calls == [call(dev)]
@@ -494,7 +494,7 @@ async def test_bidirectional_commissioning(app, manager, payload, success):
         if success.security_level is SecurityLevel.NoSecurity
         else encrypted_success_packet(0x11223344, 9)
     )
-    await wait_for_gp_processing(app)
+    await wait_for_gp_processing()
 
     assert len(app.send_packet.mock_calls) == 0
     assert app.device_initialized.mock_calls == [call(dev)]
@@ -518,7 +518,7 @@ async def test_bidirectional_commissioning_success_rejected(app, manager, succes
     app.send_packet.reset_mock()
 
     app.gp_packet_received(success)
-    await wait_for_gp_processing(app)
+    await wait_for_gp_processing()
 
     assert synthetic_ieee(0x11223344) not in app.devices
     assert len(app.send_packet.mock_calls) == 0
@@ -546,7 +546,7 @@ async def test_bidirectional_commissioning_window_ends(app, manager, end_window)
         app.send_packet.reset_mock()
 
         app.gp_packet_received(encrypted_success_packet(0x11223344, 8))
-        await wait_for_gp_processing(app)
+        await wait_for_gp_processing()
 
     assert synthetic_ieee(0x11223344) not in app.devices
     assert len(app.device_initialized.mock_calls) == 0
@@ -565,7 +565,7 @@ async def test_bidirectional_recommissioning(app, manager):
     assert app.devices[synthetic_ieee(0x11223344)] is old_device
 
     app.gp_packet_received(encrypted_success_packet(0x11223344, 8))
-    await wait_for_commissioning()
+    await wait_for_gp_processing()
 
     new_device = app.devices[synthetic_ieee(0x11223344)]
     assert new_device is not old_device
@@ -577,16 +577,9 @@ async def test_bidirectional_commissioning_fallback(app, manager):
     """A GPD falling back to unidirectional commissioning is paired right away."""
     await manager.permit_join(time_s=60)
     await commission(app, 0x11223344, ENCRYPTED_COMMISSIONING, rx_after_tx=True)
-    app.gp_packet_received(
-        make_gp_packet(
-            0x11223344,
-            GPDCommandID.CommissioningRequest,
-            ENCRYPTED_COMMISSIONING,
-            frame_counter=2,
-            rx_after_tx=False,
-        )
+    await commission(
+        app, 0x11223344, ENCRYPTED_COMMISSIONING, frame_counter=2, rx_after_tx=False
     )
-    await wait_for_commissioning()
 
     dev = app.devices[synthetic_ieee(0x11223344)]
     assert app.device_initialized.mock_calls == [call(dev)]
@@ -594,7 +587,7 @@ async def test_bidirectional_commissioning_fallback(app, manager):
 
     # Its Success GPDF no longer finishes anything
     app.gp_packet_received(encrypted_success_packet(0x11223344, 8))
-    await wait_for_gp_processing(app)
+    await wait_for_gp_processing()
 
     assert app.devices[synthetic_ieee(0x11223344)] is dev
     assert len(app.send_packet.mock_calls) == 0
@@ -607,9 +600,9 @@ async def test_duplicate_commissioning_dropped(app, manager):
     packet = make_gp_packet(0xEEEE5555, GPDCommandID.CommissioningRequest, b"\x02\x00")
 
     app.gp_packet_received(packet)
-    await wait_for_gp_processing(app)
+    await wait_for_gp_processing()
     app.gp_packet_received(packet)
-    await wait_for_gp_processing(app)
+    await wait_for_gp_processing()
 
     assert len(app.device_initialized.mock_calls) == 1
 
@@ -629,7 +622,7 @@ async def test_ieee_addressing_ignored(app, manager):
             frame_counter=t.uint32_t(1),
         )
     )
-    await wait_for_gp_processing(app)
+    await wait_for_gp_processing()
 
     assert len(app.device_initialized.mock_calls) == 0
     assert len(app.send_packet.mock_calls) == 0
@@ -637,7 +630,7 @@ async def test_ieee_addressing_ignored(app, manager):
 
 async def test_success_report_ignored(app, manager):
     app.gp_packet_received(make_gp_packet(0xDDDD4444, GPDCommandID.SuccessReport))
-    await wait_for_gp_processing(app)
+    await wait_for_gp_processing()
 
     assert synthetic_ieee(0xDDDD4444) not in app.devices
     assert len(app.send_packet.mock_calls) == 0
@@ -667,7 +660,7 @@ async def test_channel_request(
             gpp_short_addr=gpp_short_addr,
         )
     )
-    await wait_for_gp_processing(app)
+    await wait_for_gp_processing()
 
     [packet] = [c.args[0] for c in app.send_packet.mock_calls]
     response = sent_command(packet, ResponseSchema)
@@ -688,7 +681,7 @@ async def test_channel_request_window_closed(app, manager):
     app.gp_packet_received(
         make_gp_packet(0x12345678, GPDCommandID.ChannelRequest, b"\x00")
     )
-    await wait_for_gp_processing(app)
+    await wait_for_gp_processing()
 
     assert len(app.send_packet.mock_calls) == 0
 
@@ -698,7 +691,7 @@ async def test_channel_request_invalid(app, manager):
     app.send_packet.reset_mock()
 
     app.gp_packet_received(make_gp_packet(0x12345678, GPDCommandID.ChannelRequest, b""))
-    await wait_for_gp_processing(app)
+    await wait_for_gp_processing()
 
     assert len(app.send_packet.mock_calls) == 0
 
@@ -784,7 +777,7 @@ async def test_decommissioning(
             security_status=security_status,
         )
     )
-    await wait_for_gp_processing(app)
+    await wait_for_gp_processing()
 
     assert (dev.ieee not in app.devices) is removed
     assert (call("device_removed", dev) in app.listener_event.mock_calls) is removed
@@ -804,7 +797,7 @@ async def test_decommissioning_unknown_device(app, manager):
     app.gp_packet_received(
         make_gp_packet(0xDEADBEEF, GPDCommandID.DecommissioningRequest)
     )
-    await wait_for_gp_processing(app)
+    await wait_for_gp_processing()
 
     assert len(app.send_packet.mock_calls) == 0
 
@@ -835,7 +828,7 @@ async def test_decommissioning_leaves_derived_group(
         app.devices[dev.ieee] = dev
 
     manager.decommission(app.devices[synthetic_ieee(0x11112222)])
-    await wait_for_gp_processing(app)
+    await wait_for_gp_processing()
 
     assert synthetic_ieee(0x11112222) not in app.devices
     assert app.unsubscribe_from_multicast_group.mock_calls == (
@@ -937,7 +930,7 @@ async def request_channel(app, manager) -> None:
     app.gp_packet_received(
         make_gp_packet(0x12345678, GPDCommandID.ChannelRequest, b"\x00")
     )
-    await wait_for_gp_processing(app)
+    await wait_for_gp_processing()
 
 
 async def pair(app, manager) -> None:

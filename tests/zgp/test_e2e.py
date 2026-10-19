@@ -71,7 +71,7 @@ async def test_commission_receive_command_decommission(app, manager):
             source_id, GPDCommandID.CommissioningRequest, bytes([0x02, 0x00])
         )
     )
-    await wait_for_gp_processing(app)
+    await wait_for_gp_processing()
 
     dev = app.devices[ieee]
     assert dev.device_id == 0x02
@@ -100,7 +100,7 @@ async def test_commission_receive_command_decommission(app, manager):
             source_id, GPDCommandID.DecommissioningRequest, frame_counter=3
         )
     )
-    await wait_for_gp_processing(app)
+    await wait_for_gp_processing()
 
     assert ieee not in app.devices
     assert call("device_removed", dev) in app.listener_event.mock_calls
