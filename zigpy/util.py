@@ -159,7 +159,7 @@ class CreateTaskMixin:
         self._tasks.discard(task)
 
         if not task.cancelled() and task.exception() is not None:
-            LOGGER.debug("Task %r failed", task.get_name(), exc_info=task.exception())
+            LOGGER.error("Task %r failed", task.get_name(), exc_info=task.exception())
 
 
 async def retry(
