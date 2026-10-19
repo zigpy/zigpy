@@ -8,6 +8,7 @@ from unittest.mock import call
 import pytest
 
 from tests.conftest import add_initialized_device, make_ieee
+from tests.zgp.test_device import commission_individual_key, encrypted_packet
 from tests.zgp.test_tunneling import (
     COMMISSIONING_NOTIFICATION_ID,
     NOTIFICATION_ID,
@@ -109,6 +110,32 @@ async def test_tunneled_notification_malformed(app, gpd, caplog):
 
     assert "Failed to convert tunneled GP packet" in caplog.text
     assert len(events) == 0
+
+
+@pytest.mark.parametrize(
+    ("frame_counter", "ciphertext_command_id"),
+    [
+        (80, GPDCommandID.CommissioningRequest),
+        (910, GPDCommandID.SuccessReport),
+        (200, GPDCommandID.ChannelRequest),
+    ],
+)
+async def test_encrypted_packet_routed_to_device(
+    app, gpd, frame_counter, ciphertext_command_id
+):
+    """An unprocessed encrypted GPDF is not routed on its ciphertext command ID."""
+    commission_individual_key(gpd)
+
+    events = []
+    gpd.on_event("gp_command_received", events.append)
+
+    packet = encrypted_packet(frame_counter)
+    assert packet.command_id == ciphertext_command_id
+
+    app.gp_packet_received(packet)
+
+    assert len(events) == 1
+    assert events[0].command_id == GPDCommandID.StepUp
 
 
 async def test_gp_packet_from_unknown_device(app, caplog):

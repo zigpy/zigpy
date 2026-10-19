@@ -1480,8 +1480,15 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         else:
             ieee = packet.ieee
 
+        # The command ID of an encrypted GPDF the radio did not process is still
+        # ciphertext. The commissioning GPDFs the manager handles are never encrypted.
+        encrypted = (
+            packet.security_status is zigpy.zgp.types.SecurityStatus.Unprocessed
+            and packet.security_level is zigpy.zgp.types.SecurityLevel.Encrypted
+        )
+
         # Commissioning GPDFs come from GPDs that are not registered yet
-        if packet.command_id in COMMISSIONING_COMMANDS:
+        if packet.command_id in COMMISSIONING_COMMANDS and not encrypted:
             self.green_power.packet_received(packet)
             return
 
