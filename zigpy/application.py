@@ -1374,6 +1374,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         try:
             device = self.get_device_with_address(packet.src)
         except KeyError:
+            # A sink's own aliased Device_annce comes back from the alias of the GPD
+            if packet.src.addr_mode == t.AddrMode.NWK and any(
+                isinstance(dev, GreenPowerDevice) and dev.nwk == packet.src.address
+                for dev in self.devices.values()
+            ):
+                LOGGER.debug("Ignoring packet from Green Power alias: %r", packet)
+                return None
+
             LOGGER.warning("Unknown device %r", packet.src)
 
             if packet.src.addr_mode == t.AddrMode.NWK:

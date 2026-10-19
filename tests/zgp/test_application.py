@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import call
 
 import pytest
@@ -21,6 +22,7 @@ from zigpy.device import GreenPowerDevice
 from zigpy.exceptions import DeliveryError
 import zigpy.types as t
 from zigpy.zcl.clusters.greenpower import NotificationSchema, PairingSchema
+import zigpy.zdo.types as zdo_types
 from zigpy.zgp.types import (
     GP_ENDPOINT,
     ApplicationID,
@@ -149,6 +151,30 @@ async def test_zigbee_packet_from_gp_device(app, gpd, caplog):
     app.packet_received(packet)
 
     assert "non-Zigbee device" in caplog.text
+
+
+async def test_packet_from_gp_alias(app, gpd, caplog):
+    """The sink's own aliased Device_annce, relayed back, is not an unknown device."""
+    packet = t.ZigbeePacket(
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=gpd.nwk),
+        src_ep=0,
+        dst=t.AddrModeAddress(
+            addr_mode=t.AddrMode.Broadcast,
+            address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
+        ),
+        dst_ep=0,
+        tsn=0x00,
+        profile_id=0x0000,
+        cluster_id=zdo_types.ZDOCmd.Device_annce,
+        data=t.SerializableBytes(
+            b"\x00" + gpd.nwk.serialize() + t.EUI64.UNKNOWN.serialize() + b"\x40"
+        ),
+    )
+    app.packet_received(packet)
+    await asyncio.sleep(0)
+
+    assert "Unknown device" not in caplog.text
+    assert len(app.send_packet.mock_calls) == 0
 
 
 @pytest.mark.parametrize(
