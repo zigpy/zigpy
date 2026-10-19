@@ -25,6 +25,7 @@ from zigpy.zcl.clusters.greenpower import NotificationSchema, PairingSchema
 import zigpy.zdo.types as zdo_types
 from zigpy.zgp.types import (
     GP_ENDPOINT,
+    GP_GROUP_ID,
     ApplicationID,
     GPDCommandID,
     GPDCommandPayload,
@@ -201,7 +202,7 @@ async def test_remove_gpd(app, gpd, send_error):
     assert pairing.gpd_id == 0x12345678
 
     assert app.unsubscribe_from_multicast_group.mock_calls == [
-        call(t.Group(gpd.nwk), endpoint_id=GP_ENDPOINT)
+        call(GP_GROUP_ID, endpoint_id=GP_ENDPOINT)
     ]
 
 

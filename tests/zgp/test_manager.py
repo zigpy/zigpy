@@ -42,9 +42,9 @@ from zigpy.zgp.commands import (
     GPSwitchInformation,
 )
 from zigpy.zgp.crypto import build_gpdf_header, encrypt_payload, encrypt_security_key
-from zigpy.zgp.manager import derived_group
 from zigpy.zgp.types import (
     GP_ENDPOINT,
+    GP_GROUP_ID,
     ApplicationID,
     CommunicationMode,
     DeviceID,
@@ -301,7 +301,7 @@ async def test_commissioning_rejected(app, manager, src_id, payload):
 
 
 async def test_commissioning_registers_and_pairs(app, manager):
-    """A new GPD joins, and proxies are paired in derived groupcast mode."""
+    """A new GPD joins, and proxies are paired in pre-commissioned groupcast mode."""
     app.subscribe_to_multicast_group = AsyncMock(wraps=app.subscribe_to_multicast_group)
     app.state.network_info.security_level = 5
 
@@ -314,12 +314,11 @@ async def test_commissioning_registers_and_pairs(app, manager):
     assert call("device_joined", dev) in app.listener_event.mock_calls
     assert app.device_initialized.mock_calls == [call(dev)]
 
-    # The DGroupID is derived from the GPD ID like the alias (A.3.6.1.4), and the sink
-    # joins it to receive the groupcast GP Notifications
-    group = derive_alias(SrcID(0xAABBCCDD))
+    # The sink joins the GP group to receive the groupcast GP Notifications
     assert app.subscribe_to_multicast_group.mock_calls == [
-        call(group, endpoint_id=GP_ENDPOINT)
+        call(GP_GROUP_ID, endpoint_id=GP_ENDPOINT)
     ]
+    alias = derive_alias(SrcID(0xAABBCCDD))
 
     # The alias is announced before the proxies are paired (A.3.9.1 19.e-f)
     [annce, packet] = [c.args[0] for c in app.send_packet.mock_calls]
@@ -330,7 +329,7 @@ async def test_commissioning_registers_and_pairs(app, manager):
     assert annce.dst_ep == 0
     assert annce.dst.address == t.BroadcastAddress.RX_ON_WHEN_IDLE
     # Sent as the alias itself, with a fixed sequence number (A.3.6.3.4.2)
-    assert annce.alias_src == group
+    assert annce.alias_src == alias
     assert annce.alias_seq == 0
     assert annce.tsn == 0
 
@@ -340,7 +339,7 @@ async def test_commissioning_registers_and_pairs(app, manager):
     assert t.deserialize(
         data, zdo_types.CLUSTERS[zdo_types.ZDOCmd.Device_annce][1]
     ) == (
-        [group, t.EUI64.UNKNOWN, zdo_types.MACCapabilityFlags.SecurityCapable],
+        [alias, t.EUI64.UNKNOWN, zdo_types.MACCapabilityFlags.SecurityCapable],
         b"",
     )
 
@@ -348,10 +347,10 @@ async def test_commissioning_registers_and_pairs(app, manager):
 
     assert pairing.options.add_sink
     assert pairing.options.communication_mode == (
-        CommunicationMode.GroupcastForwardToDGroup
+        CommunicationMode.GroupcastForwardToCommGroup
     )
     assert pairing.gpd_id == 0xAABBCCDD
-    assert pairing.sink_group == group
+    assert pairing.sink_group == GP_GROUP_ID
     assert pairing.sink_ieee is None
     assert pairing.sink_nwk_addr is None
 
@@ -625,7 +624,7 @@ async def test_bidirectional_commissioning(
     dev = app.devices[synthetic_ieee(0x11223344)]
     assert app.device_initialized.mock_calls == [call(dev)]
     assert app.subscribe_to_multicast_group.mock_calls == [
-        call(derived_group(dev), endpoint_id=GP_ENDPOINT)
+        call(GP_GROUP_ID, endpoint_id=GP_ENDPOINT)
     ]
 
     [_, packet] = [c.args[0] for c in app.send_packet.mock_calls]
@@ -1068,23 +1067,21 @@ async def test_decommissioning_unknown_device(app, manager):
 
 
 @pytest.mark.parametrize(
-    ("other_src_id", "unsubscribed"),
+    ("src_ids", "unsubscribed"),
     [
-        # No other GPD uses the group
-        (0x44445555, True),
-        # Another GPD derives the same group
-        (0x33332222, False),
+        # The last GPD is removed
+        ([0x11112222], True),
+        # Another GPD still uses the group
+        ([0x11112222, 0x44445555], False),
     ],
 )
-async def test_decommissioning_leaves_derived_group(
-    app, manager, other_src_id, unsubscribed
-):
-    """The sink leaves a derived group once no commissioned GPD uses it."""
+async def test_decommissioning_leaves_gp_group(app, manager, src_ids, unsubscribed):
+    """The sink leaves the GP group once no commissioned GPD uses it."""
     app.unsubscribe_from_multicast_group = AsyncMock(
         wraps=app.unsubscribe_from_multicast_group
     )
 
-    for src_id in (0x11112222, other_src_id):
+    for src_id in src_ids:
         dev = GreenPowerDevice(
             app, application_id=ApplicationID.SrcID, src_id=SrcID(src_id)
         )
@@ -1097,16 +1094,22 @@ async def test_decommissioning_leaves_derived_group(
 
     assert synthetic_ieee(0x11112222) not in app.devices
     assert app.unsubscribe_from_multicast_group.mock_calls == (
-        [call(t.Group(0x2222), endpoint_id=GP_ENDPOINT)] if unsubscribed else []
+        [call(GP_GROUP_ID, endpoint_id=GP_ENDPOINT)] if unsubscribed else []
     )
 
 
-async def test_startup_joins_derived_groups(app, manager):
-    """Every commissioned GPD's derived group is joined once on startup."""
+@pytest.mark.parametrize(
+    ("src_ids", "subscribed"),
+    [
+        ([], False),
+        ([0x11112222, 0x33332222, 0x44445555], True),
+    ],
+)
+async def test_startup_joins_gp_group(app, manager, src_ids, subscribed):
+    """The GP group is joined once on startup, if any GPD is commissioned."""
     app.subscribe_to_multicast_group = AsyncMock(wraps=app.subscribe_to_multicast_group)
 
-    # The first two GPDs derive the same group
-    for src_id in (0x11112222, 0x33332222, 0x44445555):
+    for src_id in src_ids:
         dev = GreenPowerDevice(
             app, application_id=ApplicationID.SrcID, src_id=SrcID(src_id)
         )
@@ -1114,10 +1117,9 @@ async def test_startup_joins_derived_groups(app, manager):
 
     await manager.startup()
 
-    assert app.subscribe_to_multicast_group.mock_calls == [
-        call(t.Group(0x2222), endpoint_id=GP_ENDPOINT),
-        call(t.Group(0x5555), endpoint_id=GP_ENDPOINT),
-    ]
+    assert app.subscribe_to_multicast_group.mock_calls == (
+        [call(GP_GROUP_ID, endpoint_id=GP_ENDPOINT)] if subscribed else []
+    )
 
 
 async def test_shutdown(app, manager):

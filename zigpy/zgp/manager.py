@@ -37,6 +37,7 @@ from zigpy.zgp.commands import (
 from zigpy.zgp.crypto import decrypt_security_key
 from zigpy.zgp.types import (
     GP_ENDPOINT,
+    GP_GROUP_ID,
     ApplicationID,
     CommunicationMode,
     GPDCommandID,
@@ -50,13 +51,6 @@ if TYPE_CHECKING:
     from zigpy.application import ControllerApplication
 
 LOGGER = logging.getLogger(__name__)
-
-
-def derived_group(device: GreenPowerDevice) -> t.Group:
-    """The DGroupID proxies forward a GPD's GPDFs to in derived groupcast mode."""
-    # Derived from the GPD ID exactly like the alias (A.3.6.1.4), and the device's NWK
-    # address is that alias
-    return t.Group(device.nwk)
 
 
 def commissioning_security(
@@ -143,17 +137,17 @@ class GreenPowerManager(CreateTaskMixin):
         # window closes
         self._pending_devices: dict[t.EUI64, GreenPowerDevice] = {}
 
-    async def startup(self) -> None:
-        """Join the derived groups of all commissioned GPDs, to receive their GPDFs."""
-        groups = {
-            derived_group(device)
+    def _has_devices(self) -> bool:
+        return any(
+            isinstance(device, GreenPowerDevice)
             for device in self._application.devices.values()
-            if isinstance(device, GreenPowerDevice)
-        }
+        )
 
-        for group in sorted(groups):
+    async def startup(self) -> None:
+        """Join the GP group if any GPD is commissioned, to receive their GPDFs."""
+        if self._has_devices():
             await self._application.subscribe_to_multicast_group(
-                group, endpoint_id=GP_ENDPOINT
+                GP_GROUP_ID, endpoint_id=GP_ENDPOINT
             )
 
     async def shutdown(self) -> None:
@@ -326,7 +320,7 @@ class GreenPowerManager(CreateTaskMixin):
             new_device = True
 
         await self._application.subscribe_to_multicast_group(
-            derived_group(device), endpoint_id=GP_ENDPOINT
+            GP_GROUP_ID, endpoint_id=GP_ENDPOINT
         )
 
         # Only the first commissioning of a GPD announces its alias (A.3.9.1 19.e)
@@ -345,22 +339,15 @@ class GreenPowerManager(CreateTaskMixin):
         )
 
     async def unpair(self, device: GreenPowerDevice) -> None:
-        """Remove a GPD from all proxies and leave its derived group, once removed."""
+        """Remove a GPD from all proxies, and leave the GP group after the last one."""
         try:
             await self.send_pairing(device, add_sink=False)
         except (TimeoutError, DeliveryError) as ex:
             LOGGER.warning("Failed to remove %r from proxies: %s", device, ex)
 
-        group = derived_group(device)
-
-        # Distinct GPD IDs can derive the same group
-        if group not in {
-            derived_group(other)
-            for other in self._application.devices.values()
-            if isinstance(other, GreenPowerDevice)
-        }:
+        if not self._has_devices():
             await self._application.unsubscribe_from_multicast_group(
-                group, endpoint_id=GP_ENDPOINT
+                GP_GROUP_ID, endpoint_id=GP_ENDPOINT
             )
 
         LOGGER.info("GP device unpaired: %r", device)
@@ -432,14 +419,14 @@ class GreenPowerManager(CreateTaskMixin):
             or device.mac_seq_num_capability
         )
 
-        # TODO: proxies forward with derived groupcast, a single NWK broadcast per GPDF.
-        # Unicast forwarding through a chosen set of proxies needs zigpy to maintain
-        # those proxies as the network changes, from its topology scans.
+        # TODO: proxies forward with groupcast, a single NWK broadcast per GPDF. Unicast
+        # forwarding through a chosen set of proxies needs zigpy to maintain those
+        # proxies as the network changes, from its topology scans.
         options = PairingOptions(
             application_id=ApplicationID.SrcID,
             add_sink=int(add_sink),
             remove_gpd=int(not add_sink),
-            communication_mode=CommunicationMode.GroupcastForwardToDGroup,
+            communication_mode=CommunicationMode.GroupcastForwardToCommGroup,
             gpd_fixed=int(device.fixed_location),
             gpd_mac_seq_num_cap=int(device.mac_seq_num_capability),
             security_level=device.security_level,
@@ -457,7 +444,7 @@ class GreenPowerManager(CreateTaskMixin):
         }
 
         if add_sink:
-            schema_kwargs["sink_group"] = derived_group(device)
+            schema_kwargs["sink_group"] = GP_GROUP_ID
             schema_kwargs["device_id"] = t.uint8_t(device.device_id)
 
             if frame_counter_present:

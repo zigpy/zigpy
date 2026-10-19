@@ -38,8 +38,9 @@ GP_ENDPOINT: int = 242
 # The Zigbee protocol version of a GPDF (A.1.4.1.2)
 GP_PROTOCOL_VERSION: int = 3
 
-# Green Power group ID used for groupcast forwarding
-GP_GROUP_ID: int = 0x0B84
+# The pre-commissioned group proxies forward the GPDFs of all GPDs to, one group for
+# the sink to join instead of one per GPD in derived groupcast
+GP_GROUP_ID: t.Group = t.Group(0x0B84)
 
 # Default ZigBee Green Power shared key ("ZigBeeAlliance09" TC link key).
 # Used to unwrap GP security keys that a GPD provides during commissioning

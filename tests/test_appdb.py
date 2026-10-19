@@ -53,9 +53,9 @@ from zigpy.zcl.clusters.general import Basic, Identify, OnOff, Ota
 from zigpy.zcl.foundation import Status as ZCLStatus, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
 from zigpy.zgp.commands import GPGenericSwitchConfiguration
-from zigpy.zgp.manager import derived_group
 from zigpy.zgp.types import (
     GP_ENDPOINT,
+    GP_GROUP_ID,
     ApplicationID,
     DeviceID,
     GPDCommandID,
@@ -2341,9 +2341,9 @@ async def test_gp_commissioned_device_restored(tmp_path):
     assert restored.security_level == SecurityLevel.Encrypted
     assert restored.frame_counter == 11
 
-    # The sink joins the derived group again to receive the GPD's notifications
+    # The sink joins the GP group again to receive the GPD's notifications
     assert app2.subscribe_to_multicast_group.mock_calls == [
-        call(derived_group(restored), endpoint_id=GP_ENDPOINT)
+        call(GP_GROUP_ID, endpoint_id=GP_ENDPOINT)
     ]
 
     await app2.shutdown()
