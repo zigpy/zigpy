@@ -368,9 +368,10 @@ class GreenPowerManager:
         # The GPD listens on the channel of its next attempt, not the operational one
         # (A.3.9.1 7.d.iv)
         await self._send_gp_response(
-            packet,
-            GPDCommandID.ChannelConfiguration,
-            channel_config.serialize(),
+            packet=packet,
+            gpd_id=SrcID(0x000000),
+            gpd_command_id=GPDCommandID.ChannelConfiguration,
+            gpd_command_payload=channel_config.serialize(),
             tx_channel=request.next_channel + 11,
         )
 
@@ -455,7 +456,9 @@ class GreenPowerManager:
 
     async def _send_gp_response(
         self,
+        *,
         packet: t.ZigbeeGpPacket,
+        gpd_id: SrcID,
         gpd_command_id: GPDCommandID,
         gpd_command_payload: bytes,
         tx_channel: int,
@@ -479,7 +482,7 @@ class GreenPowerManager:
             temp_master_tx_channel=TempMasterTxChannel(
                 transmit_channel=t.uint4_t(tx_channel - 11), _reserved=0
             ),
-            gpd_id=packet.src_id,
+            gpd_id=gpd_id,
             gpd_command_id=gpd_command_id,
             gpd_command_payload=t.LVBytes(gpd_command_payload),
         )
@@ -507,10 +510,13 @@ class GreenPowerManager:
             )
         )
 
+        assert packet.src_id is not None
+
         await self._send_gp_response(
-            packet,
-            GPDCommandID.CommissioningReply,
-            reply.serialize(),
+            packet=packet,
+            gpd_id=packet.src_id,
+            gpd_command_id=GPDCommandID.CommissioningReply,
+            gpd_command_payload=reply.serialize(),
             tx_channel=self._application.state.network_info.channel,
         )
 
