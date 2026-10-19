@@ -2414,6 +2414,80 @@ async def test_force_commit_commits_pending_writes(tmp_path):
 
 
 @patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_reinterview_does_not_commit_mid_handler(tmp_path):
+    """A re-interview's delete of the old device does not commit a handler halfway."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=10.0)
+    listener = app._dblistener
+
+    old_dev, _, _ = _add_joined_device(app)
+    async with asyncio.timeout(5):
+        await listener._callback_handlers.join()
+    ep_where = "WHERE ieee = ? AND endpoint_id = ?"
+    old_ep_row = {"where": ep_where, "params": (str(old_dev.ieee), 1)}
+    new_ep_row = {"where": ep_where, "params": (str(old_dev.ieee), 2)}
+    assert await _read_count(db, "endpoints", **old_ep_row) == 1
+
+    # Hold the worker inside a handler, after the first of its writes
+    other_ieee = t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11")
+    other_row = {"where": "WHERE ieee = ?", "params": (str(other_ieee),)}
+    handler_started = asyncio.Event()
+    handler_may_finish = asyncio.Event()
+
+    async def _two_statement_handler():
+        await listener.execute(
+            f"INSERT INTO devices{zigpy.appdb.DB_V} (ieee, nwk, status, last_seen)"
+            " VALUES (?, ?, ?, ?)",
+            (other_ieee, 0x1234, 2, 0),
+        )
+        handler_started.set()
+        await handler_may_finish.wait()
+
+    listener._two_statement_handler = _two_statement_handler
+    listener.enqueue("_two_statement_handler")
+    async with asyncio.timeout(5):
+        await handler_started.wait()
+
+    # Re-interview the device into a different signature while the handler is held
+    shadow = Device(app, old_dev.ieee, old_dev.nwk)
+    shadow.node_desc = make_node_desc()
+    shadow.status = Status.ENDPOINTS_INIT
+    ep = shadow.add_endpoint(2)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ep.add_input_cluster(Basic.cluster_id)
+
+    async with asyncio.timeout(5):
+        await app._device_reinterviewed(old_dev, shadow)
+
+    # Nothing is committed in the middle of the handler: neither its first write
+    # nor the delete of the old device
+    assert await _read_count(db, "devices", **other_row) == 0
+    assert await _read_count(db, "endpoints", **old_ep_row) == 1
+    assert await _read_count(db, "endpoints", **new_ep_row) == 0
+
+    # Once the handler finishes, the delete is committed along with the new device
+    handler_may_finish.set()
+    async with asyncio.timeout(5):
+        await listener._callback_handlers.join()
+
+    assert await _read_count(db, "devices", **other_row) == 1
+    assert await _read_count(db, "endpoints", **old_ep_row) == 0
+    assert await _read_count(db, "endpoints", **new_ep_row) == 1
+
+    del listener._two_statement_handler
+    await app.shutdown()
+
+    # The re-interviewed device replaced the old one
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(old_dev.ieee)
+    assert list(dev2.non_zdo_endpoints) == [dev2.endpoints[2]]
+    assert Basic.cluster_id in dev2.endpoints[2].in_clusters
+    await app2.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
 async def test_ota_query_cache_delete_is_deferred_like_save(tmp_path):
     """`_delete_ota_query_cache_entry` should defer its commit, matching
     `_save_ota_query_cache_entry` — the OTA query cache is a low-value cache

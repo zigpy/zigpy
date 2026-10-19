@@ -447,9 +447,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     def device_removed(self, device: Device) -> None:
         self.enqueue("_remove_device", device)
 
-    async def _remove_device(self, device: Device) -> None:
+    async def _remove_device(
+        self, device: Device, *, force_commit: bool = True
+    ) -> None:
         await self.execute(f"DELETE FROM devices{DB_V} WHERE ieee = ?", (device.ieee,))
-        await self._commit(force=True)
+        await self._commit(force=force_commit)
 
     def raw_device_initialized(self, device: Device) -> None:
         # We work with a clone of a device so that quirks that run in the same event
