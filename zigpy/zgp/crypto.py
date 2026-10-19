@@ -7,7 +7,16 @@ import struct
 from cryptography.hazmat.primitives.ciphers.aead import AESCCM
 
 from zigpy.types import KeyData
-from zigpy.zgp.types import DEFAULT_GP_LINK_KEY, CommunicationDirection, SecurityLevel
+from zigpy.zgp.types import (
+    DEFAULT_GP_LINK_KEY,
+    GP_PROTOCOL_VERSION,
+    ApplicationID,
+    CommunicationDirection,
+    ExtendedNWKFrameControl,
+    FrameType,
+    NWKFrameControl,
+    SecurityLevel,
+)
 
 # Security level to MIC length mapping (Table 11 in ZGP spec).
 # NoSecurity carries no MIC, and level 0b01 is Reserved with no defined
@@ -50,13 +59,25 @@ def build_gpdf_header(
     The header is authenticated as CCM* associated data but never transmitted
     separately, so a sink rebuilds it from the GPDF's fields (A.1.5.4.3.3).
     """
-    # Data frame, Zigbee protocol version 3, Extended NWK Frame Control present
-    nwk_fc = 0b0000_1100 | (auto_commissioning << 6) | (1 << 7)
+    frame_control = NWKFrameControl(
+        frame_type=FrameType.DataFrame,
+        protocol_version=GP_PROTOCOL_VERSION,
+        auto_commissioning=int(auto_commissioning),
+        extended=1,
+    )
+    extended = ExtendedNWKFrameControl(
+        application_id=ApplicationID.SrcID,
+        security_level=security_level,
+        security_key=int(individual_key),
+        rx_after_tx=int(rx_after_tx),
+        direction=CommunicationDirection.GPDtoGPP,
+    )
 
-    # ApplicationID 0b000, Direction 0b0 (sent by the GPD)
-    ext_nwk_fc = (security_level << 3) | (individual_key << 5) | (rx_after_tx << 6)
-
-    return struct.pack("<BBII", nwk_fc, ext_nwk_fc, source_id, frame_counter)
+    return (
+        frame_control.serialize()
+        + extended.serialize()
+        + struct.pack("<II", source_id, frame_counter)
+    )
 
 
 def _key_protection_nonce(
