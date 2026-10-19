@@ -18,6 +18,12 @@ from tests.conftest import (
     mock_attribute_writes,
 )
 from tests.test_backups import backup_factory  # noqa: F401
+from tests.zgp.conftest import (
+    KEY,
+    commission,
+    commissioning_payload,
+    encrypted_gp_packet,
+)
 from zigpy import profiles
 import zigpy.appdb
 import zigpy.application
@@ -47,7 +53,9 @@ from zigpy.zcl.clusters.general import Basic, Identify, OnOff, Ota
 from zigpy.zcl.foundation import Status as ZCLStatus, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
 from zigpy.zgp.commands import GPGenericSwitchConfiguration
+from zigpy.zgp.manager import derived_group
 from zigpy.zgp.types import (
+    GP_ENDPOINT,
     ApplicationID,
     DeviceID,
     GPDCommandID,
@@ -56,6 +64,7 @@ from zigpy.zgp.types import (
     SrcID,
     SwitchType,
 )
+from zigpy.zgp.util import synthetic_ieee
 
 pytestmark = pytest.mark.usefixtures("auto_kill_aiosqlite")
 
@@ -2272,32 +2281,72 @@ async def test_gp_device_remove(tmp_path):
     await app2.shutdown()
 
 
-async def test_gp_device_recommission_updates_security_key(tmp_path):
-    """Re-commissioning must update the stored security key."""
-    OLD_KEY = t.KeyData(range(16))
-    NEW_KEY = t.KeyData(range(16, 32))
+async def commission_with_key(app, key: bytes, frame_counter: int) -> None:
+    await app.green_power.permit_join(time_s=60)
+    await commission(
+        app,
+        GP_SOURCE_ID,
+        commissioning_payload(
+            security_level=SecurityLevel.Encrypted,
+            key_type=SecurityKeyType.IndividualKey,
+            key=key,
+            outgoing_counter=10,
+        ),
+        frame_counter=frame_counter,
+    )
 
+
+async def test_gp_device_recommission_updates_security_key(tmp_path):
+    """A GPD re-commissioned with another key after a restart is saved with it."""
     db = tmp_path / "test.db"
     app = await make_app_with_db(db)
-    device = GreenPowerDevice(
-        app, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
-    )
-    device.security_key = OLD_KEY
-    app.device_initialized(device)
+    await commission_with_key(app, KEY, frame_counter=1)
     await app.shutdown()
 
-    # Re-commission with a different key (same SrcID)
     app2 = await make_app_with_db(db)
-    device = GreenPowerDevice(
-        app2, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
-    )
-    device.security_key = NEW_KEY
-    app2.device_initialized(device)
+    await commission_with_key(app2, bytes(range(16, 32)), frame_counter=2)
     await app2.shutdown()
 
     app3 = await make_app_with_db(db)
-    assert app3.devices[device.ieee].security_key == NEW_KEY
+    restored = app3.devices[synthetic_ieee(GP_SOURCE_ID)]
+    assert restored.security_key == t.KeyData(range(16, 32))
     await app3.shutdown()
+
+
+async def test_gp_commissioned_device_restored(tmp_path):
+    """A GPD commissioned by the sink keeps its security state and group on restart."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    await commission_with_key(app, KEY, frame_counter=1)
+    device = app.devices[synthetic_ieee(GP_SOURCE_ID)]
+
+    # A press advances the security frame counter
+    app.gp_packet_received(
+        encrypted_gp_packet(GP_SOURCE_ID, 11, bytes([GPDCommandID.Toggle]))
+    )
+    assert device.frame_counter == 11
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    app2.subscribe_to_multicast_group = AsyncMock(
+        wraps=app2.subscribe_to_multicast_group
+    )
+    await app2.green_power.startup()
+
+    restored = app2.devices[device.ieee]
+    assert isinstance(restored, GreenPowerDevice)
+    assert restored.get_signature() == device.get_signature()
+    assert restored.security_key == t.KeyData(KEY)
+    assert restored.security_key_type == SecurityKeyType.IndividualKey
+    assert restored.security_level == SecurityLevel.Encrypted
+    assert restored.frame_counter == 11
+
+    # The sink joins the derived group again to receive the GPD's notifications
+    assert app2.subscribe_to_multicast_group.mock_calls == [
+        call(derived_group(restored), endpoint_id=GP_ENDPOINT)
+    ]
+
+    await app2.shutdown()
 
 
 def _add_joined_device(app):
