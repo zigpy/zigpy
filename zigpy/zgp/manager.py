@@ -26,6 +26,7 @@ from zigpy.zcl.clusters.greenpower import (
     ResponseOptions,
     TempMasterTxChannel,
 )
+import zigpy.zdo.types as zdo_types
 from zigpy.zgp.commands import (
     GPChannelConfigurationPayload,
     GPChannelRequestPayload,
@@ -305,13 +306,20 @@ class GreenPowerManager(CreateTaskMixin):
         """Register a commissioned GPD and pair it with the proxies (A.3.9.1 19)."""
         if device.ieee in self._application.devices:
             self._application.gp_device_recommissioned(device)
+            new_device = False
         else:
             self._application.listener_event("device_joined", device)
             self._application.device_initialized(device)
+            new_device = True
 
         await self._application.subscribe_to_multicast_group(
             derived_group(device), endpoint_id=GP_ENDPOINT
         )
+
+        # Only the first commissioning of a GPD announces its alias (A.3.9.1 19.e)
+        if new_device:
+            await self._send_device_annce(device)
+
         await self.send_pairing(device, add_sink=True)
 
         LOGGER.info("GP device commissioned: %r", device)
@@ -453,6 +461,48 @@ class GreenPowerManager(CreateTaskMixin):
             device.src_id,
             add_sink,
         )
+
+    async def _send_device_annce(self, device: GreenPowerDevice) -> None:
+        """Announce the alias of a GPD, to evict a Zigbee device using the address.
+
+        The Device_annce is sent as the alias itself, with a fixed sequence number of
+        0 and an invalid IEEE address (A.3.6.3.4.2).
+        """
+        # Only the security capability is set, inherited from this node (Figure 88)
+        capability = zdo_types.MACCapabilityFlags.NONE
+
+        if self._application.state.network_info.security_level > 0:
+            capability |= zdo_types.MACCapabilityFlags.SecurityCapable
+
+        tsn = t.uint8_t(0)
+        data = tsn.serialize() + t.serialize(
+            (device.nwk, t.EUI64.convert("ff:ff:ff:ff:ff:ff:ff:ff"), capability),
+            zdo_types.CLUSTERS[zdo_types.ZDOCmd.Device_annce][1],
+        )
+
+        try:
+            await self._application.send_packet(
+                t.ZigbeePacket(
+                    dst=t.AddrModeAddress(
+                        addr_mode=t.AddrMode.Broadcast,
+                        address=t.BroadcastAddress.RX_ON_WHEN_IDLE,
+                    ),
+                    dst_ep=t.uint8_t(0),
+                    src_ep=t.uint8_t(0),
+                    tsn=tsn,
+                    profile_id=t.uint16_t(0),
+                    cluster_id=t.uint16_t(zdo_types.ZDOCmd.Device_annce),
+                    data=t.SerializableBytes(data),
+                    alias_src=device.nwk,
+                    alias_seq=t.uint8_t(0),
+                )
+            )
+        except NotImplementedError:
+            # Without it, a Zigbee device using the alias only discovers the address
+            # conflict once a proxy sends as the alias (A.3.6.3.4.1)
+            LOGGER.debug(
+                "Radio cannot send with an alias, not announcing 0x%04X", device.nwk
+            )
 
     # --- GP Response (sink-to-GPD via proxy) ---
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+import logging
 import struct
 from unittest.mock import call
 
@@ -27,6 +28,7 @@ from zigpy.zcl.clusters.greenpower import (
     ProxyCommissioningModeSchema,
     ResponseSchema,
 )
+import zigpy.zdo.types as zdo_types
 from zigpy.zgp.commands import (
     GPChannelConfigurationPayload,
     GPCommissioningReplyPayload,
@@ -303,6 +305,7 @@ async def test_commissioning_rejected(app, manager, src_id, payload):
 async def test_commissioning_registers_and_pairs(app, manager):
     """A new GPD joins, and proxies are paired in derived groupcast mode."""
     app.subscribe_to_multicast_group = AsyncMock(wraps=app.subscribe_to_multicast_group)
+    app.state.network_info.security_level = 5
 
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
@@ -320,7 +323,22 @@ async def test_commissioning_registers_and_pairs(app, manager):
         call(group, endpoint_id=GP_ENDPOINT)
     ]
 
-    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    # The alias is announced before the proxies are paired (A.3.9.1 19.e-f)
+    [annce, packet] = [c.args[0] for c in app.send_packet.mock_calls]
+
+    assert annce.cluster_id == zdo_types.ZDOCmd.Device_annce
+    assert annce.profile_id == 0
+    assert annce.src_ep == 0
+    assert annce.dst_ep == 0
+    assert annce.dst.address == t.BroadcastAddress.RX_ON_WHEN_IDLE
+    # Sent as the alias itself, with a fixed sequence number (A.3.6.3.4.2)
+    assert annce.alias_src == group
+    assert annce.alias_seq == 0
+    assert annce.tsn == 0
+    assert annce.data.serialize() == (
+        b"\x00" + group.serialize() + b"\xff" * 8 + bytes([0x40])
+    )
+
     pairing = sent_command(packet, PairingSchema)
 
     assert pairing.options.add_sink
@@ -352,6 +370,42 @@ async def test_commissioning_records_link(app, manager):
     assert dev.last_seen == packet.timestamp.timestamp()
     assert dev.lqi == 170
     assert dev.rssi == -70
+
+
+async def test_device_annce_only_on_first_commissioning(app, manager):
+    """A re-commissioned GPD already occupies its alias (A.3.9.1 19.e)."""
+    await manager.permit_join(time_s=60)
+    await commission(app, 0xAABBCCDD, b"\x02\x00")
+    app.send_packet.reset_mock()
+
+    await commission(app, 0xAABBCCDD, b"\x02\x00", frame_counter=2)
+
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert packet.alias_src is None
+    assert sent_command(packet, PairingSchema).options.add_sink
+
+
+async def test_device_annce_unsupported(app, manager, caplog):
+    """A radio that cannot send as an alias still gets the GPD paired."""
+
+    async def send_packet(packet: t.ZigbeePacket) -> None:
+        if packet.alias_src is not None:
+            raise NotImplementedError
+
+    app.send_packet = AsyncMock(side_effect=send_packet)
+
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
+    with caplog.at_level(logging.DEBUG):
+        await commission(app, 0xAABBCCDD, b"\x02\x00")
+
+    assert synthetic_ieee(0xAABBCCDD) in app.devices
+    assert "cannot send with an alias" in caplog.text
+
+    [annce, pairing] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert annce.alias_src is not None
+    assert sent_command(pairing, PairingSchema).options.add_sink
 
 
 async def test_recommissioning_replaces_device(app, manager):
@@ -443,7 +497,7 @@ async def test_commissioning_reply(
 
     if temp_master is None:
         # Unidirectional commissioning: the GPD is paired right away
-        [pairing] = packets
+        [_, pairing] = packets
         sent_command(pairing, PairingSchema)
         return
 
@@ -544,7 +598,7 @@ async def test_bidirectional_commissioning(app, manager, payload, success):
         call(derived_group(dev), endpoint_id=GP_ENDPOINT)
     ]
 
-    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    [_, packet] = [c.args[0] for c in app.send_packet.mock_calls]
     assert sent_command(packet, PairingSchema).options.add_sink
     app.send_packet.reset_mock()
 
@@ -664,7 +718,7 @@ async def test_bidirectional_commissioning_through_proxy(
     assert dev.frame_counter == 8
     assert app.device_initialized.mock_calls == [call(dev)]
 
-    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    [_, packet] = [c.args[0] for c in app.send_packet.mock_calls]
     assert sent_command(packet, PairingSchema).options.add_sink
 
 

@@ -77,8 +77,8 @@ async def test_commission_receive_command_decommission(app, manager):
     assert dev.device_id == 0x02
     assert app.device_initialized.mock_calls == [call(dev)]
 
-    # GP Pairing should have been sent
-    assert app.send_packet.call_count == 1
+    # Device_annce for the alias and GP Pairing should have been sent
+    assert app.send_packet.call_count == 2
     app.send_packet.reset_mock()
 
     # --- Step 3: Receive a Toggle command ---
