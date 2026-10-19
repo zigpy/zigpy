@@ -518,7 +518,7 @@ class GreenPowerManager:
             t.ZigbeePacket(
                 dst=t.AddrModeAddress(
                     addr_mode=t.AddrMode.Broadcast,
-                    address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
+                    address=t.BroadcastAddress.RX_ON_WHEN_IDLE,
                 ),
                 dst_ep=t.uint8_t(GP_ENDPOINT),
                 src_ep=t.uint8_t(GP_ENDPOINT),

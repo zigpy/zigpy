@@ -990,7 +990,9 @@ async def test_commands_sent_server_to_client(app, manager, send, command):
     [packet] = [c.args[0] for c in app.send_packet.mock_calls]
     hdr, _ = foundation.ZCLHeader.deserialize(packet.data.serialize())
 
-    assert packet.dst.addr_mode == t.AddrMode.Broadcast
+    assert packet.dst == t.AddrModeAddress(
+        addr_mode=t.AddrMode.Broadcast, address=t.BroadcastAddress.RX_ON_WHEN_IDLE
+    )
     assert packet.src_ep == packet.dst_ep == GP_ENDPOINT
     assert hdr.frame_control.frame_type == foundation.FrameType.CLUSTER_COMMAND
     assert hdr.direction == foundation.Direction.Server_to_Client
