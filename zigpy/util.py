@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import abc
 import asyncio
+from collections.abc import Coroutine
 import functools
 import inspect
 import itertools
@@ -9,6 +10,7 @@ import logging
 import re
 import traceback
 import typing
+from typing import Any, Protocol, TypeVar
 import warnings
 
 from crccheck.crc import CrcX25
@@ -21,7 +23,8 @@ import zigpy.types as t
 
 LOGGER = logging.getLogger(__name__)
 
-_T = typing.TypeVar("_T")
+_T = TypeVar("_T")
+_R = TypeVar("_R")
 
 
 QR_CODE_FORMATS = (
@@ -132,6 +135,31 @@ class LocalLogMixin:
 
     def error(self, msg, *args, **kwargs):
         return self._log(logging.ERROR, msg, *args, **kwargs)
+
+
+class HasTasksProtocol(Protocol):
+    _tasks: set[asyncio.Task]
+
+    def _task_done(self: HasTasksProtocol, task: asyncio.Task[Any]) -> None: ...
+
+
+class CreateTaskMixin:
+    """Mixin adding `create_task` to an object."""
+
+    def create_task(
+        self: HasTasksProtocol, target: Coroutine[Any, Any, _R], name: str | None = None
+    ) -> asyncio.Task[_R]:
+        """Create a task and store a reference to it until the task completes."""
+        task = asyncio.get_running_loop().create_task(target, name=name)
+        self._tasks.add(task)
+        task.add_done_callback(self._task_done)
+        return task
+
+    def _task_done(self: HasTasksProtocol, task: asyncio.Task[Any]) -> None:
+        self._tasks.discard(task)
+
+        if not task.cancelled() and task.exception() is not None:
+            LOGGER.debug("Task %r failed", task.get_name(), exc_info=task.exception())
 
 
 async def retry(

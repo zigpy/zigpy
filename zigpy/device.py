@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from asyncio import timeout as asyncio_timeout
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -12,7 +12,7 @@ import logging
 import math
 import time
 import typing
-from typing import Any, Final, Self, TypeVar
+from typing import Any, Final, Self
 import warnings
 
 from cryptography.exceptions import InvalidTag
@@ -40,6 +40,7 @@ from zigpy.ota.manager import update_firmware
 from zigpy.profiles import zha, zll
 import zigpy.types as t
 import zigpy.util
+from zigpy.util import CreateTaskMixin
 from zigpy.zcl import Cluster, ClusterType, OtaQueryCacheClearedEvent, foundation
 from zigpy.zcl.clusters.general import Ota, PollControl, QueryNextImageCommand
 import zigpy.zdo.types as zdo_t
@@ -61,8 +62,6 @@ from zigpy.zgp.types import (
 from zigpy.zgp.util import derive_alias, synthetic_ieee
 
 if typing.TYPE_CHECKING:
-    _R = TypeVar("_R")
-
     from zigpy.application import ControllerApplication
     from zigpy.ota.providers import OtaImageWithMetadata
 
@@ -115,7 +114,9 @@ class Status(enum.IntEnum):
     ENDPOINTS_INIT = 2
 
 
-class BaseDevice(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin, EventBase):
+class BaseDevice(
+    zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin, CreateTaskMixin, EventBase
+):
     """Base class shared by all device types, keyed on `ieee` and `nwk` addresses."""
 
     def __init__(
@@ -135,15 +136,6 @@ class BaseDevice(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin, EventBase
 
         self._on_remove_callbacks: list[typing.Callable[[], None]] = []
         self._tasks: set[asyncio.Future[Any]] = set()
-
-    def create_task(
-        self, target: Coroutine[Any, Any, _R], name: str | None = None
-    ) -> asyncio.Task[_R]:
-        """Create a task and store a reference to it until the task completes."""
-        task = asyncio.get_running_loop().create_task(target, name=name)
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.remove)
-        return task
 
     def on_remove(self) -> None:
         """Call on remove callbacks."""

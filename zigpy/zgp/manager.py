@@ -17,6 +17,7 @@ from zigpy.datastructures import Debouncer
 from zigpy.device import GP_DUPLICATE_TIMEOUT, GreenPowerDevice
 from zigpy.profiles import zgp as zgp_profile
 import zigpy.types as t
+from zigpy.util import CreateTaskMixin
 from zigpy.zcl import foundation
 from zigpy.zcl.clusters.greenpower import (
     GreenPowerProxy,
@@ -116,7 +117,7 @@ def commissioning_security(
     return security_level, comm.extended_options.key_type, security_key
 
 
-class GreenPowerManager:
+class GreenPowerManager(CreateTaskMixin):
     """Commissions Green Power devices, attached to the app.
 
     Limitation: only ApplicationID.SrcID (0b000) is supported. GPDs using
@@ -134,11 +135,6 @@ class GreenPowerManager:
         # GPDs in bidirectional commissioning, until their Success GPDF arrives. They
         # outlive a lapse of the window, which a client may keep re-requesting.
         self._pending_devices: dict[t.EUI64, GreenPowerDevice] = {}
-
-    def _create_task(self, coro: Any, name: str) -> None:
-        task = asyncio.get_running_loop().create_task(coro, name=name)
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
 
     async def startup(self) -> None:
         """Join the derived groups of all commissioned GPDs, to receive their GPDFs."""
@@ -209,7 +205,7 @@ class GreenPowerManager:
             assert packet.command_id == GPDCommandID.ChannelRequest
             coro = self._process_channel_request(packet)
 
-        self._create_task(coro, f"gp_process_command-0x{packet.command_id:02x}")
+        self.create_task(coro, f"gp_process_command-0x{packet.command_id:02x}")
 
     async def _process_commissioning(self, packet: t.ZigbeeGpPacket) -> None:
         """Process a GP Commissioning command (0xE0): create device, reply, pair."""
@@ -294,7 +290,7 @@ class GreenPowerManager:
             return
 
         del self._pending_devices[device.ieee]
-        self._create_task(
+        self.create_task(
             self._finalize_commissioning(device),
             f"gp_process_command-0x{GPDCommandID.SuccessReport:02x}",
         )
@@ -316,7 +312,7 @@ class GreenPowerManager:
 
     def decommission(self, device: GreenPowerDevice) -> None:
         """Remove a GPD whose Decommissioning command (0xE1) passed its checks."""
-        self._create_task(
+        self.create_task(
             self._application.remove(device.ieee),
             f"gp_process_command-0x{GPDCommandID.DecommissioningRequest:02x}",
         )

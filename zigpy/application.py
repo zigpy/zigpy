@@ -4,7 +4,7 @@ import abc
 import asyncio
 from asyncio import timeout as asyncio_timeout
 import collections
-from collections.abc import AsyncGenerator, Callable, Coroutine
+from collections.abc import AsyncGenerator, Callable
 import contextlib
 import contextvars
 from datetime import UTC, datetime
@@ -15,7 +15,7 @@ import os
 import random
 import time
 import typing
-from typing import Any, ClassVar, ParamSpec, TypeVar
+from typing import Any, ClassVar, ParamSpec
 import warnings
 
 import zigpy.appdb
@@ -36,6 +36,7 @@ import zigpy.state
 import zigpy.topology
 import zigpy.types as t
 import zigpy.util
+from zigpy.util import CreateTaskMixin
 import zigpy.zcl
 from zigpy.zcl.clusters.greenpower import GreenPowerProxy
 import zigpy.zdo
@@ -53,7 +54,6 @@ TRANSIENT_CONNECTION_ERRORS = {
 }
 
 ENERGY_SCAN_WARN_THRESHOLD = 0.75 * 255
-_R = TypeVar("_R")
 _P = ParamSpec("_P")
 
 DeviceResolver = Callable[[BaseDevice], BaseDevice]
@@ -67,7 +67,7 @@ CHANNEL_CHANGE_SETTINGS_RELOAD_DELAY_S = 1.0
 RADIO_ENTRY_POINT_GROUP = "zigpy.radio"
 
 
-class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
+class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC):
     SCHEMA = conf.CONFIG_SCHEMA
 
     # User-facing metadata, set by radio libraries advertising themselves via the
@@ -148,18 +148,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
                     )
 
         return _callback
-
-    def create_task(
-        self, target: Coroutine[Any, Any, _R], name: str | None = None
-    ) -> asyncio.Task[_R]:
-        """Create a task and store a reference to it until the task completes.
-
-        target: target to call.
-        """
-        task = asyncio.get_running_loop().create_task(target, name=name)
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.remove)
-        return task
 
     @contextlib.asynccontextmanager
     async def request_priority(self, priority: int) -> AsyncGenerator[None]:
