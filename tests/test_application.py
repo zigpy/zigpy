@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 from datetime import UTC, datetime
 import errno
 import logging
@@ -21,7 +20,6 @@ from zigpy.exceptions import (
     NetworkSettingsInconsistent,
     TransientConnectionError,
 )
-from zigpy.listeners import zcl_command
 import zigpy.ota
 import zigpy.types as t
 from zigpy.zcl import clusters, foundation
@@ -1301,6 +1299,8 @@ async def test_request_future_matching(app, make_initialized_device):
     device._packet_debouncer.filter = MagicMock(return_value=False)
     ota = device.endpoints[1].add_output_cluster(clusters.general.Ota.cluster_id)
 
+    orig_listeners = app._req_listeners[device].copy()
+
     req_hdr, req_cmd = ota._create_request(
         general=False,
         command_id=ota.commands_by_name["query_next_image"].id,
@@ -1329,11 +1329,17 @@ async def test_request_future_matching(app, make_initialized_device):
         rssi=-30,
     )
 
-    match = zcl_command(ota.commands_by_name["query_next_image"])
+    assert app._req_listeners[device] == orig_listeners
 
-    with app.frame_listeners.wait_for(match, ieee=device.ieee) as rsp_fut:
+    with app.wait_for_response(
+        device, [ota.commands_by_name["query_next_image"].schema()]
+    ) as rsp_fut:
         # Attach two listeners
-        with app.frame_listeners.wait_for(match, ieee=device.ieee) as rsp_fut2:
+        with app.wait_for_response(
+            device, [ota.commands_by_name["query_next_image"].schema()]
+        ) as rsp_fut2:
+            assert app._req_listeners[device]
+
             # Listeners are resolved FIFO
             app.packet_received(packet)
             assert rsp_fut.done()
@@ -1346,18 +1352,20 @@ async def test_request_future_matching(app, make_initialized_device):
             # Unhandled packets are ignored
             app.packet_received(packet)
 
-            frame = await rsp_fut
-            assert frame.device is device
-            assert frame.packet == packet
-            assert frame.header == req_hdr
-            assert frame.command == req_cmd
-            assert frame.command.current_file_version == 0x11112222
+            rsp_hdr, rsp_cmd = await rsp_fut
+            assert rsp_hdr == req_hdr
+            assert rsp_cmd == req_cmd
+            assert rsp_cmd.current_file_version == 0x11112222
+
+    assert app._req_listeners[device] == orig_listeners
 
 
 async def test_request_callback_matching(app, make_initialized_device):
     device = make_initialized_device(app)
     device._packet_debouncer.filter = MagicMock(return_value=False)
     ota = device.endpoints[1].add_output_cluster(clusters.general.Ota.cluster_id)
+
+    orig_listeners = app._req_listeners[device].copy()
 
     req_hdr, req_cmd = ota._create_request(
         general=False,
@@ -1389,15 +1397,12 @@ async def test_request_callback_matching(app, make_initialized_device):
 
     mock_callback = mock.Mock()
 
-    with contextlib.ExitStack() as stack:
-        with pytest.warns(DeprecationWarning, match="callback_for_response"):
-            stack.enter_context(
-                app.callback_for_response(
-                    device,
-                    [ota.commands_by_name["query_next_image"].schema()],
-                    mock_callback,
-                )
-            )
+    assert app._req_listeners[device] == orig_listeners
+
+    with app.callback_for_response(
+        device, [ota.commands_by_name["query_next_image"].schema()], mock_callback
+    ):
+        assert app._req_listeners[device] != orig_listeners
 
         asyncio.get_running_loop().call_soon(app.packet_received, packet)
         asyncio.get_running_loop().call_soon(app.packet_received, packet)
@@ -1408,9 +1413,7 @@ async def test_request_callback_matching(app, make_initialized_device):
         assert len(mock_callback.mock_calls) == 3
         assert mock_callback.mock_calls == [mock.call(req_hdr, req_cmd)] * 3
 
-    # The listener is removed
-    app.packet_received(packet)
-    assert len(mock_callback.mock_calls) == 3
+    assert app._req_listeners[device] == orig_listeners
 
 
 async def test_energy_scan_default(app):
@@ -1794,6 +1797,61 @@ async def test_shutdown_device_remove_fails(app, ieee, caplog):
 
     assert "Failed to remove device" in caplog.text
     assert "Boom!" in caplog.text
+
+
+async def test_callback_wrapping(
+    app: zigpy.application.ControllerApplication, ieee, caplog
+) -> None:
+    """Test that exceptions are caught and logged for wrapped callbacks."""
+    dev = app.add_device(ieee, 0x1234)
+
+    def _callback():
+        raise ValueError("Boom!")
+
+    callback = app.wrap_callback(dev, _callback)
+    with caplog.at_level(logging.WARNING):
+        callback()
+
+    assert caplog.record_tuples == [
+        (
+            "zigpy.application",
+            logging.WARNING,
+            (
+                "Device <ZigbeeDevice model=None manuf=None nwk=0x1234 "
+                "ieee=07:06:05:04:03:02:01:00 is_initialized=False> "
+                "callback failed - ValueError('Boom!')"
+            ),
+        ),
+    ]
+
+
+async def test_callback_wrapping_async(
+    app: zigpy.application.ControllerApplication, ieee, caplog
+) -> None:
+    """Test that exceptions are caught and logged for wrapped async callbacks."""
+    dev = app.add_device(ieee, 0x1234)
+
+    async def _callback():
+        raise ValueError("Boom!")
+
+    callback = app.wrap_callback(dev, _callback)
+    with caplog.at_level(logging.WARNING):
+        callback()
+        tasks = app._tasks.copy()
+        for task in tasks:
+            await task
+
+    assert caplog.record_tuples == [
+        (
+            "zigpy.application",
+            logging.WARNING,
+            (
+                "Device <ZigbeeDevice model=None manuf=None nwk=0x1234 "
+                "ieee=07:06:05:04:03:02:01:00 is_initialized=False> "
+                "callback failed - ValueError('Boom!')"
+            ),
+        ),
+    ]
 
 
 async def test_device_reinterviewed_with_db(app):

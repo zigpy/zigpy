@@ -9,7 +9,6 @@ import contextlib
 from typing import TYPE_CHECKING
 
 import zigpy.datastructures
-from zigpy.listeners import ZCLFrame, zcl_command
 import zigpy.ota
 import zigpy.types as t
 from zigpy.zcl import ClusterType, foundation
@@ -78,19 +77,45 @@ class OTAManager:
         self.stack = contextlib.ExitStack()
 
     def __enter__(self) -> Self:
-        listeners = self.device._application.frame_listeners
-
-        for command, callback in [
-            (Ota.ServerCommandDefs.query_next_image, self._image_query_req),
-            (Ota.ServerCommandDefs.image_block, self._image_block_req),
-            (Ota.ServerCommandDefs.image_page, self._image_page_req),
-            (Ota.ServerCommandDefs.upgrade_end, self._upgrade_end),
-        ]:
-            self.stack.callback(
-                listeners.subscribe(
-                    zcl_command(command), callback, ieee=self.device.ieee
-                )
+        self.stack.enter_context(
+            self.device._application.callback_for_response(
+                src=self.device,
+                filters=[
+                    Ota.ServerCommandDefs.query_next_image.schema(),
+                ],
+                callback=self._image_query_req,
             )
+        )
+
+        self.stack.enter_context(
+            self.device._application.callback_for_response(
+                src=self.device,
+                filters=[
+                    Ota.ServerCommandDefs.image_block.schema(),
+                ],
+                callback=self._image_block_req,
+            )
+        )
+
+        self.stack.enter_context(
+            self.device._application.callback_for_response(
+                src=self.device,
+                filters=[
+                    Ota.ServerCommandDefs.image_page.schema(),
+                ],
+                callback=self._image_page_req,
+            )
+        )
+
+        self.stack.enter_context(
+            self.device._application.callback_for_response(
+                src=self.device,
+                filters=[
+                    Ota.ServerCommandDefs.upgrade_end.schema(),
+                ],
+                callback=self._upgrade_end,
+            )
+        )
 
         return self
 
@@ -108,10 +133,10 @@ class OTAManager:
         if not self._upgrade_end_future.done():
             self._upgrade_end_future.set_result(status)
 
-    async def _image_query_req(self, frame: ZCLFrame) -> None:
+    async def _image_query_req(
+        self, hdr: foundation.ZCLHeader, command: QueryNextImageCommand
+    ) -> None:
         """Handle image query request."""
-        hdr = frame.header
-        command: QueryNextImageCommand = frame.command
 
         # If we try to send a device an old image (e.g. cache issue), don't bother
         if not self.force and (
@@ -151,10 +176,10 @@ class OTAManager:
 
         self._finish(foundation.Status.MALFORMED_COMMAND)
 
-    async def _image_block_req(self, frame: ZCLFrame) -> None:
+    async def _image_block_req(
+        self, hdr: foundation.ZCLHeader, command: ImageBlockCommand
+    ) -> None:
         """Handle image block request."""
-        hdr = frame.header
-        command: ImageBlockCommand = frame.command
         default_image_block_size = _image_block_size_for_manufacturer(
             command.manufacturer_code, command.maximum_data_size
         )
@@ -197,10 +222,10 @@ class OTAManager:
         except Exception as ex:  # noqa: BLE001
             self.device.debug("OTA image_block handler exception", exc_info=ex)
 
-    async def _image_page_req(self, frame: ZCLFrame) -> None:
+    async def _image_page_req(
+        self, hdr: foundation.ZCLHeader, command: ImagePageCommand
+    ) -> None:
         """Handle image page request."""
-        hdr = frame.header
-        command: ImagePageCommand = frame.command
         offset = command.file_offset
         max_block_size = _image_block_size_for_manufacturer(
             command.manufacturer_code, command.maximum_data_size
@@ -263,10 +288,10 @@ class OTAManager:
             # Delay according to what the device asks
             await asyncio.sleep(command.response_spacing / 1000)
 
-    async def _upgrade_end(self, frame: ZCLFrame) -> None:
+    async def _upgrade_end(
+        self, hdr: foundation.ZCLHeader, command: foundation.CommandSchema
+    ) -> None:
         """Handle upgrade end request."""
-        hdr = frame.header
-        command = frame.command
         try:
             await self.ota_cluster.upgrade_end_response(
                 manufacturer_code=self.image.firmware.header.manufacturer_id,

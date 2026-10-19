@@ -7,6 +7,7 @@ import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import enum
+import itertools
 import logging
 import math
 import time
@@ -486,10 +487,6 @@ class GreenPowerDevice(BaseDevice):
             )
             command = None
 
-        self._application.frame_listeners.dispatch(
-            zigpy.listeners.GPFrame(device=self, packet=packet, command=command)
-        )
-
         self.emit(
             GreenPowerCommandReceived.event_type,
             GreenPowerCommandReceived(
@@ -540,6 +537,14 @@ class ZigbeeDevice(BaseDevice):
 
         # Retained for backwards compatibility, will be removed in a future release
         self.status = Status.NEW
+
+        self._on_remove_callbacks.append(
+            self._application.register_callback_listener(
+                src=self,
+                filters=[PollControl.ClientCommandDefs.checkin.schema()],
+                callback=self.poll_control_checkin_callback,
+            )
+        )
 
     @contextlib.asynccontextmanager
     async def _limit_concurrency(self, *, priority: int | None = None):
@@ -755,7 +760,9 @@ class ZigbeeDevice(BaseDevice):
         )
 
     async def poll_control_checkin_callback(
-        self, frame: zigpy.listeners.ZCLFrame
+        self,
+        zcl_hdr: foundation.ZCLHeader,
+        command: foundation.CommandSchema,
     ) -> None:
         """Handle Poll Control check-in callback."""
         poll_control = self.find_cluster(cluster_id=PollControl.cluster_id)
@@ -774,7 +781,7 @@ class ZigbeeDevice(BaseDevice):
                 await poll_control.checkin_response(
                     start_fast_polling=True,
                     fast_poll_timeout=int(DEFAULT_FAST_POLL_TIMEOUT * 4),
-                    tsn=frame.header.tsn,
+                    tsn=zcl_hdr.tsn,
                     expect_reply=False,
                     disable_default_response=True,
                 )
@@ -782,7 +789,7 @@ class ZigbeeDevice(BaseDevice):
                 await poll_control.checkin_response(
                     start_fast_polling=False,
                     fast_poll_timeout=0,
-                    tsn=frame.header.tsn,
+                    tsn=zcl_hdr.tsn,
                     expect_reply=False,
                     disable_default_response=True,
                 )
@@ -1322,18 +1329,15 @@ class ZigbeeDevice(BaseDevice):
             return
 
         # Pass the request off to a listener, if one is registered
-        frame: zigpy.listeners.ZCLFrame | zigpy.listeners.ZDOFrame
-
-        if zcl_cluster is not None:
-            frame = zigpy.listeners.ZCLFrame(
-                device=self, packet=packet, header=hdr, command=cmd
-            )
-        else:
-            frame = zigpy.listeners.ZDOFrame(
-                device=self, packet=packet, header=hdr, command=cmd
-            )
-
-        self._application.frame_listeners.dispatch(frame)
+        for listener in itertools.chain(
+            self._application._req_listeners[zigpy.listeners.ANY_DEVICE],
+            self._application._req_listeners[self],
+        ):
+            # Resolve only until the first future listener
+            if listener.resolve(hdr, cmd) and isinstance(
+                listener, zigpy.listeners.FutureListener
+            ):
+                break
 
         # Finally, pass it off to the cluster message handler. This will be removed.
         if zcl_cluster is not None:

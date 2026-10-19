@@ -7,7 +7,6 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from zigpy.device import GreenPowerDevice
-from zigpy.listeners import gp_command
 import zigpy.types as t
 from zigpy.zgp.commands import GPGenericSwitchConfiguration, GPStepPayload
 from zigpy.zgp.crypto import build_gpdf_header, encrypt_payload
@@ -27,9 +26,9 @@ IEEE = t.EUI64.convert("11:22:33:44:55:66:77:88")
 
 
 @pytest.fixture
-def device(app) -> GreenPowerDevice:
+def device() -> GreenPowerDevice:
     return GreenPowerDevice(
-        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+        None, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
     )
 
 
@@ -311,9 +310,9 @@ def test_unprotected_frame_cannot_reset_frame_counter(device, events) -> None:
     assert device.frame_counter == 5000
 
 
-def test_ieee_frame_endpoint_passthrough(app) -> None:
+def test_ieee_frame_endpoint_passthrough() -> None:
     """IEEE addressing delivers the frame's endpoint."""
-    device = GreenPowerDevice(app, application_id=ApplicationID.IEEE, ieee=IEEE)
+    device = GreenPowerDevice(None, application_id=ApplicationID.IEEE, ieee=IEEE)
 
     events = []
     device.on_event("gp_command_received", events.append)
@@ -375,21 +374,6 @@ def test_unprocessed_frame_decrypted(device, events) -> None:
     assert events[0].command_id == GPDCommandID.StepUp
     assert events[0].command == GPStepPayload(step_size=5, transition_time=10)
     assert device.frame_counter == 1000
-
-
-async def test_listeners_get_decrypted_frame(app, device) -> None:
-    """Listeners match on the decrypted command ID, not the ciphertext."""
-    commission_individual_key(device)
-
-    with app.frame_listeners.wait_for(
-        gp_command(GPDCommandID.StepUp), ieee=device.ieee
-    ) as future:
-        device.packet_received(encrypted_packet(1000))
-        frame = await future
-
-    assert frame.device is device
-    assert frame.packet.security_status is SecurityStatus.SecuritySuccess
-    assert frame.command == GPStepPayload(step_size=5, transition_time=10)
 
 
 @pytest.mark.parametrize(

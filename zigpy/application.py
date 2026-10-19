@@ -3,17 +3,19 @@ from __future__ import annotations
 import abc
 import asyncio
 from asyncio import timeout as asyncio_timeout
+import collections
 from collections.abc import AsyncGenerator, Callable, Coroutine
 import contextlib
 import contextvars
 from datetime import UTC, datetime
 import errno
+import inspect
 import logging
 import os
 import random
 import time
 import typing
-from typing import Any, ClassVar, TypeVar
+from typing import Any, ClassVar, ParamSpec, TypeVar
 import warnings
 
 import zigpy.appdb
@@ -52,6 +54,7 @@ TRANSIENT_CONNECTION_ERRORS = {
 
 ENERGY_SCAN_WARN_THRESHOLD = 0.75 * 255
 _R = TypeVar("_R")
+_P = ParamSpec("_P")
 
 DeviceResolver = Callable[[BaseDevice], BaseDevice]
 
@@ -100,23 +103,51 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self.topology: zigpy.topology.Topology = zigpy.topology.Topology(self)
         self.green_power: GreenPowerManager = GreenPowerManager(self)
 
-        self.frame_listeners: zigpy.listeners.FrameListeners = (
-            zigpy.listeners.FrameListeners(create_task=self.create_task)
-        )
+        self._req_listeners: collections.defaultdict[
+            BaseDevice | zigpy.listeners.AnyDeviceType,
+            collections.deque[zigpy.listeners.BaseRequestListener],
+        ] = collections.defaultdict(lambda: collections.deque([]))
 
-        # Handled by whichever device object received the check-in: a device being
-        # re-interviewed is replaced by a shadow with the same IEEE address
-        self.frame_listeners.subscribe(
-            zigpy.listeners.zcl_command(
-                zigpy.zcl.clusters.general.PollControl.ClientCommandDefs.checkin
-            ),
-            lambda frame: frame.device.poll_control_checkin_callback(frame),
-        )
+        # Add callback storage
+        self._packet_callbacks: collections.defaultdict[
+            t.AddrModeAddress | None, list[typing.Callable[[t.ZigbeePacket], None]]
+        ] = collections.defaultdict(list)
 
         # Context variable for request priority context manager
         self._packet_priority_var = contextvars.ContextVar(
             "request_priority", default=t.PacketPriority.NORMAL
         )
+
+    def wrap_callback(
+        self,
+        src: BaseDevice | zigpy.listeners.AnyDeviceType,
+        callback: typing.Callable[_P, Any],
+    ) -> typing.Callable[_P, None]:
+        """Wrap a callback to log exceptions and run as task if needed."""
+        if inspect.iscoroutinefunction(callback):
+
+            async def _async_callback(*args: _P.args, **kwargs: _P.kwargs) -> None:
+                try:
+                    await callback(*args, **kwargs)
+                except Exception as exc:  # noqa: BLE001
+                    LOGGER.warning(
+                        "Device %r callback failed - %r", src, exc, exc_info=True
+                    )
+
+            def _callback(*args: _P.args, **kwargs: _P.kwargs) -> None:
+                self.create_task(_async_callback(*args, **kwargs))
+
+        else:
+
+            def _callback(*args: _P.args, **kwargs: _P.kwargs) -> None:
+                try:
+                    callback(*args, **kwargs)
+                except Exception as exc:  # noqa: BLE001
+                    LOGGER.warning(
+                        "Device %r callback failed - %r", src, exc, exc_info=True
+                    )
+
+        return _callback
 
     def create_task(
         self, target: Coroutine[Any, Any, _R], name: str | None = None
@@ -1327,8 +1358,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         assert packet.src is not None
         assert packet.dst is not None
 
-        self.frame_listeners.dispatch(zigpy.listeners.RawFrame(packet=packet))
-
         # Tunneled GP notifications arrive with the GPD's alias (or the forwarding
         # proxy's own address) as the NWK source, so they must be diverted before
         # the source device is resolved
@@ -1536,86 +1565,124 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         filter: t.AddrModeAddress | None,
         callback: typing.Callable[[t.ZigbeePacket], None],
     ) -> typing.Callable[[], None]:
-        """Deprecated, use `frame_listeners.subscribe(RawFrame, ...)` instead."""
-        warnings.warn(
-            "`register_packet_callback` is deprecated, use"
-            " `frame_listeners.subscribe(RawFrame, ...)`",
-            DeprecationWarning,
-        )
+        """Register a callback that is called when a Zigbee packet is received.
 
-        return self.frame_listeners.subscribe(
-            zigpy.listeners.Matcher(
-                zigpy.listeners.RawFrame,
-                None if filter is None else (lambda frame: frame.packet.src == filter),
-            ),
-            lambda frame: callback(frame.packet),
-        )
+        Args:
+        ----
+            filter: Optional address filter. If None, callback receives all packets.
+            If provided, only packets from this source address trigger the callback.
+            callback: Function to call when a matching packet is received.
+
+        Returns:
+        -------
+            A callable that can be used to unregister the callback.
+
+        """
+        self._packet_callbacks[filter].append(callback)
+
+        def cancel_callback() -> None:
+            """Remove the callback."""
+            with contextlib.suppress(ValueError):
+                self._packet_callbacks[filter].remove(callback)
+
+        return cancel_callback
 
     def notify_packet_callbacks(self, packet: t.ZigbeePacket) -> None:
-        """Deprecated, use `frame_listeners.dispatch(RawFrame(...))` instead."""
-        warnings.warn(
-            "`notify_packet_callbacks` is deprecated, use"
-            " `frame_listeners.dispatch(RawFrame(...))`",
-            DeprecationWarning,
-        )
+        """Notify registered packet callbacks about a received Zigbee packet."""
 
-        self.frame_listeners.dispatch(zigpy.listeners.RawFrame(packet=packet))
+        # Notify global callbacks (registered with None filter)
+        for callback in self._packet_callbacks[None]:
+            try:
+                callback(packet)
+            except Exception:
+                LOGGER.exception("Error in global packet callback: %s", callback)
+
+        # Notify address-specific callbacks
+        for callback in self._packet_callbacks[packet.src]:
+            try:
+                callback(packet)
+            except Exception:
+                LOGGER.exception(
+                    "Error in packet callback for address %s: %s",
+                    packet.src,
+                    callback,
+                )
 
     def register_callback_listener(
         self,
         src: BaseDevice | zigpy.listeners.AnyDeviceType,
-        filters: list[zigpy.listeners.LegacyMatcherType],
-        callback: typing.Callable[[typing.Any, typing.Any], typing.Any],
+        filters: list[zigpy.listeners.MatcherType],
+        callback: typing.Callable[
+            [
+                zigpy.zcl.foundation.ZCLHeader,
+                zigpy.zcl.foundation.CommandSchema,
+            ],
+            typing.Any,
+        ],
     ) -> typing.Callable[[], None]:
-        """Deprecated, use `frame_listeners.subscribe` instead."""
-        warnings.warn(
-            "`register_callback_listener` is deprecated, use"
-            " `frame_listeners.subscribe`",
-            DeprecationWarning,
+        listener = zigpy.listeners.CallbackListener(
+            matchers=tuple(filters),
+            callback=self.wrap_callback(src, callback),
         )
 
-        return zigpy.listeners.legacy_subscribe(
-            self.frame_listeners, src, filters, callback
-        )
+        self._req_listeners[src].append(listener)
+
+        def cancel_callback() -> None:
+            """Remove the listener."""
+            listeners = self._req_listeners.get(src)
+            if listeners is None:
+                return
+
+            if listener in listeners:
+                listeners.remove(listener)
+
+            if not listeners:
+                self._req_listeners.pop(src, None)
+
+        return cancel_callback
 
     @contextlib.contextmanager
     def callback_for_response(
         self,
         src: BaseDevice | zigpy.listeners.AnyDeviceType,
-        filters: list[zigpy.listeners.LegacyMatcherType],
-        callback: typing.Callable[[typing.Any, typing.Any], typing.Any],
+        filters: list[zigpy.listeners.MatcherType],
+        callback: typing.Callable[
+            [
+                zigpy.zcl.foundation.ZCLHeader,
+                zigpy.zcl.foundation.CommandSchema,
+            ],
+            typing.Any,
+        ],
     ) -> typing.Any:
-        """Deprecated, use `frame_listeners.subscribe` instead."""
-        warnings.warn(
-            "`callback_for_response` is deprecated, use `frame_listeners.subscribe`",
-            DeprecationWarning,
-        )
-
-        remove = zigpy.listeners.legacy_subscribe(
-            self.frame_listeners, src, filters, callback
+        """Context manager to create a callback that is passed Zigbee responses."""
+        cancel = self.register_callback_listener(
+            src=src, filters=filters, callback=callback
         )
 
         try:
             yield
         finally:
-            remove()
+            cancel()
 
     @contextlib.contextmanager
     def wait_for_response(
         self,
         src: BaseDevice | zigpy.listeners.AnyDeviceType,
-        filters: list[zigpy.listeners.LegacyMatcherType],
+        filters: list[zigpy.listeners.MatcherType],
     ) -> typing.Any:
-        """Deprecated, use `frame_listeners.wait_for` instead."""
-        warnings.warn(
-            "`wait_for_response` is deprecated, use `frame_listeners.wait_for`",
-            DeprecationWarning,
+        """Context manager to wait for a Zigbee response."""
+
+        listener = zigpy.listeners.FutureListener(
+            matchers=tuple(filters),
+            future=asyncio.get_running_loop().create_future(),
         )
 
-        with zigpy.listeners.legacy_wait_for(
-            self.frame_listeners, src, filters
-        ) as future:
-            yield future
+        self._req_listeners[src].append(listener)
+
+        try:
+            yield listener.future
+        finally:
+            self._req_listeners[src].remove(listener)
 
     @abc.abstractmethod
     async def permit_ncp(self, time_s: int = 60) -> None:

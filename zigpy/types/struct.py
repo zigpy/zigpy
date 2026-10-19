@@ -467,6 +467,25 @@ class Struct:
         else:
             return True
 
+    def matches(self, other: Struct) -> bool:
+        if not isinstance(self, type(other)) and not isinstance(other, type(self)):
+            return False
+
+        for field in self.fields:
+            actual = getattr(self, field.name)
+            expected = getattr(other, field.name)
+
+            if expected is None:
+                continue
+
+            if isinstance(expected, Struct):
+                if not actual.matches(expected):
+                    return False
+            elif actual != expected:
+                return False
+
+        return True
+
     def __setattr__(self, name: str, value: typing.Any) -> None:
         if self._frozen:
             raise AttributeError("Frozen structs are immutable, use `replace` instead")
