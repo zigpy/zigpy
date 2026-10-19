@@ -115,12 +115,14 @@ class GreenPowerManager:
 
     def __init__(self, application: ControllerApplication) -> None:
         self._application = application
+        # A `time.monotonic()` deadline, unaffected by wall clock adjustments
         self._commissioning_window_end: float = 0
         self._tasks: set[asyncio.Task[Any]] = set()
         # Commissioning GPDFs come from GPDs that are not registered yet, so
         # `GreenPowerDevice` cannot filter their duplicates (spec A.3.6.1.2)
         self._dedup_debouncer: Debouncer = Debouncer()
-        # GPDs in bidirectional commissioning, until their Success GPDF arrives
+        # GPDs in bidirectional commissioning, until their Success GPDF arrives. They
+        # outlive a lapse of the window, which a client may keep re-requesting.
         self._pending_devices: dict[t.EUI64, GreenPowerDevice] = {}
 
     def _create_task(self, coro: Any, name: str) -> None:
@@ -167,20 +169,13 @@ class GreenPowerManager:
         # Proxies leave commissioning mode on their own once the window expires
         # (A.3.6.3.2), so only an explicit close needs telling them
         await self._send_proxy_commissioning_mode(window=time_s)
-
-        # A new window does not resume commissioning from an expired one
-        if not self.is_commissioning:
-            self._pending_devices.clear()
-
         self._commissioning_window_end = time.monotonic() + time_s
 
     def get_pending_device(self, ieee: t.EUI64) -> GreenPowerDevice | None:
         """Return the GPD in bidirectional commissioning, while the window is open."""
-        # Commissioning fails for a GPD whose Success GPDF did not arrive in time
-        if not self.is_commissioning:
-            self._pending_devices.clear()
-
-        if ieee not in self._pending_devices:
+        # Its Success GPDF is only accepted in commissioning mode (A.3.9.1 step 18.a),
+        # and outside of it the GPD's GPDFs go to its registered device, if any
+        if not self.is_commissioning or ieee not in self._pending_devices:
             return None
 
         return self._pending_devices[ieee]

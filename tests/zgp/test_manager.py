@@ -528,29 +528,53 @@ async def close_window(manager, frozen) -> None:
     await manager.permit_join(time_s=0)
 
 
+async def close_and_reopen_window(manager, frozen) -> None:
+    await manager.permit_join(time_s=0)
+    await manager.permit_join(time_s=60)
+
+
 async def expire_window(manager, frozen) -> None:
     frozen.tick(61)
 
 
-@pytest.mark.parametrize("end_window", [close_window, expire_window])
-async def test_bidirectional_commissioning_window_ends(app, manager, end_window):
-    """Commissioning fails if the window ends before the Success GPDF arrives."""
+async def expire_and_reopen_window(manager, frozen) -> None:
+    frozen.tick(61)
+    await manager.permit_join(time_s=60)
+
+
+async def extend_window(manager, frozen) -> None:
+    frozen.tick(30)
+    await manager.permit_join(time_s=60)
+    frozen.tick(45)
+
+
+@pytest.mark.parametrize(
+    ("change_window", "commissioned"),
+    [
+        (close_window, False),
+        # An explicit close ends commissioning in progress
+        (close_and_reopen_window, False),
+        # The Success GPDF is only accepted in commissioning mode (A.3.9.1 step 18.a)
+        (expire_window, False),
+        # A client may keep re-requesting the window, with lapses in between
+        (expire_and_reopen_window, True),
+        (extend_window, True),
+    ],
+)
+async def test_bidirectional_commissioning_window_changes(
+    app, manager, change_window, commissioned
+):
+    """Commissioning in progress follows the window until its Success GPDF."""
     with freezegun.freeze_time() as frozen:
         await manager.permit_join(time_s=60)
         await commission(app, 0x11223344, ENCRYPTED_COMMISSIONING, rx_after_tx=True)
 
-        await end_window(manager, frozen)
-
-        # A reopened window does not resume the failed commissioning
-        await manager.permit_join(time_s=60)
-        app.send_packet.reset_mock()
+        await change_window(manager, frozen)
 
         app.gp_packet_received(encrypted_success_packet(0x11223344, 8))
         await wait_for_gp_processing()
 
-    assert synthetic_ieee(0x11223344) not in app.devices
-    assert len(app.device_initialized.mock_calls) == 0
-    assert len(app.send_packet.mock_calls) == 0
+    assert (synthetic_ieee(0x11223344) in app.devices) is commissioned
 
 
 async def test_bidirectional_recommissioning(app, manager):
