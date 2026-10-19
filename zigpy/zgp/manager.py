@@ -546,6 +546,11 @@ class GreenPowerManager(CreateTaskMixin):
         if packet.gpp_short_addr is not None:
             temp_master = packet.gpp_short_addr
         else:
+            # TODO: nothing makes the coordinator's own radio transmit the GPDF, so a
+            # GPD heard only by the coordinator never receives it. EZSP could queue it
+            # with `dGpSend`, which sends on the operational channel only: a Channel
+            # Configuration on another channel also needs `startScan` with the GP
+            # channel delivery scan type (3). deCONZ cannot transmit GPDFs at all.
             temp_master = self._application.state.node_info.nwk
 
         await self._broadcast_command(
