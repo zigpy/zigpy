@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 import logging
-import struct
 from unittest.mock import call
 
 import freezegun
@@ -15,8 +14,11 @@ from tests.async_mock import AsyncMock
 from tests.zgp.conftest import (
     COMMISSIONING_NOTIFICATION_ID,
     KEY,
+    commission,
+    commissioning_payload,
     encrypted_gp_packet,
     make_commissioning_options,
+    make_gp_packet,
     make_tunnel_packet,
     sent_command,
     wait_for_gp_processing,
@@ -34,8 +36,10 @@ from zigpy.zcl.clusters.greenpower import (
 import zigpy.zdo.types as zdo_types
 from zigpy.zgp.commands import (
     GPChannelConfigurationPayload,
+    GPChannelRequestPayload,
     GPCommissioningReplyPayload,
     GPGenericSwitchConfiguration,
+    GPSwitchInformation,
 )
 from zigpy.zgp.crypto import build_gpdf_header, encrypt_payload, encrypt_security_key
 from zigpy.zgp.manager import derived_group
@@ -57,32 +61,16 @@ from zigpy.zgp.types import (
 )
 from zigpy.zgp.util import derive_alias, synthetic_ieee
 
-ENCRYPTED_KEY, KEY_MIC = encrypt_security_key(0x11223344, KEY)
+ENCRYPTED_KEY, _mic = encrypt_security_key(0x11223344, KEY)
+KEY_MIC = int.from_bytes(_mic, "little")
 
-# Extended options 0xB3: Encrypted, IndividualKey, key in the clear, outgoing counter 7
-ENCRYPTED_COMMISSIONING = b"\x02\x80\xb3" + KEY + struct.pack("<I", 7)
-
-
-def make_gp_packet(
-    src_id: int,
-    command_id: GPDCommandID,
-    payload: bytes = b"",
-    frame_counter: int = 1,
-    gpp_short_addr: int | None = None,
-    rx_after_tx: bool | None = None,
-) -> t.ZigbeeGpPacket:
-    return t.ZigbeeGpPacket(
-        application_id=ApplicationID.SrcID,
-        src_id=SrcID(src_id),
-        command_id=command_id,
-        payload=t.SerializableBytes(payload),
-        frame_counter=t.uint32_t(frame_counter),
-        security_level=SecurityLevel.NoSecurity,
-        security_key_type=SecurityKeyType.NoKey,
-        security_status=SecurityStatus.NoSecurity,
-        gpp_short_addr=None if gpp_short_addr is None else t.NWK(gpp_short_addr),
-        rx_after_tx=rx_after_tx,
-    )
+ENCRYPTED_COMMISSIONING = commissioning_payload(
+    security_level=SecurityLevel.Encrypted,
+    key_type=SecurityKeyType.IndividualKey,
+    key=KEY,
+    outgoing_counter=7,
+)
+UNPROTECTED_COMMISSIONING = commissioning_payload()
 
 
 def encrypted_success_packet(
@@ -91,13 +79,6 @@ def encrypted_success_packet(
     return encrypted_gp_packet(
         src_id, frame_counter, bytes([GPDCommandID.SuccessReport]), key
     )
-
-
-async def commission(app, src_id: int, payload: bytes, **kwargs) -> None:
-    app.gp_packet_received(
-        make_gp_packet(src_id, GPDCommandID.CommissioningRequest, payload, **kwargs)
-    )
-    await wait_for_gp_processing()
 
 
 async def test_permit_join_window(app, manager):
@@ -131,7 +112,7 @@ async def test_permit_join_send_failure(app, manager):
 
 
 async def test_commissioning_window_closed(app, manager):
-    await commission(app, 0x11223344, b"\x02\x00")
+    await commission(app, 0x11223344, UNPROTECTED_COMMISSIONING)
 
     assert synthetic_ieee(0x11223344) not in app.devices
     assert len(app.device_initialized.mock_calls) == 0
@@ -143,7 +124,7 @@ async def test_commissioning_window_closed(app, manager):
         # Minimal: DeviceID only. An unprotected GPD has no security frame counter, the
         # GPDF's MAC sequence number is used instead
         (
-            b"\x02\x00",
+            UNPROTECTED_COMMISSIONING,
             5,
             {
                 "device_id": DeviceID.OnOffSwitch,
@@ -153,9 +134,11 @@ async def test_commissioning_window_closed(app, manager):
                 "frame_counter": 5,
             },
         ),
-        # Extended options 0xA3: Encrypted, NoKey, key in the clear, outgoing counter
+        # Key in the clear
         (
-            b"\x02\x80\xa3" + KEY + struct.pack("<I", 7),
+            commissioning_payload(
+                security_level=SecurityLevel.Encrypted, key=KEY, outgoing_counter=7
+            ),
             1,
             {
                 "security_level": SecurityLevel.Encrypted,
@@ -164,23 +147,35 @@ async def test_commissioning_window_closed(app, manager):
                 "frame_counter": 7,
             },
         ),
-        # Extended options 0xE3: as above, but the key is protected with the TC-LK
+        # Key protected with the TC-LK
         (
-            b"\x02\x80\xe3" + ENCRYPTED_KEY + KEY_MIC + struct.pack("<I", 7),
+            commissioning_payload(
+                security_level=SecurityLevel.Encrypted,
+                key=ENCRYPTED_KEY,
+                key_mic=KEY_MIC,
+                outgoing_counter=7,
+            ),
             1,
             {"security_key": t.KeyData(KEY), "frame_counter": 7},
         ),
-        # An outgoing counter of 0 is a valid counter, not an absent one (extended
-        # options 0xA2: FullFrameCounterAndMIC, key in the clear, outgoing counter)
+        # An outgoing counter of 0 is a valid counter, not an absent one
         (
-            b"\x02\x80\xa2" + KEY + struct.pack("<I", 0),
+            commissioning_payload(
+                security_level=SecurityLevel.FullFrameCounterAndMIC,
+                key=KEY,
+                outgoing_counter=0,
+            ),
             999,
             {"frame_counter": 0},
         ),
-        # Extended options 0xB0: NoSecurity, IndividualKey, key in the clear, outgoing
-        # counter. The security fields of an unprotected GPD are ignored (A.4.2.1.1.3)
+        # The security fields of an unprotected GPD are ignored (A.4.2.1.1.3)
         (
-            b"\x02\x80\xb0" + KEY + struct.pack("<I", 7),
+            commissioning_payload(
+                security_level=SecurityLevel.NoSecurity,
+                key_type=SecurityKeyType.IndividualKey,
+                key=KEY,
+                outgoing_counter=7,
+            ),
             5,
             {
                 "security_level": SecurityLevel.NoSecurity,
@@ -189,10 +184,17 @@ async def test_commissioning_window_closed(app, manager):
                 "frame_counter": 5,
             },
         ),
-        # Options 0x04: app info present; app info 0x10: switch information present.
-        # Switch information: length 2, 2 contacts as a button, no contacts closed
+        # Switch information: 2 contacts as a button, no contacts closed
         (
-            b"\x07\x04\x10\x02\x12\x00",
+            commissioning_payload(
+                DeviceID.GenericSwitch,
+                switch_information=GPSwitchInformation(
+                    configuration=GPGenericSwitchConfiguration(
+                        num_contacts=2, switch_type=SwitchType.Button, _reserved=0
+                    ),
+                    contact_status=t.bitmap8(0),
+                ),
+            ),
             1,
             {
                 "device_id": DeviceID.GenericSwitch,
@@ -201,9 +203,12 @@ async def test_commissioning_window_closed(app, manager):
                 ),
             },
         ),
-        # Options 0xC2: RxOn capable, fixed location
         (
-            b"\x02\xc2\x00",
+            commissioning_payload(
+                security_level=SecurityLevel.NoSecurity,
+                rx_on_capability=1,
+                fixed_location=1,
+            ),
             1,
             {"rx_on_capability": True, "fixed_location": True},
         ),
@@ -224,22 +229,65 @@ async def test_commissioning(app, manager, payload, frame_counter, expected):
     ("src_id", "payload"),
     [
         # SrcID 0x00000000 is unspecified (A.1.4.1.4)
-        (0x00000000, b"\x02\x00"),
-        # Truncated payload
+        (0x00000000, UNPROTECTED_COMMISSIONING),
+        # Truncated payload: a DeviceID without Options
         (0x11223344, b"\xff"),
         # The reserved security level 0b01 has no defined processing (A.1.4.1.3)
-        (0x11223344, b"\x02\x80\x01"),
+        (0x11223344, commissioning_payload(security_level=SecurityLevel.Reserved)),
         # A protected GPD must announce its frame counter (A.3.9.2.1.2)
-        (0x11223344, b"\x02\x80\x32" + KEY),
-        (0x11223344, b"\x02\x80\x33" + KEY),
+        (
+            0x11223344,
+            commissioning_payload(
+                security_level=SecurityLevel.FullFrameCounterAndMIC,
+                key_type=SecurityKeyType.IndividualKey,
+                key=KEY,
+            ),
+        ),
+        (
+            0x11223344,
+            commissioning_payload(
+                security_level=SecurityLevel.Encrypted,
+                key_type=SecurityKeyType.IndividualKey,
+                key=KEY,
+            ),
+        ),
         # The key MIC does not verify
-        (0x11223344, b"\x02\x80\xe3" + KEY + b"\xad\xde\xad\xde" + b"\x07\x00\x00\x00"),
-        # A protected GPD without a key (A.3.9.1 step 13.g). Extended options 0x93 and
-        # 0x92: Encrypted or FullFrameCounterAndMIC, IndividualKey, outgoing counter
-        (0x11223344, b"\x02\x80\x93" + struct.pack("<I", 7)),
-        (0x11223344, b"\x02\x80\x92" + struct.pack("<I", 7)),
-        # Options 0xA0: requesting a key does not help, this sink provisions none
-        (0x11223344, b"\x02\xa0\x93" + struct.pack("<I", 7)),
+        (
+            0x11223344,
+            commissioning_payload(
+                security_level=SecurityLevel.Encrypted,
+                key=ENCRYPTED_KEY,
+                key_mic=0xDEADDEAD,
+                outgoing_counter=7,
+            ),
+        ),
+        # A protected GPD without a key (A.3.9.1 step 13.g)
+        (
+            0x11223344,
+            commissioning_payload(
+                security_level=SecurityLevel.Encrypted,
+                key_type=SecurityKeyType.IndividualKey,
+                outgoing_counter=7,
+            ),
+        ),
+        (
+            0x11223344,
+            commissioning_payload(
+                security_level=SecurityLevel.FullFrameCounterAndMIC,
+                key_type=SecurityKeyType.IndividualKey,
+                outgoing_counter=7,
+            ),
+        ),
+        # Requesting a key does not help, this sink provisions none
+        (
+            0x11223344,
+            commissioning_payload(
+                security_level=SecurityLevel.Encrypted,
+                key_type=SecurityKeyType.IndividualKey,
+                outgoing_counter=7,
+                security_key_request=1,
+            ),
+        ),
     ],
 )
 async def test_commissioning_rejected(app, manager, src_id, payload):
@@ -260,7 +308,7 @@ async def test_commissioning_registers_and_pairs(app, manager):
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
 
-    await commission(app, 0xAABBCCDD, b"\x02\x00")
+    await commission(app, 0xAABBCCDD, UNPROTECTED_COMMISSIONING)
 
     dev = app.devices[synthetic_ieee(0xAABBCCDD)]
     assert call("device_joined", dev) in app.listener_event.mock_calls
@@ -285,8 +333,15 @@ async def test_commissioning_registers_and_pairs(app, manager):
     assert annce.alias_src == group
     assert annce.alias_seq == 0
     assert annce.tsn == 0
-    assert annce.data.serialize() == (
-        b"\x00" + group.serialize() + b"\xff" * 8 + bytes([0x40])
+
+    # The ZDO TSN, then an invalid IEEE address and the security capability
+    tsn, data = t.uint8_t.deserialize(annce.data.serialize())
+    assert tsn == 0
+    assert t.deserialize(
+        data, zdo_types.CLUSTERS[zdo_types.ZDOCmd.Device_annce][1]
+    ) == (
+        [group, t.EUI64.UNKNOWN, zdo_types.MACCapabilityFlags.SecurityCapable],
+        b"",
     )
 
     pairing = sent_command(packet, PairingSchema)
@@ -306,7 +361,7 @@ async def test_commissioning_records_link(app, manager):
     await manager.permit_join(time_s=60)
 
     packet = make_gp_packet(
-        0x11223344, GPDCommandID.CommissioningRequest, b"\x02\x00"
+        0x11223344, GPDCommandID.CommissioningRequest, UNPROTECTED_COMMISSIONING
     ).replace(
         timestamp=datetime(2026, 10, 14, 12, 0, 0, tzinfo=UTC),
         lqi=t.uint8_t(170),
@@ -325,10 +380,10 @@ async def test_commissioning_records_link(app, manager):
 async def test_device_annce_only_on_first_commissioning(app, manager):
     """A re-commissioned GPD already occupies its alias (A.3.9.1 19.e)."""
     await manager.permit_join(time_s=60)
-    await commission(app, 0xAABBCCDD, b"\x02\x00")
+    await commission(app, 0xAABBCCDD, UNPROTECTED_COMMISSIONING)
     app.send_packet.reset_mock()
 
-    await commission(app, 0xAABBCCDD, b"\x02\x00", frame_counter=2)
+    await commission(app, 0xAABBCCDD, UNPROTECTED_COMMISSIONING, frame_counter=2)
 
     [packet] = [c.args[0] for c in app.send_packet.mock_calls]
     assert packet.alias_src is None
@@ -348,7 +403,7 @@ async def test_device_annce_unsupported(app, manager, caplog):
     app.send_packet.reset_mock()
 
     with caplog.at_level(logging.DEBUG):
-        await commission(app, 0xAABBCCDD, b"\x02\x00")
+        await commission(app, 0xAABBCCDD, UNPROTECTED_COMMISSIONING)
 
     assert synthetic_ieee(0xAABBCCDD) in app.devices
     assert "announcing 0xCCDD as ourselves" in caplog.text
@@ -368,12 +423,14 @@ async def test_recommissioning_replaces_device(app, manager):
     """Re-commissioning swaps the device object, announced like a re-interview."""
     await manager.permit_join(time_s=60)
 
-    await commission(app, 0x12345678, b"\x02\x00")
+    await commission(app, 0x12345678, UNPROTECTED_COMMISSIONING)
 
     old_device = app.devices[synthetic_ieee(0x12345678)]
     old_task = old_device.create_task(asyncio.Event().wait())
 
-    await commission(app, 0x12345678, b"\x07\x00", frame_counter=2)
+    await commission(
+        app, 0x12345678, commissioning_payload(DeviceID.GenericSwitch), frame_counter=2
+    )
 
     new_device = app.devices[synthetic_ieee(0x12345678)]
     assert new_device is not old_device
@@ -389,31 +446,38 @@ async def test_recommissioning_replaces_device(app, manager):
 
 
 @pytest.mark.parametrize(
-    ("payload", "outgoing_counter", "frame_counter"),
+    ("security_level", "key", "outgoing_counter", "frame_counter"),
     [
         # A replayed Commissioning GPDF with an older counter keeps the newer one
-        (b"\x02\x80\xa3" + KEY, 50, 100),
-        (b"\x02\x80\xa3" + KEY, 200, 200),
-        # Extended options 0xA2: FullFrameCounterAndMIC
-        (b"\x02\x80\xa2" + KEY, 50, 100),
+        (SecurityLevel.Encrypted, KEY, 50, 100),
+        (SecurityLevel.Encrypted, KEY, 200, 200),
+        (SecurityLevel.FullFrameCounterAndMIC, KEY, 50, 100),
         # Another key is another GPD security context
-        (b"\x02\x80\xa3" + bytes(range(16, 32)), 50, 50),
+        (SecurityLevel.Encrypted, bytes(range(16, 32)), 50, 50),
         # An unprotected GPD has no security frame counter, its outgoing counter is
-        # ignored and the GPDF's MAC sequence number is kept (extended options 0x80)
-        (b"\x02\x80\x80", 50, 2),
+        # ignored and the GPDF's MAC sequence number is kept
+        (SecurityLevel.NoSecurity, None, 50, 2),
     ],
 )
 async def test_recommissioning_keeps_frame_counter(
-    app, manager, payload, outgoing_counter, frame_counter
+    app, manager, security_level, key, outgoing_counter, frame_counter
 ):
     """Re-commissioning cannot lower the replay baseline of a protected GPD."""
     await manager.permit_join(time_s=60)
 
-    await commission(app, 0x11223344, b"\x02\x80\xa3" + KEY + struct.pack("<I", 100))
     await commission(
         app,
         0x11223344,
-        payload + struct.pack("<I", outgoing_counter),
+        commissioning_payload(
+            security_level=SecurityLevel.Encrypted, key=KEY, outgoing_counter=100
+        ),
+    )
+    await commission(
+        app,
+        0x11223344,
+        commissioning_payload(
+            security_level=security_level, key=key, outgoing_counter=outgoing_counter
+        ),
         frame_counter=2,
     )
 
@@ -423,10 +487,10 @@ async def test_recommissioning_keeps_frame_counter(
 @pytest.mark.parametrize(
     ("payload", "gpp_short_addr", "temp_master", "security_level", "security_key_type"),
     [
-        # Tunneled by a proxy. Options 0x00: RxAfterTx without RxOnCapability still
-        # gets a reply (A.3.9.1 13.j)
+        # Tunneled by a proxy. RxAfterTx without RxOnCapability still gets a reply
+        # (A.3.9.1 13.j)
         (
-            b"\x02\x00",
+            UNPROTECTED_COMMISSIONING,
             0x5678,
             0x5678,
             SecurityLevel.NoSecurity,
@@ -434,39 +498,50 @@ async def test_recommissioning_keeps_frame_counter(
         ),
         # Received directly by the coordinator
         (
-            b"\x02\x00",
+            UNPROTECTED_COMMISSIONING,
             None,
             0x0000,
             SecurityLevel.NoSecurity,
             SecurityKeyType.NoKey,
         ),
-        # Options 0x82: RxOnCapability, extended options 0x00
         (
-            b"\x02\x82\x00",
+            commissioning_payload(
+                security_level=SecurityLevel.NoSecurity, rx_on_capability=1
+            ),
             0x5678,
             0x5678,
             SecurityLevel.NoSecurity,
             SecurityKeyType.NoKey,
         ),
-        # Extended options 0xA3: Encrypted, NoKey, key in the clear, outgoing counter
         (
-            b"\x02\x80\xa3" + KEY + struct.pack("<I", 7),
+            commissioning_payload(
+                security_level=SecurityLevel.Encrypted, key=KEY, outgoing_counter=7
+            ),
             0x5678,
             0x5678,
             SecurityLevel.Encrypted,
             SecurityKeyType.NoKey,
         ),
-        # Extended options 0xA2: FullFrameCounterAndMIC, NoKey
         (
-            b"\x02\x80\xa2" + KEY + struct.pack("<I", 7),
+            commissioning_payload(
+                security_level=SecurityLevel.FullFrameCounterAndMIC,
+                key=KEY,
+                outgoing_counter=7,
+            ),
             0x5678,
             0x5678,
             SecurityLevel.FullFrameCounterAndMIC,
             SecurityKeyType.NoKey,
         ),
-        # Extended options 0xF3: Encrypted, IndividualKey, key protected with the TC-LK
+        # Key protected with the TC-LK
         (
-            b"\x02\x80\xf3" + ENCRYPTED_KEY + KEY_MIC + struct.pack("<I", 7),
+            commissioning_payload(
+                security_level=SecurityLevel.Encrypted,
+                key_type=SecurityKeyType.IndividualKey,
+                key=ENCRYPTED_KEY,
+                key_mic=KEY_MIC,
+                outgoing_counter=7,
+            ),
             0x5678,
             0x5678,
             SecurityLevel.Encrypted,
@@ -512,9 +587,9 @@ async def test_commissioning_reply(
     ("payload", "success", "repeated_success"),
     [
         (
-            b"\x02\x00",
-            make_gp_packet(0x11223344, GPDCommandID.SuccessReport, b"\xff", 2),
-            make_gp_packet(0x11223344, GPDCommandID.SuccessReport, b"\xff", 3),
+            UNPROTECTED_COMMISSIONING,
+            make_gp_packet(0x11223344, GPDCommandID.SuccessReport, frame_counter=2),
+            make_gp_packet(0x11223344, GPDCommandID.SuccessReport, frame_counter=3),
         ),
         (
             ENCRYPTED_COMMISSIONING,
@@ -573,7 +648,7 @@ async def test_bidirectional_commissioning(
         # Not fresher than the outgoing counter of the Commissioning GPDF (A.3.9.2)
         encrypted_success_packet(0x11223344, 7),
         # Not protected as agreed
-        make_gp_packet(0x11223344, GPDCommandID.SuccessReport, b"\xff", 8),
+        make_gp_packet(0x11223344, GPDCommandID.SuccessReport, frame_counter=8),
     ],
 )
 async def test_bidirectional_commissioning_success_rejected(app, manager, success):
@@ -646,9 +721,13 @@ def tunneled_success_packet(
     ("payload", "security_level"),
     [
         (ENCRYPTED_COMMISSIONING, SecurityLevel.Encrypted),
-        # Extended options 0xB2: FullFrameCounterAndMIC
         (
-            b"\x02\x80\xb2" + KEY + struct.pack("<I", 7),
+            commissioning_payload(
+                security_level=SecurityLevel.FullFrameCounterAndMIC,
+                key_type=SecurityKeyType.IndividualKey,
+                key=KEY,
+                outgoing_counter=7,
+            ),
             SecurityLevel.FullFrameCounterAndMIC,
         ),
     ],
@@ -756,7 +835,7 @@ async def test_bidirectional_commissioning_window_changes(
 async def test_bidirectional_recommissioning(app, manager):
     """A re-commissioned GPD keeps its registration until its Success GPDF arrives."""
     await manager.permit_join(time_s=60)
-    await commission(app, 0x11223344, b"\x02\x00")
+    await commission(app, 0x11223344, UNPROTECTED_COMMISSIONING)
     old_device = app.devices[synthetic_ieee(0x11223344)]
 
     await commission(
@@ -797,7 +876,9 @@ async def test_duplicate_commissioning_dropped(app, manager):
     """The same commissioning GPDF forwarded by two proxies is processed once."""
     await manager.permit_join(time_s=60)
 
-    packet = make_gp_packet(0xEEEE5555, GPDCommandID.CommissioningRequest, b"\x02\x00")
+    packet = make_gp_packet(
+        0xEEEE5555, GPDCommandID.CommissioningRequest, UNPROTECTED_COMMISSIONING
+    )
 
     app.gp_packet_received(packet)
     await wait_for_gp_processing()
@@ -818,7 +899,7 @@ async def test_ieee_addressing_ignored(app, manager):
             ieee=t.EUI64.convert("11:22:33:44:55:66:77:88"),
             endpoint=t.uint8_t(1),
             command_id=GPDCommandID.CommissioningRequest,
-            payload=t.SerializableBytes(b"\x02\x00"),
+            payload=t.SerializableBytes(UNPROTECTED_COMMISSIONING),
             frame_counter=t.uint32_t(1),
         )
     )
@@ -843,12 +924,13 @@ async def test_channel_request(
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
 
-    # Channel Request: next channel, then second next channel 26
     app.gp_packet_received(
         make_gp_packet(
             0x12345678,
             GPDCommandID.ChannelRequest,
-            bytes([(next_channel - 11) | (15 << 4)]),
+            GPChannelRequestPayload(
+                next_channel=next_channel - 11, second_next_channel=26 - 11
+            ).serialize(),
             gpp_short_addr=gpp_short_addr,
         )
     )
@@ -871,7 +953,11 @@ async def test_channel_request(
 async def test_channel_request_window_closed(app, manager):
     """A Channel Request outside of commissioning mode is dropped (A.3.9.1 7.a)."""
     app.gp_packet_received(
-        make_gp_packet(0x12345678, GPDCommandID.ChannelRequest, b"\x00")
+        make_gp_packet(
+            0x12345678,
+            GPDCommandID.ChannelRequest,
+            GPChannelRequestPayload(next_channel=0, second_next_channel=0).serialize(),
+        )
     )
     await wait_for_gp_processing()
 
@@ -1029,7 +1115,9 @@ async def test_shutdown(app, manager):
     await manager.permit_join(time_s=60)
 
     app.gp_packet_received(
-        make_gp_packet(0x11223344, GPDCommandID.CommissioningRequest, b"\x02\x00")
+        make_gp_packet(
+            0x11223344, GPDCommandID.CommissioningRequest, UNPROTECTED_COMMISSIONING
+        )
     )
     await manager.shutdown()
 
@@ -1097,7 +1185,11 @@ async def request_channel(app, manager) -> None:
     app.send_packet.reset_mock()
 
     app.gp_packet_received(
-        make_gp_packet(0x12345678, GPDCommandID.ChannelRequest, b"\x00")
+        make_gp_packet(
+            0x12345678,
+            GPDCommandID.ChannelRequest,
+            GPChannelRequestPayload(next_channel=0, second_next_channel=0).serialize(),
+        )
     )
     await wait_for_gp_processing()
 

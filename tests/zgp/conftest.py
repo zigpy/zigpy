@@ -16,11 +16,20 @@ from zigpy.zcl.clusters.greenpower import (
     GreenPowerProxy,
     NotificationOptions,
 )
+from zigpy.zgp.commands import (
+    GPCommissioningAppInfo,
+    GPCommissioningExtendedOptions,
+    GPCommissioningOptions,
+    GPCommissioningPayload,
+    GPStepPayload,
+    GPSwitchInformation,
+)
 from zigpy.zgp.crypto import build_gpdf_header, encrypt_payload
 from zigpy.zgp.manager import GreenPowerManager
 from zigpy.zgp.types import (
     GP_ENDPOINT,
     ApplicationID,
+    DeviceID,
     GPDCommandID,
     SecurityKeyType,
     SecurityLevel,
@@ -30,6 +39,7 @@ from zigpy.zgp.types import (
 
 TIMESTAMP = datetime(2026, 8, 10, 12, 0, 0, tzinfo=UTC)
 KEY = bytes(range(16))
+STEP_UP = GPStepPayload(step_size=5, transition_time=10)
 
 NOTIFICATION_ID = GreenPowerProxy.ServerCommandDefs.notification.id
 COMMISSIONING_NOTIFICATION_ID = (
@@ -161,3 +171,96 @@ def commission_individual_key(device: GreenPowerDevice) -> None:
     device.security_key = t.KeyData(KEY)
     device.security_level = SecurityLevel.Encrypted
     device.security_key_type = SecurityKeyType.IndividualKey
+
+
+def make_gp_packet(
+    src_id: int,
+    command_id: GPDCommandID,
+    payload: bytes = b"",
+    frame_counter: int = 1,
+    gpp_short_addr: int | None = None,
+    rx_after_tx: bool | None = None,
+) -> t.ZigbeeGpPacket:
+    return t.ZigbeeGpPacket(
+        application_id=ApplicationID.SrcID,
+        src_id=SrcID(src_id),
+        command_id=command_id,
+        payload=t.SerializableBytes(payload),
+        frame_counter=t.uint32_t(frame_counter),
+        security_level=SecurityLevel.NoSecurity,
+        security_key_type=SecurityKeyType.NoKey,
+        security_status=SecurityStatus.NoSecurity,
+        gpp_short_addr=None if gpp_short_addr is None else t.NWK(gpp_short_addr),
+        rx_after_tx=rx_after_tx,
+    )
+
+
+async def commission(app, src_id: int, payload: bytes, **kwargs) -> None:
+    app.gp_packet_received(
+        make_gp_packet(src_id, GPDCommandID.CommissioningRequest, payload, **kwargs)
+    )
+    await wait_for_gp_processing()
+
+
+def commissioning_payload(
+    device_id: DeviceID = DeviceID.OnOffSwitch,
+    *,
+    security_level: SecurityLevel | None = None,
+    key_type: SecurityKeyType = SecurityKeyType.NoKey,
+    key: bytes | None = None,
+    key_mic: int | None = None,
+    outgoing_counter: int | None = None,
+    switch_information: GPSwitchInformation | None = None,
+    **options: int,
+) -> bytes:
+    """Serialize a GP Commissioning payload, `options` overriding the Options bits."""
+    # Extended options are only sent along with a security level, and a key MIC marks
+    # the key as protected with the TC-LK
+    extended_options = None
+
+    if security_level is not None:
+        extended_options = GPCommissioningExtendedOptions(
+            security_level=security_level,
+            key_type=key_type,
+            key_present=int(key is not None),
+            key_encrypted=int(key_mic is not None),
+            outgoing_counter_present=int(outgoing_counter is not None),
+        )
+
+    app_info = None
+
+    if switch_information is not None:
+        app_info = GPCommissioningAppInfo(
+            manufacturer_id_present=0,
+            model_id_present=0,
+            gpd_commands_present=0,
+            cluster_list_present=0,
+            switch_info_present=1,
+            app_description_follows=0,
+            _reserved=0,
+        )
+
+    return GPCommissioningPayload(
+        device_id=device_id,
+        options=GPCommissioningOptions(
+            **{
+                "mac_seq_num_capability": 0,
+                "rx_on_capability": 0,
+                "app_info_present": int(app_info is not None),
+                "_reserved": 0,
+                "pan_id_request": 0,
+                "security_key_request": 0,
+                "fixed_location": 0,
+                "extended_options_present": int(extended_options is not None),
+                **options,
+            }
+        ),
+        extended_options=extended_options,
+        security_key=None if key is None else t.KeyData(key),
+        key_mic=None if key_mic is None else t.uint32_t(key_mic),
+        outgoing_counter=(
+            None if outgoing_counter is None else t.uint32_t(outgoing_counter)
+        ),
+        app_info=app_info,
+        switch_information=switch_information,
+    ).serialize()

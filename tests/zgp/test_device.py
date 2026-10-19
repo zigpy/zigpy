@@ -6,10 +6,15 @@ from datetime import timedelta
 
 import pytest
 
-from tests.zgp.conftest import TIMESTAMP, commission_individual_key, encrypted_gp_packet
+from tests.zgp.conftest import (
+    STEP_UP,
+    TIMESTAMP,
+    commission_individual_key,
+    encrypted_gp_packet,
+)
 from zigpy.device import GreenPowerDevice
 import zigpy.types as t
-from zigpy.zgp.commands import GPGenericSwitchConfiguration, GPStepPayload
+from zigpy.zgp.commands import GPGenericSwitchConfiguration
 from zigpy.zgp.types import (
     ApplicationID,
     GPDCommandID,
@@ -133,11 +138,11 @@ def test_packet_received(device, events) -> None:
 
 def test_packet_received_parses_command(device, events) -> None:
     device.packet_received(
-        make_packet(1, command_id=GPDCommandID.StepUp, payload=b"\x05\x0a\x00")
+        make_packet(1, command_id=GPDCommandID.StepUp, payload=STEP_UP.serialize())
     )
 
     assert len(events) == 1
-    assert events[0].command == GPStepPayload(step_size=5, transition_time=10)
+    assert events[0].command == STEP_UP
 
 
 def test_packet_received_unparseable_payload(device, events) -> None:
@@ -321,7 +326,7 @@ def test_ieee_frame_endpoint_passthrough() -> None:
 def encrypted_packet(frame_counter: int) -> t.ZigbeeGpPacket:
     """Encrypt a Step Up command as a GPD would, with an individual key."""
     return encrypted_gp_packet(
-        0x12345678, frame_counter, bytes([GPDCommandID.StepUp]) + b"\x05\x0a\x00"
+        0x12345678, frame_counter, bytes([GPDCommandID.StepUp]) + STEP_UP.serialize()
     )
 
 
@@ -333,7 +338,7 @@ def test_unprocessed_frame_decrypted(device, events) -> None:
 
     assert len(events) == 1
     assert events[0].command_id == GPDCommandID.StepUp
-    assert events[0].command == GPStepPayload(step_size=5, transition_time=10)
+    assert events[0].command == STEP_UP
     assert device.frame_counter == 1000
 
 

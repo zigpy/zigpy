@@ -10,6 +10,7 @@ from tests.async_mock import AsyncMock
 from tests.conftest import add_initialized_device, make_ieee
 from tests.zgp.conftest import (
     NOTIFICATION_ID,
+    STEP_UP,
     commission_individual_key,
     encrypted_gp_packet,
     make_notification_options,
@@ -99,7 +100,7 @@ async def test_encrypted_packet_routed_to_device(
     gpd.on_event("gp_command_received", events.append)
 
     packet = encrypted_gp_packet(
-        0x12345678, frame_counter, bytes([GPDCommandID.StepUp]) + b"\x05\x0a\x00"
+        0x12345678, frame_counter, bytes([GPDCommandID.StepUp]) + STEP_UP.serialize()
     )
     assert packet.command_id == ciphertext_command_id
 
