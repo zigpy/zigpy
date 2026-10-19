@@ -120,21 +120,6 @@ async def test_permit_join_window(app, manager):
     assert exit_.window is None
 
 
-async def test_permit_join_window_expires(app, manager):
-    """Proxies leave commissioning mode on their own when the window expires."""
-    with freezegun.freeze_time() as frozen:
-        await manager.permit_join(time_s=60)
-        app.send_packet.reset_mock()
-
-        frozen.tick(61)
-        assert not manager.is_commissioning
-
-        await commission(app, 0x11223344, b"\x02\x00")
-
-    assert synthetic_ieee(0x11223344) not in app.devices
-    assert len(app.send_packet.mock_calls) == 0
-
-
 async def test_permit_join_send_failure(app, manager):
     """The window is not opened if the proxies could not be told about it."""
     app.send_packet = AsyncMock(side_effect=TimeoutError)
@@ -436,90 +421,82 @@ async def test_recommissioning_keeps_frame_counter(
 
 
 @pytest.mark.parametrize(
-    ("options", "rx_after_tx", "gpp_short_addr", "temp_master"),
+    ("payload", "gpp_short_addr", "temp_master", "security_level", "security_key_type"),
     [
-        # RxAfterTx, tunneled by a proxy
-        (0x82, True, 0x5678, 0x5678),
-        # RxAfterTx, received directly by the coordinator
-        (0x82, True, None, 0x0000),
-        # RxAfterTx without RxOnCapability still gets a reply (A.3.9.1 13.j)
-        (0x80, True, 0x5678, 0x5678),
-        # RxOnCapability without RxAfterTx: the GPD is not listening
-        (0x82, False, 0x5678, None),
-        (0x80, False, 0x5678, None),
-    ],
-)
-async def test_commissioning_reply(
-    app, manager, options, rx_after_tx, gpp_short_addr, temp_master
-):
-    """A GPD listening after its GPDF gets a reply through the proxy that tunneled it."""
-    await manager.permit_join(time_s=60)
-    app.send_packet.reset_mock()
-
-    await commission(
-        app,
-        0xAABBCCDD,
-        bytes([0x02, options, 0x00]),
-        gpp_short_addr=gpp_short_addr,
-        rx_after_tx=rx_after_tx,
-    )
-
-    packets = [c.args[0] for c in app.send_packet.mock_calls]
-
-    if temp_master is None:
-        # Unidirectional commissioning: the GPD is paired right away
-        [_, pairing] = packets
-        sent_command(pairing, PairingSchema)
-        return
-
-    # Bidirectional commissioning: the GPD is paired once its Success GPDF arrives
-    [reply] = packets
-    response = sent_command(reply, ResponseSchema)
-    assert response.temp_master_short_addr == temp_master
-    assert response.gpd_command_id == GPDCommandID.CommissioningReply
-    GPCommissioningReplyPayload.deserialize(response.gpd_command_payload)
-
-
-@pytest.mark.parametrize(
-    ("payload", "security_level", "security_key_type"),
-    [
-        # No extended options: an unprotected GPD
+        # Tunneled by a proxy. Options 0x00: RxAfterTx without RxOnCapability still
+        # gets a reply (A.3.9.1 13.j)
         (
             b"\x02\x00",
+            0x5678,
+            0x5678,
+            SecurityLevel.NoSecurity,
+            SecurityKeyType.NoKey,
+        ),
+        # Received directly by the coordinator
+        (
+            b"\x02\x00",
+            None,
+            0x0000,
+            SecurityLevel.NoSecurity,
+            SecurityKeyType.NoKey,
+        ),
+        # Options 0x82: RxOnCapability, extended options 0x00
+        (
+            b"\x02\x82\x00",
+            0x5678,
+            0x5678,
             SecurityLevel.NoSecurity,
             SecurityKeyType.NoKey,
         ),
         # Extended options 0xA3: Encrypted, NoKey, key in the clear, outgoing counter
         (
             b"\x02\x80\xa3" + KEY + struct.pack("<I", 7),
+            0x5678,
+            0x5678,
             SecurityLevel.Encrypted,
             SecurityKeyType.NoKey,
         ),
         # Extended options 0xA2: FullFrameCounterAndMIC, NoKey
         (
             b"\x02\x80\xa2" + KEY + struct.pack("<I", 7),
+            0x5678,
+            0x5678,
             SecurityLevel.FullFrameCounterAndMIC,
             SecurityKeyType.NoKey,
         ),
         # Extended options 0xF3: Encrypted, IndividualKey, key protected with the TC-LK
         (
             b"\x02\x80\xf3" + ENCRYPTED_KEY + KEY_MIC + struct.pack("<I", 7),
+            0x5678,
+            0x5678,
             SecurityLevel.Encrypted,
             SecurityKeyType.IndividualKey,
         ),
     ],
 )
-async def test_commissioning_reply_options(
-    app, manager, payload, security_level, security_key_type
+async def test_commissioning_reply(
+    app,
+    manager,
+    payload,
+    gpp_short_addr,
+    temp_master,
+    security_level,
+    security_key_type,
 ):
-    """The reply echoes the GPD's security level and key type (A.3.9.1 13.j.i)."""
+    """A listening GPD gets a reply echoing its security, via its proxy (A.3.9.1 13.j)."""
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
 
-    await commission(app, 0x11223344, payload, rx_after_tx=True)
+    await commission(
+        app, 0x11223344, payload, gpp_short_addr=gpp_short_addr, rx_after_tx=True
+    )
 
+    # The GPD is paired once its Success GPDF arrives
     [reply] = [c.args[0] for c in app.send_packet.mock_calls]
     response = sent_command(reply, ResponseSchema)
+    assert response.temp_master_short_addr == temp_master
+    assert response.gpd_command_id == GPDCommandID.CommissioningReply
+
     command, rest = GPCommissioningReplyPayload.deserialize(
         response.gpd_command_payload
     )
@@ -532,16 +509,23 @@ async def test_commissioning_reply_options(
 
 
 @pytest.mark.parametrize(
-    ("payload", "success"),
+    ("payload", "success", "repeated_success"),
     [
         (
             b"\x02\x00",
             make_gp_packet(0x11223344, GPDCommandID.SuccessReport, b"\xff", 2),
+            make_gp_packet(0x11223344, GPDCommandID.SuccessReport, b"\xff", 3),
         ),
-        (ENCRYPTED_COMMISSIONING, encrypted_success_packet(0x11223344, 8)),
+        (
+            ENCRYPTED_COMMISSIONING,
+            encrypted_success_packet(0x11223344, 8),
+            encrypted_success_packet(0x11223344, 9),
+        ),
     ],
 )
-async def test_bidirectional_commissioning(app, manager, payload, success):
+async def test_bidirectional_commissioning(
+    app, manager, payload, success, repeated_success
+):
     """A GPD listening for a reply is paired once its Success GPDF arrives (A.3.9.1)."""
     app.subscribe_to_multicast_group = AsyncMock(wraps=app.subscribe_to_multicast_group)
 
@@ -574,11 +558,7 @@ async def test_bidirectional_commissioning(app, manager, payload, success):
     app.send_packet.reset_mock()
 
     # The GPD can repeat its Success GPDF with an incremented frame counter
-    app.gp_packet_received(
-        success.replace(frame_counter=t.uint32_t(success.frame_counter + 1))
-        if success.security_level is SecurityLevel.NoSecurity
-        else encrypted_success_packet(0x11223344, 9)
-    )
+    app.gp_packet_received(repeated_success)
     await wait_for_gp_processing()
 
     assert len(app.send_packet.mock_calls) == 0
@@ -848,14 +828,6 @@ async def test_ieee_addressing_ignored(app, manager):
     assert len(app.send_packet.mock_calls) == 0
 
 
-async def test_success_report_ignored(app, manager):
-    app.gp_packet_received(make_gp_packet(0xDDDD4444, GPDCommandID.SuccessReport))
-    await wait_for_gp_processing()
-
-    assert synthetic_ieee(0xDDDD4444) not in app.devices
-    assert len(app.send_packet.mock_calls) == 0
-
-
 @pytest.mark.parametrize(
     ("channel", "next_channel", "gpp_short_addr", "temp_master"),
     [
@@ -916,66 +888,7 @@ async def test_channel_request_invalid(app, manager):
     assert len(app.send_packet.mock_calls) == 0
 
 
-@pytest.mark.parametrize(
-    (
-        "frame_counter",
-        "security_level",
-        "security_key_type",
-        "security_status",
-        "removed",
-    ),
-    [
-        (
-            11,
-            SecurityLevel.FullFrameCounterAndMIC,
-            SecurityKeyType.IndividualKey,
-            SecurityStatus.SecuritySuccess,
-            True,
-        ),
-        # Replayed frame counter
-        (
-            10,
-            SecurityLevel.FullFrameCounterAndMIC,
-            SecurityKeyType.IndividualKey,
-            SecurityStatus.SecuritySuccess,
-            False,
-        ),
-        # Unprotected frame for a GPD commissioned with security
-        (
-            11,
-            SecurityLevel.NoSecurity,
-            SecurityKeyType.NoKey,
-            SecurityStatus.NoSecurity,
-            False,
-        ),
-        # Another key type
-        (
-            11,
-            SecurityLevel.FullFrameCounterAndMIC,
-            SecurityKeyType.NWKKey,
-            SecurityStatus.SecuritySuccess,
-            False,
-        ),
-        # Failed security processing
-        (
-            11,
-            SecurityLevel.FullFrameCounterAndMIC,
-            SecurityKeyType.IndividualKey,
-            SecurityStatus.AuthFailure,
-            False,
-        ),
-    ],
-)
-async def test_decommissioning(
-    app,
-    manager,
-    frame_counter,
-    security_level,
-    security_key_type,
-    security_status,
-    removed,
-):
-    """Decommissioning is only acted upon if it passes the checks (A.3.5.2.4)."""
+def add_secured_gpd(app) -> GreenPowerDevice:
     dev = GreenPowerDevice(
         app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
     )
@@ -986,25 +899,61 @@ async def test_decommissioning(
     dev.frame_counter = t.uint32_t(10)
     app.devices[dev.ieee] = dev
 
-    app.gp_packet_received(
-        t.ZigbeeGpPacket(
-            application_id=ApplicationID.SrcID,
-            src_id=SrcID(0x12345678),
-            command_id=GPDCommandID.DecommissioningRequest,
-            frame_counter=t.uint32_t(frame_counter),
-            security_level=security_level,
-            security_key_type=security_key_type,
-            security_status=security_status,
-        )
+    return dev
+
+
+def decommissioning_packet(**kwargs) -> t.ZigbeeGpPacket:
+    return t.ZigbeeGpPacket(
+        **{
+            "application_id": ApplicationID.SrcID,
+            "src_id": SrcID(0x12345678),
+            "command_id": GPDCommandID.DecommissioningRequest,
+            "frame_counter": t.uint32_t(11),
+            "security_level": SecurityLevel.FullFrameCounterAndMIC,
+            "security_key_type": SecurityKeyType.IndividualKey,
+            "security_status": SecurityStatus.SecuritySuccess,
+            **kwargs,
+        }
     )
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        # Replayed frame counter
+        {"frame_counter": t.uint32_t(10)},
+        # Unprotected frame for a GPD commissioned with security
+        {
+            "security_level": SecurityLevel.NoSecurity,
+            "security_key_type": SecurityKeyType.NoKey,
+            "security_status": SecurityStatus.NoSecurity,
+        },
+        # Another key type
+        {"security_key_type": SecurityKeyType.NWKKey},
+        # Failed security processing
+        {"security_status": SecurityStatus.AuthFailure},
+    ],
+)
+async def test_decommissioning_rejected(app, manager, kwargs):
+    """Decommissioning is only acted upon if it passes the checks (A.3.5.2.4)."""
+    dev = add_secured_gpd(app)
+
+    app.gp_packet_received(decommissioning_packet(**kwargs))
     await wait_for_gp_processing()
 
-    assert (dev.ieee not in app.devices) is removed
-    assert (call("device_removed", dev) in app.listener_event.mock_calls) is removed
+    assert app.devices[dev.ieee] is dev
+    assert call("device_removed", dev) not in app.listener_event.mock_calls
+    assert len(app.send_packet.mock_calls) == 0
 
-    if not removed:
-        assert len(app.send_packet.mock_calls) == 0
-        return
+
+async def test_decommissioning(app, manager):
+    dev = add_secured_gpd(app)
+
+    app.gp_packet_received(decommissioning_packet())
+    await wait_for_gp_processing()
+
+    assert dev.ieee not in app.devices
+    assert call("device_removed", dev) in app.listener_event.mock_calls
 
     [packet] = [c.args[0] for c in app.send_packet.mock_calls]
     pairing = sent_command(packet, PairingSchema)

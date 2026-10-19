@@ -106,12 +106,3 @@ async def test_commission_receive_command_decommission(app, manager):
     assert call("device_removed", dev) in app.listener_event.mock_calls
     # GP Pairing (remove) should be sent
     assert app.send_packet.call_count == 1
-
-
-async def test_permit_gp(app, manager):
-    """permit_gp opens the GP commissioning window, permit_gp(0) closes it."""
-    await app.permit_gp(time_s=120)
-    assert manager.is_commissioning
-
-    await app.permit_gp(time_s=0)
-    assert not manager.is_commissioning

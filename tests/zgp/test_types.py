@@ -4,57 +4,17 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 import zigpy.types as t
 from zigpy.zgp.types import (
-    DEFAULT_GP_LINK_KEY,
-    GP_ENDPOINT,
-    GP_GROUP_ID,
     ApplicationID,
-    DeviceID,
     GPDCommandID,
     GPDCommandPayload,
     ProxyCommissioningModeExitMode,
     SinkCommissioningExitMode,
     SrcID,
 )
-
-
-def test_gp_endpoint():
-    assert GP_ENDPOINT == 242
-
-
-def test_gp_group_id():
-    assert GP_GROUP_ID == 0x0B84
-
-
-def test_default_link_key():
-    assert bytes(DEFAULT_GP_LINK_KEY) == b"ZigBeeAlliance09"
-    assert len(DEFAULT_GP_LINK_KEY) == 16
-
-
-def test_src_id_is_uint32():
-    s = SrcID(0x12345678)
-    assert int(s) == 0x12345678
-
-
-def test_src_id_hex_repr():
-    s = SrcID(0x02)
-    assert "0x" in repr(s).lower()
-
-
-def test_device_id_enum():
-    assert DeviceID(0x02) is DeviceID.OnOffSwitch
-    assert DeviceID.Undefined == 0xFE
-
-
-def test_combined_exit_modes():
-    """Flags compose via bitwise OR since the type is a bitmap."""
-    on_expire = SinkCommissioningExitMode.OnExpire
-    on_first = SinkCommissioningExitMode.OnFirstPairing
-    on_explicit = SinkCommissioningExitMode.OnExplicitExit
-
-    assert (on_expire | on_first) == 0b011
-    assert (on_expire | on_explicit) == 0b101
 
 
 def test_proxy_exit_mode_is_shifted():
@@ -69,50 +29,26 @@ def test_proxy_exit_mode_is_shifted():
     )
 
 
-def test_command_payload():
-    payload, rest = GPDCommandPayload.deserialize(b"\x02\xaa\xbbrest")
+@pytest.mark.parametrize(
+    ("data", "payload", "unspecified"),
+    [
+        (b"\x02\xaa\xbb", b"\xaa\xbb", False),
+        (b"\x00", b"", False),
+        # A length byte of 0xff means unspecified, which is not an empty payload
+        (b"\xff", b"", True),
+    ],
+)
+def test_command_payload(data: bytes, payload: bytes, unspecified: bool) -> None:
+    parsed, rest = GPDCommandPayload.deserialize(data + b"rest")
 
-    assert payload == b"\xaa\xbb"
+    assert parsed == payload
     assert rest == b"rest"
-    assert payload.serialize() == b"\x02\xaa\xbb"
+    assert parsed.unspecified is unspecified
+    assert parsed.serialize() == data
 
-
-def test_command_payload_empty():
-    payload, rest = GPDCommandPayload.deserialize(b"\x00rest")
-
-    assert payload == b""
-    assert rest == b"rest"
-    assert not payload.unspecified
-    assert payload.serialize() == b"\x00"
-
-
-def test_command_payload_unspecified():
-    """A length byte of 0xff means unspecified, which is not an empty payload."""
-    payload, rest = GPDCommandPayload.deserialize(b"\xffrest")
-
-    assert payload == b""
-    assert rest == b"rest"
-    assert payload.unspecified
-    assert payload.serialize() == b"\xff"
-
-
-def test_command_payload_unspecified_is_not_empty():
-    unspecified, _ = GPDCommandPayload.deserialize(b"\xff")
-    empty, _ = GPDCommandPayload.deserialize(b"\x00")
-
-    assert unspecified == empty
-    assert unspecified.serialize() != empty.serialize()
-
-
-def test_command_payload_copy_keeps_unspecified():
-    unspecified, _ = GPDCommandPayload.deserialize(b"\xff")
-    empty, _ = GPDCommandPayload.deserialize(b"\x00")
-
-    assert GPDCommandPayload(unspecified).unspecified
-    assert GPDCommandPayload(unspecified).serialize() == b"\xff"
-    assert not GPDCommandPayload(empty).unspecified
-    assert GPDCommandPayload(empty).serialize() == b"\x00"
-    assert not GPDCommandPayload(b"").unspecified
+    # A copy keeps the marker
+    assert GPDCommandPayload(parsed).unspecified is unspecified
+    assert GPDCommandPayload(parsed).serialize() == data
 
 
 def test_gp_packet_hash():

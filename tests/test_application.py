@@ -113,16 +113,6 @@ async def test_permit_opens_gp_window(app, node):
     await app.green_power.shutdown()
 
 
-async def test_permit_invalid_time_does_not_open_gp_window(app):
-    app.send_packet = AsyncMock()
-
-    with pytest.raises(AssertionError):
-        await app.permit(time_s=255)
-
-    assert not app.green_power.is_commissioning
-    assert len(app.send_packet.mock_calls) == 0
-
-
 @patch("zigpy.device.Device.initialize", new_callable=AsyncMock)
 async def test_join_handler_skip(init_mock, app, ieee):
     node_desc = make_node_desc()

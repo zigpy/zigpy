@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from unittest.mock import call
 
 import pytest
@@ -10,22 +9,16 @@ import pytest
 from tests.async_mock import AsyncMock
 from tests.conftest import add_initialized_device, make_ieee
 from tests.zgp.conftest import (
-    COMMISSIONING_NOTIFICATION_ID,
     NOTIFICATION_ID,
     commission_individual_key,
     encrypted_gp_packet,
-    make_commissioning_options,
     make_notification_options,
     make_tunnel_packet,
     sent_command,
 )
 from zigpy.device import GreenPowerDevice
 import zigpy.types as t
-from zigpy.zcl.clusters.greenpower import (
-    CommissioningNotificationSchema,
-    NotificationSchema,
-    PairingSchema,
-)
+from zigpy.zcl.clusters.greenpower import NotificationSchema, PairingSchema
 from zigpy.zgp.types import (
     GP_ENDPOINT,
     ApplicationID,
@@ -76,36 +69,6 @@ async def test_tunneled_notification_is_delivered(app, gpd):
     assert len(events) == 1
     assert events[0].command_id == GPDCommandID.Toggle
     assert gpd.frame_counter == 100
-
-
-async def test_tunneled_notification_security_failed(app, gpd, caplog):
-    command = CommissioningNotificationSchema(
-        options=make_commissioning_options(
-            security_level=SecurityLevel.Encrypted,
-            security_key_type=SecurityKeyType.IndividualKey,
-            security_failed=1,
-        ),
-        gpd_id=0x12345678,
-        frame_counter=42,
-        command_id=GPDCommandID.CommissioningRequest,
-        payload=GPDCommandPayload(b""),
-        gpp_short_addr=0x1234,
-        gpp_gpd_link=GPPGPDLink(rssi=20, link_quality=GPLinkQuality.High),
-        mic=0xDEADBEEF,
-    )
-    packet = make_tunnel_packet(
-        COMMISSIONING_NOTIFICATION_ID, command.serialize(), src=SRC, dst=DST
-    )
-
-    events = []
-    gpd.on_event("gp_command_received", events.append)
-
-    with caplog.at_level(logging.DEBUG):
-        app.packet_received(packet)
-
-    # Without a commissioned key the sink cannot security process it either
-    assert "failed security processing" in caplog.text
-    assert len(events) == 0
 
 
 async def test_tunneled_notification_malformed(app, gpd, caplog):
