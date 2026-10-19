@@ -262,8 +262,10 @@ class GreenPowerManager:
             self._application.listener_event("device_joined", device)
             self._application.device_initialized(device)
 
-        if device.rx_on_capability:
-            await self._send_commissioning_reply(packet)
+        if packet.rx_after_tx:
+            await self._send_commissioning_reply(
+                packet, security_level, security_key_type
+            )
 
         await self._application.subscribe_to_multicast_group(
             derived_group(device), endpoint_id=GP_ENDPOINT
@@ -442,19 +444,26 @@ class GreenPowerManager:
             gpd_command_payload=t.LVBytes(gpd_command_payload),
         )
 
-    async def _send_commissioning_reply(self, packet: t.ZigbeeGpPacket) -> None:
-        """Send a GP Commissioning Reply (0xF0) to an RxOn capable GPD.
+    async def _send_commissioning_reply(
+        self,
+        packet: t.ZigbeeGpPacket,
+        security_level: SecurityLevel,
+        security_key_type: SecurityKeyType,
+    ) -> None:
+        """Send a GP Commissioning Reply (0xF0) to a GPD listening after its GPDF.
 
         This sink does not provision a security key in the Commissioning Reply; the
         GPD must already hold a pre-shared key or use no security.
         """
+        # Without provisioned parameters, the reply echoes the security level and key
+        # type of the triggering Commissioning GPDF (A.3.9.1 13.j.i)
         reply = GPCommissioningReplyPayload(
             options=GPCommissioningReplyOptions(
                 pan_id_present=0,
                 security_key_present=0,
                 key_encrypted=0,
-                security_level=SecurityLevel.NoSecurity,
-                key_type=SecurityKeyType.NoKey,
+                security_level=security_level,
+                key_type=security_key_type,
             )
         )
 

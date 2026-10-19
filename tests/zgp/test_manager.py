@@ -52,6 +52,7 @@ def make_gp_packet(
     payload: bytes = b"",
     frame_counter: int = 1,
     gpp_short_addr: int | None = None,
+    rx_after_tx: bool | None = None,
 ) -> t.ZigbeeGpPacket:
     return t.ZigbeeGpPacket(
         application_id=ApplicationID.SrcID,
@@ -63,6 +64,7 @@ def make_gp_packet(
         security_key_type=SecurityKeyType.NoKey,
         security_status=SecurityStatus.NoSecurity,
         gpp_short_addr=None if gpp_short_addr is None else t.NWK(gpp_short_addr),
+        rx_after_tx=rx_after_tx,
     )
 
 
@@ -308,23 +310,32 @@ async def test_recommissioning_replaces_device(app, manager):
 
 
 @pytest.mark.parametrize(
-    ("options", "gpp_short_addr", "temp_master"),
+    ("options", "rx_after_tx", "gpp_short_addr", "temp_master"),
     [
-        # RxOn capable, tunneled by a proxy
-        (0x82, 0x5678, 0x5678),
-        # RxOn capable, received directly by the coordinator
-        (0x82, None, 0x0000),
-        # Not RxOn capable: no Commissioning Reply
-        (0x80, 0x5678, None),
+        # RxAfterTx, tunneled by a proxy
+        (0x82, True, 0x5678, 0x5678),
+        # RxAfterTx, received directly by the coordinator
+        (0x82, True, None, 0x0000),
+        # RxAfterTx without RxOnCapability still gets a reply (A.3.9.1 13.j)
+        (0x80, True, 0x5678, 0x5678),
+        # RxOnCapability without RxAfterTx: the GPD is not listening
+        (0x82, False, 0x5678, None),
+        (0x80, False, 0x5678, None),
     ],
 )
-async def test_commissioning_reply(app, manager, options, gpp_short_addr, temp_master):
-    """An RxOn GPD gets a reply through the proxy that tunneled its GPDF."""
+async def test_commissioning_reply(
+    app, manager, options, rx_after_tx, gpp_short_addr, temp_master
+):
+    """A GPD listening after its GPDF gets a reply through the proxy that tunneled it."""
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
 
     await commission(
-        app, 0xAABBCCDD, bytes([0x02, options, 0x00]), gpp_short_addr=gpp_short_addr
+        app,
+        0xAABBCCDD,
+        bytes([0x02, options, 0x00]),
+        gpp_short_addr=gpp_short_addr,
+        rx_after_tx=rx_after_tx,
     )
 
     *replies, _ = [c.args[0] for c in app.send_packet.mock_calls]
@@ -338,6 +349,57 @@ async def test_commissioning_reply(app, manager, options, gpp_short_addr, temp_m
     assert response.temp_master_short_addr == temp_master
     assert response.gpd_command_id == GPDCommandID.CommissioningReply
     GPCommissioningReplyPayload.deserialize(response.gpd_command_payload)
+
+
+@pytest.mark.parametrize(
+    ("payload", "security_level", "security_key_type"),
+    [
+        # No extended options: an unprotected GPD
+        (
+            b"\x02\x00",
+            SecurityLevel.NoSecurity,
+            SecurityKeyType.NoKey,
+        ),
+        # Extended options 0xA3: Encrypted, NoKey, key in the clear, outgoing counter
+        (
+            b"\x02\x80\xa3" + KEY + struct.pack("<I", 7),
+            SecurityLevel.Encrypted,
+            SecurityKeyType.NoKey,
+        ),
+        # Extended options 0xA2: FullFrameCounterAndMIC, NoKey
+        (
+            b"\x02\x80\xa2" + KEY + struct.pack("<I", 7),
+            SecurityLevel.FullFrameCounterAndMIC,
+            SecurityKeyType.NoKey,
+        ),
+        # Extended options 0xF3: Encrypted, IndividualKey, key protected with the TC-LK
+        (
+            b"\x02\x80\xf3" + ENCRYPTED_KEY + KEY_MIC + struct.pack("<I", 7),
+            SecurityLevel.Encrypted,
+            SecurityKeyType.IndividualKey,
+        ),
+    ],
+)
+async def test_commissioning_reply_options(
+    app, manager, payload, security_level, security_key_type
+):
+    """The reply echoes the GPD's security level and key type (A.3.9.1 13.j.i)."""
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
+    await commission(app, 0x11223344, payload, rx_after_tx=True)
+
+    reply, _ = [c.args[0] for c in app.send_packet.mock_calls]
+    response = sent_command(reply, ResponseSchema)
+    command, rest = GPCommissioningReplyPayload.deserialize(
+        response.gpd_command_payload
+    )
+
+    assert not rest
+    assert command.options.security_level == security_level
+    assert command.options.key_type == security_key_type
+    assert not command.options.pan_id_present
+    assert not command.options.security_key_present
 
 
 async def test_duplicate_commissioning_dropped(app, manager):
