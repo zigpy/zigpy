@@ -82,6 +82,14 @@ async def test_permit_broadcast(app):
     assert app.send_packet.mock_calls[0].args[0].dst.addr_mode == t.AddrMode.Broadcast
 
 
+async def test_handle_join_green_power_alias(app):
+    """A sink announcing a GPD alias with the invalid IEEE address is not a join."""
+    app.handle_join(nwk=0x1234, ieee=t.EUI64.UNKNOWN, parent_nwk=None)
+
+    assert all(dev.nwk != 0x1234 for dev in app.devices.values())
+    assert t.EUI64.UNKNOWN not in app.devices
+
+
 @pytest.mark.parametrize("node", [None, make_ieee(), NCP_IEEE])
 async def test_permit_opens_gp_window(app, node):
     """GP commissioning is network-wide, even when joining is limited to one node."""

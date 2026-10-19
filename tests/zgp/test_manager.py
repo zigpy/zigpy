@@ -386,7 +386,7 @@ async def test_device_annce_only_on_first_commissioning(app, manager):
 
 
 async def test_device_annce_unsupported(app, manager, caplog):
-    """A radio that cannot send as an alias still gets the GPD paired."""
+    """A radio that cannot send as an alias announces the alias as itself."""
 
     async def send_packet(packet: t.ZigbeePacket) -> None:
         if packet.alias_src is not None:
@@ -401,10 +401,16 @@ async def test_device_annce_unsupported(app, manager, caplog):
         await commission(app, 0xAABBCCDD, b"\x02\x00")
 
     assert synthetic_ieee(0xAABBCCDD) in app.devices
-    assert "cannot send with an alias" in caplog.text
+    assert "announcing 0xCCDD as ourselves" in caplog.text
 
-    [annce, pairing] = [c.args[0] for c in app.send_packet.mock_calls]
-    assert annce.alias_src is not None
+    [aliased, fallback, pairing] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert aliased.alias_src == derive_alias(SrcID(0xAABBCCDD))
+    # The payload is the same, only the aliasing is dropped
+    assert fallback.alias_src is None
+    assert fallback.alias_seq is None
+    assert fallback.cluster_id == zdo_types.ZDOCmd.Device_annce
+    assert fallback.data == aliased.data
+    assert fallback.tsn != 0
     assert sent_command(pairing, PairingSchema).options.add_sink
 
 

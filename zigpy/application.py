@@ -839,6 +839,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
 
         ieee = t.EUI64(ieee)
 
+        if ieee == t.EUI64.UNKNOWN:
+            # A sink announces the NWK alias of a Green Power device this way, to
+            # evict a device holding the address (GP spec A.3.6.3.4.2). It is an
+            # address conflict check (A.2.6), not a join.
+            LOGGER.debug("Ignoring announcement of Green Power alias 0x%04X", nwk)
+            return
+
         try:
             dev = self.get_device(ieee=ieee)
         except KeyError:

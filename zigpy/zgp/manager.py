@@ -479,29 +479,38 @@ class GreenPowerManager(CreateTaskMixin):
             (device.nwk, t.EUI64.convert("ff:ff:ff:ff:ff:ff:ff:ff"), capability),
             zdo_types.CLUSTERS[zdo_types.ZDOCmd.Device_annce][1],
         )
+        packet = t.ZigbeePacket(
+            dst=t.AddrModeAddress(
+                addr_mode=t.AddrMode.Broadcast,
+                address=t.BroadcastAddress.RX_ON_WHEN_IDLE,
+            ),
+            dst_ep=t.uint8_t(0),
+            src_ep=t.uint8_t(0),
+            tsn=tsn,
+            profile_id=t.uint16_t(0),
+            cluster_id=t.uint16_t(zdo_types.ZDOCmd.Device_annce),
+            data=t.SerializableBytes(data),
+            alias_src=device.nwk,
+            alias_seq=t.uint8_t(0),
+        )
 
         try:
-            await self._application.send_packet(
-                t.ZigbeePacket(
-                    dst=t.AddrModeAddress(
-                        addr_mode=t.AddrMode.Broadcast,
-                        address=t.BroadcastAddress.RX_ON_WHEN_IDLE,
-                    ),
-                    dst_ep=t.uint8_t(0),
-                    src_ep=t.uint8_t(0),
-                    tsn=tsn,
-                    profile_id=t.uint16_t(0),
-                    cluster_id=t.uint16_t(zdo_types.ZDOCmd.Device_annce),
-                    data=t.SerializableBytes(data),
-                    alias_src=device.nwk,
-                    alias_seq=t.uint8_t(0),
-                )
-            )
+            await self._application.send_packet(packet)
         except NotImplementedError:
-            # Without it, a Zigbee device using the alias only discovers the address
-            # conflict once a proxy sends as the alias (A.3.6.3.4.1)
+            # Address conflict detection works on the announced NWKAddr and IEEEAddr
+            # (Zigbee 2.4.3.1.11.2, as amended by A.2.6), so sending the same payload
+            # as ourselves still evicts a device holding the alias. Only the NWK
+            # source and sequence number of A.3.6.3.4.2 are lost.
             LOGGER.debug(
-                "Radio cannot send with an alias, not announcing 0x%04X", device.nwk
+                "Radio cannot send with an alias, announcing 0x%04X as ourselves",
+                device.nwk,
+            )
+            await self._application.send_packet(
+                packet.replace(
+                    tsn=t.uint8_t(self._application.get_sequence()),
+                    alias_src=None,
+                    alias_seq=None,
+                )
             )
 
     # --- GP Response (sink-to-GPD via proxy) ---
