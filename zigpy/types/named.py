@@ -657,7 +657,7 @@ class ZigbeePacket(BaseDataclassMixin):
                 self.src_ep,
                 self.dst,
                 self.dst_ep,
-                self.source_route,
+                None if self.source_route is None else tuple(self.source_route),
                 self.extended_timeout,
                 self.tsn,
                 self.profile_id,
