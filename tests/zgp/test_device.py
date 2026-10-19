@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 import pytest
 
+from tests.zgp.conftest import TIMESTAMP, commission_individual_key, encrypted_gp_packet
 from zigpy.device import GreenPowerDevice
 import zigpy.types as t
 from zigpy.zgp.commands import GPGenericSwitchConfiguration, GPStepPayload
-from zigpy.zgp.crypto import build_gpdf_header, encrypt_payload
 from zigpy.zgp.types import (
     ApplicationID,
     GPDCommandID,
@@ -21,7 +21,6 @@ from zigpy.zgp.types import (
 )
 from zigpy.zgp.util import derive_alias
 
-TIMESTAMP = datetime(2026, 8, 10, 12, 0, 0, tzinfo=UTC)
 IEEE = t.EUI64.convert("11:22:33:44:55:66:77:88")
 
 
@@ -52,8 +51,6 @@ def make_packet(
     rssi: int = -50,
     application_id: ApplicationID = ApplicationID.SrcID,
     endpoint: int | None = None,
-    mic: int | None = None,
-    individual_key: bool | None = None,
 ) -> t.ZigbeeGpPacket:
     return t.ZigbeeGpPacket(
         timestamp=TIMESTAMP + offset,
@@ -67,10 +64,6 @@ def make_packet(
         security_level=security_level,
         security_key_type=security_key_type,
         security_status=security_status,
-        mic=None if mic is None else t.uint32_t(mic),
-        auto_commissioning=None if mic is None else False,
-        rx_after_tx=None if mic is None else False,
-        individual_key=individual_key,
         lqi=t.uint8_t(lqi),
         rssi=t.int8s(rssi),
     )
@@ -325,43 +318,11 @@ def test_ieee_frame_endpoint_passthrough() -> None:
     assert events[0].endpoint_id == 5
 
 
-def encrypted_packet(frame_counter: int, **kwargs) -> t.ZigbeeGpPacket:
+def encrypted_packet(frame_counter: int) -> t.ZigbeeGpPacket:
     """Encrypt a Step Up command as a GPD would, with an individual key."""
-    header = build_gpdf_header(
-        0x12345678,
-        frame_counter,
-        security_level=SecurityLevel.Encrypted,
-        individual_key=True,
-        auto_commissioning=False,
-        rx_after_tx=False,
+    return encrypted_gp_packet(
+        0x12345678, frame_counter, bytes([GPDCommandID.StepUp]) + b"\x05\x0a\x00"
     )
-    ciphertext, mic = encrypt_payload(
-        0x12345678,
-        frame_counter,
-        bytes(range(16)),
-        bytes([GPDCommandID.StepUp]) + b"\x05\x0a\x00",
-        header=header,
-        security_level=SecurityLevel.Encrypted,
-    )
-
-    return make_packet(
-        frame_counter,
-        **{
-            "command_id": GPDCommandID(ciphertext[0]),
-            "payload": ciphertext[1:],
-            "security_key_type": SecurityKeyType.NoKey,
-            "security_status": SecurityStatus.Unprocessed,
-            "mic": int.from_bytes(mic, "little"),
-            "individual_key": True,
-            **kwargs,
-        },
-    )
-
-
-def commission_individual_key(device: GreenPowerDevice) -> None:
-    device.security_key = t.KeyData(range(16))
-    device.security_level = SecurityLevel.Encrypted
-    device.security_key_type = SecurityKeyType.IndividualKey
 
 
 def test_unprocessed_frame_decrypted(device, events) -> None:
@@ -380,7 +341,7 @@ def test_unprocessed_frame_decrypted(device, events) -> None:
     "packet_kwargs",
     [
         # Tampered MIC
-        {"mic": 0xDEADBEEF},
+        {"mic": t.uint32_t(0xDEADBEEF)},
         # Protected with a shared key, the GPD was commissioned with an individual one
         {"individual_key": False},
         # Another security level than the commissioned one
@@ -392,7 +353,7 @@ def test_unprocessed_frame_rejected(device, events, packet_kwargs) -> None:
     commission_individual_key(device)
     device.frame_counter = t.uint32_t(10)
 
-    device.packet_received(encrypted_packet(1000, **packet_kwargs))
+    device.packet_received(encrypted_packet(1000).replace(**packet_kwargs))
 
     assert len(events) == 0
     assert device.frame_counter == 10

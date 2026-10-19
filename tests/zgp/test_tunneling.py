@@ -2,23 +2,25 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
 import pytest
 
-import zigpy.profiles.zgp
+from tests.zgp.conftest import (
+    COMMISSIONING_NOTIFICATION_ID,
+    NOTIFICATION_ID,
+    TIMESTAMP,
+    make_commissioning_options,
+    make_notification_options,
+    make_tunnel_packet,
+)
 import zigpy.types as t
 from zigpy.zcl import foundation
 from zigpy.zcl.clusters.greenpower import (
-    CommissioningNotificationOptions,
     CommissioningNotificationSchema,
     GreenPowerProxy,
-    NotificationOptions,
     NotificationSchema,
 )
 from zigpy.zgp.tunneling import gp_packet_from_zcl, is_gp_tunnel_packet
 from zigpy.zgp.types import (
-    GP_ENDPOINT,
     ApplicationID,
     GPDCommandID,
     GPDCommandPayload,
@@ -28,62 +30,6 @@ from zigpy.zgp.types import (
     SecurityLevel,
     SecurityStatus,
 )
-
-TIMESTAMP = datetime(2026, 8, 10, 12, 0, 0, tzinfo=UTC)
-
-NOTIFICATION_ID = GreenPowerProxy.ServerCommandDefs.notification.id
-COMMISSIONING_NOTIFICATION_ID = (
-    GreenPowerProxy.ServerCommandDefs.commissioning_notification.id
-)
-
-
-def make_tunnel_packet(command_id: int, payload: bytes, **kwargs) -> t.ZigbeePacket:
-    hdr = foundation.ZCLHeader.cluster(tsn=0x12, command_id=command_id)
-
-    return t.ZigbeePacket(
-        timestamp=TIMESTAMP,
-        profile_id=zigpy.profiles.zgp.PROFILE_ID,
-        cluster_id=GreenPowerProxy.cluster_id,
-        src_ep=GP_ENDPOINT,
-        dst_ep=GP_ENDPOINT,
-        data=t.SerializableBytes(hdr.serialize() + payload),
-        **kwargs,
-    )
-
-
-def make_notification_options(**kwargs) -> NotificationOptions:
-    return NotificationOptions(
-        **{
-            "application_id": ApplicationID.SrcID,
-            "also_unicast": 0,
-            "also_derived_group": 1,
-            "also_commissioned_group": 0,
-            "security_level": SecurityLevel.FullFrameCounterAndMIC,
-            "security_key_type": SecurityKeyType.NWKKey,
-            "rx_after_tx": 0,
-            "tx_queue_full": 1,
-            "bidirectional_cap": 0,
-            "proxy_info_present": 1,
-            "_reserved": 0,
-            **kwargs,
-        }
-    )
-
-
-def make_commissioning_options(**kwargs) -> CommissioningNotificationOptions:
-    return CommissioningNotificationOptions(
-        **{
-            "application_id": ApplicationID.SrcID,
-            "rx_after_tx": 0,
-            "security_level": SecurityLevel.NoSecurity,
-            "security_key_type": SecurityKeyType.NoKey,
-            "security_failed": 0,
-            "bidirectional_cap": 0,
-            "proxy_info_present": 1,
-            "_reserved": 0,
-            **kwargs,
-        }
-    )
 
 
 @pytest.mark.parametrize(

@@ -12,11 +12,14 @@ import freezegun
 import pytest
 
 from tests.async_mock import AsyncMock
-from tests.zgp.conftest import wait_for_gp_processing
-from tests.zgp.test_tunneling import (
+from tests.zgp.conftest import (
     COMMISSIONING_NOTIFICATION_ID,
+    KEY,
+    encrypted_gp_packet,
     make_commissioning_options,
     make_tunnel_packet,
+    sent_command,
+    wait_for_gp_processing,
 )
 from zigpy.device import GreenPowerDevice
 import zigpy.types as t
@@ -54,7 +57,6 @@ from zigpy.zgp.types import (
 )
 from zigpy.zgp.util import derive_alias, synthetic_ieee
 
-KEY = bytes(range(16))
 ENCRYPTED_KEY, KEY_MIC = encrypt_security_key(0x11223344, KEY)
 
 # Extended options 0xB3: Encrypted, IndividualKey, key in the clear, outgoing counter 7
@@ -86,46 +88,9 @@ def make_gp_packet(
 def encrypted_success_packet(
     src_id: int, frame_counter: int, key: bytes = KEY
 ) -> t.ZigbeeGpPacket:
-    """A Success GPDF encrypted with an individual key, not processed by the radio."""
-    header = build_gpdf_header(
-        src_id,
-        frame_counter,
-        security_level=SecurityLevel.Encrypted,
-        individual_key=True,
-        auto_commissioning=False,
-        rx_after_tx=False,
+    return encrypted_gp_packet(
+        src_id, frame_counter, bytes([GPDCommandID.SuccessReport]), key
     )
-    ciphertext, mic = encrypt_payload(
-        src_id,
-        frame_counter,
-        key,
-        bytes([GPDCommandID.SuccessReport]),
-        header=header,
-        security_level=SecurityLevel.Encrypted,
-    )
-
-    return t.ZigbeeGpPacket(
-        application_id=ApplicationID.SrcID,
-        src_id=SrcID(src_id),
-        command_id=GPDCommandID(ciphertext[0]),
-        payload=t.SerializableBytes(ciphertext[1:]),
-        frame_counter=t.uint32_t(frame_counter),
-        security_level=SecurityLevel.Encrypted,
-        security_key_type=SecurityKeyType.NoKey,
-        security_status=SecurityStatus.Unprocessed,
-        mic=t.uint32_t(int.from_bytes(mic, "little")),
-        auto_commissioning=False,
-        rx_after_tx=False,
-        individual_key=True,
-    )
-
-
-def sent_command(packet: t.ZigbeePacket, schema: type[t.Struct]) -> t.Struct:
-    _, data = foundation.ZCLHeader.deserialize(packet.data.serialize())
-    command, rest = schema.deserialize(data)
-    assert not rest
-
-    return command
 
 
 async def commission(app, src_id: int, payload: bytes, **kwargs) -> None:

@@ -9,14 +9,15 @@ import pytest
 
 from tests.async_mock import AsyncMock
 from tests.conftest import add_initialized_device, make_ieee
-from tests.zgp.test_device import commission_individual_key, encrypted_packet
-from tests.zgp.test_manager import sent_command
-from tests.zgp.test_tunneling import (
+from tests.zgp.conftest import (
     COMMISSIONING_NOTIFICATION_ID,
     NOTIFICATION_ID,
+    commission_individual_key,
+    encrypted_gp_packet,
     make_commissioning_options,
     make_notification_options,
     make_tunnel_packet,
+    sent_command,
 )
 from zigpy.device import GreenPowerDevice
 import zigpy.types as t
@@ -134,7 +135,9 @@ async def test_encrypted_packet_routed_to_device(
     events = []
     gpd.on_event("gp_command_received", events.append)
 
-    packet = encrypted_packet(frame_counter)
+    packet = encrypted_gp_packet(
+        0x12345678, frame_counter, bytes([GPDCommandID.StepUp]) + b"\x05\x0a\x00"
+    )
     assert packet.command_id == ciphertext_command_id
 
     app.gp_packet_received(packet)

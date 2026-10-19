@@ -9,11 +9,11 @@ from __future__ import annotations
 
 from unittest.mock import call
 
-from tests.zgp.conftest import wait_for_gp_processing
-from tests.zgp.test_tunneling import (
+from tests.zgp.conftest import (
     NOTIFICATION_ID,
     make_notification_options,
     make_tunnel_packet,
+    wait_for_gp_processing,
 )
 import zigpy.types as t
 from zigpy.zcl.clusters.greenpower import NotificationSchema
