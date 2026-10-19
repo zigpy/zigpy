@@ -27,7 +27,6 @@ import zigpy.device
 from zigpy.device import BaseDevice, GreenPowerDevice, ZigbeeDevice
 import zigpy.endpoint
 import zigpy.exceptions
-from zigpy.exceptions import GPSecurityProcessingFailed
 import zigpy.group
 import zigpy.listeners
 import zigpy.ota
@@ -1352,12 +1351,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         if zigpy.zgp.tunneling.is_gp_tunnel_packet(packet):
             try:
                 gp_packet = zigpy.zgp.tunneling.gp_packet_from_zcl(packet)
-            except GPSecurityProcessingFailed:
-                LOGGER.debug(
-                    "Proxy could not decrypt the tunneled GPDF %r",
-                    packet,
-                    exc_info=True,
-                )
             except ValueError:
                 LOGGER.warning(
                     "Failed to convert tunneled GP packet %r", packet, exc_info=True

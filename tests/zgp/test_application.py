@@ -102,7 +102,8 @@ async def test_tunneled_notification_security_failed(app, gpd, caplog):
     with caplog.at_level(logging.DEBUG):
         app.packet_received(packet)
 
-    assert "could not decrypt" in caplog.text
+    # Without a commissioned key the sink cannot security process it either
+    assert "failed security processing" in caplog.text
     assert len(events) == 0
 
 

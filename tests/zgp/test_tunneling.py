@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 
 import pytest
 
-from zigpy.exceptions import GPSecurityProcessingFailed
 import zigpy.profiles.zgp
 import zigpy.types as t
 from zigpy.zcl import foundation
@@ -186,8 +185,56 @@ def test_commissioning_notification_security_failed():
     )
     packet = make_tunnel_packet(COMMISSIONING_NOTIFICATION_ID, command.serialize())
 
-    with pytest.raises(GPSecurityProcessingFailed, match="Security processing"):
-        gp_packet_from_zcl(packet)
+    gp_packet = gp_packet_from_zcl(packet)
+
+    # The GPDF is passed on as received, for the sink to security process (A.3.7.3.2)
+    assert gp_packet.security_status == SecurityStatus.Unprocessed
+    assert gp_packet.command_id == GPDCommandID.CommissioningRequest
+    assert gp_packet.payload == t.SerializableBytes(b"\xaa\xbb")
+    assert gp_packet.frame_counter == 42
+    assert gp_packet.mic == 0xDEADBEEF
+    assert gp_packet.auto_commissioning is False
+    assert gp_packet.rx_after_tx is False
+    assert gp_packet.individual_key is True
+
+
+@pytest.mark.parametrize(
+    ("security_key_type", "individual_key"),
+    [
+        (SecurityKeyType.NoKey, False),
+        (SecurityKeyType.NWKKey, False),
+        (SecurityKeyType.GPDGroupKey, False),
+        (SecurityKeyType.NWKKeyDerivedGPD, False),
+        (SecurityKeyType.IndividualKey, True),
+        (SecurityKeyType.DerivedIndividual, True),
+    ],
+)
+def test_commissioning_notification_security_failed_key_type(
+    security_key_type, individual_key
+):
+    """The key type maps back to the SecurityKey sub-field of the GPDF (Table 12)."""
+    command = CommissioningNotificationSchema(
+        options=make_commissioning_options(
+            security_level=SecurityLevel.FullFrameCounterAndMIC,
+            security_key_type=security_key_type,
+            security_failed=1,
+            rx_after_tx=1,
+        ),
+        gpd_id=0x01020304,
+        frame_counter=42,
+        command_id=GPDCommandID.SuccessReport,
+        payload=GPDCommandPayload(b""),
+        gpp_short_addr=0x1234,
+        gpp_gpd_link=GPPGPDLink(rssi=20, link_quality=GPLinkQuality.High),
+        mic=0,
+    )
+    packet = make_tunnel_packet(COMMISSIONING_NOTIFICATION_ID, command.serialize())
+
+    gp_packet = gp_packet_from_zcl(packet)
+
+    assert gp_packet.individual_key is individual_key
+    assert gp_packet.rx_after_tx is True
+    assert gp_packet.mic == 0
 
 
 def test_notification_unspecified_payload():

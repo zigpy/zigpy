@@ -12,10 +12,16 @@ import pytest
 
 from tests.async_mock import AsyncMock
 from tests.zgp.conftest import wait_for_gp_processing
+from tests.zgp.test_tunneling import (
+    COMMISSIONING_NOTIFICATION_ID,
+    make_commissioning_options,
+    make_tunnel_packet,
+)
 from zigpy.device import GreenPowerDevice
 import zigpy.types as t
 from zigpy.zcl import foundation
 from zigpy.zcl.clusters.greenpower import (
+    CommissioningNotificationSchema,
     GreenPowerProxy,
     PairingSchema,
     ProxyCommissioningModeSchema,
@@ -34,6 +40,9 @@ from zigpy.zgp.types import (
     CommunicationMode,
     DeviceID,
     GPDCommandID,
+    GPDCommandPayload,
+    GPLinkQuality,
+    GPPGPDLink,
     ProxyCommissioningModeExitMode,
     SecurityKeyType,
     SecurityLevel,
@@ -569,6 +578,117 @@ async def test_bidirectional_commissioning_success_rejected(app, manager, succes
     app.send_packet.reset_mock()
 
     app.gp_packet_received(success)
+    await wait_for_gp_processing()
+
+    assert synthetic_ieee(0x11223344) not in app.devices
+    assert len(app.send_packet.mock_calls) == 0
+
+
+def tunneled_success_packet(
+    src_id: int,
+    frame_counter: int,
+    security_level: SecurityLevel,
+    key: bytes = KEY,
+) -> t.ZigbeePacket:
+    """A protected Success GPDF forwarded by a proxy that could not verify it.
+
+    The proxy is not paired with the GPD yet, so it forwards the GPDF unprocessed in
+    a GP Commissioning Notification with its MIC (A.3.9.1 step 17.b.i).
+    """
+    header = build_gpdf_header(
+        src_id,
+        frame_counter,
+        security_level=security_level,
+        individual_key=True,
+        auto_commissioning=False,
+        rx_after_tx=False,
+    )
+    ciphertext, mic = encrypt_payload(
+        src_id,
+        frame_counter,
+        key,
+        bytes([GPDCommandID.SuccessReport]),
+        header=header,
+        security_level=security_level,
+    )
+
+    command = CommissioningNotificationSchema(
+        options=make_commissioning_options(
+            security_level=security_level,
+            # The proxy reports the derived individual key type for an individual
+            # key it does not have (A.3.9.2.1.1)
+            security_key_type=SecurityKeyType.DerivedIndividual,
+            security_failed=1,
+        ),
+        gpd_id=src_id,
+        frame_counter=frame_counter,
+        command_id=GPDCommandID(ciphertext[0]),
+        payload=GPDCommandPayload(ciphertext[1:]),
+        gpp_short_addr=0x1234,
+        gpp_gpd_link=GPPGPDLink(rssi=20, link_quality=GPLinkQuality.High),
+        mic=int.from_bytes(mic, "little"),
+    )
+
+    return make_tunnel_packet(
+        COMMISSIONING_NOTIFICATION_ID,
+        command.serialize(),
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x1234),
+        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+    )
+
+
+@pytest.mark.parametrize(
+    ("payload", "security_level"),
+    [
+        (ENCRYPTED_COMMISSIONING, SecurityLevel.Encrypted),
+        # Extended options 0xB2: FullFrameCounterAndMIC
+        (
+            b"\x02\x80\xb2" + KEY + struct.pack("<I", 7),
+            SecurityLevel.FullFrameCounterAndMIC,
+        ),
+    ],
+)
+async def test_bidirectional_commissioning_through_proxy(
+    app, manager, payload, security_level
+):
+    """The sink security processes a Success GPDF the forwarding proxy could not."""
+    await manager.permit_join(time_s=60)
+    await commission(app, 0x11223344, payload, rx_after_tx=True, gpp_short_addr=0x1234)
+    app.send_packet.reset_mock()
+
+    app.packet_received(tunneled_success_packet(0x11223344, 8, security_level))
+    await wait_for_gp_processing()
+
+    dev = app.devices[synthetic_ieee(0x11223344)]
+    assert dev.security_level == security_level
+    assert dev.frame_counter == 8
+    assert app.device_initialized.mock_calls == [call(dev)]
+
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert sent_command(packet, PairingSchema).options.add_sink
+
+
+@pytest.mark.parametrize(
+    "security_level",
+    [SecurityLevel.Encrypted, SecurityLevel.FullFrameCounterAndMIC],
+)
+async def test_bidirectional_commissioning_through_proxy_rejected(
+    app, manager, security_level
+):
+    """A tunneled Success GPDF protected with another key is rejected."""
+    await manager.permit_join(time_s=60)
+    await commission(
+        app,
+        0x11223344,
+        ENCRYPTED_COMMISSIONING,
+        rx_after_tx=True,
+        gpp_short_addr=0x1234,
+    )
+    app.send_packet.reset_mock()
+
+    app.packet_received(
+        tunneled_success_packet(0x11223344, 8, security_level, key=bytes(16))
+    )
     await wait_for_gp_processing()
 
     assert synthetic_ieee(0x11223344) not in app.devices
