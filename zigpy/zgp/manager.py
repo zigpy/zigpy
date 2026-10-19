@@ -15,6 +15,7 @@ from cryptography.exceptions import InvalidTag
 
 from zigpy.datastructures import Debouncer
 from zigpy.device import GP_DUPLICATE_TIMEOUT, GreenPowerDevice
+from zigpy.listeners import gp_command
 from zigpy.profiles import zgp as zgp_profile
 import zigpy.types as t
 from zigpy.zcl import foundation
@@ -42,6 +43,7 @@ from zigpy.zgp.types import (
     SecurityKeyType,
     SecurityLevel,
 )
+from zigpy.zgp.util import synthetic_ieee
 
 if TYPE_CHECKING:
     from zigpy.application import ControllerApplication
@@ -66,17 +68,23 @@ class GreenPowerManager:
     def __init__(self, application: ControllerApplication) -> None:
         self._application = application
         self._commissioning_window_end: float = 0
+        self._window_closed: asyncio.Event = asyncio.Event()
+        self._window_closed.set()
+        self._window_timer: asyncio.TimerHandle | None = None
         self._tasks: set[asyncio.Task[Any]] = set()
         # Commissioning GPDFs come from GPDs that are not registered yet, so
         # `GreenPowerDevice` cannot filter their duplicates (spec A.3.6.1.2)
         self._dedup_debouncer: Debouncer = Debouncer()
+        # One commissioning task per GPD, restarted by each Commissioning GPDF
+        self._commissioning_tasks: dict[t.EUI64, asyncio.Task[None]] = {}
         # GPDs in bidirectional commissioning, until their Success GPDF arrives
         self._pending_devices: dict[t.EUI64, GreenPowerDevice] = {}
 
-    def _create_task(self, coro: Any, name: str) -> None:
+    def _create_task(self, coro: Any, name: str) -> asyncio.Task[Any]:
         task = asyncio.get_running_loop().create_task(coro, name=name)
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
+        return task
 
     async def startup(self) -> None:
         """Join the derived groups of all commissioned GPDs, to receive their GPDFs."""
@@ -93,8 +101,7 @@ class GreenPowerManager:
 
     async def shutdown(self) -> None:
         """Cancel commissioning in progress and close the window."""
-        self._commissioning_window_end = 0
-        self._pending_devices.clear()
+        self._close_window()
 
         for task in self._tasks:
             task.cancel()
@@ -109,8 +116,7 @@ class GreenPowerManager:
     async def permit_join(self, time_s: int) -> None:
         """Open the GP commissioning window; time_s=0 closes it immediately."""
         if time_s == 0:
-            self._commissioning_window_end = 0
-            self._pending_devices.clear()
+            self._close_window()
             await self._send_proxy_commissioning_mode(window=None)
             return
 
@@ -120,16 +126,28 @@ class GreenPowerManager:
 
         # A new window does not resume commissioning from an expired one
         if not self.is_commissioning:
-            self._pending_devices.clear()
+            self._close_window()
+
+        if self._window_timer is not None:
+            self._window_timer.cancel()
 
         self._commissioning_window_end = time.monotonic() + time_s
+        self._window_closed.clear()
+        self._window_timer = asyncio.get_running_loop().call_later(
+            time_s, self._close_window
+        )
+
+    def _close_window(self) -> None:
+        """Close the window, failing commissioning still waiting for a Success GPDF."""
+        if self._window_timer is not None:
+            self._window_timer.cancel()
+            self._window_timer = None
+
+        self._commissioning_window_end = 0
+        self._window_closed.set()
 
     def get_pending_device(self, ieee: t.EUI64) -> GreenPowerDevice | None:
-        """Return the GPD in bidirectional commissioning, while the window is open."""
-        # Commissioning fails for a GPD whose Success GPDF did not arrive in time
-        if not self.is_commissioning:
-            self._pending_devices.clear()
-
+        """Return the GPD in bidirectional commissioning, if any."""
         if ieee not in self._pending_devices:
             return None
 
@@ -148,31 +166,54 @@ class GreenPowerManager:
             LOGGER.debug("Dropping duplicate GP packet: %r", packet)
             return
 
-        if packet.command_id == GPDCommandID.CommissioningRequest:
-            coro = self._process_commissioning(packet)
-        else:
-            assert packet.command_id == GPDCommandID.ChannelRequest
-            coro = self._process_channel_request(packet)
+        if packet.command_id == GPDCommandID.ChannelRequest:
+            self._create_task(
+                self._process_channel_request(packet),
+                f"gp_process_command-0x{packet.command_id:02x}",
+            )
+            return
 
-        self._create_task(coro, f"gp_process_command-0x{packet.command_id:02x}")
+        assert packet.command_id == GPDCommandID.CommissioningRequest
+        assert packet.src_id is not None
+
+        if not self.is_commissioning:
+            LOGGER.debug(
+                "GP Commissioning from 0x%08X ignored: window not open", packet.src_id
+            )
+            return
+
+        if packet.src_id == 0x00000000:
+            LOGGER.warning(
+                "GP Commissioning with unspecified sourceID 0x00000000, ignoring"
+            )
+            return
+
+        ieee = synthetic_ieee(packet.src_id)
+
+        # A new Commissioning GPDF restarts the GPD's commissioning, which also covers
+        # a GPD falling back from bidirectional to unidirectional commissioning
+        if ieee in self._commissioning_tasks:
+            self._commissioning_tasks[ieee].cancel()
+
+        task = self._create_task(
+            self._process_commissioning(packet),
+            f"gp_commissioning-0x{packet.src_id:08X}",
+        )
+        self._commissioning_tasks[ieee] = task
+        task.add_done_callback(lambda task: self._commissioning_done(ieee, task))
+
+    def _commissioning_done(self, ieee: t.EUI64, task: asyncio.Task[None]) -> None:
+        # A restarted commissioning may already have replaced the task
+        if (
+            ieee in self._commissioning_tasks
+            and self._commissioning_tasks[ieee] is task
+        ):
+            del self._commissioning_tasks[ieee]
 
     async def _process_commissioning(self, packet: t.ZigbeeGpPacket) -> None:
         """Process a GP Commissioning command (0xE0): create device, reply, pair."""
         source_id = packet.src_id
         assert source_id is not None
-
-        if not self.is_commissioning:
-            LOGGER.debug(
-                "GP Commissioning from 0x%08X ignored: window not open",
-                source_id,
-            )
-            return
-
-        if source_id == 0x00000000:
-            LOGGER.warning(
-                "GP Commissioning with unspecified sourceID 0x00000000, ignoring"
-            )
-            return
 
         try:
             comm, _ = GPCommissioningPayload.deserialize(packet.payload.serialize())
@@ -268,30 +309,43 @@ class GreenPowerManager:
         # listens for a Commissioning Reply (A.3.9.1 13.j). Bidirectional commissioning
         # then finishes with the GPD's Success GPDF (A.3.9.1 18-19).
         if packet.rx_after_tx:
-            self._pending_devices[device.ieee] = device
             await self._send_commissioning_reply(
                 packet, security_level, security_key_type
             )
-            return
 
-        # A GPD can fall back to unidirectional commissioning
-        if device.ieee in self._pending_devices:
-            del self._pending_devices[device.ieee]
+            if not await self._wait_for_success(device):
+                LOGGER.info("GP commissioning failed, no Success from %r", device)
+                return
 
         await self._finalize_commissioning(device)
 
-    def commissioning_succeeded(self, device: GreenPowerDevice) -> None:
-        """Finish commissioning a GPD whose Success command (0xE2) passed its checks."""
-        # The GPD may repeat its Success GPDF (A.3.9.2), only the first one finishes
-        if self.get_pending_device(device.ieee) is not device:
-            LOGGER.debug("Ignoring Success from %r: not commissioning", device)
-            return
+    async def _wait_for_success(self, device: GreenPowerDevice) -> bool:
+        """Wait for the GPD's Success GPDF (0xE2), while the window is open."""
+        # The pending device receives the GPD's GPDFs, checked with its new security
+        # parameters (A.3.9.1 18.b). Nothing is awaited between sending the reply and
+        # listening, so the Success GPDF cannot be missed.
+        self._pending_devices[device.ieee] = device
 
-        del self._pending_devices[device.ieee]
-        self._create_task(
-            self._finalize_commissioning(device),
-            f"gp_process_command-0x{GPDCommandID.SuccessReport:02x}",
-        )
+        try:
+            with self._application.frame_listeners.wait_for(
+                gp_command(GPDCommandID.SuccessReport), ieee=device.ieee
+            ) as success:
+                window_closed = asyncio.ensure_future(self._window_closed.wait())
+                waiting: list[asyncio.Future[Any]] = [success, window_closed]
+
+                try:
+                    await asyncio.wait(waiting, return_when=asyncio.FIRST_COMPLETED)
+                finally:
+                    window_closed.cancel()
+
+                return success.done()
+        finally:
+            # A restarted commissioning may already have replaced the device
+            if (
+                device.ieee in self._pending_devices
+                and self._pending_devices[device.ieee] is device
+            ):
+                del self._pending_devices[device.ieee]
 
     async def _finalize_commissioning(self, device: GreenPowerDevice) -> None:
         """Register a commissioned GPD and pair it with the proxies (A.3.9.1 19)."""

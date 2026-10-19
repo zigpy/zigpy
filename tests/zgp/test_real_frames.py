@@ -48,7 +48,7 @@ async def commission(app, gpd: CapturedGPD) -> None:
             security_status=SecurityStatus.NoSecurity,
         )
     )
-    await wait_for_gp_processing()
+    await wait_for_gp_processing(app)
 
 
 def unprocessed_packet(gpd: CapturedGPD, frame: CapturedFrame) -> t.ZigbeeGpPacket:

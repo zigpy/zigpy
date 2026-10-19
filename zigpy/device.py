@@ -464,12 +464,6 @@ class GreenPowerDevice(BaseDevice):
             self._application.green_power.decommission(self)
             return
 
-        # As is a Success command, which finishes bidirectional commissioning (spec
-        # A.3.9.1 step 18.b)
-        if packet.command_id == GPDCommandID.SuccessReport:
-            self._application.green_power.commissioning_succeeded(self)
-            return
-
         command: t.Struct | None
 
         if packet.command_id in GPD_COMMAND_SCHEMAS:
