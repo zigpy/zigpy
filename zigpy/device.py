@@ -313,10 +313,11 @@ class GreenPowerDevice(BaseDevice):
         device.security_key_type = security_key_type
         device.security_level = security_level
         # An unprotected GPD has no security frame counter, the GPDF carries its MAC
-        # sequence number instead
+        # sequence number instead. An outgoing counter it still sends is ignored
+        # (A.4.2.1.1.3).
         device.frame_counter = (
             commissioning.outgoing_counter
-            if commissioning.outgoing_counter is not None
+            if security_level != SecurityLevel.NoSecurity
             else packet.frame_counter
         )
 

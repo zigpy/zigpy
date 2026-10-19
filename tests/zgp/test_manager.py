@@ -209,11 +209,24 @@ async def test_commissioning_window_closed(app, manager):
             1,
             {"security_key": t.KeyData(KEY), "frame_counter": 7},
         ),
-        # An outgoing counter of 0 is a valid counter, not an absent one
+        # An outgoing counter of 0 is a valid counter, not an absent one (extended
+        # options 0xA2: FullFrameCounterAndMIC, key in the clear, outgoing counter)
         (
-            b"\x02\x80\x80" + struct.pack("<I", 0),
+            b"\x02\x80\xa2" + KEY + struct.pack("<I", 0),
             999,
             {"frame_counter": 0},
+        ),
+        # Extended options 0xB0: NoSecurity, IndividualKey, key in the clear, outgoing
+        # counter. The security fields of an unprotected GPD are ignored (A.4.2.1.1.3)
+        (
+            b"\x02\x80\xb0" + KEY + struct.pack("<I", 7),
+            5,
+            {
+                "security_level": SecurityLevel.NoSecurity,
+                "security_key_type": SecurityKeyType.NoKey,
+                "security_key": None,
+                "frame_counter": 5,
+            },
         ),
         # Options 0x04: app info present; app info 0x10: switch information present.
         # Switch information: length 2, 2 contacts as a button, no contacts closed
@@ -366,8 +379,9 @@ async def test_recommissioning_replaces_device(app, manager):
         (b"\x02\x80\xa2" + KEY, 50, 100),
         # Another key is another GPD security context
         (b"\x02\x80\xa3" + bytes(range(16, 32)), 50, 50),
-        # Without a key, there is no security frame counter (extended options 0x80)
-        (b"\x02\x80\x80", 50, 50),
+        # An unprotected GPD has no security frame counter, its outgoing counter is
+        # ignored and the GPDF's MAC sequence number is kept (extended options 0x80)
+        (b"\x02\x80\x80", 50, 2),
     ],
 )
 async def test_recommissioning_keeps_frame_counter(

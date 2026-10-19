@@ -76,7 +76,13 @@ def commissioning_security(
         )
         return None
 
-    if security_level != SecurityLevel.NoSecurity and comm.outgoing_counter is None:
+    if security_level == SecurityLevel.NoSecurity:
+        # The key type, key and outgoing counter of an unprotected GPD are ignored on
+        # reception (A.4.2.1.1.3). Proxies report NoKey for its unprotected GPDFs, so
+        # a stored key type would fail the security parameter check of every one.
+        return SecurityLevel.NoSecurity, SecurityKeyType.NoKey, None
+
+    if comm.outgoing_counter is None:
         # A protected GPD must announce its security frame counter, without it
         # the commissioning check fails (A.3.9.2.1.2)
         LOGGER.warning(
@@ -90,7 +96,7 @@ def commissioning_security(
     # Without a key, every later GPDF of a protected GPD fails verification. This sink
     # neither provisions keys nor derives them from the network key, so a GPD that does
     # not supply its own key is dropped, even if it requests one (A.3.9.1 step 13.g).
-    if security_level != SecurityLevel.NoSecurity and security_key is None:
+    if security_key is None:
         LOGGER.warning(
             "GP Commissioning from 0x%08X has no security key",
             source_id,
