@@ -18,6 +18,7 @@ from tests.zgp.conftest import (
     sent_command,
 )
 from zigpy.device import GreenPowerDevice
+from zigpy.exceptions import DeliveryError
 import zigpy.types as t
 from zigpy.zcl.clusters.greenpower import NotificationSchema, PairingSchema
 from zigpy.zgp.types import (
@@ -150,10 +151,15 @@ async def test_zigbee_packet_from_gp_device(app, gpd, caplog):
     assert "non-Zigbee device" in caplog.text
 
 
-async def test_remove_gpd(app, gpd):
+@pytest.mark.parametrize(
+    "send_error",
+    [None, TimeoutError(), DeliveryError("Failed")],
+)
+async def test_remove_gpd(app, gpd, send_error):
     """Removing a GPD also removes it from the proxies and leaves its group."""
     gpd.security_level = SecurityLevel.NoSecurity
     gpd.security_key_type = SecurityKeyType.NoKey
+    app.send_packet.side_effect = send_error
     app.unsubscribe_from_multicast_group = AsyncMock(
         wraps=app.unsubscribe_from_multicast_group
     )

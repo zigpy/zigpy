@@ -15,6 +15,7 @@ from cryptography.exceptions import InvalidTag
 
 from zigpy.datastructures import Debouncer
 from zigpy.device import GP_DUPLICATE_TIMEOUT, GreenPowerDevice
+from zigpy.exceptions import DeliveryError
 from zigpy.profiles import zgp as zgp_profile
 import zigpy.types as t
 from zigpy.util import CreateTaskMixin
@@ -333,7 +334,10 @@ class GreenPowerManager(CreateTaskMixin):
 
     async def unpair(self, device: GreenPowerDevice) -> None:
         """Remove a GPD from all proxies and leave its derived group, once removed."""
-        await self.send_pairing(device, add_sink=False)
+        try:
+            await self.send_pairing(device, add_sink=False)
+        except (TimeoutError, DeliveryError) as ex:
+            LOGGER.warning("Failed to remove %r from proxies: %s", device, ex)
 
         group = derived_group(device)
 
