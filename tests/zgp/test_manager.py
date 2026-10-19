@@ -419,7 +419,20 @@ async def test_channel_request(app, manager, channel, gpp_short_addr, temp_maste
     assert configuration.basic
 
 
+async def test_channel_request_window_closed(app, manager):
+    """A Channel Request outside of commissioning mode is dropped (A.3.9.1 7.a)."""
+    app.gp_packet_received(
+        make_gp_packet(0x12345678, GPDCommandID.ChannelRequest, b"\x00")
+    )
+    await wait_for_gp_processing()
+
+    assert len(app.send_packet.mock_calls) == 0
+
+
 async def test_channel_request_invalid(app, manager):
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
     app.gp_packet_received(make_gp_packet(0x12345678, GPDCommandID.ChannelRequest, b""))
     await wait_for_gp_processing()
 
@@ -654,6 +667,9 @@ async def open_window(app, manager) -> None:
 
 
 async def request_channel(app, manager) -> None:
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
     app.gp_packet_received(
         make_gp_packet(0x12345678, GPDCommandID.ChannelRequest, b"\x00")
     )

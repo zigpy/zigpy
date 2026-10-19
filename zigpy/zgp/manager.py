@@ -302,9 +302,15 @@ class GreenPowerManager:
         source_id = packet.src_id
         assert source_id is not None
 
-        # The GPD's preferred channels do not matter, it is told the operational one
+        # Outside of commissioning mode, the command is silently dropped (A.3.9.1 7.a)
+        if not self.is_commissioning:
+            LOGGER.debug(
+                "GP Channel Request from 0x%08X ignored: window not open", source_id
+            )
+            return
+
         try:
-            GPChannelRequestPayload.deserialize(packet.payload.serialize())
+            request, _ = GPChannelRequestPayload.deserialize(packet.payload.serialize())
         except (ValueError, IndexError):
             LOGGER.warning("Failed to parse Channel Request from 0x%08X", source_id)
             return
