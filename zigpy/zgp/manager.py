@@ -41,6 +41,7 @@ from zigpy.zgp.types import (
     ProxyCommissioningModeExitMode,
     SecurityKeyType,
     SecurityLevel,
+    SrcID,
 )
 
 if TYPE_CHECKING:
@@ -54,6 +55,55 @@ def derived_group(device: GreenPowerDevice) -> t.Group:
     # Derived from the GPD ID exactly like the alias (A.3.6.1.4), and the device's NWK
     # address is that alias
     return t.Group(device.nwk)
+
+
+def commissioning_security(
+    source_id: SrcID, comm: GPCommissioningPayload
+) -> tuple[SecurityLevel, SecurityKeyType, t.KeyData | None] | None:
+    """Return the security level, key type and key of a GPD, or None to reject it."""
+    if comm.extended_options is None:
+        return SecurityLevel.NoSecurity, SecurityKeyType.NoKey, None
+
+    security_level = comm.extended_options.security_level
+
+    if security_level == SecurityLevel.Reserved:
+        # A.1.4.1.3: no processing is defined for the reserved level,
+        # and pairing a GPD with it would push it to every proxy.
+        LOGGER.warning(
+            "GP Commissioning from 0x%08X uses the reserved security level",
+            source_id,
+        )
+        return None
+
+    if security_level != SecurityLevel.NoSecurity and comm.outgoing_counter is None:
+        # A protected GPD must announce its security frame counter, without it
+        # the commissioning check fails (A.3.9.2.1.2)
+        LOGGER.warning(
+            "GP Commissioning from 0x%08X has no outgoing frame counter",
+            source_id,
+        )
+        return None
+
+    security_key = comm.security_key
+
+    # The key MIC is only present if the key is protected with the TC-LK
+    if comm.key_mic is not None:
+        # AES-CCM over 16 bytes takes ~20 us on a CM4. Offloading it to an
+        # executor would cost ~200 us for the thread handoff alone, mostly on
+        # the event loop itself.
+        try:
+            security_key = t.KeyData(
+                decrypt_security_key(
+                    source_id,
+                    comm.security_key.serialize(),
+                    comm.key_mic.serialize(),
+                )
+            )
+        except InvalidTag:
+            LOGGER.warning("Failed to decrypt security key from 0x%08X", source_id)
+            return None
+
+    return security_level, comm.extended_options.key_type, security_key
 
 
 class GreenPowerManager:
@@ -183,86 +233,20 @@ class GreenPowerManager:
             )
             return
 
-        security_level = SecurityLevel.NoSecurity
-        security_key_type = SecurityKeyType.NoKey
-        security_key = None
+        security = commissioning_security(source_id, comm)
 
-        if comm.extended_options is not None:
-            security_level = comm.extended_options.security_level
-            if security_level == SecurityLevel.Reserved:
-                # A.1.4.1.3: no processing is defined for the reserved level,
-                # and pairing a GPD with it would push it to every proxy.
-                LOGGER.warning(
-                    "GP Commissioning from 0x%08X uses the reserved security level",
-                    source_id,
-                )
-                return
+        if security is None:
+            return
 
-            if (
-                security_level != SecurityLevel.NoSecurity
-                and comm.outgoing_counter is None
-            ):
-                # A protected GPD must announce its security frame counter, without it
-                # the commissioning check fails (A.3.9.2.1.2)
-                LOGGER.warning(
-                    "GP Commissioning from 0x%08X has no outgoing frame counter",
-                    source_id,
-                )
-                return
-
-            security_key_type = comm.extended_options.key_type
-            security_key = comm.security_key
-
-            # The key MIC is only present if the key is protected with the TC-LK
-            if comm.key_mic is not None:
-                # AES-CCM over 16 bytes takes ~20 us on a CM4. Offloading it to an
-                # executor would cost ~200 us for the thread handoff alone, mostly on
-                # the event loop itself.
-                try:
-                    security_key = t.KeyData(
-                        decrypt_security_key(
-                            source_id,
-                            comm.security_key.serialize(),
-                            comm.key_mic.serialize(),
-                        )
-                    )
-                except InvalidTag:
-                    LOGGER.warning(
-                        "Failed to decrypt security key from 0x%08X", source_id
-                    )
-                    return
-
-        device = GreenPowerDevice(
-            self._application, application_id=ApplicationID.SrcID, src_id=source_id
+        security_level, security_key_type, security_key = security
+        device = GreenPowerDevice.from_commissioning(
+            self._application,
+            packet,
+            comm,
+            security_level=security_level,
+            security_key_type=security_key_type,
+            security_key=security_key,
         )
-        device.device_id = comm.device_id
-        device.gpd_manufacturer_id = comm.manufacturer_id
-        device.gpd_model_id = comm.model_id
-        device.commands = [GPDCommandID(cmd) for cmd in comm.gpd_commands or []]
-        device.server_cluster_ids = list(comm.server_clusters or [])
-        device.client_cluster_ids = list(comm.client_clusters or [])
-
-        if comm.switch_information is not None:
-            device.switch_configuration = comm.switch_information.configuration
-
-        device.mac_seq_num_capability = bool(comm.options.mac_seq_num_capability)
-        device.rx_on_capability = bool(comm.options.rx_on_capability)
-        device.fixed_location = bool(comm.options.fixed_location)
-        device.security_key = security_key
-        device.security_key_type = security_key_type
-        device.security_level = security_level
-        # An unprotected GPD has no security frame counter, the GPDF carries its MAC
-        # sequence number instead
-        device.frame_counter = (
-            comm.outgoing_counter
-            if comm.outgoing_counter is not None
-            else packet.frame_counter
-        )
-
-        # The commissioning GPDF is the latest reception from the GPD
-        device.last_seen = packet.timestamp
-        device.lqi = packet.lqi
-        device.rssi = packet.rssi
 
         # The triggering GPDF's RxAfterTx, not RxOnCapability, says whether the GPD
         # listens for a Commissioning Reply (A.3.9.1 13.j). Bidirectional commissioning
