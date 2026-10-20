@@ -47,6 +47,20 @@ MAX_READ_ATTRIBUTES_PER_REQ = 5
 _RecordT = TypeVar("_RecordT")
 
 
+def _convert_attribute_value(
+    attr_def: foundation.ZCLAttributeDef, type_value: foundation.TypeValue
+) -> Any:
+    """Convert a received attribute value into the attribute's declared type."""
+    # `dataN` values are untyped bytes, so they are re-read with the declared type
+    if foundation.DataTypeId.data8 <= type_value.type <= foundation.DataTypeId.data64:
+        value, rest = attr_def.type.deserialize(type_value.value.serialize())
+        assert not rest
+
+        return value
+
+    return attr_def.type(type_value.value)
+
+
 def _chunk_records_by_size(
     records: Iterable[_RecordT],
     get_size: Callable[[_RecordT], int],
@@ -995,7 +1009,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     attr_def = None
                     value = attr.value.value
                 else:
-                    value = attr_def.type(attr.value.value)
+                    value = _convert_attribute_value(attr_def, attr.value)
 
                 if attr_def is None:
                     # Unknown attribute, update and emit reported event
@@ -1268,7 +1282,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     # real device.
                     value = None
                 else:
-                    value = attr_def.type(record.value.value)
+                    value = _convert_attribute_value(attr_def, record.value)
 
                 success[attribute_map[attr_def]] = value
 

@@ -1199,8 +1199,7 @@ class CoordinateSystem(t.enum2):
     Rectangular = 0b00
 
 
-# Table 3-73. The wire type is `data8`, but that is not constructible from an int, so
-# this is modelled as an int struct and the attribute carries an explicit `zcl_type`.
+# Table 3-73. The wire type is `data8`, so the attribute carries an explicit `zcl_type`
 class LocationType(t.IntStruct, t.uint8_t):
     absolute: t.uint1_t
     two_dimensional: t.uint1_t

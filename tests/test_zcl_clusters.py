@@ -14,11 +14,14 @@ from zigpy.ota import OTA, OtaImagesResult
 from zigpy.zcl import OtaImageAvailableEvent, OtaQueryCacheUpdatedEvent, foundation
 from zigpy.zcl.clusters.general import (
     Basic,
+    CoordinateSystem,
     KeepAlive,
+    LocationType,
     Ota,
     Partition,
     PartitionAckOptions,
     PartitionFragmentationOptions,
+    RSSILocation,
     Time,
 )
 import zigpy.zcl.clusters.security as sec
@@ -832,3 +835,21 @@ def test_partition_nack_id_width(
 
     assert command.serialize() == bytes.fromhex(serialized)
     assert schema.deserialize(bytes.fromhex(serialized)) == (command, b"")
+
+
+def test_rssi_location_type_report() -> None:
+    """Test a `data8` location type report is coerced into `LocationType`."""
+
+    ep = MagicMock()
+    cluster = RSSILocation(ep)
+
+    # Report_Attributes: attribute 0x0000, data8, value 0x03
+    hdr, args = cluster.deserialize(bytes.fromhex("18010a00000803"))
+    cluster.handle_message(hdr, args)
+
+    assert cluster.get(RSSILocation.AttributeDefs.type.name) == LocationType(
+        absolute=1,
+        two_dimensional=1,
+        coordinate_system=CoordinateSystem.Rectangular,
+        _reserved=0,
+    )
