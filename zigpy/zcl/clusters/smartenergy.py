@@ -552,6 +552,8 @@ class GetProfileResponseSchema(CommandSchema):
     )
 
 
+# Figure 10-70. Samples are signed 24-bit for the Instantaneous Demand sample type
+# (10.4.2.3.1.8.2), so the type depends on `sample_type` and uint24 is used.
 class GetSampledDataResponseSchema(CommandSchema):
     sample_id: t.uint16_t
     sample_start_time: t.UTCTime
@@ -1242,7 +1244,8 @@ class Metering(Cluster):
             schema={
                 "notification_scheme": t.uint8_t,
                 "notification_flag_attribute_id": t.uint16_t,
-                "notification_flags": FunctionalNotificationFlags,
+                # The flags attribute is selected by `notification_flag_attribute_id`
+                "notification_flags": t.bitmap32,
             },
         )
         supply_status_response: Final = ZCLCommandDef(

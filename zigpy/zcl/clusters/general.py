@@ -2867,11 +2867,12 @@ class ApplianceControl(Cluster):
             schema={"command_id": ApplianceCommandId},
         )
         signal_state: Final = ZCLCommandDef(id=0x01, schema={})
-        # Figures 15-3 and 15-4: a single record whose function identifier "i.e.,
-        # attribute identifier", data type and data match `foundation.Attribute`
+        # Figures 15-3 and 15-4: records whose function identifier "i.e., attribute
+        # identifier", data type and data match `foundation.Attribute`. The figure
+        # shows one record, but records are self-delimiting so a list covers both.
         write_functions: Final = ZCLCommandDef(
             id=0x02,
-            schema={"function": foundation.Attribute},
+            schema={"functions": t.List[foundation.Attribute]},
         )
         overload_pause_resume: Final = ZCLCommandDef(id=0x03, schema={})
         overload_pause: Final = ZCLCommandDef(id=0x04, schema={})
