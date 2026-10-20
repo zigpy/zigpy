@@ -15,7 +15,12 @@ import zigpy.appdb_schemas
 import zigpy.backups
 import zigpy.config as conf
 import zigpy.device
-from zigpy.device import Device, Status as DeviceStatus
+from zigpy.device import (
+    Device,
+    GreenPowerCommandReceived,
+    GreenPowerDevice,
+    Status as DeviceStatus,
+)
 import zigpy.endpoint
 from zigpy.endpoint import Endpoint, Status as EndpointStatus
 import zigpy.exceptions
@@ -40,6 +45,15 @@ from zigpy.zcl import (
 from zigpy.zcl.clusters.general import Basic, Ota
 from zigpy.zcl.foundation import Status
 from zigpy.zdo import types as zdo_t
+from zigpy.zgp.commands import GPGenericSwitchConfiguration
+from zigpy.zgp.types import (
+    ApplicationID,
+    DeviceID,
+    GPDCommandID,
+    SecurityKeyType,
+    SecurityLevel,
+    SrcID,
+)
 
 if TYPE_CHECKING:
     from zigpy.application import ControllerApplication
@@ -56,7 +70,7 @@ if sqlite3.sqlite_version_info < MIN_SQLITE_VERSION:
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 15
+DB_VERSION = 16
 DB_V = f"_v{DB_VERSION}"
 
 UNIX_EPOCH = datetime.fromtimestamp(0, tz=UTC)
@@ -132,7 +146,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self._callback_handlers: asyncio.Queue = asyncio.Queue()
         self.running = False
         self._worker_task = asyncio.create_task(self._worker())
-
         self._commit_interval = self._application.config[conf.CONF_DB_COMMIT_INTERVAL]
         self._commit_task: asyncio.Task | None = None
 
@@ -291,10 +304,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             await self.execute("PRAGMA wal_checkpoint;")
             await self._set_isolation_level("DEFERRED")
         finally:
-            await self._db.close()
-
-            # FIXME: aiosqlite's thread won't always be closed immediately
-            await asyncio.get_running_loop().run_in_executor(None, self._db.join)
+            try:
+                await self._db.close()
+            finally:
+                # `close()` can return before aiosqlite's worker thread has exited,
+                # and there is no public API to wait for it (omnilib/aiosqlite#387)
+                await asyncio.get_running_loop().run_in_executor(
+                    None, self._db._thread.join
+                )
 
     def register_cluster_events(self, cluster) -> None:
         cluster.on_event(AttributeReadEvent.event_type, self.on_attribute_read)
@@ -357,6 +374,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     def device_last_seen_updated(self, device: Device, last_seen: datetime) -> None:
         """Device last_seen time is updated."""
+        # A GPD's last_seen is written along with its frame counter
+        if isinstance(device, GreenPowerDevice):
+            return
+
         self.enqueue("_save_device_last_seen", device.ieee, last_seen)
 
     async def _save_device_last_seen(self, ieee: t.EUI64, last_seen: datetime) -> None:
@@ -463,13 +484,24 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._commit(force=True)
 
     def device_removed(self, device: Device) -> None:
+        if isinstance(device, GreenPowerDevice):
+            self.enqueue("_remove_gp_device", device.ieee)
+            return
+
         self.enqueue("_remove_device", device)
 
-    async def _remove_device(self, device: Device) -> None:
+    async def _remove_device(
+        self, device: Device, *, force_commit: bool = True
+    ) -> None:
         await self.execute(f"DELETE FROM devices{DB_V} WHERE ieee = ?", (device.ieee,))
-        await self._commit(force=True)
+        await self._commit(force=force_commit)
 
     def raw_device_initialized(self, device: Device) -> None:
+        if isinstance(device, GreenPowerDevice):
+            # Snapshot the row now, for the same reason a Zigbee device is cloned
+            self.enqueue("_save_gp_device", self._gp_device_row(device))
+            return
+
         # We work with a clone of a device so that quirks that run in the same event
         # loop iteration do not manage to mutate it before the async database code runs
         self.enqueue("_raw_device_initialized", device.clone())
@@ -801,6 +833,73 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         )
         await self._commit()
 
+    def register_gp_device_events(self, device: GreenPowerDevice) -> None:
+        device.on_event(
+            GreenPowerCommandReceived.event_type, self.on_gp_command_received
+        )
+
+    def on_gp_command_received(self, event: GreenPowerCommandReceived) -> None:
+        # Every accepted GPDF advances the frame counter (replay protection), so it is
+        # persisted to keep the replay baseline across a restart
+        device = self._application.get_device(t.EUI64.convert(event.device_ieee))
+        assert isinstance(device, GreenPowerDevice)
+
+        self.enqueue(
+            "_save_gp_frame_counter",
+            device.ieee,
+            device.frame_counter,
+            device.last_seen or UNIX_EPOCH.timestamp(),
+        )
+
+    def _gp_device_row(self, device: GreenPowerDevice) -> dict[str, Any]:
+        return {
+            "ieee": device.ieee,
+            "application_id": device.application_id,
+            "src_id": device.src_id,
+            "device_id": device.device_id,
+            "gpd_manufacturer_id": device.gpd_manufacturer_id,
+            "gpd_model_id": device.gpd_model_id,
+            "commands": json.dumps(device.commands),
+            "server_cluster_ids": json.dumps(device.server_cluster_ids),
+            "client_cluster_ids": json.dumps(device.client_cluster_ids),
+            "switch_configuration": device.switch_configuration,
+            "mac_seq_num_capability": device.mac_seq_num_capability,
+            "rx_on_capability": device.rx_on_capability,
+            "fixed_location": device.fixed_location,
+            "security_key": (
+                None if device.security_key is None else device.security_key.serialize()
+            ),
+            "security_key_type": device.security_key_type,
+            "security_level": device.security_level,
+            "frame_counter": device.frame_counter,
+            "last_seen": device.last_seen or UNIX_EPOCH.timestamp(),
+        }
+
+    async def _save_gp_device(self, row: dict[str, Any]) -> None:
+        columns = ", ".join(row)
+        values = ", ".join(f":{column}" for column in row)
+        updates = ", ".join(f"{column}=excluded.{column}" for column in row)
+
+        await self.execute(
+            f"INSERT INTO gp_devices{DB_V} ({columns}) VALUES ({values})"
+            f" ON CONFLICT (ieee) DO UPDATE SET {updates}",
+            row,
+        )
+        await self._commit(force=True)
+
+    async def _save_gp_frame_counter(
+        self, ieee: t.EUI64, frame_counter: int | None, last_seen: float
+    ) -> None:
+        await self.execute(
+            f"UPDATE gp_devices{DB_V} SET frame_counter=?, last_seen=? WHERE ieee=?",
+            (frame_counter, last_seen, ieee),
+        )
+        await self._commit()
+
+    async def _remove_gp_device(self, ieee: t.EUI64) -> None:
+        await self.execute(f"DELETE FROM gp_devices{DB_V} WHERE ieee=?", (ieee,))
+        await self._commit(force=True)
+
     def network_backup_created(self, backup: zigpy.backups.NetworkBackup) -> None:
         self.enqueue("_network_backup_created", json.dumps(backup.as_dict()))
 
@@ -839,6 +938,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def load(self) -> None:
         LOGGER.debug("Loading application state")
         await self._load_devices()
+        await self._load_gp_devices()
         await self._load_node_descriptors()
         await self._load_endpoints()
         await self._load_clusters()
@@ -1239,9 +1339,84 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         cluster.last_query_cmd = cmd
                         break
 
+    async def _load_gp_devices(self) -> None:
+        async with self.execute(f"SELECT * FROM gp_devices{DB_V}") as cursor:
+            async for (
+                ieee,
+                application_id,
+                src_id,
+                device_id,
+                gpd_manufacturer_id,
+                gpd_model_id,
+                commands,
+                server_cluster_ids,
+                client_cluster_ids,
+                switch_configuration,
+                mac_seq_num_capability,
+                rx_on_capability,
+                fixed_location,
+                security_key,
+                security_key_type,
+                security_level,
+                frame_counter,
+                last_seen,
+            ) in cursor:
+                device = GreenPowerDevice(
+                    self._application,
+                    application_id=ApplicationID(application_id),
+                    src_id=None if src_id is None else SrcID(src_id),
+                    ieee=ieee,
+                )
+                device.device_id = None if device_id is None else DeviceID(device_id)
+                device.gpd_manufacturer_id = (
+                    None
+                    if gpd_manufacturer_id is None
+                    else t.uint16_t(gpd_manufacturer_id)
+                )
+                device.gpd_model_id = (
+                    None if gpd_model_id is None else t.uint16_t(gpd_model_id)
+                )
+                device.commands = [GPDCommandID(c) for c in json.loads(commands)]
+                device.server_cluster_ids = [
+                    t.uint16_t(c) for c in json.loads(server_cluster_ids)
+                ]
+                device.client_cluster_ids = [
+                    t.uint16_t(c) for c in json.loads(client_cluster_ids)
+                ]
+                device.switch_configuration = (
+                    None
+                    if switch_configuration is None
+                    else GPGenericSwitchConfiguration(switch_configuration)
+                )
+                device.mac_seq_num_capability = bool(mac_seq_num_capability)
+                device.rx_on_capability = bool(rx_on_capability)
+                device.fixed_location = bool(fixed_location)
+                device.security_key = (
+                    None if security_key is None else t.KeyData(security_key)
+                )
+                device.security_key_type = (
+                    None
+                    if security_key_type is None
+                    else SecurityKeyType(security_key_type)
+                )
+                device.security_level = (
+                    None if security_level is None else SecurityLevel(security_level)
+                )
+                device.frame_counter = (
+                    None if frame_counter is None else t.uint32_t(frame_counter)
+                )
+
+                if last_seen > 0:
+                    device.last_seen = last_seen
+
+                self._application.devices[device.ieee] = device
+
     async def _register_device_listeners(self) -> None:
         for dev in self._application.devices.values():
             dev.add_context_listener(self)
+
+            if isinstance(dev, GreenPowerDevice):
+                self.register_gp_device_events(dev)
 
     @contextlib.asynccontextmanager
     async def _transaction(self):
@@ -1331,6 +1506,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 (self._migrate_to_v13, 13),
                 (self._migrate_to_v14, 14),
                 (self._migrate_to_v15, 15),
+                (self._migrate_to_v16, 16),
             ]:
                 if db_version >= min(to_db_version, DB_VERSION):
                     continue
@@ -1796,3 +1972,23 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             }
         )
         # ota_query_cache_v15 is new and starts empty
+
+    async def _migrate_to_v16(self) -> None:
+        """Schema v16 adds the gp_devices table for Green Power persistence."""
+        await self._migrate_tables(
+            {
+                "devices_v15": "devices_v16",
+                "endpoints_v15": "endpoints_v16",
+                "neighbors_v15": "neighbors_v16",
+                "routes_v15": "routes_v16",
+                "node_descriptors_v15": "node_descriptors_v16",
+                "groups_v15": "groups_v16",
+                "group_members_v15": "group_members_v16",
+                "relays_v15": "relays_v16",
+                "network_backups_v15": "network_backups_v16",
+                "clusters_v15": "clusters_v16",
+                "attributes_cache_v15": "attributes_cache_v16",
+                "ota_query_cache_v15": "ota_query_cache_v16",
+            }
+        )
+        # gp_devices_v16 is new - starts empty
