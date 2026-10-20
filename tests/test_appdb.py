@@ -18,6 +18,12 @@ from tests.conftest import (
     mock_attribute_writes,
 )
 from tests.test_backups import backup_factory  # noqa: F401
+from tests.zgp.conftest import (
+    KEY,
+    commission,
+    commissioning_payload,
+    encrypted_gp_packet,
+)
 from zigpy import profiles
 import zigpy.appdb
 import zigpy.application
@@ -46,7 +52,19 @@ from zigpy.zcl import (
 from zigpy.zcl.clusters.general import Basic, Identify, OnOff, Ota
 from zigpy.zcl.foundation import Status as ZCLStatus, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
-from zigpy.zgp.types import ApplicationID, SrcID
+from zigpy.zgp.commands import GPGenericSwitchConfiguration
+from zigpy.zgp.types import (
+    GP_ENDPOINT,
+    GP_GROUP_ID,
+    ApplicationID,
+    DeviceID,
+    GPDCommandID,
+    SecurityKeyType,
+    SecurityLevel,
+    SrcID,
+    SwitchType,
+)
+from zigpy.zgp.util import synthetic_ieee
 
 pytestmark = pytest.mark.usefixtures("auto_kill_aiosqlite")
 
@@ -2146,6 +2164,191 @@ async def test_get_last_ota_query_cmd_returns_none(tmp_path):
     await app.shutdown()
 
 
+GP_SOURCE_ID = SrcID(0x0040F4E4)
+
+
+@pytest.mark.parametrize(
+    "attrs",
+    [
+        {},
+        {
+            "device_id": DeviceID.GenericSwitch,
+            "gpd_manufacturer_id": t.uint16_t(0x1021),
+            "gpd_model_id": t.uint16_t(0x0002),
+            "commands": [GPDCommandID.Press1of1, GPDCommandID.Release1of1],
+            "server_cluster_ids": [t.uint16_t(0x0006)],
+            "client_cluster_ids": [t.uint16_t(0x0008), t.uint16_t(0x0300)],
+            "switch_configuration": GPGenericSwitchConfiguration(
+                num_contacts=2, switch_type=SwitchType.Button, _reserved=0
+            ),
+            "mac_seq_num_capability": True,
+            "rx_on_capability": True,
+            "fixed_location": True,
+            "security_key": t.KeyData(range(16)),
+            "security_key_type": SecurityKeyType.IndividualKey,
+            "security_level": SecurityLevel.FullFrameCounterAndMIC,
+            "frame_counter": t.uint32_t(99),
+            "last_seen": datetime(2026, 10, 14, 12, 0, 0, tzinfo=UTC),
+        },
+    ],
+)
+async def test_gp_device_round_trip(tmp_path, attrs):
+    """A commissioned GPD is restored with all fields intact."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
+    )
+
+    for name, value in attrs.items():
+        setattr(device, name, value)
+
+    app.device_initialized(device)
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    restored = app2.devices[device.ieee]
+
+    assert isinstance(restored, GreenPowerDevice)
+    assert restored.nwk == device.nwk
+    assert restored.last_seen == device.last_seen
+    assert restored.get_signature() == device.get_signature()
+
+    for name in (
+        "rx_on_capability",
+        "fixed_location",
+        "security_key",
+        "security_key_type",
+        "security_level",
+        "frame_counter",
+    ):
+        assert getattr(restored, name) == getattr(device, name)
+
+    await app2.shutdown()
+
+
+async def test_gp_frame_counter_persists_per_press(tmp_path):
+    """Every accepted GPDF persists the advanced frame counter.
+
+    Without it, the stored counter is frozen at the join-time value and the
+    replay-protection baseline reverts to stale on every restart.
+    """
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
+    )
+    device.security_level = SecurityLevel.NoSecurity
+    device.security_key_type = SecurityKeyType.NoKey
+    device.frame_counter = t.uint32_t(99)
+    app.device_initialized(device)
+
+    app.gp_packet_received(
+        t.ZigbeeGpPacket(
+            application_id=ApplicationID.SrcID,
+            src_id=GP_SOURCE_ID,
+            command_id=GPDCommandID.Toggle,
+            frame_counter=t.uint32_t(150),
+            security_level=SecurityLevel.NoSecurity,
+            security_key_type=SecurityKeyType.NoKey,
+        )
+    )
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    assert app2.devices[device.ieee].frame_counter == 150  # not the stale 99
+    await app2.shutdown()
+
+
+async def test_gp_device_remove(tmp_path):
+    """A removed GPD is absent after reopen."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
+    )
+    device.security_level = SecurityLevel.NoSecurity
+    device.security_key_type = SecurityKeyType.NoKey
+    app.device_initialized(device)
+    await app.remove(device.ieee)
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    assert device.ieee not in app2.devices
+    await app2.shutdown()
+
+
+async def commission_with_key(app, key: bytes, frame_counter: int) -> None:
+    await app.green_power.permit_join(time_s=60)
+    await commission(
+        app,
+        GP_SOURCE_ID,
+        commissioning_payload(
+            security_level=SecurityLevel.Encrypted,
+            key_type=SecurityKeyType.IndividualKey,
+            key=key,
+            outgoing_counter=10,
+        ),
+        frame_counter=frame_counter,
+    )
+
+
+async def test_gp_device_recommission_updates_security_key(tmp_path):
+    """A GPD re-commissioned with another key after a restart is saved with it."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    await commission_with_key(app, KEY, frame_counter=1)
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    await commission_with_key(app2, bytes(range(16, 32)), frame_counter=2)
+    await app2.shutdown()
+
+    app3 = await make_app_with_db(db)
+    restored = app3.devices[synthetic_ieee(GP_SOURCE_ID)]
+    assert restored.security_key == t.KeyData(range(16, 32))
+    await app3.shutdown()
+
+
+async def test_gp_commissioned_device_restored(tmp_path):
+    """A GPD commissioned by the sink keeps its security state and group on restart."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    await commission_with_key(app, KEY, frame_counter=1)
+    device = app.devices[synthetic_ieee(GP_SOURCE_ID)]
+
+    # A press advances the security frame counter
+    app.gp_packet_received(
+        encrypted_gp_packet(GP_SOURCE_ID, 11, bytes([GPDCommandID.Toggle]))
+    )
+    assert device.frame_counter == 11
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    app2.subscribe_to_multicast_group = AsyncMock(
+        wraps=app2.subscribe_to_multicast_group
+    )
+    await app2.green_power.startup()
+
+    restored = app2.devices[device.ieee]
+    assert isinstance(restored, GreenPowerDevice)
+    assert restored.get_signature() == device.get_signature()
+    assert restored.security_key == t.KeyData(KEY)
+    assert restored.security_key_type == SecurityKeyType.IndividualKey
+    assert restored.security_level == SecurityLevel.Encrypted
+    assert restored.frame_counter == 11
+
+    # The sink joins the GP group again to receive the GPD's notifications
+    assert app2.subscribe_to_multicast_group.mock_calls == [
+        call(GP_GROUP_ID, endpoint_id=GP_ENDPOINT)
+    ]
+
+    await app2.shutdown()
+
+
 def _add_joined_device(app):
     """Join and initialize a device with a single input cluster on endpoint 1."""
     ieee = make_ieee()
@@ -2780,7 +2983,7 @@ async def test_shutdown_survives_failed_commit(tmp_path, caplog):
     await listener.shutdown()
 
     assert "Failed to commit pending changes during shutdown" in caplog.text
-    assert not listener._db.is_alive()
+    assert not listener._db._thread.is_alive()
     assert await _read_count(db, "groups") == 0
 
 
@@ -2795,7 +2998,35 @@ async def test_shutdown_closes_database_on_failure(tmp_path):
     with pytest.raises(RuntimeError):
         await listener.shutdown()
 
-    assert not listener._db.is_alive()
+    assert not listener._db._thread.is_alive()
+
+
+async def test_shutdown_joins_thread_when_close_fails(tmp_path):
+    """The worker thread must be joined even if closing the connection fails."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    conn = app._dblistener._db
+
+    # Fail aiosqlite's own close step, which still stops the worker thread. The
+    # connection is closed first so that it isn't leaked.
+    original_execute = conn._execute
+
+    async def failing_execute(fn, *args, **kwargs):
+        result = await original_execute(fn, *args, **kwargs)
+
+        if fn == conn._connection.close:
+            raise sqlite3.OperationalError("boom")
+
+        return result
+
+    conn._execute = failing_execute
+    conn._thread.join = MagicMock(wraps=conn._thread.join)
+
+    with pytest.raises(sqlite3.OperationalError):
+        await app._dblistener.shutdown()
+
+    conn._thread.join.assert_called_once_with()
+    assert not conn._thread.is_alive()
 
 
 async def test_shutdown_rolls_back_persistently_failing_commit(tmp_path, caplog):
@@ -2815,7 +3046,7 @@ async def test_shutdown_rolls_back_persistently_failing_commit(tmp_path, caplog)
     await listener.shutdown()
 
     assert "Failed to commit pending changes during shutdown" in caplog.text
-    assert not listener._db.is_alive()
+    assert not listener._db._thread.is_alive()
     assert await _read_count(db, "endpoints") == 0
 
 
