@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 from contextlib import contextmanager
 import copy
 import logging
-import sqlite3
 import threading
 import typing
 from unittest.mock import Mock, patch
@@ -38,24 +36,23 @@ _LOGGER = logging.getLogger(__name__)
 
 
 @pytest.fixture
-def auto_kill_aiosqlite():
+def auto_kill_aiosqlite(monkeypatch):
     """Aiosqlite's background thread does not let pytest exit when a failure occurs."""
+    connections: list[aiosqlite.Connection] = []
+    original_init = aiosqlite.Connection.__init__
+
+    def tracking_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        connections.append(self)
+
+    monkeypatch.setattr(aiosqlite.Connection, "__init__", tracking_init)
     yield
 
-    for thread in threading.enumerate():
-        if not isinstance(thread, aiosqlite.core.Connection):
-            continue
-
-        try:
-            conn = thread._conn
-        except ValueError:
-            pass
-        else:
-            with contextlib.suppress(sqlite3.ProgrammingError):
-                conn.close()
-
-        thread._stop_running()
-        thread.join(timeout=1)
+    for conn in connections:
+        if conn._thread.is_alive():
+            # Closes the connection, if it is still open, and stops the thread
+            conn.stop()
+            conn._thread.join(timeout=1)
 
 
 NCP_IEEE = t.EUI64.convert("aa:11:22:bb:33:44:be:ef")
@@ -381,12 +378,6 @@ def verify_cleanup() -> typing.Generator[None, None, None]:
     for thread in threads:
         if isinstance(thread, threading._DummyThread):
             continue
-
-        # Kill lingering aiosqlite threads so pytest doesn't hang
-        if isinstance(thread, aiosqlite.Connection):
-            _LOGGER.warning("Stopping lingering aiosqlite thread %r", thread)
-            thread._stop_running()
-            thread.join(timeout=1)
 
         pytest.fail(f"Lingering thread after test: {thread!r}")
 
