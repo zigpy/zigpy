@@ -1878,7 +1878,7 @@ async def test_device_reinterviewed_with_db(app):
     await app._device_reinterviewed(old_dev, shadow)
 
     # DB removal should have been called for the old device
-    db_listener._remove_device.assert_awaited_once_with(old_dev)
+    db_listener._remove_device.assert_awaited_once_with(old_dev, force_commit=False)
 
 
 async def test_reinterview_device_public_api(app):
@@ -1971,7 +1971,7 @@ async def test_device_reinterviewed_skips_group_removed_during_swap(app):
     # `_remove_device` to drop the group as a side effect.
     db_listener = MagicMock()
 
-    async def fake_remove(_dev):
+    async def fake_remove(_dev, **kwargs):
         app.groups.pop(20, None)
 
     db_listener._remove_device = AsyncMock(side_effect=fake_remove)

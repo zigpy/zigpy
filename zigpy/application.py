@@ -691,10 +691,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         # Remove old device data from DB (cascade deletes endpoints, clusters,
         # attribute cache, group members, and relays).  We call _remove_device
         # directly instead of the public device_removed() because we need the
-        # delete to complete before _finalize_device enqueues the save.
+        # delete to complete before _finalize_device enqueues the save.  It does not
+        # commit the delete: this runs outside the DB worker, so a commit here could
+        # land between two statements of a running handler and persist its partial
+        # writes.  The new device's save, queued next, commits the delete with it.
         if self._dblistener is not None:
             old_device.remove_listener(self._dblistener)
-            await self._dblistener._remove_device(old_device)
+            await self._dblistener._remove_device(old_device, force_commit=False)
 
         # Clean up old device's callbacks and tasks
         old_device.on_remove()
