@@ -178,6 +178,24 @@ async def test_packet_from_gp_alias(app, gpd, caplog):
     assert len(app.send_packet.mock_calls) == 0
 
 
+async def test_non_announce_packet_from_gp_alias(app, gpd, caplog):
+    """Only Device_annce is ignored, an unknown device sharing the alias is discovered."""
+    packet = t.ZigbeePacket(
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=gpd.nwk),
+        src_ep=1,
+        dst=DST,
+        dst_ep=1,
+        tsn=0x12,
+        profile_id=260,
+        cluster_id=0x0006,
+        data=t.SerializableBytes(b"\x18\x12\x0b\x00\x00"),
+    )
+    app.packet_received(packet)
+
+    assert "Ignoring announce packet" not in caplog.text
+    assert "Unknown device" in caplog.text
+
+
 @pytest.mark.parametrize(
     "send_error",
     [None, TimeoutError(), DeliveryError("Failed")],
