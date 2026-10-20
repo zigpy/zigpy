@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 import pytest
 
+from tests.zgp.conftest import (
+    STEP_UP,
+    TIMESTAMP,
+    commission_individual_key,
+    encrypted_gp_packet,
+)
 from zigpy.device import GreenPowerDevice
 import zigpy.types as t
-from zigpy.zgp.commands import GPGenericSwitchConfiguration, GPStepPayload
+from zigpy.zgp.commands import GPGenericSwitchConfiguration
 from zigpy.zgp.types import (
     ApplicationID,
     GPDCommandID,
@@ -20,7 +26,6 @@ from zigpy.zgp.types import (
 )
 from zigpy.zgp.util import derive_alias
 
-TIMESTAMP = datetime(2026, 8, 10, 12, 0, 0, tzinfo=UTC)
 IEEE = t.EUI64.convert("11:22:33:44:55:66:77:88")
 
 
@@ -133,11 +138,11 @@ def test_packet_received(device, events) -> None:
 
 def test_packet_received_parses_command(device, events) -> None:
     device.packet_received(
-        make_packet(1, command_id=GPDCommandID.StepUp, payload=b"\x05\x0a\x00")
+        make_packet(1, command_id=GPDCommandID.StepUp, payload=STEP_UP.serialize())
     )
 
     assert len(events) == 1
-    assert events[0].command == GPStepPayload(step_size=5, transition_time=10)
+    assert events[0].command == STEP_UP
 
 
 def test_packet_received_unparseable_payload(device, events) -> None:
@@ -252,7 +257,6 @@ def test_security_mismatch_is_dropped(
         (SecurityStatus.NoSecurity, True),
         (SecurityStatus.CounterFailure, False),
         (SecurityStatus.AuthFailure, False),
-        (SecurityStatus.Unprocessed, False),
     ],
 )
 def test_security_status_gate(device, events, security_status, delivered) -> None:
@@ -317,3 +321,53 @@ def test_ieee_frame_endpoint_passthrough() -> None:
 
     assert len(events) == 1
     assert events[0].endpoint_id == 5
+
+
+def encrypted_packet(frame_counter: int) -> t.ZigbeeGpPacket:
+    """Encrypt a Step Up command as a GPD would, with an individual key."""
+    return encrypted_gp_packet(
+        0x12345678, frame_counter, bytes([GPDCommandID.StepUp]) + STEP_UP.serialize()
+    )
+
+
+def test_unprocessed_frame_decrypted(device, events) -> None:
+    """A protected frame the radio did not process is decrypted by the sink."""
+    commission_individual_key(device)
+
+    device.packet_received(encrypted_packet(1000))
+
+    assert len(events) == 1
+    assert events[0].command_id == GPDCommandID.StepUp
+    assert events[0].command == STEP_UP
+    assert device.frame_counter == 1000
+
+
+@pytest.mark.parametrize(
+    "packet_kwargs",
+    [
+        # Tampered MIC
+        {"mic": t.uint32_t(0xDEADBEEF)},
+        # Protected with a shared key, the GPD was commissioned with an individual one
+        {"individual_key": False},
+        # Another security level than the commissioned one
+        {"security_level": SecurityLevel.FullFrameCounterAndMIC},
+    ],
+)
+def test_unprocessed_frame_rejected(device, events, packet_kwargs) -> None:
+    """A frame that does not verify with the commissioned key is dropped."""
+    commission_individual_key(device)
+    device.frame_counter = t.uint32_t(10)
+
+    device.packet_received(encrypted_packet(1000).replace(**packet_kwargs))
+
+    assert len(events) == 0
+    assert device.frame_counter == 10
+
+
+def test_unprocessed_frame_without_key(device, events) -> None:
+    """Without a commissioned key, a protected frame cannot be verified."""
+    commission_security(device)
+
+    device.packet_received(encrypted_packet(1000))
+
+    assert len(events) == 0
