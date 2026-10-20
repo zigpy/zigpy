@@ -18,8 +18,6 @@ from zigpy.zcl.foundation import (
 # Backwards compatibility for when ZGP was still included in this file
 from .greenpower import GreenPowerProxy  # noqa: F401
 
-ZIGBEE_EPOCH = datetime(2000, 1, 1, 0, 0, 0, 0, tzinfo=UTC)
-
 
 class PowerSource(t.enum8):
     """Power source enum."""
