@@ -400,33 +400,43 @@ class SnapshotCause(t.bitmap32):
     # Bits 20-31: Reserved
 
 
-class FunctionalNotificationFlags(t.bitmap32):
-    """Functional notification flags bitmap per SE 1.4a Table D-59."""
+class PushHistoricalDataSet(t.enum3):
+    """Push historical data attribute set per SE 1.4a Tables D-61 and D-62."""
 
-    New_OTA_Firmware = 0x00000001
-    CBKE_Update_Request = 0x00000002
-    Time_Sync = 0x00000004
-    # Bit 3: Reserved
-    Stay_Awake_Request_HAN = 0x00000010
-    Stay_Awake_Request_WAN = 0x00000020
-    # TODO: bits 6-8 and 9-11 are 3-bit encoded fields (Tables D-61 and D-62), not
-    # flags. They need `Struct` to pack bit fields across byte boundaries little-endian.
-    Push_All_Static_Data_Basic_Cluster = 0x00001000
-    Push_All_Static_Data_Metering_Cluster = 0x00002000
-    Push_All_Static_Data_Prepayment_Cluster = 0x00004000
-    NetworkKeyActive = 0x00008000
-    Display_Message = 0x00010000
-    Cancel_All_Messages = 0x00020000
-    Change_Supply = 0x00040000
-    Local_Change_Supply = 0x00080000
-    Set_Uncontrolled_Flow_Threshold = 0x00100000
-    Tunnel_Message_Pending = 0x00200000
-    Get_Snapshot = 0x00400000
-    Get_Sampled_Data = 0x00800000
-    New_Sub_GHz_Channel_Masks_Available = 0x01000000
-    Energy_Scan_Pending = 0x02000000
-    Channel_Change_Pending = 0x04000000
-    # Bits 27-31: Reserved
+    No_Request = 0b000
+    Day = 0b001
+    Week = 0b010
+    Month = 0b110
+    Year = 0b111
+
+
+class FunctionalNotificationFlags(t.IntStruct, t.uint32_t):
+    """Functional notification flags per SE 1.4a Table D-59."""
+
+    new_ota_firmware: t.uint1_t
+    cbke_update_request: t.uint1_t
+    time_sync: t.uint1_t
+    _reserved1: t.uint1_t
+    stay_awake_request_han: t.uint1_t
+    stay_awake_request_wan: t.uint1_t
+    push_historical_metering_data: PushHistoricalDataSet
+    push_historical_prepayment_data: PushHistoricalDataSet
+    push_all_static_data_basic_cluster: t.uint1_t
+    push_all_static_data_metering_cluster: t.uint1_t
+    push_all_static_data_prepayment_cluster: t.uint1_t
+    network_key_active: t.uint1_t
+    display_message: t.uint1_t
+    cancel_all_messages: t.uint1_t
+    change_supply: t.uint1_t
+    local_change_supply: t.uint1_t
+    set_uncontrolled_flow_threshold: t.uint1_t
+    tunnel_message_pending: t.uint1_t
+    get_snapshot: t.uint1_t
+    get_sampled_data: t.uint1_t
+    new_sub_ghz_channel_masks_available: t.uint1_t
+    energy_scan_pending: t.uint1_t
+    channel_change_pending: t.uint1_t
+    _reserved2: t.uint5_t
 
 
 class NotificationFlags2(t.bitmap32):
@@ -521,14 +531,35 @@ class SnapshotScheduleConfirmation(t.enum8):
     Insufficient_Space_For_Snapshot_Schedule = 0x05
 
 
+class SnapshotFrequencyType(t.enum2):
+    """Snapshot frequency type per Table 10-111."""
+
+    Day = 0b00
+    Week = 0b01
+    Month = 0b10
+
+
+class SnapshotWildCardFrequency(t.enum2):
+    """Snapshot wild-card frequency per Table 10-111."""
+
+    Start_Of = 0b00
+    End_Of = 0b01
+    Wild_Card_Not_Used = 0b10
+
+
+class SnapshotSchedule(t.IntStruct, t.uint24_t):
+    """Snapshot schedule per Table 10-111."""
+
+    frequency: t.uint20_t
+    frequency_type: SnapshotFrequencyType
+    wild_card_frequency: SnapshotWildCardFrequency
+
+
 # Figure 10-86
 class SnapshotSchedulePayload(t.Struct):
     snapshot_schedule_id: t.uint8_t
     snapshot_start_time: t.UTCTime
-    # TODO: Table 10-111 splits this into frequency (bits 0-19), frequency type (bits
-    # 20-21) and wild-card frequency (bits 22-23). That needs `Struct` to pack bit
-    # fields across byte boundaries little-endian.
-    snapshot_schedule: t.uint24_t
+    snapshot_schedule: SnapshotSchedule
     snapshot_payload_type: SnapshotPayloadType
     snapshot_cause: SnapshotCause
 
