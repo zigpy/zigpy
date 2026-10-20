@@ -1154,20 +1154,10 @@ class Time(Cluster):
                 hdr, args, dst_addressing=dst_addressing
             )
 
-        # Only attribute reads need to await potentially uncached DST discovery.
-        self.create_catching_task(self._handle_time_read(hdr, args, dst_addressing))
-
-    async def _handle_time_read(
-        self,
-        hdr: foundation.ZCLHeader,
-        args: list,
-        dst_addressing: t.AddrMode | None,
-    ) -> None:
-        snapshot = await self.endpoint.device.application._time_service.async_snapshot(
+        snapshot = self.endpoint.device.application._time_service.snapshot(
             datetime.now(UTC)
         )
-        # The base dispatcher invokes handlers synchronously. Reuse one instant
-        # and timezone for every attribute, with no await while it is installed.
+        # Reuse one instant and timezone for every attribute in the response.
         previous = self._read_snapshot
         self._read_snapshot = snapshot
         try:
@@ -1175,7 +1165,6 @@ class Time(Cluster):
                 hdr, args, dst_addressing=dst_addressing
             )
         finally:
-            # Restore the enclosing state even if an attribute handler raises.
             self._read_snapshot = previous
 
     def handle_read_attribute_time(self) -> t.UTCTime:

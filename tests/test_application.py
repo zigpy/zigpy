@@ -63,19 +63,19 @@ async def test_local_timezone(app):
     zone = ZoneInfo("Europe/Berlin")
     app.local_timezone = zone
     now = datetime(2026, 7, 15, tzinfo=UTC)
-    first = await app._time_service.async_snapshot(now)
+    first = app._time_service.snapshot(now)
     assert first.time_zone == 3600
     assert first.dst_shift == 3600
 
     zone = ZoneInfo("Australia/Sydney")
     app.local_timezone = zone
-    changed = await app._time_service.async_snapshot(now)
+    changed = app._time_service.snapshot(now)
     assert changed.time_zone == 36000
     assert changed.dst_start != first.dst_start
 
     app.local_timezone = None
     assert app._time_service._cache is None
-    assert not (await app._time_service.async_snapshot(now)).authoritative
+    assert not app._time_service.snapshot(now).authoritative
 
 
 async def test_new_local_timezone():

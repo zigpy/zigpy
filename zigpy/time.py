@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta, timezone, tzinfo
 
@@ -42,12 +41,6 @@ class TimeService:
         self._cache: (
             tuple[tzinfo, int, list[tuple[datetime, datetime, int, int]]] | None
         ) = None
-        self._generation = 0
-        # Readers with the same timezone, year, and generation share discovery.
-        self._pending: dict[
-            tuple[int, int, int],
-            asyncio.Future[list[tuple[datetime, datetime, int, int]]],
-        ] = {}
 
     @property
     def timezone(self) -> tzinfo | None:
@@ -61,8 +54,6 @@ class TimeService:
     def clear_cache(self) -> None:
         """Invalidate rules after replacing the configured timezone."""
         self._cache = None
-        # In-flight readers may finish, but must not repopulate this cache.
-        self._generation += 1
 
     @staticmethod
     def _offsets(instant: datetime, zone: tzinfo) -> tuple[int, int]:
@@ -130,42 +121,6 @@ class TimeService:
         if periods is None:
             periods = self._discover_periods(zone, now)
             self._cache = (zone, now.year, periods)
-        return self._snapshot(now, zone, periods)
-
-    async def async_snapshot(self, now: datetime) -> TimeSnapshot:
-        """Offload only uncached rule discovery, keeping cache writes on-loop."""
-        zone = self.timezone
-        now = now.astimezone(UTC)
-        # Fixed-offset zones and cached rules need no executor round trip.
-        if not self._needs_rules(now, zone):
-            return self._snapshot(now, zone, [])
-        assert zone is not None
-        generation = self._generation
-        key = (id(zone), now.year, generation)
-        periods = self._cached_periods(now, zone)
-        while periods is None:
-            future = self._pending.get(key)
-            if future is None:
-                # The worker only returns periods; all shared state stays on-loop.
-                future = asyncio.get_running_loop().run_in_executor(
-                    None, self._discover_periods, zone, now
-                )
-                self._pending[key] = future
-
-                def remove_pending(done):
-                    # Do not remove a newer discovery registered under this key.
-                    if self._pending.get(key) is done:
-                        del self._pending[key]
-
-                future.add_done_callback(remove_pending)
-            # Cancelling one device's read must not cancel other readers' work.
-            discovered = await asyncio.shield(future)
-            # Another reader may need a different interval within the same year.
-            if self._periods_complete(discovered, zone, now):
-                periods = discovered
-                # A timezone assignment during discovery invalidates publication.
-                if generation == self._generation:
-                    self._cache = (zone, now.year, periods)
         return self._snapshot(now, zone, periods)
 
     @staticmethod

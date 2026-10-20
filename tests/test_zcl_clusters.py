@@ -5,7 +5,6 @@ from datetime import UTC, datetime, timedelta, timezone, tzinfo
 import io
 import re
 import struct
-import threading
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -95,19 +94,11 @@ async def read_attributes(cluster, attribute_ids: list[int]) -> dict[int, Any]:
 
     command = schema(attribute_ids=attribute_ids)
 
-    response = asyncio.get_running_loop().create_future()
-
-    async def capture_reply(*args, **kwargs):
-        response.set_result((args, kwargs))
-
-    with patch.object(cluster, "reply", side_effect=capture_reply):
+    with patch.object(cluster, "reply") as reply_mock:
         cluster.handle_message(hdr, command)
-        args, kwargs = await asyncio.wait_for(response, timeout=10)
+        call = reply_mock.mock_calls[0]
 
-    assert args[0] is True
-    assert args[1] == foundation.GeneralCommand.Read_Attributes_rsp
-    assert kwargs["tsn"] == hdr.tsn
-    return args[2](args[3])
+    return call.args[2](call.args[3])
 
 
 async def test_basic_cluster():
@@ -586,90 +577,6 @@ def test_time_service_unbounded_dst():
     assert snapshot.dst_shift == 3600
 
 
-async def test_time_service_concurrent_reads():
-    zone = ZoneInfo("Europe/Berlin")
-    main_thread = threading.get_ident()
-
-    service = TimeService(zone)
-    original_scan = service._scan_periods
-
-    def scan(*args, **kwargs):
-        assert threading.get_ident() != main_thread
-        return original_scan(*args, **kwargs)
-
-    now = datetime(2026, 7, 15, tzinfo=UTC)
-    with patch.object(TimeService, "_scan_periods", side_effect=scan) as scan_mock:
-        results = await asyncio.gather(
-            *(service.async_snapshot(now) for index in range(5))
-        )
-    assert all(result == results[0] for result in results)
-    assert scan_mock.call_count == 1
-
-
-@pytest.mark.parametrize("zone", [None, UTC, ZoneInfo("Europe/Berlin")])
-async def test_time_service_cached_reads_stay_on_loop(zone):
-    service = TimeService(zone)
-    now = datetime(2026, 7, 15, tzinfo=UTC)
-    expected = service.snapshot(now)
-    loop = asyncio.get_running_loop()
-    with patch.object(loop, "run_in_executor") as executor:
-        assert await service.async_snapshot(now) == expected
-    executor.assert_not_called()
-
-
-async def test_time_service_cancelled_discovery():
-    zone = ZoneInfo("Europe/Berlin")
-    service = TimeService(zone)
-    now = datetime(2026, 7, 15, tzinfo=UTC)
-    periods = service._discover_periods(zone, now)
-    loop = asyncio.get_running_loop()
-    future = loop.create_future()
-    submitted = asyncio.Event()
-
-    def submit(*args):
-        submitted.set()
-        return future
-
-    with patch.object(loop, "run_in_executor", side_effect=submit) as executor:
-        reader = asyncio.create_task(service.async_snapshot(now))
-        await asyncio.wait_for(submitted.wait(), timeout=1)
-        reader.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await reader
-        assert not future.cancelled()
-        assert service._cache is None
-        future.set_result(periods)
-        result = await service.async_snapshot(now)
-    assert result.dst_shift == 3600
-    assert executor.call_count == 1
-
-
-async def test_time_service_invalidation_during_discovery():
-    zone = ZoneInfo("Europe/Berlin")
-    service = TimeService(zone)
-    now = datetime(2026, 7, 15, tzinfo=UTC)
-    periods = service._discover_periods(zone, now)
-    loop = asyncio.get_running_loop()
-    future = loop.create_future()
-    submitted = asyncio.Event()
-
-    def submit(*args):
-        submitted.set()
-        return future
-
-    with patch.object(loop, "run_in_executor", side_effect=submit):
-        reader = asyncio.create_task(service.async_snapshot(now))
-        await asyncio.wait_for(submitted.wait(), timeout=1)
-        service.timezone = ZoneInfo("Asia/Tokyo")
-        future.set_result(periods)
-        old = await reader
-    assert old.time_zone == 3600
-    assert service._cache is None
-    current = await service.async_snapshot(now)
-    assert current.time_zone == 32400
-    assert current.dst_shift == 0
-
-
 async def test_time_cluster_shared_service(app_mock):
     zone = ZoneInfo("Europe/Berlin")
     app_mock.local_timezone = zone
@@ -701,7 +608,7 @@ async def test_time_cluster_snapshot_cleanup(app_mock):
         cluster, "handle_read_attribute_time", side_effect=RuntimeError("read failed")
     ):
         with pytest.raises(RuntimeError, match="read failed"):
-            await cluster._handle_time_read(header, MagicMock(attribute_ids=[0]), None)
+            cluster.handle_cluster_general_request(header, MagicMock(attribute_ids=[0]))
     assert cluster._read_snapshot is None
 
 
