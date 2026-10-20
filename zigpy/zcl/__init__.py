@@ -357,6 +357,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     # Clusters are accessible by name from their endpoint as an attribute
     ep_attribute: str = None
 
+    # All traffic on this cluster is APS encrypted with the device's link key
+    aps_encryption: bool = False
+
     # Manufacturer specific clusters exist between 0xFC00 and 0xFFFF. This exists solely
     # to remove the need to create 1024 "ManufacturerSpecificCluster" instances.
     cluster_id_range: tuple[t.uint16_t, t.uint16_t] = None
@@ -867,6 +870,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             priority=priority,
             retries=retries,
             retry_delay=retry_delay,
+            aps_encryption=self.aps_encryption,
         )
 
     async def reply(
@@ -922,6 +926,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             priority=priority,
             retries=retries,
             retry_delay=retry_delay,
+            aps_encryption=self.aps_encryption,
         )
 
     def handle_message(
@@ -1130,8 +1135,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         allow_cache: bool = False,
         only_cache: bool = False,
         manufacturer: int | UndefinedType | None = UNDEFINED,
+        *,
+        split_requests: bool = True,
         **kwargs,
     ) -> Any:
+        """Read attributes from the device.
+
+        Setting ``split_requests`` to ``False`` disables fixed-size chunking, but
+        attributes with different manufacturer codes are still read separately.
+        Attributes omitted from a response or reported as ``INSUFFICIENT_SPACE`` are
+        also re-read individually.
+        """
         # Find definition objects for every attribute
         attribute_defs: list[foundation.ZCLAttributeDef] = []
 
@@ -1193,8 +1207,16 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         for manufacturer_code, attribute_group in reads_by_manuf_code.items():
             retry_attrs: list[foundation.ZCLAttributeDef] = []
 
-            for i in range(0, len(attribute_group), MAX_READ_ATTRIBUTES_PER_REQ):
-                chunk = attribute_group[i : i + MAX_READ_ATTRIBUTES_PER_REQ]
+            if split_requests:
+                chunks = [
+                    attribute_group[i : i + MAX_READ_ATTRIBUTES_PER_REQ]
+                    for i in range(0, len(attribute_group), MAX_READ_ATTRIBUTES_PER_REQ)
+                ]
+            else:
+                # Read every attribute in the group with a single request
+                chunks = [attribute_group]
+
+            for chunk in chunks:
                 result = await self.read_attributes_raw(
                     [attr_def.id for attr_def in chunk],
                     manufacturer=manufacturer_code,

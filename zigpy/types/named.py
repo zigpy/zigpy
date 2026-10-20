@@ -13,6 +13,15 @@ from .struct import Struct
 if typing.TYPE_CHECKING:
     from typing import Self
 
+    from zigpy.zgp.types import (
+        ApplicationID,
+        GPDCommandID,
+        SecurityKeyType,
+        SecurityLevel,
+        SecurityStatus,
+        SrcID,
+    )
+
 
 class Bytes(bytes):
     """A serializable type to consume all remaining bytes."""
@@ -630,6 +639,13 @@ class ZigbeePacket(BaseDataclassMixin):
     radius: basic.uint8_t = dataclasses.field(default=0)
     non_member_radius: basic.uint8_t = dataclasses.field(default=0)
 
+    # Send on behalf of another node, as a Green Power proxy does for a GPD (GP spec
+    # A.2.5.3). The radio uses `alias_src` as the NWK source address and `alias_seq`
+    # as both the NWK sequence number and the APS counter. Only for broadcasts and
+    # groupcasts, APS ACKs are not requested.
+    alias_src: NWK | None = dataclasses.field(default=None)
+    alias_seq: basic.uint8_t | None = dataclasses.field(default=None)
+
     # Options for incoming packets
     lqi: basic.uint8_t | None = dataclasses.field(default=None)
     rssi: basic.int8s | None = dataclasses.field(default=None)
@@ -637,12 +653,11 @@ class ZigbeePacket(BaseDataclassMixin):
     def __hash__(self) -> int:
         return hash(
             (
-                self.timestamp,
                 self.src,
                 self.src_ep,
                 self.dst,
                 self.dst_ep,
-                self.source_route,
+                None if self.source_route is None else tuple(self.source_route),
                 self.extended_timeout,
                 self.tsn,
                 self.profile_id,
@@ -651,9 +666,90 @@ class ZigbeePacket(BaseDataclassMixin):
                 self.tx_options,
                 self.radius,
                 self.non_member_radius,
+                self.alias_src,
+                self.alias_seq,
                 self.lqi,
                 self.rssi,
                 self.priority,
+            )
+        )
+
+
+@dataclasses.dataclass
+class ZigbeeGpPacket(BaseDataclassMixin):
+    """A decoded, decrypted Green Power frame."""
+
+    timestamp: datetime = dataclasses.field(
+        compare=False, default_factory=lambda: datetime.now(UTC)
+    )
+
+    application_id: ApplicationID | None = dataclasses.field(default=None)
+
+    # Only set when ApplicationID is 0b000
+    src_id: SrcID | None = dataclasses.field(default=None)
+
+    # Only set when ApplicationID is 0b010
+    ieee: EUI64 | None = dataclasses.field(default=None)
+    endpoint: basic.uint8_t | None = dataclasses.field(default=None)
+
+    command_id: GPDCommandID | None = dataclasses.field(default=None)
+    payload: basic.SerializableBytes = dataclasses.field(
+        default_factory=basic.SerializableBytes
+    )
+
+    frame_counter: basic.uint32_t | None = dataclasses.field(default=None)
+    security_level: SecurityLevel | None = dataclasses.field(default=None)
+
+    # Only meaningful when `security_status` says security processing succeeded: the
+    # radio has no key type to report for a frame it did not process
+    security_key_type: SecurityKeyType | None = dataclasses.field(default=None)
+
+    # The outcome of GPDF security processing, `None` if the radio does not report it
+    security_status: SecurityStatus | None = dataclasses.field(default=None)
+
+    # Only set for a protected GPDF that was not security processed. Along with the
+    # header fields below, it lets the sink verify and decrypt the GPDF itself
+    mic: basic.uint32_t | None = dataclasses.field(default=None)
+
+    # GPDF NWK header fields that are authenticated by the MIC
+    auto_commissioning: bool | None = dataclasses.field(default=None)
+    rx_after_tx: bool | None = dataclasses.field(default=None)
+
+    # The SecurityKey sub-field: whether an individual rather than a shared key protects
+    # the GPDF (Table 12). Unlike `security_key_type`, it is known before processing
+    individual_key: bool | None = dataclasses.field(default=None)
+
+    lqi: basic.uint8_t | None = dataclasses.field(default=None)
+    rssi: basic.int8s | None = dataclasses.field(default=None)
+
+    # Only set by a Green Power 1.0 proxy, in place of `lqi` and `rssi`. The higher
+    # the value, the worse the link; interpretation is otherwise application-specific
+    gpp_distance: basic.uint8_t | None = dataclasses.field(default=None)
+
+    # The proxy that tunneled the GPDF, `None` if the radio received it directly
+    gpp_short_addr: NWK | None = dataclasses.field(default=None)
+
+    def __hash__(self) -> int:
+        return hash(
+            (
+                self.application_id,
+                self.src_id,
+                self.ieee,
+                self.endpoint,
+                self.command_id,
+                self.payload,
+                self.frame_counter,
+                self.security_level,
+                self.security_key_type,
+                self.security_status,
+                self.mic,
+                self.auto_commissioning,
+                self.rx_after_tx,
+                self.individual_key,
+                self.lqi,
+                self.rssi,
+                self.gpp_distance,
+                self.gpp_short_addr,
             )
         )
 

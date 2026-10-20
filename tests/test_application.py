@@ -23,6 +23,7 @@ from zigpy.exceptions import (
 import zigpy.ota
 import zigpy.types as t
 from zigpy.zcl import clusters, foundation
+from zigpy.zcl.clusters.greenpower import GreenPowerProxy
 import zigpy.zdo.types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
@@ -73,10 +74,43 @@ async def test_permit_broadcast(app):
     app.permit_ncp = AsyncMock()
     app.send_packet = AsyncMock()
     await app.permit(time_s=30)
-    assert app.send_packet.call_count == 1
+    # Two broadcasts: standard Mgmt_Permit_Joining_req plus the GP
+    # ProxyCommissioningMode that opens the GP commissioning window.
+    assert app.send_packet.call_count == 2
     assert app.permit_ncp.call_count == 1
 
     assert app.send_packet.mock_calls[0].args[0].dst.addr_mode == t.AddrMode.Broadcast
+
+
+async def test_handle_join_green_power_alias(app):
+    """A sink announcing a GPD alias with the invalid IEEE address is not a join."""
+    app.handle_join(nwk=0x1234, ieee=t.EUI64.UNKNOWN, parent_nwk=None)
+
+    assert all(dev.nwk != 0x1234 for dev in app.devices.values())
+    assert t.EUI64.UNKNOWN not in app.devices
+
+
+@pytest.mark.parametrize("node", [None, make_ieee(), NCP_IEEE])
+async def test_permit_opens_gp_window(app, node):
+    """GP commissioning is network-wide, even when joining is limited to one node."""
+    app.devices[make_ieee()] = MagicMock()
+    app.devices[make_ieee()].zdo.permit = AsyncMock()
+    app.permit_ncp = AsyncMock()
+    app.send_packet = AsyncMock()
+
+    await app.permit(time_s=60, node=node)
+
+    assert app.green_power.is_commissioning
+
+    gp_packets = [
+        c.args[0]
+        for c in app.send_packet.mock_calls
+        if c.args[0].cluster_id == GreenPowerProxy.cluster_id
+    ]
+    assert len(gp_packets) == 1
+    assert gp_packets[0].dst.addr_mode == t.AddrMode.Broadcast
+
+    await app.green_power.shutdown()
 
 
 @patch("zigpy.device.Device.initialize", new_callable=AsyncMock)
@@ -121,8 +155,10 @@ async def _remove(
         else:
             raise TimeoutError
 
-    device = MagicMock()
+    device = MagicMock(spec=zigpy.device.ZigbeeDevice)
     device.ieee = ieee
+    device.nwk = 0x1234
+    device.zdo = MagicMock()
     device.zdo.leave.side_effect = leave
 
     if has_node_desc:
@@ -805,9 +841,10 @@ async def test_request_concurrency():
 
 @pytest.fixture
 def device():
-    device = MagicMock()
+    device = MagicMock(spec=zigpy.device.ZigbeeDevice)
     device.nwk = 0xABCD
     device.ieee = t.EUI64.convert("aa:bb:cc:dd:11:22:33:44")
+    device._concurrent_requests_semaphore = MagicMock()
 
     return device
 
@@ -946,11 +983,11 @@ async def test_force_route_discovery(app, device, packet) -> None:
     ]
 
 
-async def test_request_zigbee_direct_aps_encryption(app, device, packet) -> None:
+async def test_request_aps_encryption(app, device, packet) -> None:
     await app.request(
         device=device,
         profile=0x1234,
-        cluster=clusters.general.ZigbeeDirectConfiguration.cluster_id,
+        cluster=0x0006,
         src_ep=0x9A,
         dst_ep=0xBC,
         sequence=0xDE,
@@ -958,12 +995,12 @@ async def test_request_zigbee_direct_aps_encryption(app, device, packet) -> None
         expect_reply=True,
         use_ieee=False,
         extended_timeout=False,
+        aps_encryption=True,
     )
 
     assert app.send_packet.mock_calls == [
         call(
             packet.replace(
-                cluster_id=clusters.general.ZigbeeDirectConfiguration.cluster_id,
                 tx_options=packet.tx_options | t.TransmitOptions.APS_Encryption,
                 priority=t.PacketPriority.NORMAL,
             )
@@ -1778,7 +1815,7 @@ async def test_callback_wrapping(
             "zigpy.application",
             logging.WARNING,
             (
-                "Device <Device model=None manuf=None nwk=0x1234 "
+                "Device <ZigbeeDevice model=None manuf=None nwk=0x1234 "
                 "ieee=07:06:05:04:03:02:01:00 is_initialized=False> "
                 "callback failed - ValueError('Boom!')"
             ),
@@ -1807,7 +1844,7 @@ async def test_callback_wrapping_async(
             "zigpy.application",
             logging.WARNING,
             (
-                "Device <Device model=None manuf=None nwk=0x1234 "
+                "Device <ZigbeeDevice model=None manuf=None nwk=0x1234 "
                 "ieee=07:06:05:04:03:02:01:00 is_initialized=False> "
                 "callback failed - ValueError('Boom!')"
             ),

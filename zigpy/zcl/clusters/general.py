@@ -2955,6 +2955,10 @@ class KeepAlive(Cluster):
     cluster_id: Final[t.uint16_t] = 0x0025
     ep_attribute: Final = "keep_alive"
 
+    # The Trust Center's Read Attributes Response must be APS encrypted or the client
+    # treats the keep-alive as failed.
+    aps_encryption: Final = True
+
     class AttributeDefs(BaseAttributeDefs):
         """Keep Alive cluster attributes."""
 
@@ -2995,6 +2999,7 @@ class ZigbeeDirectConfiguration(Cluster):
 
     cluster_id: Final[t.uint16_t] = 0x003D
     ep_attribute: Final = "zigbee_direct_configuration"
+    aps_encryption: Final = True
 
     class AttributeDefs(BaseAttributeDefs):
         """Zigbee Direct Configuration cluster attributes."""

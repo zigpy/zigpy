@@ -13,8 +13,14 @@ import aiosqlite
 
 import zigpy.appdb_schemas
 import zigpy.backups
+import zigpy.config as conf
 import zigpy.device
-from zigpy.device import Device, Status as DeviceStatus
+from zigpy.device import (
+    Device,
+    GreenPowerCommandReceived,
+    GreenPowerDevice,
+    Status as DeviceStatus,
+)
 import zigpy.endpoint
 from zigpy.endpoint import Endpoint, Status as EndpointStatus
 import zigpy.exceptions
@@ -39,6 +45,15 @@ from zigpy.zcl import (
 from zigpy.zcl.clusters.general import Basic, Ota
 from zigpy.zcl.foundation import Status
 from zigpy.zdo import types as zdo_t
+from zigpy.zgp.commands import GPGenericSwitchConfiguration
+from zigpy.zgp.types import (
+    ApplicationID,
+    DeviceID,
+    GPDCommandID,
+    SecurityKeyType,
+    SecurityLevel,
+    SrcID,
+)
 
 if TYPE_CHECKING:
     from zigpy.application import ControllerApplication
@@ -55,7 +70,7 @@ if sqlite3.sqlite_version_info < MIN_SQLITE_VERSION:
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 15
+DB_VERSION = 16
 DB_V = f"_v{DB_VERSION}"
 
 UNIX_EPOCH = datetime.fromtimestamp(0, tz=UTC)
@@ -131,6 +146,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self._callback_handlers: asyncio.Queue = asyncio.Queue()
         self.running = False
         self._worker_task = asyncio.create_task(self._worker())
+        self._commit_interval = self._application.config[conf.CONF_DB_COMMIT_INTERVAL]
+        self._commit_task: asyncio.Task | None = None
 
     async def initialize_tables(self) -> None:
         async with self.execute("PRAGMA integrity_check") as cursor:
@@ -203,6 +220,46 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 )
             self._callback_handlers.task_done()
 
+    async def _commit(self, force: bool = False) -> None:
+        """Commit changes to the database, optionally deferring the operation.
+
+        A deferred commit runs on the worker, via `_flush_commit`, so it always lands
+        at a handler boundary instead of persisting a partial handler.
+        """
+        if force or self._commit_interval <= 0:
+            try:
+                await self._db.commit()
+            except Exception:
+                # Retry the uncommitted writes after another interval
+                if self._commit_interval > 0:
+                    self._arm_commit_timer()
+                raise
+
+            return
+
+        self._arm_commit_timer()
+
+    def _arm_commit_timer(self) -> None:
+        """Start the deferred commit timer, unless one is already running."""
+        if self._commit_task is None or self._commit_task.done():
+            self._commit_task = asyncio.create_task(self._delayed_commit())
+
+    async def _delayed_commit(self) -> None:
+        """Wait out the commit interval, then queue a flush on the worker."""
+        await asyncio.sleep(self._commit_interval)
+        self.enqueue("_flush_commit")
+
+    async def _flush_commit(self) -> None:
+        """Commit any open transaction, invoked by the worker after the delay."""
+        if not self._db.in_transaction:
+            return
+
+        try:
+            await self._db.commit()
+        except Exception:
+            LOGGER.exception("Failed to flush pending database commits")
+            self._arm_commit_timer()
+
     async def shutdown(self) -> None:
         """Shutdown connection."""
         self.running = False
@@ -210,15 +267,33 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         if not self._worker_task.done():
             self._worker_task.cancel()
 
-        # Delete the journal on shutdown
-        await self._set_isolation_level(None)
-        await self.execute("PRAGMA wal_checkpoint;")
-        await self._set_isolation_level("DEFERRED")
+        if self._commit_task is not None:
+            self._commit_task.cancel()
+            self._commit_task = None
 
-        await self._db.close()
+        try:
+            if self._db.in_transaction:
+                try:
+                    await self._db.commit()
+                except Exception:
+                    LOGGER.exception("Failed to commit pending changes during shutdown")
+                    # Otherwise, disabling the isolation level below implicitly
+                    # retries the failed `COMMIT`
+                    await self._db.rollback()
 
-        # FIXME: aiosqlite's thread won't always be closed immediately
-        await asyncio.get_running_loop().run_in_executor(None, self._db.join)
+            # Delete the journal on shutdown
+            await self._set_isolation_level(None)
+            await self.execute("PRAGMA wal_checkpoint;")
+            await self._set_isolation_level("DEFERRED")
+        finally:
+            try:
+                await self._db.close()
+            finally:
+                # `close()` can return before aiosqlite's worker thread has exited,
+                # and there is no public API to wait for it (omnilib/aiosqlite#387)
+                await asyncio.get_running_loop().run_in_executor(
+                    None, self._db._thread.join
+                )
 
     def register_cluster_events(self, cluster) -> None:
         cluster.on_event(AttributeReadEvent.event_type, self.on_attribute_read)
@@ -271,7 +346,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _update_device_nwk(self, ieee: t.EUI64, nwk: t.NWK) -> None:
         await self.execute(f"UPDATE devices{DB_V} SET nwk=? WHERE ieee=?", (nwk, ieee))
-        await self._db.commit()
+        await self._commit(force=True)
 
     def device_initialized(self, device: Device) -> None:
         pass
@@ -281,6 +356,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     def device_last_seen_updated(self, device: Device, last_seen: datetime) -> None:
         """Device last_seen time is updated."""
+        # A GPD's last_seen is written along with its frame counter
+        if isinstance(device, GreenPowerDevice):
+            return
+
         self.enqueue("_save_device_last_seen", device.ieee, last_seen)
 
     async def _save_device_last_seen(self, ieee: t.EUI64, last_seen: datetime) -> None:
@@ -295,7 +374,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "min_update_delta": MIN_UPDATE_DELTA,
             },
         )
-        await self._db.commit()
+        await self._commit()
 
     def device_relays_updated(self, device: Device, relays: t.Relays | None) -> None:
         """Device relay list is updated."""
@@ -310,7 +389,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         DO UPDATE SET relays=excluded.relays WHERE relays != :relays"""
             await self.execute(q, {"ieee": ieee, "relays": relays.serialize()})
 
-        await self._db.commit()
+        await self._commit()
 
     def neighbors_updated(self, ieee: t.EUI64, neighbors: list[zdo_t.Neighbor]) -> None:
         """Neighbor update from Mgmt_Lqi_req."""
@@ -326,7 +405,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.executemany(
             f"INSERT INTO neighbors{DB_V} VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", rows
         )
-        await self._db.commit()
+        await self._commit()
 
     def routes_updated(self, ieee: t.EUI64, routes: list[zdo_t.Route]) -> None:
         """Route update from Mgmt_Rtg_req."""
@@ -340,7 +419,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.executemany(
             f"INSERT INTO routes{DB_V} VALUES (?,?,?,?,?,?,?,?)", rows
         )
-        await self._db.commit()
+        await self._commit()
 
     def group_added(self, group: zigpy.group.Group) -> None:
         """Group is added."""
@@ -351,7 +430,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     ON CONFLICT (group_id)
                     DO UPDATE SET name=excluded.name"""
         await self.execute(q, (group.group_id, group.name))
-        await self._db.commit()
+        await self._commit(force=True)
 
     def group_member_added(self, group: zigpy.group.Group, ep: Endpoint) -> None:
         """Called when a group member is added."""
@@ -362,7 +441,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     ON CONFLICT
                     DO NOTHING"""
         await self.execute(q, (group.group_id, *ep.unique_id))
-        await self._db.commit()
+        await self._commit(force=True)
 
     def group_member_removed(self, group: zigpy.group.Group, ep: Endpoint) -> None:
         """Called when a group member is removed."""
@@ -375,7 +454,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                                                 AND ieee=?
                                                 AND endpoint_id=?"""
         await self.execute(q, (group.group_id, *ep.unique_id))
-        await self._db.commit()
+        await self._commit(force=True)
 
     def group_removed(self, group: zigpy.group.Group) -> None:
         """Called when a group is removed."""
@@ -384,16 +463,25 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _group_removed(self, group: zigpy.group.Group) -> None:
         q = f"DELETE FROM groups{DB_V} WHERE group_id=?"
         await self.execute(q, (group.group_id,))
-        await self._db.commit()
+        await self._commit(force=True)
 
     def device_removed(self, device: Device) -> None:
+        if isinstance(device, GreenPowerDevice):
+            self.enqueue("_remove_gp_device", device.ieee)
+            return
+
         self.enqueue("_remove_device", device)
 
     async def _remove_device(self, device: Device) -> None:
         await self.execute(f"DELETE FROM devices{DB_V} WHERE ieee = ?", (device.ieee,))
-        await self._db.commit()
+        await self._commit(force=True)
 
     def raw_device_initialized(self, device: Device) -> None:
+        if isinstance(device, GreenPowerDevice):
+            # Snapshot the row now, for the same reason a Zigbee device is cloned
+            self.enqueue("_save_gp_device", self._gp_device_row(device))
+            return
+
         # We work with a clone of a device so that quirks that run in the same event
         # loop iteration do not manage to mutate it before the async database code runs
         self.enqueue("_raw_device_initialized", device.clone())
@@ -438,7 +526,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             await self._save_attribute_cache(ep)
             await self._save_unsupported_attributes(ep)
         await self._save_ota_query_cache(device)
-        await self._db.commit()
+        await self._commit(force=True)
 
     async def _save_endpoints(self, device: Device) -> None:
         rows = [
@@ -625,7 +713,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             },
         )
 
-        await self._db.commit()
+        await self._commit()
 
     def on_attribute_cleared(self, event: AttributeClearedEvent) -> None:
         self.enqueue("_clear_attribute", event)
@@ -653,7 +741,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "manufacturer_code": event.manufacturer_code,
             },
         )
-        await self._db.commit()
+        await self._commit()
 
     def on_attribute_unsupported(self, event: AttributeUnsupportedEvent) -> None:
         self.enqueue("_unsupported_attribute_added", event)
@@ -680,7 +768,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "timestamp": datetime.now(UTC).timestamp(),
             },
         )
-        await self._db.commit()
+        await self._commit()
 
     def on_ota_query_cache_updated(self, event: OtaQueryCacheUpdatedEvent) -> None:
         self.enqueue("_save_ota_query_cache_entry", event)
@@ -711,7 +799,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 datetime.now(UTC).timestamp(),
             ),
         )
-        await self._db.commit()
+        await self._commit()
 
     def on_ota_query_cache_cleared(self, event: OtaQueryCacheClearedEvent) -> None:
         self.enqueue("_delete_ota_query_cache_entry", event)
@@ -723,7 +811,74 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             f"DELETE FROM ota_query_cache{DB_V} WHERE ieee = ? AND endpoint_id = ?",
             (event.device_ieee, event.endpoint_id),
         )
-        await self._db.commit()
+        await self._commit()
+
+    def register_gp_device_events(self, device: GreenPowerDevice) -> None:
+        device.on_event(
+            GreenPowerCommandReceived.event_type, self.on_gp_command_received
+        )
+
+    def on_gp_command_received(self, event: GreenPowerCommandReceived) -> None:
+        # Every accepted GPDF advances the frame counter (replay protection), so it is
+        # persisted to keep the replay baseline across a restart
+        device = self._application.get_device(t.EUI64.convert(event.device_ieee))
+        assert isinstance(device, GreenPowerDevice)
+
+        self.enqueue(
+            "_save_gp_frame_counter",
+            device.ieee,
+            device.frame_counter,
+            device.last_seen or UNIX_EPOCH.timestamp(),
+        )
+
+    def _gp_device_row(self, device: GreenPowerDevice) -> dict[str, Any]:
+        return {
+            "ieee": device.ieee,
+            "application_id": device.application_id,
+            "src_id": device.src_id,
+            "device_id": device.device_id,
+            "gpd_manufacturer_id": device.gpd_manufacturer_id,
+            "gpd_model_id": device.gpd_model_id,
+            "commands": json.dumps(device.commands),
+            "server_cluster_ids": json.dumps(device.server_cluster_ids),
+            "client_cluster_ids": json.dumps(device.client_cluster_ids),
+            "switch_configuration": device.switch_configuration,
+            "mac_seq_num_capability": device.mac_seq_num_capability,
+            "rx_on_capability": device.rx_on_capability,
+            "fixed_location": device.fixed_location,
+            "security_key": (
+                None if device.security_key is None else device.security_key.serialize()
+            ),
+            "security_key_type": device.security_key_type,
+            "security_level": device.security_level,
+            "frame_counter": device.frame_counter,
+            "last_seen": device.last_seen or UNIX_EPOCH.timestamp(),
+        }
+
+    async def _save_gp_device(self, row: dict[str, Any]) -> None:
+        columns = ", ".join(row)
+        values = ", ".join(f":{column}" for column in row)
+        updates = ", ".join(f"{column}=excluded.{column}" for column in row)
+
+        await self.execute(
+            f"INSERT INTO gp_devices{DB_V} ({columns}) VALUES ({values})"
+            f" ON CONFLICT (ieee) DO UPDATE SET {updates}",
+            row,
+        )
+        await self._commit(force=True)
+
+    async def _save_gp_frame_counter(
+        self, ieee: t.EUI64, frame_counter: int | None, last_seen: float
+    ) -> None:
+        await self.execute(
+            f"UPDATE gp_devices{DB_V} SET frame_counter=?, last_seen=? WHERE ieee=?",
+            (frame_counter, last_seen, ieee),
+        )
+        await self._commit()
+
+    async def _remove_gp_device(self, ieee: t.EUI64) -> None:
+        await self.execute(f"DELETE FROM gp_devices{DB_V} WHERE ieee=?", (ieee,))
+        await self._commit(force=True)
 
     def network_backup_created(self, backup: zigpy.backups.NetworkBackup) -> None:
         self.enqueue("_network_backup_created", json.dumps(backup.as_dict()))
@@ -735,7 +890,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         backup_json=excluded.backup_json"""
 
         await self.execute(q, (None, backup_json))
-        await self._db.commit()
+        await self._commit(force=True)
 
     def network_backup_removed(self, backup: zigpy.backups.NetworkBackup) -> None:
         self.enqueue("_network_backup_removed", backup.backup_time)
@@ -745,7 +900,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     WHERE json_extract(backup_json, '$.backup_time')=?"""
 
         await self.execute(q, (backup_time.isoformat(),))
-        await self._db.commit()
+        await self._commit(force=True)
 
     async def _read_all_attributes(
         self,
@@ -763,6 +918,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def load(self) -> None:
         LOGGER.debug("Loading application state")
         await self._load_devices()
+        await self._load_gp_devices()
         await self._load_node_descriptors()
         await self._load_endpoints()
         await self._load_clusters()
@@ -783,6 +939,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         # Clear the attribute cache to ensure the quirked state is correct
         for device in self._application.devices.values():
+            # Only Zigbee devices have endpoints with an attribute cache
+            if not isinstance(device, Device):
+                continue
+
             for ep in device.non_zdo_endpoints:
                 for cluster in ep.in_clusters.values():
                     cluster._attr_cache.clear()
@@ -804,9 +964,17 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_network_backups()
         await self._load_ota_query_cache()
 
-        await self._db.commit()
+        await self._commit(force=True)
 
         await self._register_device_listeners()
+
+    def _get_zigbee_device(self, ieee: t.EUI64) -> Device:
+        device = self._application.get_device(ieee)
+
+        if not isinstance(device, Device):
+            raise TypeError(f"Device {device} is not a Zigbee device")
+
+        return device
 
     async def _populate_attribute_cache(
         self,
@@ -821,7 +989,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         updated to match.
         """
         for row in rows:
-            dev = self._application.get_device(row.ieee)
+            dev = self._get_zigbee_device(row.ieee)
 
             LOGGER.debug(
                 "[0x%04x:%s:0x%04x] Loading attribute %s=%r status=%r mfg_code=%r",
@@ -1032,14 +1200,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _load_node_descriptors(self) -> None:
         async with self.execute(f"SELECT * FROM node_descriptors{DB_V}") as cursor:
             async for ieee, *fields in cursor:
-                dev = self._application.get_device(ieee)
+                dev = self._get_zigbee_device(ieee)
                 dev.node_desc = zdo_t.NodeDescriptor(*fields)
                 assert dev.node_desc.is_valid
 
     async def _load_endpoints(self) -> None:
         async with self.execute(f"SELECT * FROM endpoints{DB_V}") as cursor:
             async for ieee, epid, profile_id, device_type, status in cursor:
-                dev = self._application.get_device(ieee)
+                dev = self._get_zigbee_device(ieee)
                 ep = dev.add_endpoint(epid)
                 ep.profile_id = profile_id
                 ep.status = EndpointStatus(status)
@@ -1054,7 +1222,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _load_clusters(self) -> None:
         async with self.execute(f"SELECT * FROM clusters{DB_V}") as cursor:
             async for ieee, endpoint_id, cluster_type, cluster_id in cursor:
-                dev = self._application.get_device(ieee)
+                dev = self._get_zigbee_device(ieee)
                 ep = dev.endpoints[endpoint_id]
 
                 if ClusterType(cluster_type) == ClusterType.Server:
@@ -1070,14 +1238,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _load_group_members(self) -> None:
         async with self.execute(f"SELECT * FROM group_members{DB_V}") as cursor:
             async for group_id, ieee, ep_id in cursor:
-                dev = self._application.get_device(ieee)
+                dev = self._get_zigbee_device(ieee)
                 group = self._application.groups[group_id]
                 group.add_member(dev.endpoints[ep_id], suppress_event=True)
 
     async def _load_relays(self) -> None:
         async with self.execute(f"SELECT * FROM relays{DB_V}") as cursor:
             async for ieee, value in cursor:
-                dev = self._application.get_device(ieee)
+                dev = self._get_zigbee_device(ieee)
                 relays, _ = t.Relays.deserialize(value)
                 dev.relays = zigpy.util.filter_relays(relays)
 
@@ -1122,7 +1290,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 _last_updated,
             ) in cursor:
                 try:
-                    dev = self._application.get_device(ieee)
+                    dev = self._get_zigbee_device(ieee)
                     ep = dev.endpoints[endpoint_id]
                 except KeyError:
                     # Quirks or firmware updates can remove endpoints/clusters
@@ -1151,9 +1319,84 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         cluster.last_query_cmd = cmd
                         break
 
+    async def _load_gp_devices(self) -> None:
+        async with self.execute(f"SELECT * FROM gp_devices{DB_V}") as cursor:
+            async for (
+                ieee,
+                application_id,
+                src_id,
+                device_id,
+                gpd_manufacturer_id,
+                gpd_model_id,
+                commands,
+                server_cluster_ids,
+                client_cluster_ids,
+                switch_configuration,
+                mac_seq_num_capability,
+                rx_on_capability,
+                fixed_location,
+                security_key,
+                security_key_type,
+                security_level,
+                frame_counter,
+                last_seen,
+            ) in cursor:
+                device = GreenPowerDevice(
+                    self._application,
+                    application_id=ApplicationID(application_id),
+                    src_id=None if src_id is None else SrcID(src_id),
+                    ieee=ieee,
+                )
+                device.device_id = None if device_id is None else DeviceID(device_id)
+                device.gpd_manufacturer_id = (
+                    None
+                    if gpd_manufacturer_id is None
+                    else t.uint16_t(gpd_manufacturer_id)
+                )
+                device.gpd_model_id = (
+                    None if gpd_model_id is None else t.uint16_t(gpd_model_id)
+                )
+                device.commands = [GPDCommandID(c) for c in json.loads(commands)]
+                device.server_cluster_ids = [
+                    t.uint16_t(c) for c in json.loads(server_cluster_ids)
+                ]
+                device.client_cluster_ids = [
+                    t.uint16_t(c) for c in json.loads(client_cluster_ids)
+                ]
+                device.switch_configuration = (
+                    None
+                    if switch_configuration is None
+                    else GPGenericSwitchConfiguration(switch_configuration)
+                )
+                device.mac_seq_num_capability = bool(mac_seq_num_capability)
+                device.rx_on_capability = bool(rx_on_capability)
+                device.fixed_location = bool(fixed_location)
+                device.security_key = (
+                    None if security_key is None else t.KeyData(security_key)
+                )
+                device.security_key_type = (
+                    None
+                    if security_key_type is None
+                    else SecurityKeyType(security_key_type)
+                )
+                device.security_level = (
+                    None if security_level is None else SecurityLevel(security_level)
+                )
+                device.frame_counter = (
+                    None if frame_counter is None else t.uint32_t(frame_counter)
+                )
+
+                if last_seen > 0:
+                    device.last_seen = last_seen
+
+                self._application.devices[device.ieee] = device
+
     async def _register_device_listeners(self) -> None:
         for dev in self._application.devices.values():
             dev.add_context_listener(self)
+
+            if isinstance(dev, GreenPowerDevice):
+                self.register_gp_device_events(dev)
 
     @contextlib.asynccontextmanager
     async def _transaction(self):
@@ -1243,6 +1486,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 (self._migrate_to_v13, 13),
                 (self._migrate_to_v14, 14),
                 (self._migrate_to_v15, 15),
+                (self._migrate_to_v16, 16),
             ]:
                 if db_version >= min(to_db_version, DB_VERSION):
                     continue
@@ -1708,3 +1952,23 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             }
         )
         # ota_query_cache_v15 is new and starts empty
+
+    async def _migrate_to_v16(self) -> None:
+        """Schema v16 adds the gp_devices table for Green Power persistence."""
+        await self._migrate_tables(
+            {
+                "devices_v15": "devices_v16",
+                "endpoints_v15": "endpoints_v16",
+                "neighbors_v15": "neighbors_v16",
+                "routes_v15": "routes_v16",
+                "node_descriptors_v15": "node_descriptors_v16",
+                "groups_v15": "groups_v16",
+                "group_members_v15": "group_members_v16",
+                "relays_v15": "relays_v16",
+                "network_backups_v15": "network_backups_v16",
+                "clusters_v15": "clusters_v16",
+                "attributes_cache_v15": "attributes_cache_v16",
+                "ota_query_cache_v15": "ota_query_cache_v16",
+            }
+        )
+        # gp_devices_v16 is new - starts empty

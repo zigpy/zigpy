@@ -1,0 +1,135 @@
+"""Conversion of ZCL-tunneled Green Power frames into GP packets.
+
+Proxies forward GPDFs they receive to sinks as GP Notification and GP
+Commissioning Notification commands of the Green Power cluster (ZGP spec
+A.3.3.4.1 and A.3.3.4.3). This module unpacks those tunneled commands back
+into `ZigbeeGpPacket`s.
+"""
+
+from __future__ import annotations
+
+import zigpy.profiles.zgp
+import zigpy.types as t
+from zigpy.zcl import foundation
+from zigpy.zcl.clusters.greenpower import (
+    CommissioningNotificationSchema,
+    GreenPowerProxy,
+    NotificationSchema,
+)
+from zigpy.zgp.types import GP_ENDPOINT, SecurityKeyType, SecurityLevel, SecurityStatus
+
+TUNNELED_GPDF_COMMANDS: dict[
+    int, type[NotificationSchema | CommissioningNotificationSchema]
+] = {
+    GreenPowerProxy.ServerCommandDefs.notification.id: NotificationSchema,
+    GreenPowerProxy.ServerCommandDefs.commissioning_notification.id: (
+        CommissioningNotificationSchema
+    ),
+}
+
+
+def is_gp_tunnel_packet(packet: t.ZigbeePacket) -> bool:
+    """Check whether a packet is a GPDF tunneled over ZCL by a proxy.
+
+    Only the two notification commands are tunnels. All other Green Power cluster
+    traffic (pairing, commissioning mode, attribute reads, ...) is normal ZCL and
+    flows through regular device dispatch.
+    """
+    if not (
+        packet.profile_id == zigpy.profiles.zgp.PROFILE_ID
+        and packet.cluster_id == GreenPowerProxy.cluster_id
+        and packet.src_ep == GP_ENDPOINT
+    ):
+        return False
+
+    try:
+        hdr, _ = foundation.ZCLHeader.deserialize(packet.data.serialize())
+    except ValueError:
+        return False
+
+    return (
+        hdr.frame_control.is_cluster
+        and hdr.frame_control.direction == foundation.Direction.Client_to_Server
+        and hdr.command_id in TUNNELED_GPDF_COMMANDS
+    )
+
+
+def gp_packet_from_zcl(packet: t.ZigbeePacket) -> t.ZigbeeGpPacket:
+    """Convert a ZCL-tunneled GP notification into a `ZigbeeGpPacket`."""
+    hdr, data = foundation.ZCLHeader.deserialize(packet.data.serialize())
+
+    if not hdr.frame_control.is_cluster:
+        raise ValueError(f"Not a cluster-specific command: {hdr}")
+
+    # The notification and notification response commands share a command ID and
+    # are only distinguished by direction
+    if hdr.frame_control.direction != foundation.Direction.Client_to_Server:
+        raise ValueError(f"Not a client-to-server command: {hdr}")
+
+    if hdr.command_id not in TUNNELED_GPDF_COMMANDS:
+        raise ValueError(f"Not a tunneled GPDF command: {hdr}")
+
+    command, rest = TUNNELED_GPDF_COMMANDS[hdr.command_id].deserialize(data)
+
+    if rest:
+        raise ValueError(f"Trailing data in tunneled GPDF: {rest!r}")
+
+    security_status: SecurityStatus
+    mic: t.uint32_t | None = None
+    auto_commissioning: bool | None = None
+    individual_key: bool | None = None
+
+    if (
+        isinstance(command, CommissioningNotificationSchema)
+        and command.options.security_failed
+    ):
+        # The proxy had no key for the GPD, which is the norm for the Success GPDF of
+        # bidirectional commissioning (A.3.9.1 step 17.b.i): it is paired only after.
+        # The GPDF is forwarded as received, with its MIC, and the sink rebuilds the
+        # NWK header fields the MIC covers from the notification (A.3.7.3.2)
+        security_status = SecurityStatus.Unprocessed
+        mic = command.mic
+        auto_commissioning = False
+        # Table 12 maps the key type back to the 1-bit SecurityKey sub-field
+        individual_key = command.options.security_key_type in (
+            SecurityKeyType.IndividualKey,
+            SecurityKeyType.DerivedIndividual,
+        )
+    elif command.options.security_level is SecurityLevel.NoSecurity:
+        security_status = SecurityStatus.NoSecurity
+    else:
+        # The proxy performed the security processing and echoes the key type it used
+        # (A.3.3.4.1), so a tunneled frame that got this far is verified
+        security_status = SecurityStatus.SecuritySuccess
+
+    lqi = rssi = None
+
+    if command.options.proxy_info_present:
+        # Spread the proxy's 2-bit link quality over the full 0-255 LQI range
+        lqi = t.uint8_t(int(command.gpp_gpd_link.link_quality) * 85)
+        rssi = t.int8s(command.gpp_gpd_link.rssi_dbm)
+
+    return t.ZigbeeGpPacket(
+        timestamp=packet.timestamp,
+        application_id=command.options.application_id,
+        src_id=command.gpd_id,
+        ieee=command.gpd_ieee,
+        endpoint=command.gpd_endpoint,
+        command_id=command.command_id,
+        payload=t.SerializableBytes(bytes(command.payload)),
+        frame_counter=command.frame_counter,
+        security_level=command.options.security_level,
+        rx_after_tx=bool(command.options.rx_after_tx),
+        security_key_type=command.options.security_key_type,
+        security_status=security_status,
+        mic=mic,
+        auto_commissioning=auto_commissioning,
+        individual_key=individual_key,
+        lqi=lqi,
+        rssi=rssi,
+        # A Green Power 1.0 proxy sends a `Distance` byte instead of the GPP-GPD link
+        gpp_distance=command.gpp_distance,
+        gpp_short_addr=(
+            None if command.gpp_short_addr is None else t.NWK(command.gpp_short_addr)
+        ),
+    )

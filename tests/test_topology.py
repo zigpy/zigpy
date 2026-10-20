@@ -9,11 +9,13 @@ import pytest
 from tests.conftest import App, make_ieee, make_neighbor, make_route
 import zigpy.config as conf
 import zigpy.device
+from zigpy.device import GreenPowerDevice
 import zigpy.endpoint
 import zigpy.profiles
 import zigpy.topology
 import zigpy.types as t
 import zigpy.zdo.types as zdo_t
+from zigpy.zgp.types import ApplicationID, SrcID
 
 
 @pytest.fixture(autouse=True)
@@ -203,6 +205,19 @@ async def test_scan_end_device(topology, make_initialized_device) -> None:
         # The device will not be scanned because it is not a router
         assert len(dev.zdo.Mgmt_Lqi_req.mock_calls) == 0
         assert len(dev.zdo.Mgmt_Rtg_req.mock_calls) == 0
+
+
+async def test_scan_skips_gp_device(topology) -> None:
+    app = topology._app
+    gpd = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+    app.devices[gpd.ieee] = gpd
+
+    await topology.scan()
+
+    assert gpd.ieee not in topology.neighbors
+    assert gpd.ieee not in topology.routes
 
 
 async def test_scan_explicit_device(topology, make_initialized_device) -> None:

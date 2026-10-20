@@ -11,7 +11,6 @@ from tests.conftest import (
     make_node_desc,
     mock_attribute_reads,
 )
-from tests.ota.test_ota_metadata import image_with_metadata  # noqa: F401
 import zigpy.application
 import zigpy.device
 import zigpy.exceptions
@@ -25,7 +24,6 @@ import zigpy.util
 from zigpy.zcl import foundation
 from zigpy.zcl.clusters import Cluster
 from zigpy.zcl.clusters.general import Ota
-from zigpy.zdo import types as zdo_t
 import zigpy.zdo.types as zdo_t
 
 

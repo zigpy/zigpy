@@ -200,6 +200,18 @@ async def test_reply(zdo_f):
     assert zdo_f.device.request.call_count == 1
 
 
+@pytest.mark.parametrize("aps_encryption", [False, True])
+async def test_request_aps_encryption(zdo_f, aps_encryption):
+    await zdo_f.request(2, 65535, aps_encryption=aps_encryption)
+    assert zdo_f.device.request.mock_calls[0].kwargs["aps_encryption"] is aps_encryption
+
+
+@pytest.mark.parametrize("aps_encryption", [False, True])
+async def test_reply_aps_encryption(zdo_f, aps_encryption):
+    await zdo_f.reply(0x8002, aps_encryption=aps_encryption)
+    assert zdo_f.device.request.mock_calls[0].kwargs["aps_encryption"] is aps_encryption
+
+
 def test_get_attr_error(zdo_f):
     with pytest.raises(AttributeError):
         zdo_f.no_such_attribute()

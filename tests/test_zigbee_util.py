@@ -356,6 +356,29 @@ async def test_catching_task_unexpected_exception(to_raise, exception, caplog):
     assert len(records) == 3
 
 
+class _TaskOwner(util.CreateTaskMixin):
+    def __init__(self) -> None:
+        self._tasks: set[asyncio.Task] = set()
+
+
+async def test_create_task_failure_logged(caplog):
+    """A failed task is logged with its traceback outside of debug logging."""
+    owner = _TaskOwner()
+
+    async def fail() -> None:
+        raise RuntimeError("Failure")
+
+    caplog.set_level(logging.INFO)
+    task = owner.create_task(fail(), name="failing")
+    await asyncio.gather(task, return_exceptions=True)
+    await asyncio.sleep(0)
+
+    [record] = [r for r in caplog.records if r.name == "zigpy.util"]
+    assert record.levelno == logging.ERROR
+    assert record.message == "Task 'failing' failed"
+    assert record.exc_info[1] is task.exception()
+
+
 @pytest.mark.parametrize(
     "plot",
     [
