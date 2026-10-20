@@ -81,18 +81,12 @@ async def test_local_timezone(app):
 async def test_new_local_timezone():
     zone = ZoneInfo("Europe/Berlin")
     config = {conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"}}
-    resolver = Mock()
-    packet_handler = Mock()
     with (
         patch.object(App, "_load_db", new_callable=AsyncMock),
         patch.object(App, "startup", new_callable=AsyncMock) as startup,
     ):
-        application = await App.new(
-            config, False, False, resolver, packet_handler, local_timezone=zone
-        )
+        application = await App.new(config, start_radio=False, local_timezone=zone)
     assert application.local_timezone is zone
-    assert application._device_resolver is resolver
-    assert application._uninitialized_packet_handler is packet_handler
     startup.assert_not_called()
 
 

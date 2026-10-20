@@ -548,6 +548,29 @@ async def test_time_cluster_status(valid_clock, app_mock):
     assert values[5] == 0
 
 
+def test_time_cluster_direct_handler_uses_time_service(app_mock):
+    endpoint = MagicMock()
+    endpoint.device.application = app_mock
+    app_mock.local_timezone = UTC
+    cluster = Time(endpoint)
+    now = datetime(2026, 7, 15, 12, tzinfo=UTC)
+
+    with (
+        patch("zigpy.zcl.clusters.general.datetime", wraps=datetime) as clock,
+        patch.object(
+            app_mock._time_service,
+            "snapshot",
+            wraps=app_mock._time_service.snapshot,
+        ) as snapshot,
+    ):
+        clock.now.return_value = now
+        value = cluster.handle_read_attribute_time()
+
+    snapshot.assert_called_once_with(now)
+    assert value == zigbee_time(now)
+    assert cluster._read_snapshot is None
+
+
 def test_time_service_unbounded_dst():
     class PermanentDST(tzinfo):
         def utcoffset(self, value):
