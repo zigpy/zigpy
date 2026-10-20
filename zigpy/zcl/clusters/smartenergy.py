@@ -409,14 +409,8 @@ class FunctionalNotificationFlags(t.bitmap32):
     # Bit 3: Reserved
     Stay_Awake_Request_HAN = 0x00000010
     Stay_Awake_Request_WAN = 0x00000020
-    # Bits 6-8: Push Historical Metering Data Attribute Set (3 bits)
-    Push_Historical_Metering_Data_Day = 0x00000040
-    Push_Historical_Metering_Data_Week = 0x00000080
-    Push_Historical_Metering_Data_Month = 0x00000100
-    # Bits 9-11: Push Historical Prepayment Data Attribute Set (3 bits)
-    Push_Historical_Prepayment_Data_Day = 0x00000200
-    Push_Historical_Prepayment_Data_Week = 0x00000400
-    Push_Historical_Prepayment_Data_Month = 0x00000800
+    # TODO: bits 6-8 and 9-11 are 3-bit encoded fields (Tables D-61 and D-62), not
+    # flags. They need `Struct` to pack bit fields across byte boundaries little-endian.
     Push_All_Static_Data_Basic_Cluster = 0x00001000
     Push_All_Static_Data_Metering_Cluster = 0x00002000
     Push_All_Static_Data_Prepayment_Cluster = 0x00004000
@@ -531,6 +525,9 @@ class SnapshotScheduleConfirmation(t.enum8):
 class SnapshotSchedulePayload(t.Struct):
     snapshot_schedule_id: t.uint8_t
     snapshot_start_time: t.UTCTime
+    # TODO: Table 10-111 splits this into frequency (bits 0-19), frequency type (bits
+    # 20-21) and wild-card frequency (bits 22-23). That needs `Struct` to pack bit
+    # fields across byte boundaries little-endian.
     snapshot_schedule: t.uint24_t
     snapshot_payload_type: SnapshotPayloadType
     snapshot_cause: SnapshotCause

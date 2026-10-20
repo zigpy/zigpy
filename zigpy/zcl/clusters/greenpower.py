@@ -69,6 +69,8 @@ class GPSFunctionality(t.bitmap24):
 
 
 # Figure 31 — 16 bits total
+# TODO: `Struct` packs bit fields that cross a byte boundary big-endian, so this
+# decodes wrong until that is fixed
 class CommissioningNotificationOptions(t.Struct):
     application_id: zgptypes.ApplicationID
     rx_after_tx: t.uint1_t
