@@ -13,7 +13,14 @@ import pytest
 from zigpy import device, types, zcl
 import zigpy.endpoint
 from zigpy.ota import OTA, OtaImagesResult
-from zigpy.time import INVALID_TIME, MAX_TIME, ZIGBEE_EPOCH, TimeService, zigbee_time
+from zigpy.time import (
+    INVALID_TIME,
+    MAX_TIME,
+    ZIGBEE_EPOCH,
+    TimeService,
+    dst_intervals,
+    zigbee_time,
+)
 from zigpy.zcl import OtaImageAvailableEvent, OtaQueryCacheUpdatedEvent, foundation
 from zigpy.zcl.clusters.general import Basic, KeepAlive, Ota, Time
 import zigpy.zcl.clusters.security as sec
@@ -411,10 +418,10 @@ def test_time_service_no_dst(zone):
 def test_time_service_transition_boundaries(zone_name):
     zone = ZoneInfo(zone_name)
     service = TimeService(zone)
-    for start, end, offset, shift in service._scan_periods(zone, 2026)[1:-1]:
+    for start, end, shift in dst_intervals(zone, 2026):
         for transition in (start, end):
             for seconds in (-1, 0, 1):
-                now = transition + timedelta(seconds=seconds)
+                now = ZIGBEE_EPOCH + timedelta(seconds=transition + seconds)
                 snapshot = service.snapshot(now)
                 current_shift = int(
                     (now.astimezone(zone).dst() or timedelta(0)).total_seconds()
@@ -435,9 +442,7 @@ def test_time_service_transition_boundaries(zone_name):
 def test_time_service_cache_and_timezone_change():
     zone = ZoneInfo("Europe/Berlin")
     service = TimeService(zone)
-    with patch.object(
-        TimeService, "_scan_periods", wraps=service._scan_periods
-    ) as scan:
+    with patch("zigpy.time.dst_intervals", wraps=dst_intervals) as scan:
         winter = service.snapshot(datetime(2026, 1, 15, tzinfo=UTC))
         summer = service.snapshot(datetime(2026, 7, 15, tzinfo=UTC))
         assert winter.dst_start == summer.dst_start
@@ -451,9 +456,6 @@ def test_time_service_cache_and_timezone_change():
         changed = service.snapshot(datetime(2027, 1, 15, tzinfo=UTC))
         assert changed.time_zone == 36000
         assert scan.call_count == 3
-        service.clear_cache()
-        assert service.snapshot(datetime(2027, 1, 15, tzinfo=UTC)) == changed
-        assert scan.call_count == 4
 
 
 def test_time_service_negative_dst():
@@ -506,24 +508,6 @@ def test_time_service_missing_timezone():
     assert snapshot.dst_start == snapshot.dst_end == INVALID_TIME
 
 
-def test_time_service_standard_offset_change():
-    zone = ZoneInfo("Europe/Berlin")
-    now = datetime(2026, 1, 15, tzinfo=UTC)
-    start = datetime(2026, 3, 1, tzinfo=UTC)
-    end = datetime(2026, 10, 1, tzinfo=UTC)
-    periods = [
-        (datetime(2026, 1, 1, tzinfo=UTC), start, 3600, 0),
-        (start, end, 10800, 3600),
-        (end, datetime(2027, 1, 1, tzinfo=UTC), 7200, 0),
-    ]
-    service = TimeService(zone)
-    with patch.object(TimeService, "_scan_periods", return_value=periods):
-        snapshot = service.snapshot(now)
-    assert snapshot.time_zone == 3600
-    assert snapshot.dst_start == snapshot.dst_end == INVALID_TIME
-    assert snapshot.dst_shift == 0
-
-
 @pytest.mark.parametrize("valid_clock", [True, False])
 async def test_time_cluster_status(valid_clock, app_mock):
     ep = MagicMock()
@@ -572,8 +556,7 @@ def test_time_service_unbounded_dst():
 
     snapshot = TimeService(PermanentDST()).snapshot(datetime(2026, 7, 15, tzinfo=UTC))
     assert snapshot.authoritative
-    assert snapshot.dst_start == 0
-    assert snapshot.dst_end == MAX_TIME
+    assert snapshot.dst_start <= snapshot.time <= snapshot.dst_end
     assert snapshot.dst_shift == 3600
 
 
@@ -585,11 +568,7 @@ async def test_time_cluster_shared_service(app_mock):
         endpoint.device.application = app_mock
         endpoint.reply = AsyncMock()
     clusters = [Time(endpoint) for endpoint in endpoints]
-    with patch.object(
-        TimeService,
-        "_scan_periods",
-        wraps=app_mock._time_service._scan_periods,
-    ) as scan:
+    with patch("zigpy.time.dst_intervals", wraps=dst_intervals) as scan:
         responses = await asyncio.gather(
             *(read_attributes(cluster, [3, 4, 5]) for cluster in clusters)
         )

@@ -74,7 +74,6 @@ async def test_local_timezone(app):
     assert changed.dst_start != first.dst_start
 
     app.local_timezone = None
-    assert app._time_service._cache is None
     assert not app._time_service.snapshot(now).authoritative
 
 

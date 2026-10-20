@@ -381,7 +381,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
 
     @local_timezone.setter
     def local_timezone(self, zone: tzinfo | None) -> None:
-        """Set the local timezone and invalidate cached DST rules."""
         self._time_service.timezone = zone
 
     async def energy_scan(
