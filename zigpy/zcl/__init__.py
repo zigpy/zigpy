@@ -51,8 +51,21 @@ def _convert_attribute_value(
     attr_def: foundation.ZCLAttributeDef, type_value: foundation.TypeValue
 ) -> Any:
     """Convert a received attribute value into the attribute's declared type."""
+
     # `dataN` values are untyped bytes, so they are re-read with the declared type
-    if foundation.DataTypeId.data8 <= type_value.type <= foundation.DataTypeId.data64:
+    if isinstance(
+        type_value.value,
+        (
+            t.data8,
+            t.data16,
+            t.data24,
+            t.data32,
+            t.data40,
+            t.data48,
+            t.data56,
+            t.data64,
+        ),
+    ):
         value, rest = attr_def.type.deserialize(type_value.value.serialize())
         assert not rest
 
