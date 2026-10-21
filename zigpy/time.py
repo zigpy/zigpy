@@ -19,27 +19,31 @@ def zigbee_time(value: datetime) -> int:
     return int(seconds) if 0 <= seconds <= MAX_TIME else INVALID_TIME
 
 
-def _dst_shift(zone: tzinfo, seconds: int) -> int:
+def _offset(zone: tzinfo, seconds: int) -> tuple[int, bool]:
+    """Return the UTC offset and DST flag, both stored exactly in tzdata."""
     local = (ZIGBEE_EPOCH + timedelta(seconds=seconds)).astimezone(zone)
-    return int((local.dst() or timedelta(0)).total_seconds())
+    return int((local.utcoffset() or timedelta(0)).total_seconds()), bool(local.dst())
 
 
-def _first_change(zone: tzinfo, lower: int, upper: int, shift: int) -> int:
-    """Return the first second in (lower, upper] whose DST shift differs."""
+def _first_change(
+    zone: tzinfo, lower: int, upper: int, offset: tuple[int, bool]
+) -> int:
+    """Return the first second in (lower, upper] whose offset differs."""
     while upper - lower > 1:
         middle = (lower + upper) // 2
-        if _dst_shift(zone, middle) == shift:
+        if _offset(zone, middle) == offset:
             lower = middle
         else:
             upper = middle
     return upper
 
 
-def dst_intervals(zone: tzinfo, year: int) -> list[tuple[int, int, int]]:
-    """Return half-open (start, end, shift) DST intervals around a UTC year.
+def utc_periods(zone: tzinfo, year: int) -> list[tuple[int, int, int, bool]]:
+    """Return half-open (start, end, offset, is_dst) periods around a UTC year.
 
     The window spans the previous year through the next, so the active or next
-    DST season is always complete for any instant within `year`.
+    DST season and its neighbouring standard periods are always complete for
+    any instant within `year`.
     """
     lower = zigbee_time(max(ZIGBEE_EPOCH, datetime(year - 1, 1, 1, tzinfo=UTC)))
     upper = zigbee_time(
@@ -48,24 +52,21 @@ def dst_intervals(zone: tzinfo, year: int) -> list[tuple[int, int, int]]:
             datetime(year + 2, 1, 1, tzinfo=UTC),
         )
     )
-    intervals = []
+    periods = []
     start = probe = lower
-    shift = _dst_shift(zone, lower)
+    offset = _offset(zone, lower)
 
     while probe < upper:
         following = min(probe + PROBE_STEP, upper)
-        following_shift = _dst_shift(zone, following)
-        if following_shift != shift:
-            change = _first_change(zone, probe, following, shift)
-            if shift:
-                intervals.append((start, change, shift))
-            start, shift = change, following_shift
+        following_offset = _offset(zone, following)
+        if following_offset != offset:
+            change = _first_change(zone, probe, following, offset)
+            periods.append((start, change, *offset))
+            start, offset = change, following_offset
         probe = following
 
-    if shift:
-        intervals.append((start, upper, shift))
-
-    return intervals
+    periods.append((start, upper, *offset))
+    return periods
 
 
 @dataclass(frozen=True)
@@ -87,7 +88,32 @@ class TimeService:
 
     def __init__(self, zone: tzinfo | None = None) -> None:
         self.timezone = zone
-        self._cache: tuple[tzinfo, int, list[tuple[int, int, int]]] | None = None
+        self._cache: tuple[tzinfo, int, list[tuple[int, int, int, bool]]] | None = None
+
+    def _periods(self, zone: tzinfo, now: datetime) -> list[tuple[int, int, int, bool]]:
+        year = now.astimezone(UTC).year
+        cache = self._cache
+        if cache is None or cache[0] is not zone or cache[1] != year:
+            cache = self._cache = (zone, year, utc_periods(zone, year))
+        return cache[2]
+
+    def _dst_interval(
+        self, zone: tzinfo, now: datetime, time: int
+    ) -> tuple[int, int, int] | None:
+        """Return the active or next DST interval as (start, end, shift).
+
+        The shift is relative to the standard period on the same side as the
+        read, so Time + TimeZone + DstShift equals local time at that instant.
+        """
+        periods = self._periods(zone, now)
+        for index, (start, end, offset, is_dst) in enumerate(periods):
+            if not is_dst or end <= time:
+                continue
+            neighbour = index - 1 if time < start else index + 1
+            if not 0 <= neighbour < len(periods):
+                return None
+            return start, end, offset - periods[neighbour][2]
+        return None
 
     def snapshot(self, now: datetime) -> TimeSnapshot:
         """Return the active DST interval, or the next one when inactive.
@@ -96,34 +122,27 @@ class TimeService:
         do not claim knowledge of DST rules.
         """
         zone = self.timezone
-        local = now.astimezone(zone)
-        offset = int((local.utcoffset() or timedelta(0)).total_seconds())
-        shift = int((local.dst() or timedelta(0)).total_seconds())
         time = zigbee_time(now)
+        offset = int((now.astimezone(zone).utcoffset() or timedelta(0)).total_seconds())
+        interval = None
+        if zone is not None and time != INVALID_TIME:
+            interval = self._dst_interval(zone, now, time)
+        # TimeZone excludes the DST shift while it applies.
+        shift = interval[2] if interval is not None and interval[0] <= time else 0
         snapshot = TimeSnapshot(
             time=time,
-            # TimeZone excludes DST; signed shifts also cover negative DST rules.
             time_zone=offset - shift,
             standard_time=zigbee_time(now + timedelta(seconds=offset - shift)),
             local_time=zigbee_time(now + timedelta(seconds=offset)),
+            authoritative=zone is not None and time != INVALID_TIME,
         )
-        if zone is None or time == INVALID_TIME:
+        if interval is None:
             return snapshot
-
-        year = now.astimezone(UTC).year
-        cache = self._cache
-        if cache is None or cache[0] is not zone or cache[1] != year:
-            cache = self._cache = (zone, year, dst_intervals(zone, year))
-
-        for start, end, interval_shift in cache[2]:
-            if end > time:
-                return replace(
-                    snapshot,
-                    dst_start=start,
-                    # ZCL uses DstStart <= Time <= DstEnd, unlike half-open intervals.
-                    dst_end=end - 1,
-                    dst_shift=interval_shift,
-                    authoritative=True,
-                )
-
-        return replace(snapshot, authoritative=True)
+        start, end, interval_shift = interval
+        return replace(
+            snapshot,
+            dst_start=start,
+            # ZCL uses DstStart <= Time <= DstEnd, unlike half-open periods.
+            dst_end=end - 1,
+            dst_shift=interval_shift,
+        )

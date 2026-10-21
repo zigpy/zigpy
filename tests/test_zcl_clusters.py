@@ -18,7 +18,7 @@ from zigpy.time import (
     MAX_TIME,
     ZIGBEE_EPOCH,
     TimeService,
-    dst_intervals,
+    utc_periods,
     zigbee_time,
 )
 from zigpy.zcl import OtaImageAvailableEvent, OtaQueryCacheUpdatedEvent, foundation
@@ -418,14 +418,12 @@ def test_time_service_no_dst(zone):
 def test_time_service_transition_boundaries(zone_name):
     zone = ZoneInfo(zone_name)
     service = TimeService(zone)
-    for start, end, shift in dst_intervals(zone, 2026):
+    for start, end, _offset, _is_dst in utc_periods(zone, 2026):
         for transition in (start, end):
             for seconds in (-1, 0, 1):
                 now = ZIGBEE_EPOCH + timedelta(seconds=transition + seconds)
                 snapshot = service.snapshot(now)
-                current_shift = int(
-                    (now.astimezone(zone).dst() or timedelta(0)).total_seconds()
-                )
+                current_shift = snapshot.local_time - snapshot.standard_time
                 advertised_shift = (
                     snapshot.dst_shift
                     if snapshot.dst_start <= snapshot.time <= snapshot.dst_end
@@ -433,6 +431,7 @@ def test_time_service_transition_boundaries(zone_name):
                 )
                 assert snapshot.authoritative
                 assert advertised_shift == current_shift
+                assert bool(current_shift) == bool(now.astimezone(zone).dst())
                 assert snapshot.local_time == snapshot.standard_time + current_shift
                 assert snapshot.local_time == zigbee_time(
                     now + now.astimezone(zone).utcoffset()
@@ -442,7 +441,7 @@ def test_time_service_transition_boundaries(zone_name):
 def test_time_service_cache_and_timezone_change():
     zone = ZoneInfo("Europe/Berlin")
     service = TimeService(zone)
-    with patch("zigpy.time.dst_intervals", wraps=dst_intervals) as scan:
+    with patch("zigpy.time.utc_periods", wraps=utc_periods) as scan:
         winter = service.snapshot(datetime(2026, 1, 15, tzinfo=UTC))
         summer = service.snapshot(datetime(2026, 7, 15, tzinfo=UTC))
         assert winter.dst_start == summer.dst_start
@@ -556,8 +555,21 @@ def test_time_service_unbounded_dst():
 
     snapshot = TimeService(PermanentDST()).snapshot(datetime(2026, 7, 15, tzinfo=UTC))
     assert snapshot.authoritative
-    assert snapshot.dst_start <= snapshot.time <= snapshot.dst_end
+    assert snapshot.time_zone == 7200
+    assert snapshot.dst_start == snapshot.dst_end == INVALID_TIME
+    assert snapshot.dst_shift == 0
+
+
+def test_time_service_inferred_dst_magnitude():
+    # CPython infers dst() per offset type from its first transition. Inuvik
+    # jumped from PST straight to MDT in 1979, so dst() reports two hours.
+    zone = ZoneInfo("America/Inuvik")
+    now = datetime(2025, 7, 15, tzinfo=UTC)
+    assert now.astimezone(zone).dst() == timedelta(hours=2)
+    snapshot = TimeService(zone).snapshot(now)
+    assert snapshot.time_zone == -25200
     assert snapshot.dst_shift == 3600
+    assert snapshot.local_time == snapshot.standard_time + 3600
 
 
 async def test_time_cluster_shared_service(app_mock):
@@ -568,7 +580,7 @@ async def test_time_cluster_shared_service(app_mock):
         endpoint.device.application = app_mock
         endpoint.reply = AsyncMock()
     clusters = [Time(endpoint) for endpoint in endpoints]
-    with patch("zigpy.time.dst_intervals", wraps=dst_intervals) as scan:
+    with patch("zigpy.time.utc_periods", wraps=utc_periods) as scan:
         responses = await asyncio.gather(
             *(read_attributes(cluster, [3, 4, 5]) for cluster in clusters)
         )
