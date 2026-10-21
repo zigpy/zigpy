@@ -472,9 +472,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         self.enqueue("_remove_device", device)
 
-    async def _remove_device(self, device: Device) -> None:
+    async def _remove_device(
+        self, device: Device, *, force_commit: bool = True
+    ) -> None:
         await self.execute(f"DELETE FROM devices{DB_V} WHERE ieee = ?", (device.ieee,))
-        await self._commit(force=True)
+        await self._commit(force=force_commit)
 
     def raw_device_initialized(self, device: Device) -> None:
         if isinstance(device, GreenPowerDevice):

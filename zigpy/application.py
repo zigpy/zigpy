@@ -7,7 +7,7 @@ import collections
 from collections.abc import AsyncGenerator, Callable
 import contextlib
 import contextvars
-from datetime import UTC, datetime
+from datetime import UTC, datetime, tzinfo
 import errno
 import inspect
 import logging
@@ -86,6 +86,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         self._groups = zigpy.group.Groups(self)
         self._send_sequence = 0
         self._tasks: set[asyncio.Future[Any]] = set()
+        self.local_timezone: tzinfo | None = None
 
         self._device_resolver: DeviceResolver | None = None
         self._uninitialized_packet_handler: Callable[..., None] | None = None
@@ -344,9 +345,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         start_radio: bool = True,
         device_resolver: DeviceResolver | None = None,
         uninitialized_packet_handler: Callable[..., None] | None = None,
+        *,
+        local_timezone: tzinfo | None = None,
     ) -> ControllerApplication:
         """Create new instance of application controller."""
         app = cls(config)
+        app.local_timezone = local_timezone
 
         if device_resolver is not None:
             app.register_device_resolver(device_resolver)
@@ -691,10 +695,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         # Remove old device data from DB (cascade deletes endpoints, clusters,
         # attribute cache, group members, and relays).  We call _remove_device
         # directly instead of the public device_removed() because we need the
-        # delete to complete before _finalize_device enqueues the save.
+        # delete to complete before _finalize_device enqueues the save.  It does not
+        # commit the delete: this runs outside the DB worker, so a commit here could
+        # land between two statements of a running handler and persist its partial
+        # writes.  The new device's save, queued next, commits the delete with it.
         if self._dblistener is not None:
             old_device.remove_listener(self._dblistener)
-            await self._dblistener._remove_device(old_device)
+            await self._dblistener._remove_device(old_device, force_commit=False)
 
         # Clean up old device's callbacks and tasks
         old_device.on_remove()
