@@ -45,9 +45,10 @@ class AttributeCache:
             self._cluster._get_effective_manufacturer_code(attr_def),
         )
 
-    def clear(self) -> None:
+    def clear(self, *, include_unsupported: bool = True) -> None:
         self._cache.clear()
-        self._unsupported.clear()
+        if include_unsupported:
+            self._unsupported.clear()
         self._legacy_cache.clear()
 
     def remove(self, attr_def: ZCLAttributeDef) -> None:
@@ -132,10 +133,14 @@ class AttributeCache:
             return True
 
     def clone(self, cluster: Cluster) -> AttributeCache:
-        """Create a copy of this cache for a new cluster."""
+        """Create a copy of this cache for a new cluster.
+
+        Unsupported marks already present on `cluster` are kept so a quirk
+        that declared them in ``__init__`` is not overwritten by the copy.
+        """
         new_cache = AttributeCache(cluster)
         new_cache._cache = self._cache.copy()
-        new_cache._unsupported = self._unsupported.copy()
+        new_cache._unsupported = self._unsupported | cluster._attr_cache._unsupported
         new_cache._legacy_cache = self._legacy_cache.copy()
         return new_cache
 
