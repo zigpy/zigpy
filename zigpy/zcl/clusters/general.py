@@ -1131,12 +1131,14 @@ class Time(Cluster):
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
     def _handle_read_attributes(
-        self, attribute_ids: list[int]
+        self, attribute_ids: list[int], *handler_args: Any
     ) -> list[foundation.ReadAttributeRecord]:
         # One instant and timezone for every attribute in the response
         zone = self.endpoint.device.application.local_timezone
         return super()._handle_read_attributes(
-            attribute_ids, TimeSnapshot.compute(zone, datetime.now(UTC))
+            attribute_ids,
+            TimeSnapshot.compute(zone, datetime.now(UTC)),
+            *handler_args,
         )
 
     def handle_read_attribute_time(self, snapshot: TimeSnapshot) -> t.UTCTime:

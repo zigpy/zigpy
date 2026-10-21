@@ -554,7 +554,7 @@ def test_snapshot_inferred_dst_magnitude():
     assert values.local_time == values.standard_time + 3600
 
 
-async def test_time_cluster_shared_service(app_mock):
+async def test_time_cluster_shared_utc_periods_cache(app_mock):
     zone = ZoneInfo("Europe/Berlin")
     app_mock.local_timezone = zone
     endpoints = [MagicMock(), MagicMock()]
