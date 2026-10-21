@@ -1108,10 +1108,6 @@ class Time(Cluster):
     cluster_id: Final[t.uint16_t] = 0x000A
     ep_attribute: Final = "time"
 
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self._read_snapshot: TimeSnapshot | None = None
-
     class AttributeDefs(BaseAttributeDefs):
         time: Final = ZCLAttributeDef(
             id=0x0000, type=t.UTCTime, access="r*w", mandatory=True
@@ -1134,43 +1130,19 @@ class Time(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    def _get_time_snapshot(self) -> TimeSnapshot:
-        if self._read_snapshot is not None:
-            return self._read_snapshot
-        # Preserve direct handler calls outside a multi-attribute read request.
-        return snapshot(
-            self.endpoint.device.application.local_timezone, datetime.now(UTC)
+    def _handle_read_attributes(
+        self, attribute_ids: list[int]
+    ) -> list[foundation.ReadAttributeRecord]:
+        # One instant and timezone for every attribute in the response
+        zone = self.endpoint.device.application.local_timezone
+        return super()._handle_read_attributes(
+            attribute_ids, snapshot(zone, datetime.now(UTC))
         )
 
-    def handle_cluster_general_request(
-        self,
-        hdr: foundation.ZCLHeader,
-        args: list,
-        *,
-        dst_addressing: t.AddrMode | None = None,
-    ) -> None:
-        if hdr.command_id != foundation.GeneralCommand.Read_Attributes:
-            return super().handle_cluster_general_request(
-                hdr, args, dst_addressing=dst_addressing
-            )
+    def handle_read_attribute_time(self, snapshot: TimeSnapshot) -> t.UTCTime:
+        return t.UTCTime(snapshot.time)
 
-        # Reuse one instant and timezone for every attribute in the response.
-        previous = self._read_snapshot
-        self._read_snapshot = snapshot(
-            self.endpoint.device.application.local_timezone, datetime.now(UTC)
-        )
-        try:
-            super().handle_cluster_general_request(
-                hdr, args, dst_addressing=dst_addressing
-            )
-        finally:
-            self._read_snapshot = previous
-
-    def handle_read_attribute_time(self) -> t.UTCTime:
-        return t.UTCTime(self._get_time_snapshot().time)
-
-    def handle_read_attribute_time_status(self) -> TimeStatus:
-        snapshot = self._get_time_snapshot()
+    def handle_read_attribute_time_status(self, snapshot: TimeSnapshot) -> TimeStatus:
         result = TimeStatus(0)
         # The host clock is independent of Zigbee network synchronization.
         if snapshot.time != INVALID_TIME:
@@ -1180,23 +1152,25 @@ class Time(Cluster):
             result |= TimeStatus.Master_for_Zone_and_DST
         return result
 
-    def handle_read_attribute_time_zone(self) -> t.int32s:
-        return t.int32s(self._get_time_snapshot().time_zone)
+    def handle_read_attribute_time_zone(self, snapshot: TimeSnapshot) -> t.int32s:
+        return t.int32s(snapshot.time_zone)
 
-    def handle_read_attribute_standard_time(self) -> t.StandardTime:
-        return t.StandardTime(self._get_time_snapshot().standard_time)
+    def handle_read_attribute_standard_time(
+        self, snapshot: TimeSnapshot
+    ) -> t.StandardTime:
+        return t.StandardTime(snapshot.standard_time)
 
-    def handle_read_attribute_local_time(self) -> t.LocalTime:
-        return t.LocalTime(self._get_time_snapshot().local_time)
+    def handle_read_attribute_local_time(self, snapshot: TimeSnapshot) -> t.LocalTime:
+        return t.LocalTime(snapshot.local_time)
 
-    def handle_read_attribute_dst_start(self) -> t.uint32_t:
-        return t.uint32_t(self._get_time_snapshot().dst_start)
+    def handle_read_attribute_dst_start(self, snapshot: TimeSnapshot) -> t.uint32_t:
+        return t.uint32_t(snapshot.dst_start)
 
-    def handle_read_attribute_dst_end(self) -> t.uint32_t:
-        return t.uint32_t(self._get_time_snapshot().dst_end)
+    def handle_read_attribute_dst_end(self, snapshot: TimeSnapshot) -> t.uint32_t:
+        return t.uint32_t(snapshot.dst_end)
 
-    def handle_read_attribute_dst_shift(self) -> t.int32s:
-        return t.int32s(self._get_time_snapshot().dst_shift)
+    def handle_read_attribute_dst_shift(self, snapshot: TimeSnapshot) -> t.int32s:
+        return t.int32s(snapshot.dst_shift)
 
     # For backwards compatibility
     TimeStatus: Final = TimeStatus

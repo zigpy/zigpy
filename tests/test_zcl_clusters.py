@@ -384,7 +384,6 @@ async def test_time_cluster_dst_period(zone_name, instant, start, end, shift, ap
         shift if values[3] <= values[0] <= values[4] else 0
     )
     assert values[7] == zigbee_time(now + now.astimezone(zone).utcoffset())
-    assert cluster._read_snapshot is None
 
 
 @pytest.mark.parametrize(
@@ -515,25 +514,6 @@ async def test_time_cluster_status(valid_clock, app_mock):
     assert values[5] == 0
 
 
-def test_time_cluster_direct_handler_uses_snapshot(app_mock):
-    endpoint = MagicMock()
-    endpoint.device.application = app_mock
-    app_mock.local_timezone = UTC
-    cluster = Time(endpoint)
-    now = datetime(2026, 7, 15, 12, tzinfo=UTC)
-
-    with (
-        patch("zigpy.zcl.clusters.general.datetime", wraps=datetime) as clock,
-        patch("zigpy.zcl.clusters.general.snapshot", wraps=snapshot) as read,
-    ):
-        clock.now.return_value = now
-        value = cluster.handle_read_attribute_time()
-
-    assert read.mock_calls == [call(UTC, now)]
-    assert value == zigbee_time(now)
-    assert cluster._read_snapshot is None
-
-
 def test_snapshot_unbounded_dst():
     class PermanentDST(tzinfo):
         def utcoffset(self, value):
@@ -577,27 +557,6 @@ async def test_time_cluster_shared_service(app_mock):
     assert responses[0] == responses[1]
     serialized = responses[0].serialize()
     assert type(responses[0]).deserialize(serialized) == (responses[0], b"")
-
-
-async def test_time_cluster_snapshot_cleanup(app_mock):
-    ep = MagicMock()
-    ep.device.application = app_mock
-    cluster = Time(ep)
-    header = foundation.ZCLHeader.general(1, foundation.GeneralCommand.Read_Attributes)
-    with patch.object(
-        cluster, "handle_read_attribute_time", side_effect=RuntimeError("read failed")
-    ):
-        with pytest.raises(RuntimeError, match="read failed"):
-            cluster.handle_cluster_general_request(header, MagicMock(attribute_ids=[0]))
-    assert cluster._read_snapshot is None
-
-
-async def test_time_cluster_other_commands():
-    cluster = Time(MagicMock())
-    header = foundation.ZCLHeader.general(1, foundation.GeneralCommand.Default_Response)
-    with patch.object(zcl.Cluster, "handle_cluster_general_request") as handler:
-        cluster.handle_cluster_general_request(header, [])
-    handler.assert_called_once_with(header, [], dst_addressing=None)
 
 
 @pytest.fixture
