@@ -7,14 +7,16 @@ from zigpy.types import basic
 
 __all__ = [
     "GP_ENDPOINT",
-    "GP_CLUSTER_ID",
     "GP_GROUP_ID",
+    "GP_PROTOCOL_VERSION",
     "DEFAULT_GP_LINK_KEY",
     "SrcID",
     "DeviceID",
     "GPDCommandID",
     "SwitchType",
     "FrameType",
+    "NWKFrameControl",
+    "ExtendedNWKFrameControl",
     "ApplicationID",
     "SecurityLevel",
     "SecurityKeyType",
@@ -33,11 +35,12 @@ __all__ = [
 # Green Power endpoint as defined in the ZGP specification
 GP_ENDPOINT: int = 242
 
-# Green Power cluster ID
-GP_CLUSTER_ID: int = 0x0021
+# The Zigbee protocol version of a GPDF (A.1.4.1.2)
+GP_PROTOCOL_VERSION: int = 3
 
-# Green Power group ID used for groupcast forwarding
-GP_GROUP_ID: int = 0x0B84
+# The pre-commissioned group proxies forward the GPDFs of all GPDs to, one group for
+# the sink to join instead of one per GPD in derived groupcast
+GP_GROUP_ID: t.Group = t.Group(0x0B84)
 
 # Default ZigBee Green Power shared key ("ZigBeeAlliance09" TC link key).
 # Used to unwrap GP security keys that a GPD provides during commissioning
@@ -210,6 +213,29 @@ class SecurityLevel(basic.enum2):
     Encrypted = 0b11
 
 
+class CommunicationDirection(basic.enum1):
+    GPDtoGPP = 0
+    GPPtoGPD = 1
+
+
+# A.1.4.1.2
+class NWKFrameControl(t.IntStruct, basic.uint8_t):
+    frame_type: FrameType
+    protocol_version: basic.uint4_t
+    auto_commissioning: basic.uint1_t
+    extended: basic.uint1_t
+
+
+# A.1.4.1.3
+class ExtendedNWKFrameControl(t.IntStruct, basic.uint8_t):
+    application_id: ApplicationID
+    security_level: SecurityLevel
+    # The 1-bit SecurityKey sub-field: an individual key, see Table 12
+    security_key: basic.uint1_t
+    rx_after_tx: basic.uint1_t
+    direction: CommunicationDirection
+
+
 # Table 5, the `Status` parameter of the GP-DATA.indication primitive: the outcome of
 # GPDF security processing, which is what makes the other security fields meaningful
 class SecurityStatus(basic.enum8):
@@ -268,11 +294,6 @@ class CommunicationMode(basic.enum2):
 class SinkCommunicationMode(t.IntStruct, basic.uint8_t):
     communication_mode: CommunicationMode
     _reserved: basic.uint6_t
-
-
-class CommunicationDirection(basic.enum1):
-    GPDtoGPP = 0
-    GPPtoGPD = 1
 
 
 # Table 32

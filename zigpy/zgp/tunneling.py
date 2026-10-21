@@ -8,7 +8,6 @@ into `ZigbeeGpPacket`s.
 
 from __future__ import annotations
 
-from zigpy.exceptions import GPSecurityProcessingFailed
 import zigpy.profiles.zgp
 import zigpy.types as t
 from zigpy.zcl import foundation
@@ -17,7 +16,7 @@ from zigpy.zcl.clusters.greenpower import (
     GreenPowerProxy,
     NotificationSchema,
 )
-from zigpy.zgp.types import GP_CLUSTER_ID, GP_ENDPOINT, SecurityLevel, SecurityStatus
+from zigpy.zgp.types import GP_ENDPOINT, SecurityKeyType, SecurityLevel, SecurityStatus
 
 TUNNELED_GPDF_COMMANDS: dict[
     int, type[NotificationSchema | CommissioningNotificationSchema]
@@ -38,7 +37,7 @@ def is_gp_tunnel_packet(packet: t.ZigbeePacket) -> bool:
     """
     if not (
         packet.profile_id == zigpy.profiles.zgp.PROFILE_ID
-        and packet.cluster_id == GP_CLUSTER_ID
+        and packet.cluster_id == GreenPowerProxy.cluster_id
         and packet.src_ep == GP_ENDPOINT
     ):
         return False
@@ -75,15 +74,33 @@ def gp_packet_from_zcl(packet: t.ZigbeePacket) -> t.ZigbeeGpPacket:
     if rest:
         raise ValueError(f"Trailing data in tunneled GPDF: {rest!r}")
 
+    security_status: SecurityStatus
+    mic: t.uint32_t | None = None
+    auto_commissioning: bool | None = None
+    individual_key: bool | None = None
+
     if (
         isinstance(command, CommissioningNotificationSchema)
         and command.options.security_failed
     ):
-        # TODO: reconstruct the frame control fields and decrypt the GPDF here, as
-        # A.3.6.5.2 requires of a sink. The MIC needed for it is already parsed.
-        raise GPSecurityProcessingFailed(
-            f"Security processing of the tunneled GPDF failed: {command}"
+        # The proxy had no key for the GPD, which is the norm for the Success GPDF of
+        # bidirectional commissioning (A.3.9.1 step 17.b.i): it is paired only after.
+        # The GPDF is forwarded as received, with its MIC, and the sink rebuilds the
+        # NWK header fields the MIC covers from the notification (A.3.7.3.2)
+        security_status = SecurityStatus.Unprocessed
+        mic = command.mic
+        auto_commissioning = False
+        # Table 12 maps the key type back to the 1-bit SecurityKey sub-field
+        individual_key = command.options.security_key_type in (
+            SecurityKeyType.IndividualKey,
+            SecurityKeyType.DerivedIndividual,
         )
+    elif command.options.security_level is SecurityLevel.NoSecurity:
+        security_status = SecurityStatus.NoSecurity
+    else:
+        # The proxy performed the security processing and echoes the key type it used
+        # (A.3.3.4.1), so a tunneled frame that got this far is verified
+        security_status = SecurityStatus.SecuritySuccess
 
     lqi = rssi = None
 
@@ -102,16 +119,17 @@ def gp_packet_from_zcl(packet: t.ZigbeePacket) -> t.ZigbeeGpPacket:
         payload=t.SerializableBytes(bytes(command.payload)),
         frame_counter=command.frame_counter,
         security_level=command.options.security_level,
+        rx_after_tx=bool(command.options.rx_after_tx),
         security_key_type=command.options.security_key_type,
-        # The proxy performed the security processing and echoes the key type it used
-        # (A.3.3.4.1), so a tunneled frame that got this far is verified
-        security_status=(
-            SecurityStatus.NoSecurity
-            if command.options.security_level is SecurityLevel.NoSecurity
-            else SecurityStatus.SecuritySuccess
-        ),
+        security_status=security_status,
+        mic=mic,
+        auto_commissioning=auto_commissioning,
+        individual_key=individual_key,
         lqi=lqi,
         rssi=rssi,
         # A Green Power 1.0 proxy sends a `Distance` byte instead of the GPP-GPD link
         gpp_distance=command.gpp_distance,
+        gpp_short_addr=(
+            None if command.gpp_short_addr is None else t.NWK(command.gpp_short_addr)
+        ),
     )
