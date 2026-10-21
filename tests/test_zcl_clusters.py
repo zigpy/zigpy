@@ -15,7 +15,18 @@ import zigpy.endpoint
 from zigpy.ota import OTA, OtaImagesResult
 from zigpy.time import TimeSnapshot, utc_periods
 from zigpy.zcl import OtaImageAvailableEvent, OtaQueryCacheUpdatedEvent, foundation
-from zigpy.zcl.clusters.general import Basic, KeepAlive, Ota, Time
+from zigpy.zcl.clusters.general import (
+    Basic,
+    CoordinateSystem,
+    KeepAlive,
+    LocationType,
+    Ota,
+    Partition,
+    PartitionAckOptions,
+    PartitionFragmentationOptions,
+    RSSILocation,
+    Time,
+)
 import zigpy.zcl.clusters.security as sec
 from zigpy.zdo import types as zdo_t
 
@@ -1021,3 +1032,82 @@ def test_ias_zone_enum_subclass_zcl_type():
     """Test `IasZone.zone_type` is an enum16, not a uint16."""
 
     assert sec.IasZone.AttributeDefs.zone_type.zcl_type == foundation.DataTypeId.enum16
+
+
+@pytest.mark.parametrize(
+    ("fragmentation_options", "partition_indicator", "serialized"),
+    [
+        (PartitionFragmentationOptions.First_Block, 0x07, "010702aabb"),
+        (
+            PartitionFragmentationOptions.First_Block
+            | PartitionFragmentationOptions.Indicator_Length_16bit,
+            0x0107,
+            "03070102aabb",
+        ),
+    ],
+)
+def test_partition_indicator_width(
+    fragmentation_options: PartitionFragmentationOptions,
+    partition_indicator: int,
+    serialized: str,
+) -> None:
+    """`partition_indicator` is 1 or 2 octets wide, per ZCL R8 Figure 9-8."""
+    schema = Partition.ServerCommandDefs.transfer_partitioned_frame.schema
+    command = schema(
+        fragmentation_options=fragmentation_options,
+        partition_indicator=partition_indicator,
+        partitioned_frame=b"\xaa\xbb",
+    )
+
+    assert command.serialize() == bytes.fromhex(serialized)
+    assert schema.deserialize(bytes.fromhex(serialized)) == (command, b"")
+
+
+@pytest.mark.parametrize(
+    ("ack_options", "first_frame_id", "nack_ids", "serialized"),
+    [
+        (PartitionAckOptions(0), 0x03, [], "0003"),
+        (PartitionAckOptions(0), 0x03, [0x04, 0x05], "00030405"),
+        (
+            PartitionAckOptions.NACKId_Length_16bit,
+            0x0103,
+            [0x0104, 0x0105],
+            "01030104010501",
+        ),
+        (PartitionAckOptions.NACKId_Length_16bit, 0x0103, [], "010301"),
+    ],
+)
+def test_partition_nack_id_width(
+    ack_options: PartitionAckOptions,
+    first_frame_id: int,
+    nack_ids: list[int],
+    serialized: str,
+) -> None:
+    """`first_frame_id` and NACK ids are 1 or 2 octets wide, per ZCL R8 Figure 9-13."""
+    schema = Partition.ClientCommandDefs.multiple_ack.schema
+    command = schema(
+        ack_options=ack_options,
+        first_frame_id=first_frame_id,
+        nack_ids=nack_ids,
+    )
+
+    assert command.serialize() == bytes.fromhex(serialized)
+    assert schema.deserialize(bytes.fromhex(serialized)) == (command, b"")
+
+
+def test_rssi_location_type_report() -> None:
+    """Test a `data8` location type report is coerced into `LocationType`."""
+
+    ep = MagicMock()
+    cluster = RSSILocation(ep)
+
+    # Report_Attributes: attribute 0x0000, data8, value 0x03
+    hdr, args = cluster.deserialize(bytes.fromhex("18010a00000803"))
+    cluster.handle_message(hdr, args)
+
+    assert cluster.get(RSSILocation.AttributeDefs.type.name) == LocationType(
+        absolute=1,
+        two_dimensional=1,
+        coordinate_system=CoordinateSystem.Rectangular,
+        _reserved=0,
+    )

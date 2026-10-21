@@ -46,6 +46,33 @@ MAX_READ_ATTRIBUTES_PER_REQ = 5
 _RecordT = TypeVar("_RecordT")
 
 
+def _convert_attribute_value(
+    attr_def: foundation.ZCLAttributeDef, type_value: foundation.TypeValue
+) -> Any:
+    """Convert a received attribute value into the attribute's declared type."""
+
+    # `dataN` values are untyped bytes, so they are re-read with the declared type
+    if isinstance(
+        type_value.value,
+        (
+            t.data8,
+            t.data16,
+            t.data24,
+            t.data32,
+            t.data40,
+            t.data48,
+            t.data56,
+            t.data64,
+        ),
+    ):
+        value, rest = attr_def.type.deserialize(type_value.value.serialize())
+        assert not rest
+
+        return value
+
+    return attr_def.type(type_value.value)
+
+
 def _chunk_records_by_size(
     records: Iterable[_RecordT],
     get_size: Callable[[_RecordT], int],
@@ -1007,7 +1034,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     )
                     continue
 
-                value = attr_def.type(attr.value.value)
+                value = _convert_attribute_value(attr_def, attr.value)
                 cached_value = self._legacy_apply_quirk_attribute_update(
                     attr_def, value
                 )
@@ -1272,7 +1299,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     # real device.
                     value = None
                 else:
-                    value = attr_def.type(record.value.value)
+                    value = _convert_attribute_value(attr_def, record.value)
 
                 success[attribute_map[attr_def]] = value
 
