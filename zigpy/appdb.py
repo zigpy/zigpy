@@ -200,25 +200,43 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _worker(self) -> None:
         """Process request in the received order."""
-        while True:
-            cb_name, args = await self._callback_handlers.get()
-            handler = getattr(self, cb_name)
-            assert handler
-            try:
-                await handler(*args)
-            except sqlite3.Error as exc:
-                LOGGER.debug(
-                    "Error handling '%s' event with %s params: %s",
-                    cb_name,
-                    args,
-                    str(exc),
-                    exc_info=True,
+        try:
+            while True:
+                cb_name, args = await self._callback_handlers.get()
+
+                try:
+                    handler = getattr(self, cb_name)
+                    await handler(*args)
+                except sqlite3.Error as exc:
+                    LOGGER.debug(
+                        "Error handling '%s' event with %s params: %s",
+                        cb_name,
+                        args,
+                        str(exc),
+                        exc_info=True,
+                    )
+                except Exception:  # noqa: BLE001
+                    LOGGER.exception(
+                        "Unexpected error while processing %s(%s)", cb_name, args
+                    )
+                finally:
+                    self._callback_handlers.task_done()
+        finally:
+            # Nothing will run the remaining handlers. Mark them done, so that
+            # `shutdown()` does not wait for them forever.
+            pending = 0
+
+            while not self._callback_handlers.empty():
+                self._callback_handlers.get_nowait()
+                self._callback_handlers.task_done()
+                pending += 1
+
+            if self.running:
+                LOGGER.error(
+                    "Database worker stopped unexpectedly, discarding %d queued"
+                    " events, later database changes will not be saved",
+                    pending,
                 )
-            except Exception:  # noqa: BLE001
-                LOGGER.exception(
-                    "Unexpected error while processing %s(%s)", cb_name, args
-                )
-            self._callback_handlers.task_done()
 
     async def _commit(self, force: bool = False) -> None:
         """Commit changes to the database, optionally deferring the operation.
@@ -315,7 +333,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     def enqueue(self, cb_name: str, *args) -> None:
         """Enqueue an async callback handler action."""
-        if not self.running:
+        if not self.running or self._worker_task.done():
             LOGGER.debug("Discarding %s event", cb_name)
             return
         self._callback_handlers.put_nowait((cb_name, args))
