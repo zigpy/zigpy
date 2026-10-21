@@ -17,7 +17,7 @@ from zigpy.time import (
     INVALID_TIME,
     MAX_TIME,
     ZIGBEE_EPOCH,
-    TimeService,
+    snapshot,
     utc_periods,
     zigbee_time,
 )
@@ -362,7 +362,6 @@ async def test_time_cluster_dst_period(zone_name, instant, start, end, shift, ap
     ep.reply = AsyncMock()
     ep.device.application = app_mock
     app_mock.local_timezone = zone
-    service = app_mock._time_service
     cluster = Time(ep)
 
     with patch("zigpy.zcl.clusters.general.datetime", wraps=datetime) as clock:
@@ -386,23 +385,22 @@ async def test_time_cluster_dst_period(zone_name, instant, start, end, shift, ap
     )
     assert values[7] == zigbee_time(now + now.astimezone(zone).utcoffset())
     assert cluster._read_snapshot is None
-    assert service._cache is not None
 
 
 @pytest.mark.parametrize(
     "zone", [UTC, timezone(timedelta(hours=5, minutes=30)), ZoneInfo("Asia/Tokyo")]
 )
-def test_time_service_no_dst(zone):
+def test_snapshot_no_dst(zone):
     now = datetime(2026, 7, 15, tzinfo=UTC)
-    snapshot = TimeService(zone).snapshot(now)
-    assert snapshot.authoritative
-    assert (snapshot.dst_start, snapshot.dst_end, snapshot.dst_shift) == (
+    values = snapshot(zone, now)
+    assert values.authoritative
+    assert (values.dst_start, values.dst_end, values.dst_shift) == (
         INVALID_TIME,
         INVALID_TIME,
         0,
     )
-    assert snapshot.standard_time == snapshot.local_time
-    assert snapshot.local_time == snapshot.time + snapshot.time_zone
+    assert values.standard_time == values.local_time
+    assert values.local_time == values.time + values.time_zone
 
 
 @pytest.mark.parametrize(
@@ -415,49 +413,45 @@ def test_time_service_no_dst(zone):
         "Africa/Casablanca",
     ],
 )
-def test_time_service_transition_boundaries(zone_name):
+def test_snapshot_transition_boundaries(zone_name):
     zone = ZoneInfo(zone_name)
-    service = TimeService(zone)
     for start, end, _offset, _is_dst in utc_periods(zone, 2026):
         for transition in (start, end):
             for seconds in (-1, 0, 1):
                 now = ZIGBEE_EPOCH + timedelta(seconds=transition + seconds)
-                snapshot = service.snapshot(now)
-                current_shift = snapshot.local_time - snapshot.standard_time
+                values = snapshot(zone, now)
+                current_shift = values.local_time - values.standard_time
                 advertised_shift = (
-                    snapshot.dst_shift
-                    if snapshot.dst_start <= snapshot.time <= snapshot.dst_end
+                    values.dst_shift
+                    if values.dst_start <= values.time <= values.dst_end
                     else 0
                 )
-                assert snapshot.authoritative
+                assert values.authoritative
                 assert advertised_shift == current_shift
                 assert bool(current_shift) == bool(now.astimezone(zone).dst())
-                assert snapshot.local_time == snapshot.standard_time + current_shift
-                assert snapshot.local_time == zigbee_time(
+                assert values.local_time == values.standard_time + current_shift
+                assert values.local_time == zigbee_time(
                     now + now.astimezone(zone).utcoffset()
                 )
 
 
-def test_time_service_cache_and_timezone_change():
+def test_utc_periods_cache():
+    utc_periods.cache_clear()
     zone = ZoneInfo("Europe/Berlin")
-    service = TimeService(zone)
-    with patch("zigpy.time.utc_periods", wraps=utc_periods) as scan:
-        winter = service.snapshot(datetime(2026, 1, 15, tzinfo=UTC))
-        summer = service.snapshot(datetime(2026, 7, 15, tzinfo=UTC))
-        assert winter.dst_start == summer.dst_start
-        assert winter.dst_shift == summer.dst_shift == 3600
-        assert scan.call_count == 1
-        assert service.snapshot(datetime(2026, 1, 15, tzinfo=UTC)) == winter
-        service.snapshot(datetime(2027, 1, 15, tzinfo=UTC))
-        assert scan.call_count == 2
-        zone = ZoneInfo("Australia/Sydney")
-        service.timezone = zone
-        changed = service.snapshot(datetime(2027, 1, 15, tzinfo=UTC))
-        assert changed.time_zone == 36000
-        assert scan.call_count == 3
+    winter = snapshot(zone, datetime(2026, 1, 15, tzinfo=UTC))
+    summer = snapshot(zone, datetime(2026, 7, 15, tzinfo=UTC))
+    assert winter.dst_start == summer.dst_start
+    assert winter.dst_shift == summer.dst_shift == 3600
+    assert utc_periods.cache_info().misses == 1
+    assert snapshot(zone, datetime(2026, 1, 15, tzinfo=UTC)) == winter
+    snapshot(zone, datetime(2027, 1, 15, tzinfo=UTC))
+    assert utc_periods.cache_info().misses == 2
+    changed = snapshot(ZoneInfo("Australia/Sydney"), datetime(2027, 1, 15, tzinfo=UTC))
+    assert changed.time_zone == 36000
+    assert utc_periods.cache_info().misses == 3
 
 
-def test_time_service_negative_dst():
+def test_snapshot_negative_dst():
     start = datetime(2026, 3, 1, tzinfo=UTC)
     end = datetime(2026, 6, 1, tzinfo=UTC)
     header = b"TZif\0" + bytes(15) + struct.pack(">6I", 0, 0, 0, 3, 2, 8)
@@ -471,40 +465,39 @@ def test_time_service_negative_dst():
     zone = ZoneInfo.from_file(
         io.BytesIO(header + transitions + b"\0\1\0" + offsets + b"STD\0DST\0")
     )
-    service = TimeService(zone)
     now = datetime(2026, 4, 15, tzinfo=UTC)
-    snapshot = service.snapshot(now)
-    assert snapshot.time_zone == 3600
-    assert snapshot.dst_shift == -3600
-    assert snapshot.local_time == snapshot.time
-    assert snapshot.dst_start == zigbee_time(start)
-    assert snapshot.dst_end == zigbee_time(end) - 1
-    assert types.int32s.deserialize(types.int32s(snapshot.dst_shift).serialize()) == (
+    values = snapshot(zone, now)
+    assert values.time_zone == 3600
+    assert values.dst_shift == -3600
+    assert values.local_time == values.time
+    assert values.dst_start == zigbee_time(start)
+    assert values.dst_end == zigbee_time(end) - 1
+    assert types.int32s.deserialize(types.int32s(values.dst_shift).serialize()) == (
         -3600,
         b"",
     )
 
 
 @pytest.mark.parametrize("seconds", [-0.5, -1, INVALID_TIME, INVALID_TIME + 1])
-def test_time_service_out_of_range(seconds):
-    snapshot = TimeService(UTC).snapshot(ZIGBEE_EPOCH + timedelta(seconds=seconds))
-    assert snapshot.time == INVALID_TIME
-    assert not snapshot.authoritative
+def test_snapshot_out_of_range(seconds):
+    values = snapshot(UTC, ZIGBEE_EPOCH + timedelta(seconds=seconds))
+    assert values.time == INVALID_TIME
+    assert not values.authoritative
 
 
 @pytest.mark.parametrize("seconds", [0, 1, MAX_TIME])
-def test_time_service_valid_range(seconds):
-    snapshot = TimeService(UTC).snapshot(ZIGBEE_EPOCH + timedelta(seconds=seconds))
-    assert snapshot.time == seconds
-    assert snapshot.authoritative
+def test_snapshot_valid_range(seconds):
+    values = snapshot(UTC, ZIGBEE_EPOCH + timedelta(seconds=seconds))
+    assert values.time == seconds
+    assert values.authoritative
 
 
-def test_time_service_missing_timezone():
+def test_snapshot_missing_timezone():
     now = datetime(2026, 7, 15, tzinfo=UTC)
-    snapshot = TimeService().snapshot(now)
-    assert not snapshot.authoritative
-    assert snapshot.local_time == zigbee_time(now + now.astimezone().utcoffset())
-    assert snapshot.dst_start == snapshot.dst_end == INVALID_TIME
+    values = snapshot(None, now)
+    assert not values.authoritative
+    assert values.local_time == zigbee_time(now + now.astimezone().utcoffset())
+    assert values.dst_start == values.dst_end == INVALID_TIME
 
 
 @pytest.mark.parametrize("valid_clock", [True, False])
@@ -522,7 +515,7 @@ async def test_time_cluster_status(valid_clock, app_mock):
     assert values[5] == 0
 
 
-def test_time_cluster_direct_handler_uses_time_service(app_mock):
+def test_time_cluster_direct_handler_uses_snapshot(app_mock):
     endpoint = MagicMock()
     endpoint.device.application = app_mock
     app_mock.local_timezone = UTC
@@ -531,21 +524,17 @@ def test_time_cluster_direct_handler_uses_time_service(app_mock):
 
     with (
         patch("zigpy.zcl.clusters.general.datetime", wraps=datetime) as clock,
-        patch.object(
-            app_mock._time_service,
-            "snapshot",
-            wraps=app_mock._time_service.snapshot,
-        ) as snapshot,
+        patch("zigpy.zcl.clusters.general.snapshot", wraps=snapshot) as read,
     ):
         clock.now.return_value = now
         value = cluster.handle_read_attribute_time()
 
-    snapshot.assert_called_once_with(now)
+    assert read.mock_calls == [call(UTC, now)]
     assert value == zigbee_time(now)
     assert cluster._read_snapshot is None
 
 
-def test_time_service_unbounded_dst():
+def test_snapshot_unbounded_dst():
     class PermanentDST(tzinfo):
         def utcoffset(self, value):
             return timedelta(hours=2)
@@ -553,23 +542,23 @@ def test_time_service_unbounded_dst():
         def dst(self, value):
             return timedelta(hours=1)
 
-    snapshot = TimeService(PermanentDST()).snapshot(datetime(2026, 7, 15, tzinfo=UTC))
-    assert snapshot.authoritative
-    assert snapshot.time_zone == 7200
-    assert snapshot.dst_start == snapshot.dst_end == INVALID_TIME
-    assert snapshot.dst_shift == 0
+    values = snapshot(PermanentDST(), datetime(2026, 7, 15, tzinfo=UTC))
+    assert values.authoritative
+    assert values.time_zone == 7200
+    assert values.dst_start == values.dst_end == INVALID_TIME
+    assert values.dst_shift == 0
 
 
-def test_time_service_inferred_dst_magnitude():
+def test_snapshot_inferred_dst_magnitude():
     # CPython infers dst() per offset type from its first transition. Inuvik
     # jumped from PST straight to MDT in 1979, so dst() reports two hours.
     zone = ZoneInfo("America/Inuvik")
     now = datetime(2025, 7, 15, tzinfo=UTC)
     assert now.astimezone(zone).dst() == timedelta(hours=2)
-    snapshot = TimeService(zone).snapshot(now)
-    assert snapshot.time_zone == -25200
-    assert snapshot.dst_shift == 3600
-    assert snapshot.local_time == snapshot.standard_time + 3600
+    values = snapshot(zone, now)
+    assert values.time_zone == -25200
+    assert values.dst_shift == 3600
+    assert values.local_time == values.standard_time + 3600
 
 
 async def test_time_cluster_shared_service(app_mock):
@@ -580,11 +569,11 @@ async def test_time_cluster_shared_service(app_mock):
         endpoint.device.application = app_mock
         endpoint.reply = AsyncMock()
     clusters = [Time(endpoint) for endpoint in endpoints]
-    with patch("zigpy.time.utc_periods", wraps=utc_periods) as scan:
-        responses = await asyncio.gather(
-            *(read_attributes(cluster, [3, 4, 5]) for cluster in clusters)
-        )
-    assert scan.call_count == 1
+    utc_periods.cache_clear()
+    responses = await asyncio.gather(
+        *(read_attributes(cluster, [3, 4, 5]) for cluster in clusters)
+    )
+    assert utc_periods.cache_info().misses == 1
     assert responses[0] == responses[1]
     serialized = responses[0].serialize()
     assert type(responses[0]).deserialize(serialized) == (responses[0], b"")

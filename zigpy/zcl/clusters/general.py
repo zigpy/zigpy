@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any, Final, Self
 
-from zigpy.time import INVALID_TIME, TimeSnapshot
+from zigpy.time import INVALID_TIME, TimeSnapshot, snapshot
 import zigpy.types as t
 from zigpy.zcl import Cluster, OtaQueryCacheUpdatedEvent, foundation
 from zigpy.zcl.foundation import (
@@ -1138,8 +1138,8 @@ class Time(Cluster):
         if self._read_snapshot is not None:
             return self._read_snapshot
         # Preserve direct handler calls outside a multi-attribute read request.
-        return self.endpoint.device.application._time_service.snapshot(
-            datetime.now(UTC)
+        return snapshot(
+            self.endpoint.device.application.local_timezone, datetime.now(UTC)
         )
 
     def handle_cluster_general_request(
@@ -1154,12 +1154,11 @@ class Time(Cluster):
                 hdr, args, dst_addressing=dst_addressing
             )
 
-        snapshot = self.endpoint.device.application._time_service.snapshot(
-            datetime.now(UTC)
-        )
         # Reuse one instant and timezone for every attribute in the response.
         previous = self._read_snapshot
-        self._read_snapshot = snapshot
+        self._read_snapshot = snapshot(
+            self.endpoint.device.application.local_timezone, datetime.now(UTC)
+        )
         try:
             super().handle_cluster_general_request(
                 hdr, args, dst_addressing=dst_addressing

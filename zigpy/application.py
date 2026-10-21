@@ -33,7 +33,6 @@ import zigpy.listeners
 import zigpy.ota
 import zigpy.profiles
 import zigpy.state
-from zigpy.time import TimeService
 import zigpy.topology
 import zigpy.types as t
 import zigpy.util
@@ -86,7 +85,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
         self._groups = zigpy.group.Groups(self)
         self._send_sequence = 0
         self._tasks: set[asyncio.Future[Any]] = set()
-        self._time_service = TimeService()
+        self.local_timezone: tzinfo | None = None
 
         self._device_resolver: DeviceResolver | None = None
         self._uninitialized_packet_handler: Callable[..., None] | None = None
@@ -373,15 +372,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, abc.ABC):
             await app.startup(auto_form=auto_form)
 
         return app
-
-    @property
-    def local_timezone(self) -> tzinfo | None:
-        """Return the configured local timezone, or None for system-local time."""
-        return self._time_service.timezone
-
-    @local_timezone.setter
-    def local_timezone(self, zone: tzinfo | None) -> None:
-        self._time_service.timezone = zone
 
     async def energy_scan(
         self, channels: t.Channels, duration_exp: int, count: int

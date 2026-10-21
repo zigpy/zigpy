@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta, tzinfo
+import functools
 
 ZIGBEE_EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
 # ZCL reserves the all-ones value for unknown or invalid time attributes.
@@ -38,6 +39,7 @@ def _first_change(
     return upper
 
 
+@functools.lru_cache(maxsize=1)
 def utc_periods(zone: tzinfo, year: int) -> list[tuple[int, int, int, bool]]:
     """Return half-open (start, end, offset, is_dst) periods around a UTC year.
 
@@ -83,66 +85,51 @@ class TimeSnapshot:
     authoritative: bool = False
 
 
-class TimeService:
-    """Share timezone rules and DST intervals across all devices."""
+def _dst_interval(
+    periods: list[tuple[int, int, int, bool]], time: int
+) -> tuple[int, int, int] | None:
+    """Return the active or next DST interval as (start, end, shift).
 
-    def __init__(self, zone: tzinfo | None = None) -> None:
-        self.timezone = zone
-        self._cache: tuple[tzinfo, int, list[tuple[int, int, int, bool]]] | None = None
+    The shift is relative to the standard period on the same side as the
+    read, so Time + TimeZone + DstShift equals local time at that instant.
+    """
+    for index, (start, end, offset, is_dst) in enumerate(periods):
+        if not is_dst or end <= time:
+            continue
+        neighbour = index - 1 if time < start else index + 1
+        if not 0 <= neighbour < len(periods):
+            return None
+        return start, end, offset - periods[neighbour][2]
+    return None
 
-    def _periods(self, zone: tzinfo, now: datetime) -> list[tuple[int, int, int, bool]]:
-        year = now.astimezone(UTC).year
-        cache = self._cache
-        if cache is None or cache[0] is not zone or cache[1] != year:
-            cache = self._cache = (zone, year, utc_periods(zone, year))
-        return cache[2]
 
-    def _dst_interval(
-        self, zone: tzinfo, now: datetime, time: int
-    ) -> tuple[int, int, int] | None:
-        """Return the active or next DST interval as (start, end, shift).
+def snapshot(zone: tzinfo | None, now: datetime) -> TimeSnapshot:
+    """Return the active DST interval, or the next one when inactive.
 
-        The shift is relative to the standard period on the same side as the
-        read, so Time + TimeZone + DstShift equals local time at that instant.
-        """
-        periods = self._periods(zone, now)
-        for index, (start, end, offset, is_dst) in enumerate(periods):
-            if not is_dst or end <= time:
-                continue
-            neighbour = index - 1 if time < start else index + 1
-            if not 0 <= neighbour < len(periods):
-                return None
-            return start, end, offset - periods[neighbour][2]
-        return None
-
-    def snapshot(self, now: datetime) -> TimeSnapshot:
-        """Return the active DST interval, or the next one when inactive.
-
-        Without an explicit timezone, preserve system-local clock values but
-        do not claim knowledge of DST rules.
-        """
-        zone = self.timezone
-        time = zigbee_time(now)
-        offset = int((now.astimezone(zone).utcoffset() or timedelta(0)).total_seconds())
-        interval = None
-        if zone is not None and time != INVALID_TIME:
-            interval = self._dst_interval(zone, now, time)
-        # TimeZone excludes the DST shift while it applies.
-        shift = interval[2] if interval is not None and interval[0] <= time else 0
-        snapshot = TimeSnapshot(
-            time=time,
-            time_zone=offset - shift,
-            standard_time=zigbee_time(now + timedelta(seconds=offset - shift)),
-            local_time=zigbee_time(now + timedelta(seconds=offset)),
-            authoritative=zone is not None and time != INVALID_TIME,
-        )
-        if interval is None:
-            return snapshot
-        start, end, interval_shift = interval
-        return replace(
-            snapshot,
-            dst_start=start,
-            # ZCL uses DstStart <= Time <= DstEnd, unlike half-open periods.
-            dst_end=end - 1,
-            dst_shift=interval_shift,
-        )
+    Without an explicit timezone, preserve system-local clock values but do
+    not claim knowledge of DST rules.
+    """
+    time = zigbee_time(now)
+    offset = int((now.astimezone(zone).utcoffset() or timedelta(0)).total_seconds())
+    interval = None
+    if zone is not None and time != INVALID_TIME:
+        interval = _dst_interval(utc_periods(zone, now.astimezone(UTC).year), time)
+    # TimeZone excludes the DST shift while it applies.
+    shift = interval[2] if interval is not None and interval[0] <= time else 0
+    values = TimeSnapshot(
+        time=time,
+        time_zone=offset - shift,
+        standard_time=zigbee_time(now + timedelta(seconds=offset - shift)),
+        local_time=zigbee_time(now + timedelta(seconds=offset)),
+        authoritative=zone is not None and time != INVALID_TIME,
+    )
+    if interval is None:
+        return values
+    start, end, interval_shift = interval
+    return replace(
+        values,
+        dst_start=start,
+        # ZCL uses DstStart <= Time <= DstEnd, unlike half-open periods.
+        dst_end=end - 1,
+        dst_shift=interval_shift,
+    )
