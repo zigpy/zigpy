@@ -706,6 +706,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         # Clean up old device's callbacks and tasks
         old_device.on_remove()
 
+        if self.devices.get(shadow.ieee) is not shadow:
+            # The device was removed (and possibly re-added) while the old one was
+            # being deleted from the DB: do not register the torn-down shadow again
+            LOGGER.debug("Device %s was removed during re-interview", shadow.ieee)
+            shadow.on_remove()
+            return
+
         # Apply quirks, persist to DB, and register the device — but do NOT
         # fire the device_initialized listener event.  Callers (and ZHA)
         # should listen for device_reinterviewed instead.
