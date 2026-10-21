@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import enum
 import typing
 
@@ -214,8 +214,20 @@ class TimeOfDay(Struct):
     hundredths: basic.uint8_t
 
 
+_ZIGBEE_EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
+
+
 class _Time(basic.uint32_t):
-    pass
+    # ZCL reserves the all-ones value for unknown or invalid time attributes.
+    INVALID = 0xFFFFFFFF
+
+    @classmethod
+    def from_datetime(cls, value: datetime) -> Self:
+        seconds = (value - _ZIGBEE_EPOCH).total_seconds()
+        return cls(int(seconds)) if 0 <= seconds < cls.INVALID else cls(cls.INVALID)
+
+    def to_datetime(self) -> datetime:
+        return _ZIGBEE_EPOCH + timedelta(seconds=int(self))
 
 
 class UTCTime(_Time):

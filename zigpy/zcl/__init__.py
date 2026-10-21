@@ -929,6 +929,38 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 foundation.Status.SUCCESS,
             )
 
+    def _handle_read_attributes(
+        self, attribute_ids: list[int], *handler_args: Any
+    ) -> list[foundation.ReadAttributeRecord]:
+        """Read attributes via `handle_read_attribute_*`, forwarding extra arguments."""
+        records = []
+
+        for attrid in attribute_ids:
+            record = foundation.ReadAttributeRecord(attrid=attrid)
+            records.append(record)
+
+            try:
+                attr_def = self.find_attribute(attrid)
+            except KeyError:
+                record.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
+                continue
+
+            attr_read_func = getattr(
+                self, f"handle_read_attribute_{attr_def.name}", None
+            )
+
+            if attr_read_func is None:
+                record.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
+                continue
+
+            record.status = foundation.Status.SUCCESS
+            record.value = foundation.TypeValue(
+                type=attr_def.zcl_type,
+                value=attr_read_func(*handler_args),
+            )
+
+        return records
+
     def handle_cluster_general_request(
         self,
         hdr: foundation.ZCLHeader,
@@ -938,32 +970,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         dst_addressing: t.AddrMode | None = None,
     ) -> None:
         if hdr.command_id == foundation.GeneralCommand.Read_Attributes:
-            records = []
-
-            for attrid in args.attribute_ids:
-                record = foundation.ReadAttributeRecord(attrid=attrid)
-                records.append(record)
-
-                try:
-                    attr_def = self.find_attribute(attrid)
-                except KeyError:
-                    record.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
-                    continue
-
-                attr_read_func = getattr(
-                    self, f"handle_read_attribute_{attr_def.name}", None
-                )
-
-                if attr_read_func is None:
-                    record.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
-                    continue
-
-                record.status = foundation.Status.SUCCESS
-                record.value = foundation.TypeValue(
-                    type=attr_def.zcl_type,
-                    value=attr_read_func(),
-                )
-
+            records = self._handle_read_attributes(args.attribute_ids)
             # We do not emit a default response here because a ReadAttributesResponse is
             # sent instead
             self.create_catching_task(self.read_attributes_rsp(records, tsn=hdr.tsn))
@@ -977,11 +984,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     )
                 except KeyError:
                     attr_def = None
-                    value = attr.value.value
-                else:
-                    value = attr_def.type(attr.value.value)
 
                 if attr_def is None:
+                    value = attr.value.value
                     # Unknown attribute, update and emit reported event
                     with self._quirk_attribute_update(attr.attrid, hdr.manufacturer):
                         self._update_attribute(attr.attrid, value)
@@ -1002,6 +1007,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     )
                     continue
 
+                value = attr_def.type(attr.value.value)
                 cached_value = self._legacy_apply_quirk_attribute_update(
                     attr_def, value
                 )

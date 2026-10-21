@@ -6,6 +6,7 @@ import errno
 import logging
 from unittest import mock
 from unittest.mock import ANY, Mock, PropertyMock, call
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -21,6 +22,7 @@ from zigpy.exceptions import (
     TransientConnectionError,
 )
 import zigpy.ota
+from zigpy.time import TimeSnapshot
 import zigpy.types as t
 from zigpy.zcl import clusters, foundation
 from zigpy.zcl.clusters.greenpower import GreenPowerProxy
@@ -57,6 +59,29 @@ async def test_permit(app, ieee):
     await app.permit(node=NCP_IEEE)
     assert app.devices[ieee].zdo.permit.call_count == 1
     assert app.permit_ncp.call_count == 1
+
+
+async def test_local_timezone(app):
+    now = datetime(2026, 7, 15, tzinfo=UTC)
+    assert app.local_timezone is None
+    assert not TimeSnapshot.compute(app.local_timezone, now).authoritative
+
+    app.local_timezone = ZoneInfo("Europe/Berlin")
+    first = TimeSnapshot.compute(app.local_timezone, now)
+    assert first.time_zone == 3600
+    assert first.dst_shift == 3600
+
+
+async def test_new_local_timezone():
+    zone = ZoneInfo("Europe/Berlin")
+    config = {conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"}}
+    with (
+        patch.object(App, "_load_db", new_callable=AsyncMock),
+        patch.object(App, "startup", new_callable=AsyncMock) as startup,
+    ):
+        application = await App.new(config, start_radio=False, local_timezone=zone)
+    assert application.local_timezone is zone
+    startup.assert_not_called()
 
 
 async def test_permit_delivery_failure(app, ieee):

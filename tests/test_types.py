@@ -1,5 +1,5 @@
 import dataclasses
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import itertools
 import logging
 import math
@@ -1013,3 +1013,27 @@ def test_zigbee_packet_hash_timestamp() -> None:
 
     assert packet == later
     assert hash(packet) == hash(later)
+
+
+@pytest.mark.parametrize("cls", [t.UTCTime, t.StandardTime, t.LocalTime])
+@pytest.mark.parametrize(
+    ("delta", "expected"),
+    [
+        (timedelta(microseconds=-1), t.UTCTime.INVALID),
+        (timedelta(0), 0),
+        (timedelta(seconds=1, microseconds=999999), 1),
+        (timedelta(seconds=t.UTCTime.INVALID - 1), t.UTCTime.INVALID - 1),
+        (timedelta(seconds=t.UTCTime.INVALID), t.UTCTime.INVALID),
+    ],
+)
+def test_time_from_datetime(cls, delta, expected):
+    value = cls.from_datetime(datetime(2000, 1, 1, tzinfo=UTC) + delta)
+    assert value == expected
+    assert isinstance(value, cls)
+
+
+@pytest.mark.parametrize("seconds", [0, 1, 0x7FFFFFFF, t.UTCTime.INVALID - 1])
+def test_time_to_datetime(seconds):
+    value = t.UTCTime(seconds).to_datetime()
+    assert value.tzinfo is UTC
+    assert t.UTCTime.from_datetime(value) == seconds

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any, Final, Self
 
+from zigpy.time import TimeSnapshot
 import zigpy.types as t
 from zigpy.zcl import Cluster, OtaQueryCacheUpdatedEvent, foundation
 from zigpy.zcl.foundation import (
@@ -16,8 +17,6 @@ from zigpy.zcl.foundation import (
 
 # Backwards compatibility for when ZGP was still included in this file
 from .greenpower import GreenPowerProxy  # noqa: F401
-
-ZIGBEE_EPOCH = datetime(2000, 1, 1, 0, 0, 0, 0, tzinfo=UTC)
 
 
 class PowerSource(t.enum8):
@@ -1131,34 +1130,49 @@ class Time(Cluster):
         cluster_revision: Final = foundation.ZCL_CLUSTER_REVISION_ATTR
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
-    def handle_read_attribute_time(self) -> t.UTCTime:
-        now = datetime.now(UTC)
-        return t.UTCTime((now - ZIGBEE_EPOCH).total_seconds())
+    def _handle_read_attributes(
+        self, attribute_ids: list[int], *handler_args: Any
+    ) -> list[foundation.ReadAttributeRecord]:
+        # One instant and timezone for every attribute in the response
+        zone = self.endpoint.device.application.local_timezone
+        return super()._handle_read_attributes(
+            attribute_ids,
+            TimeSnapshot.compute(zone, datetime.now(UTC)),
+            *handler_args,
+        )
 
-    def handle_read_attribute_time_status(self) -> TimeStatus:
-        return TimeStatus.Master | TimeStatus.Master_for_Zone_and_DST
+    def handle_read_attribute_time(self, snapshot: TimeSnapshot) -> t.UTCTime:
+        return snapshot.time
 
-    def handle_read_attribute_time_zone(self) -> t.int32s:
-        now_local = datetime.now().astimezone()
-        utc_offset = now_local.utcoffset() or timedelta(0)
-        dst = now_local.dst() or timedelta(0)
+    def handle_read_attribute_time_status(self, snapshot: TimeSnapshot) -> TimeStatus:
+        result = TimeStatus(0)
+        # The host clock is independent of Zigbee network synchronization.
+        if snapshot.time != t.UTCTime.INVALID:
+            result |= TimeStatus.Master
+        # A valid UTC clock does not imply that local timezone rules are known.
+        if snapshot.authoritative:
+            result |= TimeStatus.Master_for_Zone_and_DST
+        return result
 
-        return t.int32s((utc_offset - dst).total_seconds())
+    def handle_read_attribute_time_zone(self, snapshot: TimeSnapshot) -> t.int32s:
+        return snapshot.time_zone
 
-    def handle_read_attribute_standard_time(self) -> t.StandardTime:
-        now_local = datetime.now().astimezone()
-        utc_offset = now_local.utcoffset() or timedelta(0)
-        dst = now_local.dst() or timedelta(0)
+    def handle_read_attribute_standard_time(
+        self, snapshot: TimeSnapshot
+    ) -> t.StandardTime:
+        return snapshot.standard_time
 
-        utc_seconds = (now_local - ZIGBEE_EPOCH).total_seconds()
-        return t.StandardTime(utc_seconds + (utc_offset - dst).total_seconds())
+    def handle_read_attribute_local_time(self, snapshot: TimeSnapshot) -> t.LocalTime:
+        return snapshot.local_time
 
-    def handle_read_attribute_local_time(self) -> t.LocalTime:
-        now_local = datetime.now().astimezone()
-        utc_offset = now_local.utcoffset() or timedelta(0)
+    def handle_read_attribute_dst_start(self, snapshot: TimeSnapshot) -> t.uint32_t:
+        return snapshot.dst_start
 
-        utc_seconds = (now_local - ZIGBEE_EPOCH).total_seconds()
-        return t.LocalTime(utc_seconds + utc_offset.total_seconds())
+    def handle_read_attribute_dst_end(self, snapshot: TimeSnapshot) -> t.uint32_t:
+        return snapshot.dst_end
+
+    def handle_read_attribute_dst_shift(self, snapshot: TimeSnapshot) -> t.int32s:
+        return snapshot.dst_shift
 
     # For backwards compatibility
     TimeStatus: Final = TimeStatus
