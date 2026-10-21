@@ -115,11 +115,13 @@ class TimeSnapshot:
         inactive. Without an explicit timezone, preserve system-local clock
         values but do not claim knowledge of DST rules.
         """
+        # Aware datetimes add wall-clock style, so normalize to UTC first.
+        now = now.astimezone(UTC)
         time = t.UTCTime.from_datetime(now)
         offset = int((now.astimezone(zone).utcoffset() or timedelta(0)).total_seconds())
         interval = None
         if zone is not None and time != t.UTCTime.INVALID:
-            periods = utc_periods(zone, now.astimezone(UTC).year)
+            periods = utc_periods(zone, now.year)
             interval = _dst_interval(periods, int(time))
         # TimeZone excludes the DST shift while it applies.
         shift = interval[2] if interval is not None and interval[0] <= time else 0

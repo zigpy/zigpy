@@ -455,6 +455,15 @@ def test_utc_periods_cache():
     assert utc_periods.cache_info().misses == 3
 
 
+def test_snapshot_equivalent_aware_datetimes():
+    zone = ZoneInfo("Europe/Berlin")
+    now = datetime(2026, 10, 25, 0, 30, tzinfo=UTC)
+
+    assert TimeSnapshot.compute(zone, now.astimezone(zone)) == TimeSnapshot.compute(
+        zone, now
+    )
+
+
 def test_snapshot_negative_dst():
     start = datetime(2026, 3, 1, tzinfo=UTC)
     end = datetime(2026, 6, 1, tzinfo=UTC)
