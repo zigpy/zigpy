@@ -6,23 +6,15 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta, tzinfo
 import functools
 
-ZIGBEE_EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
-# ZCL reserves the all-ones value for unknown or invalid time attributes.
-INVALID_TIME = 0xFFFFFFFF
-MAX_TIME = INVALID_TIME - 1
+import zigpy.types as t
+
 # Shorter than any gap between two tzdata transitions, so no interval is skipped.
 PROBE_STEP = 6 * 60 * 60
 
 
-def zigbee_time(value: datetime) -> int:
-    """Encode an instant without wrapping unrepresentable timestamps."""
-    seconds = (value - ZIGBEE_EPOCH).total_seconds()
-    return int(seconds) if 0 <= seconds <= MAX_TIME else INVALID_TIME
-
-
 def _offset(zone: tzinfo, seconds: int) -> tuple[int, bool]:
     """Return the UTC offset and DST flag, both stored exactly in tzdata."""
-    local = (ZIGBEE_EPOCH + timedelta(seconds=seconds)).astimezone(zone)
+    local = t.UTCTime(seconds).to_datetime().astimezone(zone)
     return int((local.utcoffset() or timedelta(0)).total_seconds()), bool(local.dst())
 
 
@@ -45,13 +37,19 @@ def utc_periods(zone: tzinfo, year: int) -> list[tuple[int, int, int, bool]]:
 
     The window spans the previous year through the next, so the active or next
     DST season and its neighbouring standard periods are always complete for
-    any instant within `year`.
+    any instant within `year`. Bounds are clamped to the representable range.
     """
-    lower = zigbee_time(max(ZIGBEE_EPOCH, datetime(year - 1, 1, 1, tzinfo=UTC)))
-    upper = zigbee_time(
-        min(
-            ZIGBEE_EPOCH + timedelta(seconds=MAX_TIME),
-            datetime(year + 2, 1, 1, tzinfo=UTC),
+    lower = int(
+        t.UTCTime.from_datetime(
+            max(t.UTCTime(0).to_datetime(), datetime(year - 1, 1, 1, tzinfo=UTC))
+        )
+    )
+    upper = int(
+        t.UTCTime.from_datetime(
+            min(
+                t.UTCTime(t.UTCTime.INVALID - 1).to_datetime(),
+                datetime(year + 2, 1, 1, tzinfo=UTC),
+            )
         )
     )
     periods = []
@@ -100,13 +98,13 @@ def _dst_interval(
 class TimeSnapshot:
     """Consistent values for one Read Attributes response."""
 
-    time: int
-    time_zone: int
-    standard_time: int
-    local_time: int
-    dst_start: int = INVALID_TIME
-    dst_end: int = INVALID_TIME
-    dst_shift: int = 0
+    time: t.UTCTime
+    time_zone: t.int32s
+    standard_time: t.StandardTime
+    local_time: t.LocalTime
+    dst_start: t.UTCTime = t.UTCTime(t.UTCTime.INVALID)
+    dst_end: t.UTCTime = t.UTCTime(t.UTCTime.INVALID)
+    dst_shift: t.int32s = t.int32s(0)
     authoritative: bool = False
 
     @classmethod
@@ -117,27 +115,30 @@ class TimeSnapshot:
         inactive. Without an explicit timezone, preserve system-local clock
         values but do not claim knowledge of DST rules.
         """
-        time = zigbee_time(now)
+        time = t.UTCTime.from_datetime(now)
         offset = int((now.astimezone(zone).utcoffset() or timedelta(0)).total_seconds())
         interval = None
-        if zone is not None and time != INVALID_TIME:
-            interval = _dst_interval(utc_periods(zone, now.astimezone(UTC).year), time)
+        if zone is not None and time != t.UTCTime.INVALID:
+            periods = utc_periods(zone, now.astimezone(UTC).year)
+            interval = _dst_interval(periods, int(time))
         # TimeZone excludes the DST shift while it applies.
         shift = interval[2] if interval is not None and interval[0] <= time else 0
         values = cls(
             time=time,
-            time_zone=offset - shift,
-            standard_time=zigbee_time(now + timedelta(seconds=offset - shift)),
-            local_time=zigbee_time(now + timedelta(seconds=offset)),
-            authoritative=zone is not None and time != INVALID_TIME,
+            time_zone=t.int32s(offset - shift),
+            standard_time=t.StandardTime.from_datetime(
+                now + timedelta(seconds=offset - shift)
+            ),
+            local_time=t.LocalTime.from_datetime(now + timedelta(seconds=offset)),
+            authoritative=zone is not None and time != t.UTCTime.INVALID,
         )
         if interval is None:
             return values
         start, end, interval_shift = interval
         return replace(
             values,
-            dst_start=start,
+            dst_start=t.UTCTime(start),
             # ZCL uses DstStart <= Time <= DstEnd, unlike half-open periods.
-            dst_end=end - 1,
-            dst_shift=interval_shift,
+            dst_end=t.UTCTime(end - 1),
+            dst_shift=t.int32s(interval_shift),
         )

@@ -13,14 +13,7 @@ import pytest
 from zigpy import device, types, zcl
 import zigpy.endpoint
 from zigpy.ota import OTA, OtaImagesResult
-from zigpy.time import (
-    INVALID_TIME,
-    MAX_TIME,
-    ZIGBEE_EPOCH,
-    TimeSnapshot,
-    utc_periods,
-    zigbee_time,
-)
+from zigpy.time import TimeSnapshot, utc_periods
 from zigpy.zcl import OtaImageAvailableEvent, OtaQueryCacheUpdatedEvent, foundation
 from zigpy.zcl.clusters.general import Basic, KeepAlive, Ota, Time
 import zigpy.zcl.clusters.security as sec
@@ -373,8 +366,14 @@ async def test_time_cluster_dst_period(zone_name, instant, start, end, shift, ap
         record.status == foundation.Status.SUCCESS for record in response.status_records
     )
     values = {record.attrid: record.value.value for record in response.status_records}
-    assert values[3] == zigbee_time(datetime.fromisoformat(start).replace(tzinfo=UTC))
-    assert values[4] == zigbee_time(datetime.fromisoformat(end).replace(tzinfo=UTC)) - 1
+    assert values[3] == types.UTCTime.from_datetime(
+        datetime.fromisoformat(start).replace(tzinfo=UTC)
+    )
+    assert (
+        values[4]
+        == types.UTCTime.from_datetime(datetime.fromisoformat(end).replace(tzinfo=UTC))
+        - 1
+    )
     assert values[5] == shift
     assert response.status_records[3].value.type == foundation.DataTypeId.uint32
     assert response.status_records[4].value.type == foundation.DataTypeId.uint32
@@ -383,7 +382,9 @@ async def test_time_cluster_dst_period(zone_name, instant, start, end, shift, ap
     assert values[7] == values[6] + (
         shift if values[3] <= values[0] <= values[4] else 0
     )
-    assert values[7] == zigbee_time(now + now.astimezone(zone).utcoffset())
+    assert values[7] == types.UTCTime.from_datetime(
+        now + now.astimezone(zone).utcoffset()
+    )
 
 
 @pytest.mark.parametrize(
@@ -394,8 +395,8 @@ def test_snapshot_no_dst(zone):
     values = TimeSnapshot.compute(zone, now)
     assert values.authoritative
     assert (values.dst_start, values.dst_end, values.dst_shift) == (
-        INVALID_TIME,
-        INVALID_TIME,
+        types.UTCTime.INVALID,
+        types.UTCTime.INVALID,
         0,
     )
     assert values.standard_time == values.local_time
@@ -417,7 +418,9 @@ def test_snapshot_transition_boundaries(zone_name):
     for start, end, _offset, _is_dst in utc_periods(zone, 2026):
         for transition in (start, end):
             for seconds in (-1, 0, 1):
-                now = ZIGBEE_EPOCH + timedelta(seconds=transition + seconds)
+                now = types.UTCTime(transition).to_datetime() + timedelta(
+                    seconds=seconds
+                )
                 values = TimeSnapshot.compute(zone, now)
                 current_shift = values.local_time - values.standard_time
                 advertised_shift = (
@@ -429,7 +432,7 @@ def test_snapshot_transition_boundaries(zone_name):
                 assert advertised_shift == current_shift
                 assert bool(current_shift) == bool(now.astimezone(zone).dst())
                 assert values.local_time == values.standard_time + current_shift
-                assert values.local_time == zigbee_time(
+                assert values.local_time == types.UTCTime.from_datetime(
                     now + now.astimezone(zone).utcoffset()
                 )
 
@@ -471,24 +474,30 @@ def test_snapshot_negative_dst():
     assert values.time_zone == 3600
     assert values.dst_shift == -3600
     assert values.local_time == values.time
-    assert values.dst_start == zigbee_time(start)
-    assert values.dst_end == zigbee_time(end) - 1
+    assert values.dst_start == types.UTCTime.from_datetime(start)
+    assert values.dst_end == types.UTCTime.from_datetime(end) - 1
     assert types.int32s.deserialize(types.int32s(values.dst_shift).serialize()) == (
         -3600,
         b"",
     )
 
 
-@pytest.mark.parametrize("seconds", [-0.5, -1, INVALID_TIME, INVALID_TIME + 1])
+@pytest.mark.parametrize(
+    "seconds", [-0.5, -1, types.UTCTime.INVALID, types.UTCTime.INVALID + 1]
+)
 def test_snapshot_out_of_range(seconds):
-    values = TimeSnapshot.compute(UTC, ZIGBEE_EPOCH + timedelta(seconds=seconds))
-    assert values.time == INVALID_TIME
+    values = TimeSnapshot.compute(
+        UTC, types.UTCTime(0).to_datetime() + timedelta(seconds=seconds)
+    )
+    assert values.time == types.UTCTime.INVALID
     assert not values.authoritative
 
 
-@pytest.mark.parametrize("seconds", [0, 1, MAX_TIME])
+@pytest.mark.parametrize("seconds", [0, 1, types.UTCTime.INVALID - 1])
 def test_snapshot_valid_range(seconds):
-    values = TimeSnapshot.compute(UTC, ZIGBEE_EPOCH + timedelta(seconds=seconds))
+    values = TimeSnapshot.compute(
+        UTC, types.UTCTime(0).to_datetime() + timedelta(seconds=seconds)
+    )
     assert values.time == seconds
     assert values.authoritative
 
@@ -497,8 +506,10 @@ def test_snapshot_missing_timezone():
     now = datetime(2026, 7, 15, tzinfo=UTC)
     values = TimeSnapshot.compute(None, now)
     assert not values.authoritative
-    assert values.local_time == zigbee_time(now + now.astimezone().utcoffset())
-    assert values.dst_start == values.dst_end == INVALID_TIME
+    assert values.local_time == types.UTCTime.from_datetime(
+        now + now.astimezone().utcoffset()
+    )
+    assert values.dst_start == values.dst_end == types.UTCTime.INVALID
 
 
 @pytest.mark.parametrize("valid_clock", [True, False])
@@ -512,7 +523,7 @@ async def test_time_cluster_status(valid_clock, app_mock):
         response = await read_attributes(cluster, [0, 1, 3, 4, 5])
     values = {record.attrid: record.value.value for record in response.status_records}
     assert values[1] == (Time.TimeStatus.Master if valid_clock else 0)
-    assert values[3] == values[4] == INVALID_TIME
+    assert values[3] == values[4] == types.UTCTime.INVALID
     assert values[5] == 0
 
 
@@ -527,7 +538,7 @@ def test_snapshot_unbounded_dst():
     values = TimeSnapshot.compute(PermanentDST(), datetime(2026, 7, 15, tzinfo=UTC))
     assert values.authoritative
     assert values.time_zone == 7200
-    assert values.dst_start == values.dst_end == INVALID_TIME
+    assert values.dst_start == values.dst_end == types.UTCTime.INVALID
     assert values.dst_shift == 0
 
 

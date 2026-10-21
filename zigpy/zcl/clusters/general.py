@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any, Final, Self
 
-from zigpy.time import INVALID_TIME, TimeSnapshot
+from zigpy.time import TimeSnapshot
 import zigpy.types as t
 from zigpy.zcl import Cluster, OtaQueryCacheUpdatedEvent, foundation
 from zigpy.zcl.foundation import (
@@ -1140,12 +1140,12 @@ class Time(Cluster):
         )
 
     def handle_read_attribute_time(self, snapshot: TimeSnapshot) -> t.UTCTime:
-        return t.UTCTime(snapshot.time)
+        return snapshot.time
 
     def handle_read_attribute_time_status(self, snapshot: TimeSnapshot) -> TimeStatus:
         result = TimeStatus(0)
         # The host clock is independent of Zigbee network synchronization.
-        if snapshot.time != INVALID_TIME:
+        if snapshot.time != t.UTCTime.INVALID:
             result |= TimeStatus.Master
         # A valid UTC clock does not imply that local timezone rules are known.
         if snapshot.authoritative:
@@ -1153,24 +1153,24 @@ class Time(Cluster):
         return result
 
     def handle_read_attribute_time_zone(self, snapshot: TimeSnapshot) -> t.int32s:
-        return t.int32s(snapshot.time_zone)
+        return snapshot.time_zone
 
     def handle_read_attribute_standard_time(
         self, snapshot: TimeSnapshot
     ) -> t.StandardTime:
-        return t.StandardTime(snapshot.standard_time)
+        return snapshot.standard_time
 
     def handle_read_attribute_local_time(self, snapshot: TimeSnapshot) -> t.LocalTime:
-        return t.LocalTime(snapshot.local_time)
+        return snapshot.local_time
 
     def handle_read_attribute_dst_start(self, snapshot: TimeSnapshot) -> t.uint32_t:
-        return t.uint32_t(snapshot.dst_start)
+        return snapshot.dst_start
 
     def handle_read_attribute_dst_end(self, snapshot: TimeSnapshot) -> t.uint32_t:
-        return t.uint32_t(snapshot.dst_end)
+        return snapshot.dst_end
 
     def handle_read_attribute_dst_shift(self, snapshot: TimeSnapshot) -> t.int32s:
-        return t.int32s(snapshot.dst_shift)
+        return snapshot.dst_shift
 
     # For backwards compatibility
     TimeStatus: Final = TimeStatus
