@@ -2461,7 +2461,7 @@ class Ota(Cluster):
     cluster_id: Final[t.uint16_t] = 0x0019
     ep_attribute: Final = "ota"
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.last_query_cmd: QueryNextImageCommand | None = None
 
