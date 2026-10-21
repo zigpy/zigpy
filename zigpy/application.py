@@ -676,7 +676,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
 
         Preserves non-discovery state (last_seen, relays, lqi, rssi) and group
         memberships.  Exceptions propagate to ``reinterview()`` which logs them
-        and fires the ``device_reinterview_failure`` event.
+        and fires the ``device_reinterview_failure`` event.  If the device is removed
+        while the old one is being deleted from the DB, the shadow is discarded and
+        ``device_reinterview_failure`` is fired here instead.
         """
         # Copy non-discovery state from old device to shadow
         shadow._last_seen = old_device._last_seen
@@ -711,6 +713,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             # being deleted from the DB: do not register the torn-down shadow again
             LOGGER.debug("Device %s was removed during re-interview", shadow.ieee)
             shadow.on_remove()
+            self.listener_event("device_reinterview_failure", old_device)
             return
 
         # Apply quirks, persist to DB, and register the device — but do NOT

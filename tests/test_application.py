@@ -2033,6 +2033,9 @@ async def test_device_reinterviewed_skips_device_removed_during_swap(app):
 
         assert ieee not in app.devices
         assert call("device_reinterviewed", ANY) not in app.listener_event.mock_calls
+        assert call("device_reinterview_failure", old_dev) in (
+            app.listener_event.mock_calls
+        )
 
 
 async def test_device_reinterviewed_keeps_rejoined_device_during_swap(app):
@@ -2069,6 +2072,9 @@ async def test_device_reinterviewed_keeps_rejoined_device_during_swap(app):
 
         assert app.devices[ieee] is fresh_devices[0]
         assert call("device_reinterviewed", ANY) not in app.listener_event.mock_calls
+        assert call("device_reinterview_failure", old_dev) in (
+            app.listener_event.mock_calls
+        )
 
 
 async def test_reinterview_device_public_api(app):

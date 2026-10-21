@@ -2277,7 +2277,7 @@ async def test_reinterview_discards_shadow_when_device_removed(monkeypatch, dev)
     assert not dev.reinterviewing
     # The old device is torn down as well, and callers get a completion signal
     assert not dev._on_remove_callbacks
-    dev._application.listener_event.assert_called_with(
+    dev._application.listener_event.assert_called_once_with(
         "device_reinterview_failure", dev
     )
 
@@ -2300,7 +2300,7 @@ async def test_reinterview_failure_after_device_removed(monkeypatch, dev):
     assert dev.ieee not in dev._application.devices
     assert not dev.reinterviewing
     assert not dev._on_remove_callbacks
-    dev._application.listener_event.assert_called_with(
+    dev._application.listener_event.assert_called_once_with(
         "device_reinterview_failure", dev
     )
 
