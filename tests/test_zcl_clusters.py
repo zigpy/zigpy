@@ -17,7 +17,7 @@ from zigpy.time import (
     INVALID_TIME,
     MAX_TIME,
     ZIGBEE_EPOCH,
-    snapshot,
+    TimeSnapshot,
     utc_periods,
     zigbee_time,
 )
@@ -391,7 +391,7 @@ async def test_time_cluster_dst_period(zone_name, instant, start, end, shift, ap
 )
 def test_snapshot_no_dst(zone):
     now = datetime(2026, 7, 15, tzinfo=UTC)
-    values = snapshot(zone, now)
+    values = TimeSnapshot.compute(zone, now)
     assert values.authoritative
     assert (values.dst_start, values.dst_end, values.dst_shift) == (
         INVALID_TIME,
@@ -418,7 +418,7 @@ def test_snapshot_transition_boundaries(zone_name):
         for transition in (start, end):
             for seconds in (-1, 0, 1):
                 now = ZIGBEE_EPOCH + timedelta(seconds=transition + seconds)
-                values = snapshot(zone, now)
+                values = TimeSnapshot.compute(zone, now)
                 current_shift = values.local_time - values.standard_time
                 advertised_shift = (
                     values.dst_shift
@@ -437,15 +437,17 @@ def test_snapshot_transition_boundaries(zone_name):
 def test_utc_periods_cache():
     utc_periods.cache_clear()
     zone = ZoneInfo("Europe/Berlin")
-    winter = snapshot(zone, datetime(2026, 1, 15, tzinfo=UTC))
-    summer = snapshot(zone, datetime(2026, 7, 15, tzinfo=UTC))
+    winter = TimeSnapshot.compute(zone, datetime(2026, 1, 15, tzinfo=UTC))
+    summer = TimeSnapshot.compute(zone, datetime(2026, 7, 15, tzinfo=UTC))
     assert winter.dst_start == summer.dst_start
     assert winter.dst_shift == summer.dst_shift == 3600
     assert utc_periods.cache_info().misses == 1
-    assert snapshot(zone, datetime(2026, 1, 15, tzinfo=UTC)) == winter
-    snapshot(zone, datetime(2027, 1, 15, tzinfo=UTC))
+    assert TimeSnapshot.compute(zone, datetime(2026, 1, 15, tzinfo=UTC)) == winter
+    TimeSnapshot.compute(zone, datetime(2027, 1, 15, tzinfo=UTC))
     assert utc_periods.cache_info().misses == 2
-    changed = snapshot(ZoneInfo("Australia/Sydney"), datetime(2027, 1, 15, tzinfo=UTC))
+    changed = TimeSnapshot.compute(
+        ZoneInfo("Australia/Sydney"), datetime(2027, 1, 15, tzinfo=UTC)
+    )
     assert changed.time_zone == 36000
     assert utc_periods.cache_info().misses == 3
 
@@ -465,7 +467,7 @@ def test_snapshot_negative_dst():
         io.BytesIO(header + transitions + b"\0\1\0" + offsets + b"STD\0DST\0")
     )
     now = datetime(2026, 4, 15, tzinfo=UTC)
-    values = snapshot(zone, now)
+    values = TimeSnapshot.compute(zone, now)
     assert values.time_zone == 3600
     assert values.dst_shift == -3600
     assert values.local_time == values.time
@@ -479,21 +481,21 @@ def test_snapshot_negative_dst():
 
 @pytest.mark.parametrize("seconds", [-0.5, -1, INVALID_TIME, INVALID_TIME + 1])
 def test_snapshot_out_of_range(seconds):
-    values = snapshot(UTC, ZIGBEE_EPOCH + timedelta(seconds=seconds))
+    values = TimeSnapshot.compute(UTC, ZIGBEE_EPOCH + timedelta(seconds=seconds))
     assert values.time == INVALID_TIME
     assert not values.authoritative
 
 
 @pytest.mark.parametrize("seconds", [0, 1, MAX_TIME])
 def test_snapshot_valid_range(seconds):
-    values = snapshot(UTC, ZIGBEE_EPOCH + timedelta(seconds=seconds))
+    values = TimeSnapshot.compute(UTC, ZIGBEE_EPOCH + timedelta(seconds=seconds))
     assert values.time == seconds
     assert values.authoritative
 
 
 def test_snapshot_missing_timezone():
     now = datetime(2026, 7, 15, tzinfo=UTC)
-    values = snapshot(None, now)
+    values = TimeSnapshot.compute(None, now)
     assert not values.authoritative
     assert values.local_time == zigbee_time(now + now.astimezone().utcoffset())
     assert values.dst_start == values.dst_end == INVALID_TIME
@@ -522,7 +524,7 @@ def test_snapshot_unbounded_dst():
         def dst(self, value):
             return timedelta(hours=1)
 
-    values = snapshot(PermanentDST(), datetime(2026, 7, 15, tzinfo=UTC))
+    values = TimeSnapshot.compute(PermanentDST(), datetime(2026, 7, 15, tzinfo=UTC))
     assert values.authoritative
     assert values.time_zone == 7200
     assert values.dst_start == values.dst_end == INVALID_TIME
@@ -535,7 +537,7 @@ def test_snapshot_inferred_dst_magnitude():
     zone = ZoneInfo("America/Inuvik")
     now = datetime(2025, 7, 15, tzinfo=UTC)
     assert now.astimezone(zone).dst() == timedelta(hours=2)
-    values = snapshot(zone, now)
+    values = TimeSnapshot.compute(zone, now)
     assert values.time_zone == -25200
     assert values.dst_shift == 3600
     assert values.local_time == values.standard_time + 3600

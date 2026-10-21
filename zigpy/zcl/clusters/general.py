@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any, Final, Self
 
-from zigpy.time import INVALID_TIME, TimeSnapshot, snapshot
+from zigpy.time import INVALID_TIME, TimeSnapshot
 import zigpy.types as t
 from zigpy.zcl import Cluster, OtaQueryCacheUpdatedEvent, foundation
 from zigpy.zcl.foundation import (
@@ -1136,7 +1136,7 @@ class Time(Cluster):
         # One instant and timezone for every attribute in the response
         zone = self.endpoint.device.application.local_timezone
         return super()._handle_read_attributes(
-            attribute_ids, snapshot(zone, datetime.now(UTC))
+            attribute_ids, TimeSnapshot.compute(zone, datetime.now(UTC))
         )
 
     def handle_read_attribute_time(self, snapshot: TimeSnapshot) -> t.UTCTime:

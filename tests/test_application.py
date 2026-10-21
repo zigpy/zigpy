@@ -22,7 +22,7 @@ from zigpy.exceptions import (
     TransientConnectionError,
 )
 import zigpy.ota
-from zigpy.time import snapshot
+from zigpy.time import TimeSnapshot
 import zigpy.types as t
 from zigpy.zcl import clusters, foundation
 import zigpy.zdo.types as zdo_t
@@ -63,10 +63,10 @@ async def test_permit(app, ieee):
 async def test_local_timezone(app):
     now = datetime(2026, 7, 15, tzinfo=UTC)
     assert app.local_timezone is None
-    assert not snapshot(app.local_timezone, now).authoritative
+    assert not TimeSnapshot.compute(app.local_timezone, now).authoritative
 
     app.local_timezone = ZoneInfo("Europe/Berlin")
-    first = snapshot(app.local_timezone, now)
+    first = TimeSnapshot.compute(app.local_timezone, now)
     assert first.time_zone == 3600
     assert first.dst_shift == 3600
 
