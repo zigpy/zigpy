@@ -2,26 +2,30 @@
 
 from __future__ import annotations
 
-import logging
+import asyncio
 from unittest.mock import call
 
 import pytest
 
+from tests.async_mock import AsyncMock
 from tests.conftest import add_initialized_device, make_ieee
-from tests.zgp.test_tunneling import (
-    COMMISSIONING_NOTIFICATION_ID,
+from tests.zgp.conftest import (
     NOTIFICATION_ID,
-    make_commissioning_options,
+    STEP_UP,
+    commission_individual_key,
+    encrypted_gp_packet,
     make_notification_options,
     make_tunnel_packet,
+    sent_command,
 )
 from zigpy.device import GreenPowerDevice
+from zigpy.exceptions import DeliveryError
 import zigpy.types as t
-from zigpy.zcl.clusters.greenpower import (
-    CommissioningNotificationSchema,
-    NotificationSchema,
-)
+from zigpy.zcl.clusters.greenpower import NotificationSchema, PairingSchema
+import zigpy.zdo.types as zdo_types
 from zigpy.zgp.types import (
+    GP_ENDPOINT,
+    GP_GROUP_ID,
     ApplicationID,
     GPDCommandID,
     GPDCommandPayload,
@@ -72,35 +76,6 @@ async def test_tunneled_notification_is_delivered(app, gpd):
     assert gpd.frame_counter == 100
 
 
-async def test_tunneled_notification_security_failed(app, gpd, caplog):
-    command = CommissioningNotificationSchema(
-        options=make_commissioning_options(
-            security_level=SecurityLevel.Encrypted,
-            security_key_type=SecurityKeyType.IndividualKey,
-            security_failed=1,
-        ),
-        gpd_id=0x12345678,
-        frame_counter=42,
-        command_id=GPDCommandID.CommissioningRequest,
-        payload=GPDCommandPayload(b""),
-        gpp_short_addr=0x1234,
-        gpp_gpd_link=GPPGPDLink(rssi=20, link_quality=GPLinkQuality.High),
-        mic=0xDEADBEEF,
-    )
-    packet = make_tunnel_packet(
-        COMMISSIONING_NOTIFICATION_ID, command.serialize(), src=SRC, dst=DST
-    )
-
-    events = []
-    gpd.on_event("gp_command_received", events.append)
-
-    with caplog.at_level(logging.DEBUG):
-        app.packet_received(packet)
-
-    assert "could not decrypt" in caplog.text
-    assert len(events) == 0
-
-
 async def test_tunneled_notification_malformed(app, gpd, caplog):
     events = []
     gpd.on_event("gp_command_received", events.append)
@@ -109,6 +84,34 @@ async def test_tunneled_notification_malformed(app, gpd, caplog):
 
     assert "Failed to convert tunneled GP packet" in caplog.text
     assert len(events) == 0
+
+
+@pytest.mark.parametrize(
+    ("frame_counter", "ciphertext_command_id"),
+    [
+        (80, GPDCommandID.CommissioningRequest),
+        (910, GPDCommandID.SuccessReport),
+        (200, GPDCommandID.ChannelRequest),
+    ],
+)
+async def test_encrypted_packet_routed_to_device(
+    app, gpd, frame_counter, ciphertext_command_id
+):
+    """An unprocessed encrypted GPDF is not routed on its ciphertext command ID."""
+    commission_individual_key(gpd)
+
+    events = []
+    gpd.on_event("gp_command_received", events.append)
+
+    packet = encrypted_gp_packet(
+        0x12345678, frame_counter, bytes([GPDCommandID.StepUp]) + STEP_UP.serialize()
+    )
+    assert packet.command_id == ciphertext_command_id
+
+    app.gp_packet_received(packet)
+
+    assert len(events) == 1
+    assert events[0].command_id == GPDCommandID.StepUp
 
 
 async def test_gp_packet_from_unknown_device(app, caplog):
@@ -151,11 +154,74 @@ async def test_zigbee_packet_from_gp_device(app, gpd, caplog):
     assert "non-Zigbee device" in caplog.text
 
 
-async def test_remove_gpd(app, gpd):
+async def test_packet_from_gp_alias(app, gpd, caplog):
+    """The sink's own aliased Device_annce, relayed back, is not an unknown device."""
+    packet = t.ZigbeePacket(
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=gpd.nwk),
+        src_ep=0,
+        dst=t.AddrModeAddress(
+            addr_mode=t.AddrMode.Broadcast,
+            address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
+        ),
+        dst_ep=0,
+        tsn=0x00,
+        profile_id=0x0000,
+        cluster_id=zdo_types.ZDOCmd.Device_annce,
+        data=t.SerializableBytes(
+            b"\x00" + gpd.nwk.serialize() + t.EUI64.UNKNOWN.serialize() + b"\x40"
+        ),
+    )
+    app.packet_received(packet)
+    await asyncio.sleep(0)
+
+    assert "Unknown device" not in caplog.text
+    assert len(app.send_packet.mock_calls) == 0
+
+
+async def test_non_announce_packet_from_gp_alias(app, gpd, caplog):
+    """Only Device_annce is ignored, an unknown device sharing the alias is discovered."""
+    packet = t.ZigbeePacket(
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=gpd.nwk),
+        src_ep=1,
+        dst=DST,
+        dst_ep=1,
+        tsn=0x12,
+        profile_id=260,
+        cluster_id=0x0006,
+        data=t.SerializableBytes(b"\x18\x12\x0b\x00\x00"),
+    )
+    app.packet_received(packet)
+
+    assert "Ignoring announce packet" not in caplog.text
+    assert "Unknown device" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "send_error",
+    [None, TimeoutError(), DeliveryError("Failed")],
+)
+async def test_remove_gpd(app, gpd, send_error):
+    """Removing a GPD also removes it from the proxies and leaves its group."""
+    gpd.security_level = SecurityLevel.NoSecurity
+    gpd.security_key_type = SecurityKeyType.NoKey
+    app.send_packet.side_effect = send_error
+    app.unsubscribe_from_multicast_group = AsyncMock(
+        wraps=app.unsubscribe_from_multicast_group
+    )
+
     await app.remove(gpd.ieee)
 
     assert gpd.ieee not in app.devices
     assert call("device_removed", gpd) in app.listener_event.mock_calls
+
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    pairing = sent_command(packet, PairingSchema)
+    assert pairing.options.remove_gpd
+    assert pairing.gpd_id == 0x12345678
+
+    assert app.unsubscribe_from_multicast_group.mock_calls == [
+        call(GP_GROUP_ID, endpoint_id=GP_ENDPOINT)
+    ]
 
 
 async def test_reinterview_gpd(app, gpd):

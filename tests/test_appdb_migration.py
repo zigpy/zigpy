@@ -452,6 +452,7 @@ async def test_v5_to_v7_migration(test_db):
 async def test_migration_missing_tables(app):
     conn = MagicMock()
     conn.close = AsyncMock()
+    conn.in_transaction = False
 
     appdb = zigpy.appdb.PersistingListener(conn, app)
 

@@ -305,6 +305,10 @@ class uint16_t(uint_t, bits=16):
     pass
 
 
+class uint20_t(uint_t, bits=20):
+    pass
+
+
 class uint24_t(uint_t, bits=24):
     pass
 

@@ -6,6 +6,7 @@ import errno
 import logging
 from unittest import mock
 from unittest.mock import ANY, Mock, PropertyMock, call
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -21,8 +22,10 @@ from zigpy.exceptions import (
     TransientConnectionError,
 )
 import zigpy.ota
+from zigpy.time import TimeSnapshot
 import zigpy.types as t
 from zigpy.zcl import clusters, foundation
+from zigpy.zcl.clusters.greenpower import GreenPowerProxy
 import zigpy.zdo.types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
@@ -58,6 +61,29 @@ async def test_permit(app, ieee):
     assert app.permit_ncp.call_count == 1
 
 
+async def test_local_timezone(app):
+    now = datetime(2026, 7, 15, tzinfo=UTC)
+    assert app.local_timezone is None
+    assert not TimeSnapshot.compute(app.local_timezone, now).authoritative
+
+    app.local_timezone = ZoneInfo("Europe/Berlin")
+    first = TimeSnapshot.compute(app.local_timezone, now)
+    assert first.time_zone == 3600
+    assert first.dst_shift == 3600
+
+
+async def test_new_local_timezone():
+    zone = ZoneInfo("Europe/Berlin")
+    config = {conf.CONF_DEVICE: {conf.CONF_DEVICE_PATH: "/dev/null"}}
+    with (
+        patch.object(App, "_load_db", new_callable=AsyncMock),
+        patch.object(App, "startup", new_callable=AsyncMock) as startup,
+    ):
+        application = await App.new(config, start_radio=False, local_timezone=zone)
+    assert application.local_timezone is zone
+    startup.assert_not_called()
+
+
 async def test_permit_delivery_failure(app, ieee):
     def zdo_permit(*args, **kwargs):
         raise DeliveryError("Failed")
@@ -73,10 +99,43 @@ async def test_permit_broadcast(app):
     app.permit_ncp = AsyncMock()
     app.send_packet = AsyncMock()
     await app.permit(time_s=30)
-    assert app.send_packet.call_count == 1
+    # Two broadcasts: standard Mgmt_Permit_Joining_req plus the GP
+    # ProxyCommissioningMode that opens the GP commissioning window.
+    assert app.send_packet.call_count == 2
     assert app.permit_ncp.call_count == 1
 
     assert app.send_packet.mock_calls[0].args[0].dst.addr_mode == t.AddrMode.Broadcast
+
+
+async def test_handle_join_green_power_alias(app):
+    """A sink announcing a GPD alias with the invalid IEEE address is not a join."""
+    app.handle_join(nwk=0x1234, ieee=t.EUI64.UNKNOWN, parent_nwk=None)
+
+    assert all(dev.nwk != 0x1234 for dev in app.devices.values())
+    assert t.EUI64.UNKNOWN not in app.devices
+
+
+@pytest.mark.parametrize("node", [None, make_ieee(), NCP_IEEE])
+async def test_permit_opens_gp_window(app, node):
+    """GP commissioning is network-wide, even when joining is limited to one node."""
+    app.devices[make_ieee()] = MagicMock()
+    app.devices[make_ieee()].zdo.permit = AsyncMock()
+    app.permit_ncp = AsyncMock()
+    app.send_packet = AsyncMock()
+
+    await app.permit(time_s=60, node=node)
+
+    assert app.green_power.is_commissioning
+
+    gp_packets = [
+        c.args[0]
+        for c in app.send_packet.mock_calls
+        if c.args[0].cluster_id == GreenPowerProxy.cluster_id
+    ]
+    assert len(gp_packets) == 1
+    assert gp_packets[0].dst.addr_mode == t.AddrMode.Broadcast
+
+    await app.green_power.shutdown()
 
 
 @patch("zigpy.device.Device.initialize", new_callable=AsyncMock)
@@ -1844,7 +1903,7 @@ async def test_device_reinterviewed_with_db(app):
     await app._device_reinterviewed(old_dev, shadow)
 
     # DB removal should have been called for the old device
-    db_listener._remove_device.assert_awaited_once_with(old_dev)
+    db_listener._remove_device.assert_awaited_once_with(old_dev, force_commit=False)
 
 
 async def test_reinterview_device_public_api(app):
@@ -1937,7 +1996,7 @@ async def test_device_reinterviewed_skips_group_removed_during_swap(app):
     # `_remove_device` to drop the group as a side effect.
     db_listener = MagicMock()
 
-    async def fake_remove(_dev):
+    async def fake_remove(_dev, **kwargs):
         app.groups.pop(20, None)
 
     db_listener._remove_device = AsyncMock(side_effect=fake_remove)

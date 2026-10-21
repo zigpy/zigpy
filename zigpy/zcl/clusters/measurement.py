@@ -56,7 +56,7 @@ class IlluminanceLevelSensing(Cluster):
 
     class AttributeDefs(BaseAttributeDefs):
         level_status: Final = ZCLAttributeDef(
-            id=0x0000, type=LevelStatus, access="r", mandatory=True
+            id=0x0000, type=LevelStatus, access="rp", mandatory=True
         )
         light_sensor_type: Final = ZCLAttributeDef(
             id=0x0001, type=LightSensorType, access="r"
@@ -193,8 +193,11 @@ class OccupancySensing(Cluster):
         occupancy: Final = ZCLAttributeDef(
             id=0x0000, type=Occupancy, access="rp", mandatory=True
         )
+        occupancy_sensor_type: Final = ZCLAttributeDef(
+            id=0x0001, type=OccupancySensorType, access="r", mandatory=True
+        )
         occupancy_sensor_type_bitmap: Final = ZCLAttributeDef(
-            id=0x0001, type=t.bitmap8, access="r", mandatory=True
+            id=0x0002, type=OccupancySensorTypeBitmap, access="r", mandatory=True
         )
         # PIR Configuration
         pir_o_to_u_delay: Final = ZCLAttributeDef(

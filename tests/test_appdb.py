@@ -18,6 +18,12 @@ from tests.conftest import (
     mock_attribute_writes,
 )
 from tests.test_backups import backup_factory  # noqa: F401
+from tests.zgp.conftest import (
+    KEY,
+    commission,
+    commissioning_payload,
+    encrypted_gp_packet,
+)
 from zigpy import profiles
 import zigpy.appdb
 import zigpy.application
@@ -34,6 +40,7 @@ from zigpy.const import (
 )
 from zigpy.device import Device, GreenPowerDevice, Status
 import zigpy.endpoint
+import zigpy.group
 import zigpy.ota
 import zigpy.types as t
 import zigpy.zcl
@@ -45,16 +52,32 @@ from zigpy.zcl import (
 from zigpy.zcl.clusters.general import Basic, Identify, OnOff, Ota
 from zigpy.zcl.foundation import Status as ZCLStatus, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
-from zigpy.zgp.types import ApplicationID, SrcID
+from zigpy.zgp.commands import GPGenericSwitchConfiguration
+from zigpy.zgp.types import (
+    GP_ENDPOINT,
+    GP_GROUP_ID,
+    ApplicationID,
+    DeviceID,
+    GPDCommandID,
+    SecurityKeyType,
+    SecurityLevel,
+    SrcID,
+    SwitchType,
+)
+from zigpy.zgp.util import synthetic_ieee
 
 pytestmark = pytest.mark.usefixtures("auto_kill_aiosqlite")
 
 
-async def make_app_with_db(database_file, device_resolver=None):
+async def make_app_with_db(database_file, device_resolver=None, commit_interval=None):
     if isinstance(database_file, pathlib.Path):
         database_file = str(database_file)
 
-    app = make_app({conf.CONF_DATABASE: database_file})
+    config = {conf.CONF_DATABASE: database_file}
+    if commit_interval is not None:
+        config[conf.CONF_DB_COMMIT_INTERVAL] = commit_interval
+
+    app = make_app(config)
     if device_resolver is not None:
         app.register_device_resolver(device_resolver)
     await app._load_db()
@@ -2139,6 +2162,892 @@ async def test_get_last_ota_query_cmd_returns_none(tmp_path):
     assert dev.get_last_ota_query_cmd() is None
 
     await app.shutdown()
+
+
+GP_SOURCE_ID = SrcID(0x0040F4E4)
+
+
+@pytest.mark.parametrize(
+    "attrs",
+    [
+        {},
+        {
+            "device_id": DeviceID.GenericSwitch,
+            "gpd_manufacturer_id": t.uint16_t(0x1021),
+            "gpd_model_id": t.uint16_t(0x0002),
+            "commands": [GPDCommandID.Press1of1, GPDCommandID.Release1of1],
+            "server_cluster_ids": [t.uint16_t(0x0006)],
+            "client_cluster_ids": [t.uint16_t(0x0008), t.uint16_t(0x0300)],
+            "switch_configuration": GPGenericSwitchConfiguration(
+                num_contacts=2, switch_type=SwitchType.Button, _reserved=0
+            ),
+            "mac_seq_num_capability": True,
+            "rx_on_capability": True,
+            "fixed_location": True,
+            "security_key": t.KeyData(range(16)),
+            "security_key_type": SecurityKeyType.IndividualKey,
+            "security_level": SecurityLevel.FullFrameCounterAndMIC,
+            "frame_counter": t.uint32_t(99),
+            "last_seen": datetime(2026, 10, 14, 12, 0, 0, tzinfo=UTC),
+        },
+    ],
+)
+async def test_gp_device_round_trip(tmp_path, attrs):
+    """A commissioned GPD is restored with all fields intact."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
+    )
+
+    for name, value in attrs.items():
+        setattr(device, name, value)
+
+    app.device_initialized(device)
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    restored = app2.devices[device.ieee]
+
+    assert isinstance(restored, GreenPowerDevice)
+    assert restored.nwk == device.nwk
+    assert restored.last_seen == device.last_seen
+    assert restored.get_signature() == device.get_signature()
+
+    for name in (
+        "rx_on_capability",
+        "fixed_location",
+        "security_key",
+        "security_key_type",
+        "security_level",
+        "frame_counter",
+    ):
+        assert getattr(restored, name) == getattr(device, name)
+
+    await app2.shutdown()
+
+
+async def test_gp_frame_counter_persists_per_press(tmp_path):
+    """Every accepted GPDF persists the advanced frame counter.
+
+    Without it, the stored counter is frozen at the join-time value and the
+    replay-protection baseline reverts to stale on every restart.
+    """
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
+    )
+    device.security_level = SecurityLevel.NoSecurity
+    device.security_key_type = SecurityKeyType.NoKey
+    device.frame_counter = t.uint32_t(99)
+    app.device_initialized(device)
+
+    app.gp_packet_received(
+        t.ZigbeeGpPacket(
+            application_id=ApplicationID.SrcID,
+            src_id=GP_SOURCE_ID,
+            command_id=GPDCommandID.Toggle,
+            frame_counter=t.uint32_t(150),
+            security_level=SecurityLevel.NoSecurity,
+            security_key_type=SecurityKeyType.NoKey,
+        )
+    )
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    assert app2.devices[device.ieee].frame_counter == 150  # not the stale 99
+    await app2.shutdown()
+
+
+async def test_gp_device_remove(tmp_path):
+    """A removed GPD is absent after reopen."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
+    )
+    device.security_level = SecurityLevel.NoSecurity
+    device.security_key_type = SecurityKeyType.NoKey
+    app.device_initialized(device)
+    await app.remove(device.ieee)
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    assert device.ieee not in app2.devices
+    await app2.shutdown()
+
+
+async def commission_with_key(app, key: bytes, frame_counter: int) -> None:
+    await app.green_power.permit_join(time_s=60)
+    await commission(
+        app,
+        GP_SOURCE_ID,
+        commissioning_payload(
+            security_level=SecurityLevel.Encrypted,
+            key_type=SecurityKeyType.IndividualKey,
+            key=key,
+            outgoing_counter=10,
+        ),
+        frame_counter=frame_counter,
+    )
+
+
+async def test_gp_device_recommission_updates_security_key(tmp_path):
+    """A GPD re-commissioned with another key after a restart is saved with it."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    await commission_with_key(app, KEY, frame_counter=1)
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    await commission_with_key(app2, bytes(range(16, 32)), frame_counter=2)
+    await app2.shutdown()
+
+    app3 = await make_app_with_db(db)
+    restored = app3.devices[synthetic_ieee(GP_SOURCE_ID)]
+    assert restored.security_key == t.KeyData(range(16, 32))
+    await app3.shutdown()
+
+
+async def test_gp_commissioned_device_restored(tmp_path):
+    """A GPD commissioned by the sink keeps its security state and group on restart."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    await commission_with_key(app, KEY, frame_counter=1)
+    device = app.devices[synthetic_ieee(GP_SOURCE_ID)]
+
+    # A press advances the security frame counter
+    app.gp_packet_received(
+        encrypted_gp_packet(GP_SOURCE_ID, 11, bytes([GPDCommandID.Toggle]))
+    )
+    assert device.frame_counter == 11
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    app2.subscribe_to_multicast_group = AsyncMock(
+        wraps=app2.subscribe_to_multicast_group
+    )
+    await app2.green_power.startup()
+
+    restored = app2.devices[device.ieee]
+    assert isinstance(restored, GreenPowerDevice)
+    assert restored.get_signature() == device.get_signature()
+    assert restored.security_key == t.KeyData(KEY)
+    assert restored.security_key_type == SecurityKeyType.IndividualKey
+    assert restored.security_level == SecurityLevel.Encrypted
+    assert restored.frame_counter == 11
+
+    # The sink joins the GP group again to receive the GPD's notifications
+    assert app2.subscribe_to_multicast_group.mock_calls == [
+        call(GP_GROUP_ID, endpoint_id=GP_ENDPOINT)
+    ]
+
+    await app2.shutdown()
+
+
+def _add_joined_device(app):
+    """Join and initialize a device with a single input cluster on endpoint 1."""
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    clus = ep.add_input_cluster(0)
+    app.device_initialized(dev)
+
+    return dev, ep, clus
+
+
+async def _read_attr_value(db, attr_id=0):
+    """Open a separate connection and read the current committed value."""
+    async with aiosqlite.connect(db) as conn:
+        cursor = await conn.execute(
+            f"SELECT value FROM attributes_cache{zigpy.appdb.DB_V} WHERE attr_id = ?",
+            (attr_id,),
+        )
+        row = await cursor.fetchone()
+        return None if row is None else row[0]
+
+
+async def _read_count(db, table, where="", params=()):
+    """Open a separate connection and count committed rows in `table`."""
+    async with aiosqlite.connect(db) as conn:
+        cursor = await conn.execute(
+            f"SELECT COUNT(*) FROM {table}{zigpy.appdb.DB_V} {where}", params
+        )
+        row = await cursor.fetchone()
+        return row[0]
+
+
+async def _wait_until(predicate, message, timeout=5.0):
+    """Poll `predicate` until it is truthy, or fail with `message`."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+
+    while True:
+        if await predicate():
+            return
+        if loop.time() >= deadline:
+            raise AssertionError(f"{message} (within {timeout}s)")
+        await asyncio.sleep(0.01)
+
+
+async def _wait_for_count(db, table, expected, where="", params=(), message=None):
+    """Poll a separate connection until `table` holds `expected` committed rows."""
+
+    async def _matches():
+        return await _read_count(db, table, where, params) == expected
+
+    await _wait_until(
+        _matches, message or f"{table} did not reach {expected} committed row(s)"
+    )
+
+
+async def _wait_for_attr_value(db, expected, attr_id=0, message=None):
+    """Poll a separate connection until attribute `attr_id` is committed."""
+
+    async def _matches():
+        return await _read_attr_value(db, attr_id) == expected
+
+    await _wait_until(
+        _matches, message or f"attribute {attr_id} did not reach {expected!r}"
+    )
+
+
+async def _write_uncommitted(listener, group_id=1):
+    """Write a row without committing it, leaving a transaction open."""
+    await listener.execute(
+        f"INSERT INTO groups{zigpy.appdb.DB_V} VALUES (?, ?)", (group_id, "test")
+    )
+    assert listener._db.in_transaction
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_database_commit_interval(tmp_path):
+    """Test that configured database_commit_interval defers writes."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=0.5)
+    listener = app._dblistener
+
+    _, _, clus = _add_joined_device(app)
+
+    # Update an attribute. This schedules a commit on the worker queue.
+    clus.update_attribute(0, 42)
+
+    # Wait for the worker to actually run `_save_attribute`, which is what arms
+    # the delayed-commit timer. A bare `sleep(0)` is not enough: the handler's
+    # SQL runs on aiosqlite's connection thread, which the loop cannot wait for,
+    # so the assertions below would pass vacuously against an empty table.
+    await listener._callback_handlers.join()
+    assert listener._db.in_transaction
+    assert listener._commit_task is not None
+
+    # The timer has not fired, so a separate reader must not see the update.
+    assert await _read_attr_value(db) is None
+
+    # Poll rather than budget for the deferred flush.
+    await _wait_for_attr_value(db, 42, message="deferred commit did not land")
+
+    await app.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_database_commit_interval_shutdown_forces_commit(tmp_path):
+    """Test that shutting down the application forces pending commits immediately."""
+    db = tmp_path / "test.db"
+    # Set a very long commit interval so it does not auto-commit during the test
+    app = await make_app_with_db(db, commit_interval=10.0)
+    listener = app._dblistener
+
+    _, _, clus = _add_joined_device(app)
+    clus.update_attribute(0, 99)
+
+    # Wait for `_save_attribute` to run and arm the 10s timer.
+    await listener._callback_handlers.join()
+    assert listener._db.in_transaction
+
+    # Verify it has not yet committed
+    assert await _read_attr_value(db) is None
+
+    # Shutdown should force-commit
+    await app.shutdown()
+
+    # Verify it is now committed
+    assert await _read_attr_value(db) == 99
+
+
+async def test_commit_does_not_land_mid_handler(tmp_path):
+    """A deferred commit must never persist a partial handler."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=0.05)
+    listener = app._dblistener
+
+    # Wrap `_db.commit` to count calls: the invariant under test is *when* `commit()`
+    # is called
+    commit_calls = []
+    original_commit = listener._db.commit
+
+    async def _spy_commit():
+        commit_calls.append(asyncio.get_running_loop().time())
+        await original_commit()
+
+    listener._db.commit = _spy_commit
+
+    handler_first_statement_done = asyncio.Event()
+    handler_may_finish = asyncio.Event()
+    handler_finished = asyncio.Event()
+
+    async def _synthetic_two_statement_handler():
+        # First statement, then arm the deferred commit. The 0.05s timer will fire
+        # while we wait below.
+        await _write_uncommitted(listener)
+        await listener._commit()
+        handler_first_statement_done.set()
+
+        # Block until the test releases us, well past the commit interval. The timer
+        # fires during this wait and enqueues `_flush_commit`, which cannot run
+        # because we're still holding the worker. Waiting on an event rather than
+        # sleeping keeps the assertions below independent of wall-clock scheduling.
+        await handler_may_finish.wait()
+        handler_finished.set()
+
+    listener._synthetic_two_statement_handler = _synthetic_two_statement_handler
+    listener.enqueue("_synthetic_two_statement_handler")
+
+    # Wait for the handler to reach its first statement and arm the timer.
+    await asyncio.wait_for(handler_first_statement_done.wait(), timeout=5.0)
+
+    # Wait long enough that the 0.05s timer has fired (it enqueues `_flush_commit`,
+    # which is still queued behind the handler).
+    await asyncio.sleep(0.10)
+    assert not handler_finished.is_set(), (
+        "handler should still be blocked — worker is busy running it"
+    )
+    assert len(commit_calls) == 0, (
+        f"deferred commit must not land mid-handler — found {len(commit_calls)} "
+        "commit calls before the handler returned"
+    )
+
+    # Release the handler, then wait for the enqueued `_flush_commit` to run on the
+    # worker. `join()` waits until the worker has drained the queue, so
+    # `_flush_commit` has run and committed.
+    handler_may_finish.set()
+    await asyncio.wait_for(handler_finished.wait(), timeout=5.0)
+    await listener._callback_handlers.join()
+
+    assert len(commit_calls) == 1, (
+        f"expected exactly one commit from `_flush_commit` after the handler "
+        f"returned, got {len(commit_calls)}"
+    )
+
+    # Clean up the synthetic handler so it doesn't leak.
+    del listener._synthetic_two_statement_handler
+
+    await app.shutdown()
+
+
+async def test_write_after_flush_is_committed(tmp_path):
+    """A write after a completed flush must re-arm the timer and be committed."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=0.05)
+    listener = app._dblistener
+
+    # First write: arm the timer.
+    _, _, clus = _add_joined_device(app)
+    clus.update_attribute(0, 1)
+
+    # Wait for the first flush to land by polling for the value.
+    await listener._callback_handlers.join()
+    await _wait_for_attr_value(db, 1, message="first flush did not land")
+
+    # Second write after the first flush — arms a new timer.
+    clus.update_attribute(0, 2)
+
+    # Wait for the worker to run `_save_attribute` and arm the timer.
+    await listener._callback_handlers.join()
+
+    # The second write must not be committed yet. Assert on the listener's own
+    # state rather than on the DB: reading over a fresh connection can take
+    # longer than the 0.05s interval on a loaded runner, which would make a DB
+    # assertion here a race against the timer rather than a real check.
+    assert listener._db.in_transaction
+    assert listener._commit_task is not None
+
+    # Wait for the second flush by polling for the value.
+    await _wait_for_attr_value(db, 2, message="second flush did not land")
+
+    await app.shutdown()
+
+
+async def test_force_commit_commits_pending_writes(tmp_path):
+    """`_commit(force=True)` commits immediately, including deferred writes."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=10.0)
+    listener = app._dblistener
+
+    _, _, clus = _add_joined_device(app)
+
+    # `handle_join` and `device_initialized` each enqueue their own handlers, so
+    # wait for the worker to drain all of them before issuing the attribute write
+    await listener._callback_handlers.join()
+
+    clus.update_attribute(0, 7)
+    await listener._callback_handlers.join()
+    assert listener._db.in_transaction
+    assert await _read_attr_value(db) is None
+
+    # A force commit (e.g. from a network backup) commits the deferred write too
+    await listener._commit(force=True)
+    assert not listener._db.in_transaction
+    assert await _read_attr_value(db) == 7
+
+    # The timer is not cancelled, and finds nothing left to flush
+    assert listener._commit_task is not None
+    assert not listener._commit_task.done()
+    await listener._flush_commit()
+    assert not listener._db.in_transaction
+
+    await app.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_reinterview_does_not_commit_mid_handler(tmp_path):
+    """A re-interview's delete of the old device does not commit a handler halfway."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=10.0)
+    listener = app._dblistener
+
+    old_dev, _, _ = _add_joined_device(app)
+    async with asyncio.timeout(5):
+        await listener._callback_handlers.join()
+    ep_where = "WHERE ieee = ? AND endpoint_id = ?"
+    old_ep_row = {"where": ep_where, "params": (str(old_dev.ieee), 1)}
+    new_ep_row = {"where": ep_where, "params": (str(old_dev.ieee), 2)}
+    assert await _read_count(db, "endpoints", **old_ep_row) == 1
+
+    # Hold the worker inside a handler, after the first of its writes
+    other_ieee = t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11")
+    other_row = {"where": "WHERE ieee = ?", "params": (str(other_ieee),)}
+    handler_started = asyncio.Event()
+    handler_may_finish = asyncio.Event()
+
+    async def _two_statement_handler():
+        await listener.execute(
+            f"INSERT INTO devices{zigpy.appdb.DB_V} (ieee, nwk, status, last_seen)"
+            " VALUES (?, ?, ?, ?)",
+            (other_ieee, 0x1234, 2, 0),
+        )
+        handler_started.set()
+        await handler_may_finish.wait()
+
+    listener._two_statement_handler = _two_statement_handler
+    listener.enqueue("_two_statement_handler")
+    async with asyncio.timeout(5):
+        await handler_started.wait()
+
+    # Re-interview the device into a different signature while the handler is held
+    shadow = Device(app, old_dev.ieee, old_dev.nwk)
+    shadow.node_desc = make_node_desc()
+    shadow.status = Status.ENDPOINTS_INIT
+    ep = shadow.add_endpoint(2)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ep.add_input_cluster(Basic.cluster_id)
+
+    async with asyncio.timeout(5):
+        await app._device_reinterviewed(old_dev, shadow)
+
+    # Nothing is committed in the middle of the handler: neither its first write
+    # nor the delete of the old device
+    assert await _read_count(db, "devices", **other_row) == 0
+    assert await _read_count(db, "endpoints", **old_ep_row) == 1
+    assert await _read_count(db, "endpoints", **new_ep_row) == 0
+
+    # Once the handler finishes, the delete is committed along with the new device
+    handler_may_finish.set()
+    async with asyncio.timeout(5):
+        await listener._callback_handlers.join()
+
+    assert await _read_count(db, "devices", **other_row) == 1
+    assert await _read_count(db, "endpoints", **old_ep_row) == 0
+    assert await _read_count(db, "endpoints", **new_ep_row) == 1
+
+    del listener._two_statement_handler
+    await app.shutdown()
+
+    # The re-interviewed device replaced the old one
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(old_dev.ieee)
+    assert list(dev2.non_zdo_endpoints) == [dev2.endpoints[2]]
+    assert Basic.cluster_id in dev2.endpoints[2].in_clusters
+    await app2.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_ota_query_cache_delete_is_deferred_like_save(tmp_path):
+    """`_delete_ota_query_cache_entry` should defer its commit, matching
+    `_save_ota_query_cache_entry` — the OTA query cache is a low-value cache
+    (rebuilt on the next query), so neither operation needs force=True.
+    """
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=10.0)
+    listener = app._dblistener
+
+    # Set up a real device so the FK constraints are satisfied.
+    dev, _, _ = _add_joined_device(app)
+    ieee = dev.ieee
+
+    # Wait for the device row to appear (the worker has finished processing
+    # `_raw_device_initialized`, which force-commits).
+    await _wait_for_count(
+        db,
+        "devices",
+        1,
+        where="WHERE ieee = ?",
+        params=(str(ieee),),
+        message="device row did not appear in DB",
+    )
+
+    # Insert an OTA query cache row directly.
+    await listener.execute(
+        f"INSERT INTO ota_query_cache{zigpy.appdb.DB_V} "
+        f"(ieee, endpoint_id, manufacturer_code, image_type, "
+        f" current_file_version, hardware_version, last_updated) "
+        f"VALUES (?, 1, 0, 0, 1, NULL, 0)",
+        (str(ieee),),
+    )
+    await listener._commit(force=True)
+
+    # Confirm the row exists.
+    assert await _read_count(db, "ota_query_cache") == 1
+
+    # Enqueue the delete via the event listener (the real path).
+    event = OtaQueryCacheClearedEvent(
+        device_ieee=ieee,
+        endpoint_id=1,
+    )
+    listener.on_ota_query_cache_cleared(event)
+    # Wait for the worker to run the delete handler. `join()` is exact (it
+    # blocks until the queue is empty), unlike `sleep(0)` which only yields
+    # the event loop and cannot wait on aiosqlite's connection thread.
+    await listener._callback_handlers.join()
+
+    # The delete was issued but the commit is deferred — a separate reader
+    # should still see the row until the timer fires (10s, well past the test).
+    assert await _read_count(db, "ota_query_cache") == 1, (
+        "delete should be deferred, not committed yet"
+    )
+
+    # Force-flush so the test's shutdown doesn't get confused.
+    await listener._commit(force=True)
+    assert await _read_count(db, "ota_query_cache") == 0
+
+    await app.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_pairing_and_removal_are_forced(tmp_path):
+    """Pairing and removal are rare, user-visible events — they must use
+    `force=True` so a crash within `database_commit_interval` doesn't
+    silently drop a freshly-paired device or resurrect a removed one.
+
+    We verify this by setting a very long commit interval (10s) and checking
+    that the device row appears in the DB immediately after `device_initialized`
+    (proving force-commit) and disappears immediately after `device_removed`
+    (proving force-commit on removal).
+    """
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=10.0)
+
+    # `_add_joined_device` triggers device initialization (pairing).
+    dev, _, _ = _add_joined_device(app)
+    device_row = {"where": "WHERE ieee = ?", "params": (str(dev.ieee),)}
+
+    # Poll the DB — the device row must appear *immediately*, not after 10s.
+    # If `_raw_device_initialized_internal` deferred the commit, this would
+    # time out.
+    await _wait_for_count(
+        db,
+        "devices",
+        1,
+        **device_row,
+        message=(
+            "paired device must be committed immediately (force=True) — "
+            "did not appear in DB"
+        ),
+    )
+
+    # Now remove the device. The row must disappear *immediately*.
+    # We call the listener's `device_removed` directly to avoid the network
+    # side effects of `app.remove()`.
+    app._dblistener.device_removed(dev)
+    await _wait_for_count(
+        db,
+        "devices",
+        0,
+        **device_row,
+        message=(
+            "removed device must be committed immediately (force=True) — "
+            "row still in DB"
+        ),
+    )
+
+    await app.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_group_operations_are_forced(tmp_path):
+    """Group add/remove and group membership add/remove are rare, user-visible
+    events — they must use `force=True` so a crash within
+    `database_commit_interval` doesn't silently drop a freshly-created group,
+    resurrect a removed one, or lose a membership change.
+
+    We verify this by setting a very long commit interval (10s) and checking
+    that each operation is visible in the DB immediately after the event is
+    enqueued.
+    """
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=10.0)
+    listener = app._dblistener
+
+    # Set up a real device so group member FK constraints are satisfied.
+    dev, ep, _ = _add_joined_device(app)
+    member_row = {
+        "where": "WHERE group_id = 42 AND ieee = ?",
+        "params": (str(dev.ieee),),
+    }
+    group_row = {"where": "WHERE group_id = 42"}
+
+    # Wait for the device row to be committed.
+    await _wait_for_count(
+        db,
+        "devices",
+        1,
+        where="WHERE ieee = ?",
+        params=(str(dev.ieee),),
+        message="device row did not appear in DB",
+    )
+
+    # Add a group — must be visible immediately (force-commit).
+    group = zigpy.group.Group(42, name="test-group")
+    listener.group_added(group)
+    await _wait_for_count(
+        db,
+        "groups",
+        1,
+        **group_row,
+        message=(
+            "added group must be committed immediately (force=True) — "
+            "did not appear in DB"
+        ),
+    )
+
+    # Add a group member — must be visible immediately.
+    listener.group_member_added(group, ep)
+    await _wait_for_count(
+        db,
+        "group_members",
+        1,
+        **member_row,
+        message=(
+            "added group member must be committed immediately (force=True) — "
+            "did not appear in DB"
+        ),
+    )
+
+    # Remove the group member — must disappear immediately.
+    listener.group_member_removed(group, ep)
+    await _wait_for_count(
+        db,
+        "group_members",
+        0,
+        **member_row,
+        message=(
+            "removed group member must be committed immediately (force=True) — "
+            "row still in DB"
+        ),
+    )
+
+    # Remove the group — must disappear immediately.
+    listener.group_removed(group)
+    await _wait_for_count(
+        db,
+        "groups",
+        0,
+        **group_row,
+        message=(
+            "removed group must be committed immediately (force=True) — row still in DB"
+        ),
+    )
+
+    await app.shutdown()
+
+
+async def test_flush_commit_noop_when_nothing_pending(tmp_path):
+    """`_flush_commit` should be a no-op when there are no pending commits."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=10.0)
+    listener = app._dblistener
+
+    # With nothing pending, `_flush_commit` should return without committing
+    assert not listener._db.in_transaction
+    listener._db.commit = AsyncMock(wraps=listener._db.commit)
+    await listener._flush_commit()
+    listener._db.commit.assert_not_awaited()
+
+    await app.shutdown()
+
+
+async def test_flush_commit_rearms_timer_on_failure(tmp_path):
+    """A failed flush must re-arm the timer instead of stranding the writes."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=10.0)
+    listener = app._dblistener
+
+    await _write_uncommitted(listener)
+    commit = listener._db.commit
+    listener._db.commit = AsyncMock(side_effect=RuntimeError("boom"))
+
+    await listener._flush_commit()
+
+    # The writes are still pending and a new timer is armed to retry them,
+    # rather than waiting for the next write or for shutdown.
+    assert listener._db.in_transaction
+    assert listener._commit_task is not None
+    assert not listener._commit_task.done()
+
+    listener._db.commit = commit
+    await app.shutdown()
+    assert await _read_count(db, "groups") == 1
+
+
+async def test_force_commit_rearms_timer_on_failure(tmp_path):
+    """A failed forced commit must arm the timer to retry the commit."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=10.0)
+    listener = app._dblistener
+
+    await _write_uncommitted(listener)
+    assert listener._commit_task is None
+    commit = listener._db.commit
+    listener._db.commit = AsyncMock(side_effect=RuntimeError("boom"))
+
+    with pytest.raises(RuntimeError):
+        await listener._commit(force=True)
+
+    # The pending writes get a timer instead of waiting for the next write or for
+    # shutdown
+    assert listener._db.in_transaction
+    assert listener._commit_task is not None
+    assert not listener._commit_task.done()
+
+    listener._db.commit = commit
+    await app.shutdown()
+    assert await _read_count(db, "groups") == 1
+
+
+async def test_failed_commit_without_interval_does_not_arm_timer(tmp_path):
+    """With deferral disabled, a failed commit just propagates, as before."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=0)
+    listener = app._dblistener
+
+    listener._db.commit = AsyncMock(side_effect=RuntimeError("boom"))
+
+    with pytest.raises(RuntimeError):
+        await listener._commit()
+
+    assert listener._commit_task is None
+
+    listener._db.commit = AsyncMock()
+    await app.shutdown()
+
+
+async def test_shutdown_survives_failed_commit(tmp_path, caplog):
+    """A commit failure during shutdown must be logged, not propagated."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=10.0)
+    listener = app._dblistener
+
+    await _write_uncommitted(listener)
+    listener._db.commit = AsyncMock(side_effect=RuntimeError("boom"))
+
+    # `app.shutdown()` swallows listener errors, so call the listener directly
+    await listener.shutdown()
+
+    assert "Failed to commit pending changes during shutdown" in caplog.text
+    assert not listener._db._thread.is_alive()
+    assert await _read_count(db, "groups") == 0
+
+
+async def test_shutdown_closes_database_on_failure(tmp_path):
+    """The connection must be closed even if shutdown fails after the commit."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=10.0)
+    listener = app._dblistener
+
+    listener._set_isolation_level = AsyncMock(side_effect=RuntimeError("boom"))
+
+    with pytest.raises(RuntimeError):
+        await listener.shutdown()
+
+    assert not listener._db._thread.is_alive()
+
+
+async def test_shutdown_joins_thread_when_close_fails(tmp_path):
+    """The worker thread must be joined even if closing the connection fails."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    conn = app._dblistener._db
+
+    # Fail aiosqlite's own close step, which still stops the worker thread. The
+    # connection is closed first so that it isn't leaked.
+    original_execute = conn._execute
+
+    async def failing_execute(fn, *args, **kwargs):
+        result = await original_execute(fn, *args, **kwargs)
+
+        if fn == conn._connection.close:
+            raise sqlite3.OperationalError("boom")
+
+        return result
+
+    conn._execute = failing_execute
+    conn._thread.join = MagicMock(wraps=conn._thread.join)
+
+    with pytest.raises(sqlite3.OperationalError):
+        await app._dblistener.shutdown()
+
+    conn._thread.join.assert_called_once_with()
+    assert not conn._thread.is_alive()
+
+
+async def test_shutdown_rolls_back_persistently_failing_commit(tmp_path, caplog):
+    """A commit that keeps failing must not prevent the connection from closing."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=10.0)
+    listener = app._dblistener
+
+    # With foreign key checks deferred, a dangling endpoint fails only at `COMMIT`,
+    # and keeps failing on every retry
+    await listener.execute("PRAGMA defer_foreign_keys = ON")
+    await listener.execute(
+        f"INSERT INTO endpoints{zigpy.appdb.DB_V} VALUES (?, ?, ?, ?, ?)",
+        (t.EUI64.convert("00:11:22:33:44:55:66:77"), 1, 260, 0, 0),
+    )
+
+    await listener.shutdown()
+
+    assert "Failed to commit pending changes during shutdown" in caplog.text
+    assert not listener._db._thread.is_alive()
+    assert await _read_count(db, "endpoints") == 0
 
 
 async def test_load_with_green_power_device(tmp_path):

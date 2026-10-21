@@ -52,7 +52,7 @@ class ScanResponseInformation(t.Struct):
 class DeviceInfoRecord(t.Struct):
     ieee: t.EUI64
     endpoint_id: t.uint8_t
-    profile_id: t.uint8_t
+    profile_id: t.uint16_t
     device_id: t.uint16_t
     version: t.uint8_t
     group_id_count: t.uint8_t
