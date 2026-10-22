@@ -536,11 +536,35 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         Unlike the `device_removed` event, this raises any error from the delete, and
         `RuntimeError` if the database worker is not running.
         """
-        await self._enqueue_and_wait("_remove_device", device)
+        await self._enqueue_and_wait("_remove_device", device, True)
 
-    async def _remove_device(self, device: Device) -> None:
-        await self.execute(f"DELETE FROM devices{DB_V} WHERE ieee = ?", (device.ieee,))
+    async def _remove_device(
+        self, device: Device, rollback_on_failure: bool = False
+    ) -> None:
+        if not rollback_on_failure:
+            # Fire-and-forget: a failed commit is retried by the commit timer
+            await self.execute(
+                f"DELETE FROM devices{DB_V} WHERE ieee = ?", (device.ieee,)
+            )
+            await self._commit(force=True)
+            return
+
+        # Persist earlier batched writes first, so that a failed delete can be rolled
+        # back without discarding them
         await self._commit(force=True)
+
+        try:
+            await self.execute(
+                f"DELETE FROM devices{DB_V} WHERE ieee = ?", (device.ieee,)
+            )
+            await self._commit(force=True)
+        except Exception:
+            # The caller (a re-interview) is told the delete failed, so it must not
+            # stay pending for a later successful commit to persist
+            if self._db.in_transaction:
+                await self._db.rollback()
+
+            raise
 
     def raw_device_initialized(self, device: Device) -> None:
         if isinstance(device, GreenPowerDevice):

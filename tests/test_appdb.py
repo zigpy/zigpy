@@ -3371,7 +3371,7 @@ async def test_remove_device_worker_stopped(tmp_path, caplog):
 
     handler_started = asyncio.Event()
 
-    async def _remove_device(device):
+    async def _remove_device(device, rollback_on_failure=False):
         handler_started.set()
         await asyncio.Event().wait()
 
@@ -3411,3 +3411,53 @@ async def test_remove_device_worker_stopped(tmp_path, caplog):
 
     with pytest.raises(ValueError, match="no active connection"):
         listener._db.in_transaction  # noqa: B018
+
+
+async def test_remove_device_commit_failure_does_not_persist_delete(tmp_path):
+    """A failed commit of the delete is rolled back, not left for a later commit."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=0.05)
+    listener = app._dblistener
+
+    dev, _, _ = _add_joined_device(app)
+    async with asyncio.timeout(5):
+        await listener._callback_handlers.join()
+    device_row = {"where": "WHERE ieee = ?", "params": (str(dev.ieee),)}
+    await _wait_for_count(
+        db, "devices", 1, **device_row, message="device was not committed"
+    )
+
+    real_commit = listener._db.commit
+    real_execute = listener._db.execute
+    delete_pending = False
+
+    def tracking_execute(sql, *args, **kwargs):
+        nonlocal delete_pending
+        delete_pending |= sql.lstrip().startswith("DELETE")
+        return real_execute(sql, *args, **kwargs)
+
+    async def failing_commit():
+        nonlocal delete_pending
+        # Fail the first commit that would persist the delete
+        if delete_pending:
+            delete_pending = False
+            raise sqlite3.OperationalError("disk I/O error")
+        await real_commit()
+
+    with (
+        patch.object(listener._db, "execute", tracking_execute),
+        patch.object(listener._db, "commit", failing_commit),
+    ):
+        with pytest.raises(sqlite3.OperationalError):
+            await listener.remove_device(dev)
+
+        # A later successful flush must not delete the device
+        await asyncio.sleep(0.3)
+        async with asyncio.timeout(5):
+            await listener._callback_handlers.join()
+
+    assert not listener._db.in_transaction
+    assert await _read_count(db, "devices", **device_row) == 1
+
+    await app.shutdown()
+    assert await _read_count(db, "devices", **device_row) == 1
