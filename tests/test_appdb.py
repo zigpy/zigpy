@@ -164,8 +164,7 @@ async def test_database(tmp_path):
     assert dev.get_signature()[SIG_MANUFACTURER] == "Custom"
     assert dev.get_signature()[SIG_MODEL] == "Model"
 
-    # Updates within `MIN_UPDATE_DELTA` of the stored value are not written, so
-    # move far enough ahead for this one to be persisted
+    # Updates within `MIN_UPDATE_DELTA` of the stored value aren't saved, so go past it
     ts = time.time() + zigpy.appdb.MIN_UPDATE_DELTA + 1
     dev.last_seen = ts
     dev_last_seen = dev.last_seen
