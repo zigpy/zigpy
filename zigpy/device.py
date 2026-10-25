@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from asyncio import timeout as asyncio_timeout
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -12,8 +12,10 @@ import logging
 import math
 import time
 import typing
-from typing import Any, Final, TypeVar
+from typing import Any, Final, Self
 import warnings
+
+from cryptography.exceptions import InvalidTag
 
 from zigpy import zdo
 from zigpy.const import (
@@ -38,10 +40,16 @@ from zigpy.ota.manager import update_firmware
 from zigpy.profiles import zha, zll
 import zigpy.types as t
 import zigpy.util
+from zigpy.util import CreateTaskMixin
 from zigpy.zcl import Cluster, ClusterType, OtaQueryCacheClearedEvent, foundation
 from zigpy.zcl.clusters.general import Ota, PollControl, QueryNextImageCommand
 import zigpy.zdo.types as zdo_t
-from zigpy.zgp.commands import GPD_COMMAND_SCHEMAS, GPGenericSwitchConfiguration
+from zigpy.zgp.commands import (
+    GPD_COMMAND_SCHEMAS,
+    GPCommissioningPayload,
+    GPGenericSwitchConfiguration,
+)
+from zigpy.zgp.crypto import build_gpdf_header, decrypt_payload
 from zigpy.zgp.types import (
     ApplicationID,
     DeviceID,
@@ -54,8 +62,6 @@ from zigpy.zgp.types import (
 from zigpy.zgp.util import derive_alias, synthetic_ieee
 
 if typing.TYPE_CHECKING:
-    _R = TypeVar("_R")
-
     from zigpy.application import ControllerApplication
     from zigpy.ota.providers import OtaImageWithMetadata
 
@@ -108,7 +114,9 @@ class Status(enum.IntEnum):
     ENDPOINTS_INIT = 2
 
 
-class BaseDevice(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin, EventBase):
+class BaseDevice(
+    zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin, CreateTaskMixin, EventBase
+):
     """Base class shared by all device types, keyed on `ieee` and `nwk` addresses."""
 
     def __init__(
@@ -128,15 +136,6 @@ class BaseDevice(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin, EventBase
 
         self._on_remove_callbacks: list[typing.Callable[[], None]] = []
         self._tasks: set[asyncio.Future[Any]] = set()
-
-    def create_task(
-        self, target: Coroutine[Any, Any, _R], name: str | None = None
-    ) -> asyncio.Task[_R]:
-        """Create a task and store a reference to it until the task completes."""
-        task = asyncio.get_running_loop().create_task(target, name=name)
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.remove)
-        return task
 
     def on_remove(self) -> None:
         """Call on remove callbacks."""
@@ -266,11 +265,68 @@ class GreenPowerDevice(BaseDevice):
         # Whether the GPD uses an incremental (rather than random) MAC sequence number
         self.mac_seq_num_capability: bool = False
 
+        # Whether the GPD can receive after transmitting, and whether it is stationary
+        self.rx_on_capability: bool = False
+        self.fixed_location: bool = False
+
         # Security material for decoding subsequent data frames.
         self.security_key: t.KeyData | None = None
         self.security_key_type: SecurityKeyType | None = None
         self.security_level: SecurityLevel | None = None
         self.frame_counter: t.uint32_t | None = None
+
+    @classmethod
+    def from_commissioning(
+        cls,
+        application: ControllerApplication,
+        packet: t.ZigbeeGpPacket,
+        commissioning: GPCommissioningPayload,
+        *,
+        security_level: SecurityLevel,
+        security_key_type: SecurityKeyType,
+        security_key: t.KeyData | None,
+    ) -> Self:
+        """Create a GPD from its Commissioning GPDF (0xE0)."""
+        assert packet.src_id is not None
+
+        device = cls(
+            application, application_id=ApplicationID.SrcID, src_id=packet.src_id
+        )
+        device.device_id = commissioning.device_id
+        device.gpd_manufacturer_id = commissioning.manufacturer_id
+        device.gpd_model_id = commissioning.model_id
+        device.commands = [
+            GPDCommandID(cmd) for cmd in commissioning.gpd_commands or []
+        ]
+        device.server_cluster_ids = list(commissioning.server_clusters or [])
+        device.client_cluster_ids = list(commissioning.client_clusters or [])
+
+        if commissioning.switch_information is not None:
+            device.switch_configuration = commissioning.switch_information.configuration
+
+        device.mac_seq_num_capability = bool(
+            commissioning.options.mac_seq_num_capability
+        )
+        device.rx_on_capability = bool(commissioning.options.rx_on_capability)
+        device.fixed_location = bool(commissioning.options.fixed_location)
+        device.security_key = security_key
+        device.security_key_type = security_key_type
+        device.security_level = security_level
+        # An unprotected GPD has no security frame counter, the GPDF carries its MAC
+        # sequence number instead. An outgoing counter it still sends is ignored
+        # (A.4.2.1.1.3).
+        device.frame_counter = (
+            commissioning.outgoing_counter
+            if security_level != SecurityLevel.NoSecurity
+            else packet.frame_counter
+        )
+
+        # The commissioning GPDF is the latest reception from the GPD
+        device.last_seen = packet.timestamp
+        device.lqi = packet.lqi
+        device.rssi = packet.rssi
+
+        return device
 
     @property
     def src_id(self) -> SrcID | None:
@@ -348,8 +404,67 @@ class GreenPowerDevice(BaseDevice):
             and ((packet.timestamp - self._last_seen) < GP_DUPLICATE_TIMEOUT)
         )
 
+    def _process_security(self, packet: t.ZigbeeGpPacket) -> t.ZigbeeGpPacket:
+        """Verify and decrypt a protected GPDF that the radio did not process."""
+        assert packet.application_id is ApplicationID.SrcID
+        assert packet.src_id is not None
+        assert packet.frame_counter is not None
+        assert packet.command_id is not None
+        assert packet.mic is not None
+        assert packet.individual_key is not None
+        assert packet.auto_commissioning is not None
+        assert packet.rx_after_tx is not None
+
+        # Without the commissioned key, or with another level or kind of key than the
+        # commissioned one, the GPDF is dropped (spec A.3.7.3.1.2, Table 12)
+        if (
+            self.security_key is None
+            or packet.security_level != self.security_level
+            or packet.individual_key
+            != (
+                self.security_key_type
+                in (SecurityKeyType.IndividualKey, SecurityKeyType.DerivedIndividual)
+            )
+        ):
+            return packet.replace(security_status=SecurityStatus.AuthFailure)
+
+        header = build_gpdf_header(
+            packet.src_id,
+            packet.frame_counter,
+            security_level=packet.security_level,
+            individual_key=packet.individual_key,
+            auto_commissioning=packet.auto_commissioning,
+            rx_after_tx=packet.rx_after_tx,
+        )
+
+        # AES-CCM over a GPDF takes ~20 us on a CM4. Offloading it to an executor
+        # would cost ~200 us for the thread handoff alone, mostly on the event loop
+        # itself.
+        try:
+            plaintext = decrypt_payload(
+                packet.src_id,
+                packet.frame_counter,
+                self.security_key.serialize(),
+                bytes([packet.command_id]) + packet.payload.serialize(),
+                packet.mic.serialize(),
+                header=header,
+                security_level=packet.security_level,
+            )
+        except InvalidTag:
+            return packet.replace(security_status=SecurityStatus.AuthFailure)
+
+        return packet.replace(
+            command_id=GPDCommandID(plaintext[0]),
+            payload=t.SerializableBytes(plaintext[1:]),
+            security_key_type=self.security_key_type,
+            security_status=SecurityStatus.SecuritySuccess,
+        )
+
     def packet_received(self, packet: t.ZigbeeGpPacket) -> None:
-        """Process a decoded, decrypted GPDF."""
+        """Process a decoded GPDF, decrypting it if the radio did not."""
+
+        if packet.security_status is SecurityStatus.Unprocessed:
+            packet = self._process_security(packet)
 
         # Only frames with status NO_SECURITY or SECURITY_SUCCESS are delivered (spec
         # A.3.5.2.5)
@@ -392,6 +507,18 @@ class GreenPowerDevice(BaseDevice):
 
         if packet.frame_counter is not None:
             self.frame_counter = packet.frame_counter
+
+        # A Decommissioning command is only acted upon once it passes the freshness and
+        # security checks above (spec A.3.5.2.4)
+        if packet.command_id == GPDCommandID.DecommissioningRequest:
+            self._application.green_power.decommission(self)
+            return
+
+        # As is a Success command, which finishes bidirectional commissioning (spec
+        # A.3.9.1 step 18.b)
+        if packet.command_id == GPDCommandID.SuccessReport:
+            self._application.green_power.commissioning_succeeded(self)
+            return
 
         command: t.Struct | None
 

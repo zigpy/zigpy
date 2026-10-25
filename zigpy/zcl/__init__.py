@@ -4,7 +4,6 @@ import collections
 from collections import defaultdict
 from collections.abc import Callable, Generator, Iterable, Sequence
 import contextlib
-from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import enum
@@ -47,6 +46,33 @@ MAX_READ_ATTRIBUTES_PER_REQ = 5
 _RecordT = TypeVar("_RecordT")
 
 
+def _convert_attribute_value(
+    attr_def: foundation.ZCLAttributeDef, type_value: foundation.TypeValue
+) -> Any:
+    """Convert a received attribute value into the attribute's declared type."""
+
+    # `dataN` values are untyped bytes, so they are re-read with the declared type
+    if isinstance(
+        type_value.value,
+        (
+            t.data8,
+            t.data16,
+            t.data24,
+            t.data32,
+            t.data40,
+            t.data48,
+            t.data56,
+            t.data64,
+        ),
+    ):
+        value, rest = attr_def.type.deserialize(type_value.value.serialize())
+        assert not rest
+
+        return value
+
+    return attr_def.type(type_value.value)
+
+
 def _chunk_records_by_size(
     records: Iterable[_RecordT],
     get_size: Callable[[_RecordT], int],
@@ -82,55 +108,6 @@ def _chunk_records_by_size(
         chunk_size += record_size
 
     return chunks
-
-
-# Tracks (cluster_id, attrid) pairs for which AttributeUpdatedEvent should be suppressed.
-# Used during Report_Attributes handling to allow quirks that update other clusters or
-# other attributes to emit their own events while suppressing the direct report's event.
-_suppressed_attribute_updates: ContextVar[frozenset[tuple[int, int]]] = ContextVar(
-    "_suppressed_attribute_updates", default=frozenset()
-)
-
-# Tracks the (attribute_id, manufacturer_code) for the current attribute update operation.
-# Used to preserve manufacturer code context when calling _update_attribute,
-# so that manufacturer-specific attributes with conflicting IDs are stored correctly.
-# The manufacturer code is only applied when the attribute ID matches the original.
-_attribute_update_context: ContextVar[tuple[int, int | None] | None] = ContextVar(
-    "_attribute_update_context", default=None
-)
-
-
-@contextlib.contextmanager
-def _suppress_attribute_update_event(
-    cluster_id: int, attrid: int
-) -> Generator[None, None, None]:
-    """Suppress AttributeUpdatedEvent for a specific (cluster, attribute) pair."""
-    current = _suppressed_attribute_updates.get()
-    token = _suppressed_attribute_updates.set(current | {(cluster_id, attrid)})
-
-    try:
-        yield
-    finally:
-        _suppressed_attribute_updates.reset(token)
-
-
-@contextlib.contextmanager
-def _set_attribute_update_context(
-    attrid: int,
-    manufacturer_code: int | None,
-) -> Generator[None, None, None]:
-    """Set the attribute update context for preserving manufacturer code.
-
-    This allows quirks that call _update_attribute to preserve the manufacturer code,
-    ensuring manufacturer-specific attributes are stored with the correct cache key.
-    The manufacturer code is only applied when the attribute ID matches.
-    """
-    token = _attribute_update_context.set((attrid, manufacturer_code))
-
-    try:
-        yield
-    finally:
-        _attribute_update_context.reset(token)
 
 
 class ClusterType(enum.IntEnum):
@@ -556,6 +533,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             AttributeUnsupportedEvent.event_type, self._on_attribute_unsupported
         )
 
+        # Attribute IDs (and their manufacturer codes) that are currently being passed
+        # through a quirk's `_update_attribute`, see `_quirk_attribute_update`
+        self._quirk_attribute_updates: dict[int, int | None] = {}
+
     @property
     def _attr_cache(self) -> AttributeCache:
         """Attribute cache accessor."""
@@ -574,6 +555,34 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         for key, value in new_value.items():
             self._update_attribute(key, value)
 
+    @contextlib.contextmanager
+    def _quirk_attribute_update(
+        self, attrid: int, manufacturer_code: int | None
+    ) -> Generator[None, None, None]:
+        """Track a reported or read attribute passing through `_update_attribute`.
+
+        While active, `_update_attribute` calls with this attribute ID on this cluster
+        do not emit an `AttributeUpdatedEvent` (the caller emits the appropriate event
+        instead) and resolve the attribute definition with the manufacturer code, so
+        that manufacturer-specific attributes with conflicting IDs are stored
+        correctly. Other attributes, clusters, and cluster instances updated by the
+        quirk are unaffected.
+
+        This state is intentionally kept on the cluster instance instead of in a
+        context variable: tasks and timers started by a quirk inherit context
+        variables, which would apply the above to unrelated updates performed later.
+        """
+        previous = self._quirk_attribute_updates.get(attrid, UNDEFINED)
+        self._quirk_attribute_updates[attrid] = manufacturer_code
+
+        try:
+            yield
+        finally:
+            if previous is UNDEFINED:
+                del self._quirk_attribute_updates[attrid]
+            else:
+                self._quirk_attribute_updates[attrid] = previous
+
     def _legacy_apply_quirk_attribute_update(
         self, attr_def: foundation.ZCLAttributeDef, value: Any
     ) -> Any | None:
@@ -583,10 +592,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         """
         manufacturer_code = self._get_effective_manufacturer_code(attr_def)
 
-        with (
-            _suppress_attribute_update_event(self.cluster_id, attr_def.id),
-            _set_attribute_update_context(attr_def.id, manufacturer_code),
-        ):
+        with self._quirk_attribute_update(attr_def.id, manufacturer_code):
             self._update_attribute(attr_def.id, value)
 
         try:
@@ -950,6 +956,38 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 foundation.Status.SUCCESS,
             )
 
+    def _handle_read_attributes(
+        self, attribute_ids: list[int], *handler_args: Any
+    ) -> list[foundation.ReadAttributeRecord]:
+        """Read attributes via `handle_read_attribute_*`, forwarding extra arguments."""
+        records = []
+
+        for attrid in attribute_ids:
+            record = foundation.ReadAttributeRecord(attrid=attrid)
+            records.append(record)
+
+            try:
+                attr_def = self.find_attribute(attrid)
+            except KeyError:
+                record.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
+                continue
+
+            attr_read_func = getattr(
+                self, f"handle_read_attribute_{attr_def.name}", None
+            )
+
+            if attr_read_func is None:
+                record.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
+                continue
+
+            record.status = foundation.Status.SUCCESS
+            record.value = foundation.TypeValue(
+                type=attr_def.zcl_type,
+                value=attr_read_func(*handler_args),
+            )
+
+        return records
+
     def handle_cluster_general_request(
         self,
         hdr: foundation.ZCLHeader,
@@ -959,32 +997,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         dst_addressing: t.AddrMode | None = None,
     ) -> None:
         if hdr.command_id == foundation.GeneralCommand.Read_Attributes:
-            records = []
-
-            for attrid in args.attribute_ids:
-                record = foundation.ReadAttributeRecord(attrid=attrid)
-                records.append(record)
-
-                try:
-                    attr_def = self.find_attribute(attrid)
-                except KeyError:
-                    record.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
-                    continue
-
-                attr_read_func = getattr(
-                    self, f"handle_read_attribute_{attr_def.name}", None
-                )
-
-                if attr_read_func is None:
-                    record.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
-                    continue
-
-                record.status = foundation.Status.SUCCESS
-                record.value = foundation.TypeValue(
-                    type=attr_def.zcl_type,
-                    value=attr_read_func(),
-                )
-
+            records = self._handle_read_attributes(args.attribute_ids)
             # We do not emit a default response here because a ReadAttributesResponse is
             # sent instead
             self.create_catching_task(self.read_attributes_rsp(records, tsn=hdr.tsn))
@@ -998,16 +1011,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     )
                 except KeyError:
                     attr_def = None
-                    value = attr.value.value
-                else:
-                    value = attr_def.type(attr.value.value)
 
                 if attr_def is None:
+                    value = attr.value.value
                     # Unknown attribute, update and emit reported event
-                    with (
-                        _suppress_attribute_update_event(self.cluster_id, attr.attrid),
-                        _set_attribute_update_context(attr.attrid, hdr.manufacturer),
-                    ):
+                    with self._quirk_attribute_update(attr.attrid, hdr.manufacturer):
                         self._update_attribute(attr.attrid, value)
 
                     self.emit(
@@ -1026,6 +1034,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     )
                     continue
 
+                value = _convert_attribute_value(attr_def, attr.value)
                 cached_value = self._legacy_apply_quirk_attribute_update(
                     attr_def, value
                 )
@@ -1290,7 +1299,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     # real device.
                     value = None
                 else:
-                    value = attr_def.type(record.value.value)
+                    value = _convert_attribute_value(attr_def, record.value)
 
                 success[attribute_map[attr_def]] = value
 
@@ -1376,22 +1385,19 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     def _update_attribute(
         self, attrid: int | t.uint16_t | foundation.ZCLAttributeDef, value: Any
     ) -> None:
-        # Check if AttributeUpdatedEvent should be suppressed for this attribute.
-        # This is used during Report_Attributes handling to allow quirks that update
-        # other clusters or attributes to emit their own events.
-        suppressed = (self.cluster_id, attrid) in _suppressed_attribute_updates.get()
+        # If this attribute ID is currently being passed through a quirk (see
+        # `_quirk_attribute_update`), the `AttributeUpdatedEvent` is suppressed and the
+        # manufacturer code tracked for it is used to find the attribute. Other
+        # attributes and clusters updated by quirks emit their own events.
+        manufacturer_code: int | UndefinedType | None = UNDEFINED
 
-        # Get the manufacturer code from context if set (set by
-        # _legacy_apply_quirk_attribute_update to preserve manufacturer code).
-        # Only apply when the attribute ID matches the original to avoid affecting
-        # other attributes that quirks may update.
-        ctx = _attribute_update_context.get()
+        if isinstance(attrid, int):
+            manufacturer_code = self._quirk_attribute_updates.get(attrid, UNDEFINED)
+
+        suppressed = manufacturer_code is not UNDEFINED
 
         try:
-            if ctx is not None and ctx[0] == attrid:
-                attr_def = self.find_attribute(attrid, manufacturer_code=ctx[1])
-            else:
-                attr_def = self.find_attribute(attrid)
+            attr_def = self.find_attribute(attrid, manufacturer_code=manufacturer_code)
         except KeyError:
             if value is not None:
                 self._attr_cache.set_legacy_value(attrid, value)

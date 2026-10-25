@@ -74,10 +74,13 @@ class Topology(zigpy.util.ListenableMixin):
             try:
                 await self.scan()
             except asyncio.CancelledError:
-                # We explicitly catch a cancellation here to ensure the scan loop will
-                # not be interrupted if a manual scan is initiated
+                # `stop_periodic_scans()` cancelled the loop itself
+                if asyncio.current_task().cancelling():  # type: ignore[union-attr]
+                    raise
+
+                # A manual scan cancelled the scheduled one, keep the loop running
                 LOGGER.debug("Topology scan cancelled")
-            except (Exception, asyncio.CancelledError):  # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 LOGGER.debug("Topology scan failed", exc_info=True)
 
     async def scan(self, devices: typing.Iterable[ZigbeeDevice] | None = None) -> None:
