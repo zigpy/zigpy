@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
@@ -201,6 +202,31 @@ def test_handle_event_protocol():
 
     assert event_handler.handle_test.called
     assert event_handler.handle_test.call_args[0] == (event,)
+
+
+def test_event_base_emit_listener_error(caplog: pytest.LogCaptureFixture) -> None:
+    """Test a failing listener does not abort the emit or skip other listeners."""
+    event = EventGenerator()
+
+    before = MagicMock()
+    failing = MagicMock(side_effect=RuntimeError("listener failed"))
+    after = MagicMock()
+    on_all = MagicMock()
+
+    event.on_event("test", before)
+    event.on_event("test", failing)
+    event.on_event("test", after)
+    event.on_all_events(on_all)
+
+    with caplog.at_level(logging.ERROR):
+        event.emit("test", "data")
+
+    before.assert_called_once_with("data")
+    failing.assert_called_once_with("data")
+    after.assert_called_once_with("data")
+    on_all.assert_called_once_with("data")
+    assert "Error calling listener" in caplog.text
+    assert "listener failed" in caplog.text
 
 
 def test_suppress_events() -> None:

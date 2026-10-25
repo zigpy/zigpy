@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import zigpy.types as t
+from zigpy.zgp.types import GP_ENDPOINT
 
+# Backwards compatibility alias
+GREENPOWER_ENDPOINT_ID = GP_ENDPOINT
 PROFILE_ID = 41440
 
 

@@ -2,25 +2,25 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
 import pytest
 
-from zigpy.exceptions import GPSecurityProcessingFailed
-import zigpy.profiles.zgp
+from tests.zgp.conftest import (
+    COMMISSIONING_NOTIFICATION_ID,
+    NOTIFICATION_ID,
+    TIMESTAMP,
+    make_commissioning_options,
+    make_notification_options,
+    make_tunnel_packet,
+)
 import zigpy.types as t
 from zigpy.zcl import foundation
 from zigpy.zcl.clusters.greenpower import (
-    CommissioningNotificationOptions,
     CommissioningNotificationSchema,
     GreenPowerProxy,
-    NotificationOptions,
     NotificationSchema,
 )
 from zigpy.zgp.tunneling import gp_packet_from_zcl, is_gp_tunnel_packet
 from zigpy.zgp.types import (
-    GP_CLUSTER_ID,
-    GP_ENDPOINT,
     ApplicationID,
     GPDCommandID,
     GPDCommandPayload,
@@ -30,62 +30,6 @@ from zigpy.zgp.types import (
     SecurityLevel,
     SecurityStatus,
 )
-
-TIMESTAMP = datetime(2026, 8, 10, 12, 0, 0, tzinfo=UTC)
-
-NOTIFICATION_ID = GreenPowerProxy.ServerCommandDefs.notification.id
-COMMISSIONING_NOTIFICATION_ID = (
-    GreenPowerProxy.ServerCommandDefs.commissioning_notification.id
-)
-
-
-def make_tunnel_packet(command_id: int, payload: bytes, **kwargs) -> t.ZigbeePacket:
-    hdr = foundation.ZCLHeader.cluster(tsn=0x12, command_id=command_id)
-
-    return t.ZigbeePacket(
-        timestamp=TIMESTAMP,
-        profile_id=zigpy.profiles.zgp.PROFILE_ID,
-        cluster_id=GP_CLUSTER_ID,
-        src_ep=GP_ENDPOINT,
-        dst_ep=GP_ENDPOINT,
-        data=t.SerializableBytes(hdr.serialize() + payload),
-        **kwargs,
-    )
-
-
-def make_notification_options(**kwargs) -> NotificationOptions:
-    return NotificationOptions(
-        **{
-            "application_id": ApplicationID.SrcID,
-            "also_unicast": 0,
-            "also_derived_group": 1,
-            "also_commissioned_group": 0,
-            "security_level": SecurityLevel.FullFrameCounterAndMIC,
-            "security_key_type": SecurityKeyType.NWKKey,
-            "rx_after_tx": 0,
-            "tx_queue_full": 1,
-            "bidirectional_cap": 0,
-            "proxy_info_present": 1,
-            "_reserved": 0,
-            **kwargs,
-        }
-    )
-
-
-def make_commissioning_options(**kwargs) -> CommissioningNotificationOptions:
-    return CommissioningNotificationOptions(
-        **{
-            "application_id": ApplicationID.SrcID,
-            "rx_after_tx": 0,
-            "security_level": SecurityLevel.NoSecurity,
-            "security_key_type": SecurityKeyType.NoKey,
-            "security_failed": 0,
-            "bidirectional_cap": 0,
-            "proxy_info_present": 1,
-            "_reserved": 0,
-            **kwargs,
-        }
-    )
 
 
 @pytest.mark.parametrize(
@@ -140,6 +84,8 @@ def test_notification(gpd_kwargs, expected_src_id, expected_ieee, expected_endpo
     # GPPGPDLink 20 * 2 - 110 = -70 dBm, High spread over the 0-255 LQI range
     assert gp_packet.rssi == -70
     assert gp_packet.lqi == 170
+    assert gp_packet.gpp_short_addr == 0xAABB
+    assert gp_packet.rx_after_tx is False
 
 
 def test_commissioning_notification():
@@ -164,6 +110,8 @@ def test_commissioning_notification():
     assert gp_packet.security_key_type == SecurityKeyType.NoKey
     assert gp_packet.rssi == -110
     assert gp_packet.lqi == 0
+    assert gp_packet.gpp_short_addr == 0x1234
+    assert gp_packet.rx_after_tx is False
 
 
 def test_commissioning_notification_security_failed():
@@ -183,8 +131,56 @@ def test_commissioning_notification_security_failed():
     )
     packet = make_tunnel_packet(COMMISSIONING_NOTIFICATION_ID, command.serialize())
 
-    with pytest.raises(GPSecurityProcessingFailed, match="Security processing"):
-        gp_packet_from_zcl(packet)
+    gp_packet = gp_packet_from_zcl(packet)
+
+    # The GPDF is passed on as received, for the sink to security process (A.3.7.3.2)
+    assert gp_packet.security_status == SecurityStatus.Unprocessed
+    assert gp_packet.command_id == GPDCommandID.CommissioningRequest
+    assert gp_packet.payload == t.SerializableBytes(b"\xaa\xbb")
+    assert gp_packet.frame_counter == 42
+    assert gp_packet.mic == 0xDEADBEEF
+    assert gp_packet.auto_commissioning is False
+    assert gp_packet.rx_after_tx is False
+    assert gp_packet.individual_key is True
+
+
+@pytest.mark.parametrize(
+    ("security_key_type", "individual_key"),
+    [
+        (SecurityKeyType.NoKey, False),
+        (SecurityKeyType.NWKKey, False),
+        (SecurityKeyType.GPDGroupKey, False),
+        (SecurityKeyType.NWKKeyDerivedGPD, False),
+        (SecurityKeyType.IndividualKey, True),
+        (SecurityKeyType.DerivedIndividual, True),
+    ],
+)
+def test_commissioning_notification_security_failed_key_type(
+    security_key_type, individual_key
+):
+    """The key type maps back to the SecurityKey sub-field of the GPDF (Table 12)."""
+    command = CommissioningNotificationSchema(
+        options=make_commissioning_options(
+            security_level=SecurityLevel.FullFrameCounterAndMIC,
+            security_key_type=security_key_type,
+            security_failed=1,
+            rx_after_tx=1,
+        ),
+        gpd_id=0x01020304,
+        frame_counter=42,
+        command_id=GPDCommandID.SuccessReport,
+        payload=GPDCommandPayload(b""),
+        gpp_short_addr=0x1234,
+        gpp_gpd_link=GPPGPDLink(rssi=20, link_quality=GPLinkQuality.High),
+        mic=0,
+    )
+    packet = make_tunnel_packet(COMMISSIONING_NOTIFICATION_ID, command.serialize())
+
+    gp_packet = gp_packet_from_zcl(packet)
+
+    assert gp_packet.individual_key is individual_key
+    assert gp_packet.rx_after_tx is True
+    assert gp_packet.mic == 0
 
 
 def test_notification_unspecified_payload():
@@ -225,6 +221,7 @@ def test_notification_without_proxy_info():
     assert gp_packet.lqi is None
     assert gp_packet.rssi is None
     assert gp_packet.gpp_distance is None
+    assert gp_packet.gpp_short_addr is None
 
 
 def test_notification_from_legacy_proxy():
@@ -245,6 +242,8 @@ def test_notification_from_legacy_proxy():
     assert gp_packet.lqi is None
     assert gp_packet.rssi is None
     assert gp_packet.gpp_distance == 0x42
+    assert gp_packet.gpp_short_addr == 0xAABB
+    assert gp_packet.rx_after_tx is True
 
 
 @pytest.mark.parametrize(
