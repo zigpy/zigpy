@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta, tzinfo
 import functools
 
 import zigpy.types as t
+from zigpy.types.named import _ZIGBEE_EPOCH
 
 # Shorter than any gap between two tzdata transitions, so no interval is skipped.
 PROBE_STEP = 6 * 60 * 60
@@ -16,11 +17,7 @@ def _offset(zone: tzinfo, seconds: int) -> tuple[int, bool]:
     """Return the UTC offset and DST flag, both stored exactly in tzdata."""
     if type(seconds) is not int or not 0 <= seconds <= t.UTCTime.INVALID:
         seconds = int(t.UTCTime(seconds))
-    # The ZCL epoch (2000-01-01 UTC) is 946684800 seconds after the Unix epoch.
-    if zone is None:
-        local = datetime.fromtimestamp(seconds + 946684800, UTC).astimezone(zone)
-    else:
-        local = datetime.fromtimestamp(seconds + 946684800, zone)
+    local = (_ZIGBEE_EPOCH + timedelta(seconds=seconds)).astimezone(zone)
     offset = local.utcoffset()
     if not offset:
         offset_seconds = 0
