@@ -10,7 +10,7 @@ import random
 import typing
 
 import zigpy.config
-import zigpy.device
+from zigpy.device import ZigbeeDevice
 import zigpy.types as t
 import zigpy.util
 import zigpy.zdo.types as zdo_t
@@ -74,15 +74,16 @@ class Topology(zigpy.util.ListenableMixin):
             try:
                 await self.scan()
             except asyncio.CancelledError:
-                # We explicitly catch a cancellation here to ensure the scan loop will
-                # not be interrupted if a manual scan is initiated
+                # `stop_periodic_scans()` cancelled the loop itself
+                if asyncio.current_task().cancelling():  # type: ignore[union-attr]
+                    raise
+
+                # A manual scan cancelled the scheduled one, keep the loop running
                 LOGGER.debug("Topology scan cancelled")
-            except (Exception, asyncio.CancelledError):  # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 LOGGER.debug("Topology scan failed", exc_info=True)
 
-    async def scan(
-        self, devices: typing.Iterable[zigpy.device.Device] | None = None
-    ) -> None:
+    async def scan(self, devices: typing.Iterable[ZigbeeDevice] | None = None) -> None:
         """Preempt Topology scan and reschedule."""
 
         if self._scan_task and not self._scan_task.done():
@@ -120,9 +121,7 @@ class Topology(zigpy.util.ListenableMixin):
 
         return table
 
-    async def _scan_neighbors(
-        self, device: zigpy.device.Device
-    ) -> list[zdo_t.Neighbor]:
+    async def _scan_neighbors(self, device: ZigbeeDevice) -> list[zdo_t.Neighbor]:
         if device.ieee in self._neighbors_unsupported:
             return []
 
@@ -136,7 +135,7 @@ class Topology(zigpy.util.ListenableMixin):
 
         return [n for n in table if n.ieee not in INVALID_NEIGHBOR_IEEES]
 
-    async def _scan_routes(self, device: zigpy.device.Device) -> list[zdo_t.Route]:
+    async def _scan_routes(self, device: ZigbeeDevice) -> list[zdo_t.Route]:
         if device.ieee in self._routes_unsupported:
             return []
 
@@ -150,9 +149,7 @@ class Topology(zigpy.util.ListenableMixin):
 
         return table
 
-    async def _scan(
-        self, devices: typing.Iterable[zigpy.device.Device] | None = None
-    ) -> None:
+    async def _scan(self, devices: typing.Iterable[ZigbeeDevice] | None = None) -> None:
         """Scan topology."""
 
         if devices is None:
@@ -163,6 +160,10 @@ class Topology(zigpy.util.ListenableMixin):
             LOGGER.debug(
                 "Scanning topology (%d/%d) of %s", index + 1, len(devices), device
             )
+
+            # Only Zigbee devices can have their topology scanned
+            if not isinstance(device, ZigbeeDevice):
+                continue
 
             # Ignore devices that aren't routers
             if device.node_desc is None or not (

@@ -32,6 +32,7 @@ class ZoneType(t.enum16):
     Standard_CIE = 0x0000
     Motion_Sensor = 0x000D
     Contact_Switch = 0x0015
+    Door_Window_Handle = 0x0016
     Fire_Sensor = 0x0028
     Water_Sensor = 0x002A
     Carbon_Monoxide_Sensor = 0x002B
@@ -521,7 +522,7 @@ class IasWd(Cluster):
                 "warning": WarningType,
                 "warning_duration": t.uint16_t,
                 "strobe_duty_cycle": t.uint8_t,
-                "stobe_level": StrobeLevel,
+                "strobe_level": StrobeLevel,
             },
         )
         squawk: Final = ZCLCommandDef(

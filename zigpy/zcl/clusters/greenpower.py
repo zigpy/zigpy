@@ -10,10 +10,63 @@ from zigpy.zcl import Cluster, foundation
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
     BaseCommandDefs,
+    DataTypeId,
     ZCLAttributeDef,
     ZCLCommandDef,
 )
 import zigpy.zgp.types as zgptypes
+
+
+class GPPFunctionality(t.bitmap24):
+    """Green Power Proxy functionality bitmap."""
+
+    GP_Feature = 0x000001
+    Direct_Communication = 0x000002
+    Derived_Groupcast_Communication = 0x000004
+    Pre_Commissioned_Groupcast_Communication = 0x000008
+    Full_Unicast_Communication = 0x000010
+    Lightweight_Unicast_Communication = 0x000020
+    # b6 Reserved
+    Bidirectional_Operation = 0x000080
+    Proxy_Table_Maintenance = 0x000100
+    # b9 Reserved
+    GP_Commissioning = 0x000400
+    CT_Based_Commissioning = 0x000800
+    Maintenance_Of_GPD = 0x001000
+    GPD_SecurityLevel_0b00 = 0x002000
+    # b14 Deprecated
+    GPD_SecurityLevel_0b10 = 0x008000
+    GPD_SecurityLevel_0b11 = 0x010000
+    # b17-b18 Reserved
+    GPD_IEEE_Address = 0x080000
+    # b20-b23 Reserved
+
+
+class GPSFunctionality(t.bitmap24):
+    """Green Power Sink functionality bitmap."""
+
+    GP_Feature = 0x000001
+    Direct_Communication = 0x000002
+    Derived_Groupcast_Communication = 0x000004
+    Pre_Commissioned_Groupcast_Communication = 0x000008
+    Full_Unicast_Communication = 0x000010
+    Lightweight_Unicast_Communication = 0x000020
+    Proximity_Bidirectional_Operation = 0x000040
+    Multi_Hop_Bidirectional_Operation = 0x000080
+    Proxy_Table_Maintenance = 0x000100
+    Proximity_Commissioning = 0x000200
+    Multi_Hop_Commissioning = 0x000400
+    CT_Based_Commissioning = 0x000800
+    Maintenance_Of_GPD = 0x001000
+    GPD_SecurityLevel_0b00 = 0x002000
+    # b14 Deprecated
+    GPD_SecurityLevel_0b10 = 0x008000
+    GPD_SecurityLevel_0b11 = 0x010000
+    Sink_Table_Based_Groupcast_Forwarding = 0x020000
+    Translation_Table = 0x040000
+    GPD_IEEE_Address = 0x080000
+    Compact_Attribute_Reporting = 0x100000
+    # b21-b23 Reserved
 
 
 # Figure 31
@@ -31,19 +84,28 @@ class CommissioningNotificationOptions(t.Struct):
 # Figure 30
 class CommissioningNotificationSchema(foundation.CommandSchema):
     options: CommissioningNotificationOptions
-    gpd_id: zgptypes.DeviceID
+    gpd_id: zgptypes.SrcID = StructField(
+        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.SrcID
+    )
+    gpd_ieee: t.EUI64 = StructField(
+        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.IEEE
+    )
+    gpd_endpoint: t.uint8_t = StructField(
+        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.IEEE
+    )
     frame_counter: t.uint32_t
     command_id: zgptypes.GPDCommandID
-    payload: t.LVBytes
+    payload: zgptypes.GPDCommandPayload
     gpp_short_addr: t.uint16_t = StructField(
-        requires=lambda s: s.options.proxy_info_present, optional=True
+        requires=lambda s: s.options.proxy_info_present or s.options.rx_after_tx
     )
-    gpp_gpd_link: t.uint8_t = StructField(
-        requires=lambda s: s.options.proxy_info_present, optional=True
+    gpp_gpd_link: zgptypes.GPPGPDLink = StructField(
+        requires=lambda s: s.options.proxy_info_present
     )
-    mic: t.uint32_t = StructField(
-        requires=lambda s: s.options.security_failed, optional=True
+    gpp_distance: t.uint8_t = StructField(
+        requires=lambda s: not s.options.proxy_info_present and s.options.rx_after_tx
     )
+    mic: t.uint32_t = StructField(requires=lambda s: s.options.security_failed)
 
 
 # Figure 59
@@ -64,12 +126,12 @@ class ResponseSchema(foundation.CommandSchema):
     options: ResponseOptions
     temp_master_short_addr: t.uint16_t
     temp_master_tx_channel: TempMasterTxChannel
-    gpd_id: zgptypes.DeviceID
+    gpd_id: zgptypes.SrcID
     gpd_command_id: zgptypes.GPDCommandID
     gpd_command_payload: t.LVBytes
 
 
-# Figure 26
+# Figure 29
 class PairingSearchOptions(t.Struct):
     application_id: zgptypes.ApplicationID
     request_unicast_sink: t.uint1_t
@@ -80,13 +142,13 @@ class PairingSearchOptions(t.Struct):
     _reserved: t.uint8_t
 
 
-# Figure 25
+# Figure 28
 class PairingSearchSchema(foundation.CommandSchema):
     options: PairingSearchOptions
-    gpd_id: zgptypes.DeviceID
+    gpd_id: zgptypes.SrcID
 
 
-# Figure 24
+# Figures 25 and 26 — 16 bits total
 class NotificationOptions(t.Struct):
     application_id: zgptypes.ApplicationID
     also_unicast: t.uint1_t
@@ -94,22 +156,37 @@ class NotificationOptions(t.Struct):
     also_commissioned_group: t.uint1_t
     security_level: zgptypes.SecurityLevel
     security_key_type: zgptypes.SecurityKeyType
-    appoint_temp_master: t.uint1_t
+    rx_after_tx: t.uint1_t
     tx_queue_full: t.uint1_t
-    _reserved: t.uint3_t
+    bidirectional_cap: t.uint1_t
+    proxy_info_present: t.uint1_t
+    _reserved: t.uint1_t
 
 
-# Figure 23
+# Figure 24
 class NotificationSchema(foundation.CommandSchema):
     options: NotificationOptions
-    gpd_id: zgptypes.DeviceID
+    gpd_id: zgptypes.SrcID = StructField(
+        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.SrcID
+    )
+    gpd_ieee: t.EUI64 = StructField(
+        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.IEEE
+    )
+    gpd_endpoint: t.uint8_t = StructField(
+        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.IEEE
+    )
     frame_counter: t.uint32_t
     command_id: zgptypes.GPDCommandID
-    payload: t.LVBytes
-    short_addr: t.uint16_t = StructField(
-        requires=lambda s: s.options.appoint_temp_master
+    payload: zgptypes.GPDCommandPayload
+    gpp_short_addr: t.uint16_t = StructField(
+        requires=lambda s: s.options.proxy_info_present or s.options.rx_after_tx
     )
-    distance: t.uint8_t = StructField(requires=lambda s: s.options.appoint_temp_master)
+    gpp_gpd_link: zgptypes.GPPGPDLink = StructField(
+        requires=lambda s: s.options.proxy_info_present
+    )
+    gpp_distance: t.uint8_t = StructField(
+        requires=lambda s: not s.options.proxy_info_present and s.options.rx_after_tx
+    )
 
 
 # Figure 40, 41
@@ -132,7 +209,7 @@ class PairingOptions(t.Struct):
 # Figure 38, 39
 class PairingSchema(foundation.CommandSchema):
     options: PairingOptions
-    gpd_id: zgptypes.DeviceID
+    gpd_id: zgptypes.SrcID
     # Table 37
     sink_ieee: t.EUI64 = StructField(
         requires=lambda s: (
@@ -192,7 +269,7 @@ class NotificationResponseOptions(t.Struct):
 
 class NotificationResponseSchema(foundation.CommandSchema):
     options: NotificationResponseOptions
-    gpd_id: zgptypes.DeviceID
+    gpd_id: zgptypes.SrcID
     frame_counter: t.uint32_t
 
 
@@ -200,10 +277,7 @@ class NotificationResponseSchema(foundation.CommandSchema):
 class ProxyCommissioningModeOptions(t.Struct):
     enter: t.uint1_t
     commissioning_window_present: t.uint1_t
-    # Exit-mode sub-field (Figure 57): bit 0 = on first pairing, bit 1 = on
-    # explicit exit. Only 2 bits here, unlike the 3-bit gpsCommissioningExitMode
-    # attribute (Figure 22).
-    exit_mode: t.uint2_t
+    exit_mode: zgptypes.ProxyCommissioningModeExitMode
     channel_present: t.uint1_t
     unicast: t.uint1_t
     _reserved: t.uint2_t
@@ -230,6 +304,8 @@ class GreenPowerProxy(Cluster):
     CommissioningNotificationSchema: Final = CommissioningNotificationSchema
     NotificationResponseSchema: Final = NotificationResponseSchema
     ProxyCommissioningModeSchema: Final = ProxyCommissioningModeSchema
+    GPSFunctionality: Final = GPSFunctionality
+    GPPFunctionality: Final = GPPFunctionality
 
     class AttributeDefs(BaseAttributeDefs):
         max_sink_table_entries: Final = ZCLAttributeDef(
@@ -246,13 +322,14 @@ class GreenPowerProxy(Cluster):
         )
         communication_mode: Final = ZCLAttributeDef(
             id=0x0002,
-            type=zgptypes.CommunicationMode,
+            type=zgptypes.SinkCommunicationMode,
+            zcl_type=DataTypeId.map8,
             access="rw",
             mandatory=True,
         )
         commissioning_exit_mode: Final = ZCLAttributeDef(
             id=0x0003,
-            type=zgptypes.ProxyCommissioningModeExitMode,
+            type=zgptypes.SinkCommissioningExitMode,
             access="rw",
             mandatory=True,
         )
@@ -263,38 +340,63 @@ class GreenPowerProxy(Cluster):
         )
         security_level: Final = ZCLAttributeDef(
             id=0x0005,
-            type=zgptypes.SecurityLevel,
+            type=zgptypes.SinkSecurityLevel,
+            zcl_type=DataTypeId.map8,
             access="rw",
             mandatory=True,
         )
         functionality: Final = ZCLAttributeDef(
             id=0x0006,
-            type=t.bitmap24,
-            access="rw",
+            type=GPSFunctionality,
+            access="r",
             mandatory=True,
         )
         active_functionality: Final = ZCLAttributeDef(
             id=0x0007,
-            type=t.bitmap24,
+            type=GPSFunctionality,
             access="r",
             mandatory=True,
         )
         gpp_max_table_entries: Final = ZCLAttributeDef(
-            id=0x0010, type=t.uint8_t, access="r"
+            id=0x0010,
+            type=t.uint8_t,
+            access="r",
+            mandatory=True,
         )
         gpp_proxy_table: Final = ZCLAttributeDef(
-            id=0x0011, type=t.LongOctetString, access="r"
+            id=0x0011,
+            type=t.LongOctetString,
+            access="r",
+            mandatory=True,
         )
         gpp_functionality: Final = ZCLAttributeDef(
-            id=0x0016, type=t.bitmap24, access="r"
+            id=0x0016,
+            type=GPPFunctionality,
+            access="r",
+            mandatory=True,
         )
         gpp_active_functionality: Final = ZCLAttributeDef(
-            id=0x0017, type=t.bitmap24, access="r"
+            id=0x0017,
+            type=GPPFunctionality,
+            access="r",
+            mandatory=True,
+        )
+        gp_shared_security_key_type: Final = ZCLAttributeDef(
+            id=0x0020,
+            type=t.bitmap8,
+            access="rw",
+            mandatory=True,
+        )
+        gp_shared_security_key: Final = ZCLAttributeDef(
+            id=0x0021,
+            type=t.KeyData,
+            access="rw",
+            mandatory=True,
         )
         link_key: Final = ZCLAttributeDef(
             id=0x0022,
             type=t.KeyData,
-            access="r",
+            access="rw",
             mandatory=True,
         )
 

@@ -2,18 +2,20 @@ from __future__ import annotations
 
 import asyncio
 from asyncio import timeout as asyncio_timeout
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable
 import contextlib
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import enum
 import itertools
 import logging
 import math
 import time
 import typing
-from typing import Any, TypeVar
+from typing import Any, Final, Self
 import warnings
+
+from cryptography.exceptions import InvalidTag
 
 from zigpy import zdo
 from zigpy.const import (
@@ -30,6 +32,7 @@ from zigpy.const import (
 )
 import zigpy.datastructures
 import zigpy.endpoint
+from zigpy.event import EventBase
 import zigpy.exceptions
 from zigpy.exceptions import DeliveryError
 import zigpy.listeners
@@ -37,13 +40,28 @@ from zigpy.ota.manager import update_firmware
 from zigpy.profiles import zha, zll
 import zigpy.types as t
 import zigpy.util
+from zigpy.util import CreateTaskMixin
 from zigpy.zcl import Cluster, ClusterType, OtaQueryCacheClearedEvent, foundation
 from zigpy.zcl.clusters.general import Ota, PollControl, QueryNextImageCommand
 import zigpy.zdo.types as zdo_t
+from zigpy.zgp.commands import (
+    GPD_COMMAND_SCHEMAS,
+    GPCommissioningPayload,
+    GPGenericSwitchConfiguration,
+)
+from zigpy.zgp.crypto import build_gpdf_header, decrypt_payload
+from zigpy.zgp.types import (
+    ApplicationID,
+    DeviceID,
+    GPDCommandID,
+    SecurityKeyType,
+    SecurityLevel,
+    SecurityStatus,
+    SrcID,
+)
+from zigpy.zgp.util import derive_alias, synthetic_ieee
 
 if typing.TYPE_CHECKING:
-    _R = TypeVar("_R")
-
     from zigpy.application import ControllerApplication
     from zigpy.ota.providers import OtaImageWithMetadata
 
@@ -58,6 +76,10 @@ DEFAULT_REQUEST_RETRY_DELAY = 0.1
 
 AFTER_OTA_ATTR_READ_DELAY = 10
 
+# zgpDuplicateTimeout: unprotected GPDFs repeating the last MAC sequence number
+# within this many seconds are duplicates
+GP_DUPLICATE_TIMEOUT = timedelta(seconds=2)
+
 
 @dataclass(frozen=True, slots=True)
 class ResponseKey:
@@ -67,6 +89,18 @@ class ResponseKey:
     cluster_id: int
     direction: foundation.Direction | None
     tsn: int
+
+
+@dataclass(kw_only=True, frozen=True)
+class GreenPowerCommandReceived:
+    """Event generated when a Green Power command is received."""
+
+    event_type: Final[str] = "gp_command_received"
+
+    device_ieee: str
+    endpoint_id: int | None
+    command_id: int
+    command: t.Struct | None
 
 
 class Status(enum.IntEnum):
@@ -80,32 +114,456 @@ class Status(enum.IntEnum):
     ENDPOINTS_INIT = 2
 
 
-class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
-    """A device on the network"""
+class BaseDevice(
+    zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin, CreateTaskMixin, EventBase
+):
+    """Base class shared by all device types, keyed on `ieee` and `nwk` addresses."""
 
-    manufacturer_id_override = None
-
-    def __init__(self, application: ControllerApplication, ieee: t.EUI64, nwk: t.NWK):
+    def __init__(
+        self, application: ControllerApplication, ieee: t.EUI64, nwk: t.NWK
+    ) -> None:
+        super().__init__()
         self._application: ControllerApplication = application
         self._ieee: t.EUI64 = ieee
         self.nwk: t.NWK = t.NWK(nwk)
-        self.zdo: zdo.ZDO = zdo.ZDO(self)
-        self.endpoints: dict[int, zdo.ZDO | zigpy.endpoint.Endpoint] = {0: self.zdo}
+
+        self.lqi: int | None = None
+        self.rssi: int | None = None
+        self._last_seen: datetime | None = None
 
         # Persist the original signature for the device, before quirks are applied
         self._original_signature: dict[str, Any] | None = None
 
-        self.lqi: int | None = None
-        self.rssi: int | None = None
+        self._on_remove_callbacks: list[typing.Callable[[], None]] = []
+        self._tasks: set[asyncio.Future[Any]] = set()
+
+    def on_remove(self) -> None:
+        """Call on remove callbacks."""
+        for callback in self._on_remove_callbacks:
+            callback()
+
+        self._on_remove_callbacks.clear()
+
+        for task in self._tasks:
+            task.cancel()
+
+        self._tasks.clear()
+
+    def radio_details(self, lqi: int | None = None, rssi: int | None = None) -> None:
+        """Set the link quality and signal strength of the last received packet."""
+        warnings.warn(
+            "`radio_details` is deprecated, assign to `lqi` and `rssi` instead",
+            DeprecationWarning,
+        )
+
+        if lqi is not None:
+            self.lqi = lqi
+
+        if rssi is not None:
+            self.rssi = rssi
+
+    def update_last_seen(self) -> None:
+        """Update the `last_seen` attribute to the current time and emit an event."""
+        warnings.warn(
+            "Calling `update_last_seen` directly is deprecated", DeprecationWarning
+        )
+        self.last_seen = datetime.now(UTC)
+
+    @property
+    def last_seen(self) -> float | None:
+        return self._last_seen.timestamp() if self._last_seen is not None else None
+
+    @last_seen.setter
+    def last_seen(self, value: datetime | float | None):
+        if isinstance(value, int | float):
+            value = datetime.fromtimestamp(value, UTC)
+
+        self._last_seen = value
+        self.listener_event("device_last_seen_updated", self._last_seen)
+
+    @property
+    def application(self) -> ControllerApplication:
+        return self._application
+
+    @property
+    def ieee(self) -> t.EUI64:
+        return self._ieee
+
+    @property
+    def original_signature(self) -> dict[str, Any] | None:
+        return self._original_signature
+
+    @original_signature.setter
+    def original_signature(self, value: dict[str, Any] | None) -> None:
+        if self._original_signature is not None:
+            return
+
+        self._original_signature = value
+
+    def get_signature(self) -> dict[str, Any]:
+        raise NotImplementedError
+
+    @property
+    def name(self) -> str:
+        raise NotImplementedError
+
+    @property
+    def is_initialized(self) -> bool:
+        raise NotImplementedError
+
+    @property
+    def manufacturer_id(self) -> int | None:
+        raise NotImplementedError
+
+    async def reinterview(self) -> None:
+        raise NotImplementedError
+
+
+class GreenPowerDevice(BaseDevice):
+    """A Green Power Device (GPD)."""
+
+    def __init__(
+        self,
+        application: ControllerApplication,
+        *,
+        application_id: ApplicationID,
+        src_id: SrcID | None = None,
+        ieee: t.EUI64 | None = None,
+    ) -> None:
+        if application_id is ApplicationID.SrcID:
+            if src_id is None:
+                raise ValueError("`src_id` is required with SrcID addressing")
+
+            ieee = synthetic_ieee(src_id)
+            gpd_id = src_id
+        else:
+            if ieee is None:
+                raise ValueError("`ieee` is required with IEEE addressing")
+
+            gpd_id = ieee
+
+        # The alias is the NWK address the GPD occupies on the air: proxies send on
+        # its behalf using it as the NWK source address (spec A.3.6.3.3). Distinct
+        # GPD IDs can derive the same alias; the spec tolerates the collision.
+        super().__init__(application, ieee, derive_alias(gpd_id))
+
+        self.application_id = application_id
+        self._src_id = src_id
+
+        # Commissioning-derived signature (the quirk match input). All optional:
+        # cheap GPDs commonly advertise only `device_id`.
+        self.device_id: DeviceID | None = None  # GPD device type
+        self.gpd_manufacturer_id: t.uint16_t | None = None
+        self.gpd_model_id: t.uint16_t | None = None
+        self.commands: list[GPDCommandID] = []
+        self.server_cluster_ids: list[t.uint16_t] = []
+        self.client_cluster_ids: list[t.uint16_t] = []
+
+        # The only application description a `GenericSwitch` sends
+        self.switch_configuration: GPGenericSwitchConfiguration | None = None
+
+        # Whether the GPD uses an incremental (rather than random) MAC sequence number
+        self.mac_seq_num_capability: bool = False
+
+        # Whether the GPD can receive after transmitting, and whether it is stationary
+        self.rx_on_capability: bool = False
+        self.fixed_location: bool = False
+
+        # Security material for decoding subsequent data frames.
+        self.security_key: t.KeyData | None = None
+        self.security_key_type: SecurityKeyType | None = None
+        self.security_level: SecurityLevel | None = None
+        self.frame_counter: t.uint32_t | None = None
+
+    @classmethod
+    def from_commissioning(
+        cls,
+        application: ControllerApplication,
+        packet: t.ZigbeeGpPacket,
+        commissioning: GPCommissioningPayload,
+        *,
+        security_level: SecurityLevel,
+        security_key_type: SecurityKeyType,
+        security_key: t.KeyData | None,
+    ) -> Self:
+        """Create a GPD from its Commissioning GPDF (0xE0)."""
+        assert packet.src_id is not None
+
+        device = cls(
+            application, application_id=ApplicationID.SrcID, src_id=packet.src_id
+        )
+        device.device_id = commissioning.device_id
+        device.gpd_manufacturer_id = commissioning.manufacturer_id
+        device.gpd_model_id = commissioning.model_id
+        device.commands = [
+            GPDCommandID(cmd) for cmd in commissioning.gpd_commands or []
+        ]
+        device.server_cluster_ids = list(commissioning.server_clusters or [])
+        device.client_cluster_ids = list(commissioning.client_clusters or [])
+
+        if commissioning.switch_information is not None:
+            device.switch_configuration = commissioning.switch_information.configuration
+
+        device.mac_seq_num_capability = bool(
+            commissioning.options.mac_seq_num_capability
+        )
+        device.rx_on_capability = bool(commissioning.options.rx_on_capability)
+        device.fixed_location = bool(commissioning.options.fixed_location)
+        device.security_key = security_key
+        device.security_key_type = security_key_type
+        device.security_level = security_level
+        # An unprotected GPD has no security frame counter, the GPDF carries its MAC
+        # sequence number instead. An outgoing counter it still sends is ignored
+        # (A.4.2.1.1.3).
+        device.frame_counter = (
+            commissioning.outgoing_counter
+            if security_level != SecurityLevel.NoSecurity
+            else packet.frame_counter
+        )
+
+        # The commissioning GPDF is the latest reception from the GPD
+        device.last_seen = packet.timestamp
+        device.lqi = packet.lqi
+        device.rssi = packet.rssi
+
+        return device
+
+    @property
+    def src_id(self) -> SrcID | None:
+        """The 32-bit GPD SrcID, or None for IEEE-addressed GPDs."""
+        return self._src_id
+
+    @property
+    def manufacturer_id(self) -> int | None:
+        return self.gpd_manufacturer_id
+
+    @property
+    def is_initialized(self) -> bool:
+        """Commissioning fully describes a GPD, there is no separate interview."""
+        return True
+
+    async def reinterview(self) -> None:
+        """A GPD cannot be queried, so there is nothing to re-interview."""
+
+    def get_signature(self) -> dict[str, Any]:
+        return {
+            "application_id": self.application_id,
+            "src_id": self._src_id,
+            "device_id": self.device_id,
+            "manufacturer_id": self.gpd_manufacturer_id,
+            "model_id": self.gpd_model_id,
+            "commands": list(self.commands),
+            "server_cluster_ids": list(self.server_cluster_ids),
+            "client_cluster_ids": list(self.client_cluster_ids),
+            "switch_configuration": self.switch_configuration,
+            "mac_seq_num_capability": self.mac_seq_num_capability,
+        }
+
+    @property
+    def name(self) -> str:
+        if self.application_id is ApplicationID.SrcID:
+            return f"GreenPowerDevice 0x{self._src_id:08X}"
+
+        return f"GreenPowerDevice {self._ieee}"
+
+    def __repr__(self) -> str:
+        return (
+            f"<"
+            f"{type(self).__name__}"
+            f" application_id={self.application_id!r}"
+            f" src_id={self.src_id!r}"
+            f" ieee={self.ieee!r}"
+            f" device_id={self.device_id!r}"
+            f" nwk={self.nwk!r}"
+            f">"
+        )
+
+    def log(self, lvl: int, msg: str, *args, **kwargs) -> None:
+        msg = "[%s] " + msg
+        args = (self.name, *args)
+        LOGGER.log(lvl, msg, *args, **kwargs)
+
+    def _is_packet_duplicate(self, packet: t.ZigbeeGpPacket) -> bool:
+        if self.frame_counter is None or packet.frame_counter is None:
+            return False
+
+        if packet.security_level in (
+            SecurityLevel.FullFrameCounterAndMIC,
+            SecurityLevel.Encrypted,
+        ):
+            # The security frame counter increments monotonically over the GPD's
+            # lifetime, so anything at or below the last value is a replay
+            return packet.frame_counter <= self.frame_counter
+
+        # Unprotected GPDFs carry the 8-bit MAC sequence number instead, which both
+        # wraps and may be random: only an identical value shortly after the last
+        # frame counts as the same GPDF forwarded again
+        return (
+            packet.frame_counter == self.frame_counter
+            and self._last_seen is not None
+            and ((packet.timestamp - self._last_seen) < GP_DUPLICATE_TIMEOUT)
+        )
+
+    def _process_security(self, packet: t.ZigbeeGpPacket) -> t.ZigbeeGpPacket:
+        """Verify and decrypt a protected GPDF that the radio did not process."""
+        assert packet.application_id is ApplicationID.SrcID
+        assert packet.src_id is not None
+        assert packet.frame_counter is not None
+        assert packet.command_id is not None
+        assert packet.mic is not None
+        assert packet.individual_key is not None
+        assert packet.auto_commissioning is not None
+        assert packet.rx_after_tx is not None
+
+        # Without the commissioned key, or with another level or kind of key than the
+        # commissioned one, the GPDF is dropped (spec A.3.7.3.1.2, Table 12)
+        if (
+            self.security_key is None
+            or packet.security_level != self.security_level
+            or packet.individual_key
+            != (
+                self.security_key_type
+                in (SecurityKeyType.IndividualKey, SecurityKeyType.DerivedIndividual)
+            )
+        ):
+            return packet.replace(security_status=SecurityStatus.AuthFailure)
+
+        header = build_gpdf_header(
+            packet.src_id,
+            packet.frame_counter,
+            security_level=packet.security_level,
+            individual_key=packet.individual_key,
+            auto_commissioning=packet.auto_commissioning,
+            rx_after_tx=packet.rx_after_tx,
+        )
+
+        # AES-CCM over a GPDF takes ~20 us on a CM4. Offloading it to an executor
+        # would cost ~200 us for the thread handoff alone, mostly on the event loop
+        # itself.
+        try:
+            plaintext = decrypt_payload(
+                packet.src_id,
+                packet.frame_counter,
+                self.security_key.serialize(),
+                bytes([packet.command_id]) + packet.payload.serialize(),
+                packet.mic.serialize(),
+                header=header,
+                security_level=packet.security_level,
+            )
+        except InvalidTag:
+            return packet.replace(security_status=SecurityStatus.AuthFailure)
+
+        return packet.replace(
+            command_id=GPDCommandID(plaintext[0]),
+            payload=t.SerializableBytes(plaintext[1:]),
+            security_key_type=self.security_key_type,
+            security_status=SecurityStatus.SecuritySuccess,
+        )
+
+    def packet_received(self, packet: t.ZigbeeGpPacket) -> None:
+        """Process a decoded GPDF, decrypting it if the radio did not."""
+
+        if packet.security_status is SecurityStatus.Unprocessed:
+            packet = self._process_security(packet)
+
+        # Only frames with status NO_SECURITY or SECURITY_SUCCESS are delivered (spec
+        # A.3.5.2.5)
+        if packet.security_status not in (
+            None,
+            SecurityStatus.NoSecurity,
+            SecurityStatus.SecuritySuccess,
+        ):
+            self.debug(
+                "Dropping packet that failed security processing: %s",
+                packet.security_status,
+            )
+            return
+
+        # The frame's security level and key type must match the commissioned values
+        # or it is silently dropped. Checked before anything is stored, so that an
+        # unprotected frame cannot reset the anti-replay counter (spec A.3.5.2.4)
+        if self.security_level is not None and (
+            packet.security_level != self.security_level
+            or packet.security_key_type != self.security_key_type
+        ):
+            self.debug("Dropping packet with mismatched security parameters")
+            return
+
+        # A GP device's packets can be relayed by multiple routers so the same GPDF can
+        # be received multiple times, without indicating any new liveness from the
+        # device: duplicates and replays must not refresh `last_seen`, the link
+        # metrics, or the duplicate window itself
+        if self._is_packet_duplicate(packet):
+            self.debug("Filtering duplicate packet")
+            return
+
+        self.last_seen = packet.timestamp
+
+        if packet.lqi is not None:
+            self.lqi = packet.lqi
+
+        if packet.rssi is not None:
+            self.rssi = packet.rssi
+
+        if packet.frame_counter is not None:
+            self.frame_counter = packet.frame_counter
+
+        # A Decommissioning command is only acted upon once it passes the freshness and
+        # security checks above (spec A.3.5.2.4)
+        if packet.command_id == GPDCommandID.DecommissioningRequest:
+            self._application.green_power.decommission(self)
+            return
+
+        # As is a Success command, which finishes bidirectional commissioning (spec
+        # A.3.9.1 step 18.b)
+        if packet.command_id == GPDCommandID.SuccessReport:
+            self._application.green_power.commissioning_succeeded(self)
+            return
+
+        command: t.Struct | None
+
+        if packet.command_id in GPD_COMMAND_SCHEMAS:
+            schema = GPD_COMMAND_SCHEMAS[packet.command_id]
+
+            try:
+                command, _ = schema.deserialize(packet.payload.serialize())
+            except Exception:  # noqa: BLE001
+                self.debug("Failed to parse GPDF payload %r", packet, exc_info=True)
+                command = None
+        else:
+            self.debug(
+                "No schema for GPD command %s, dropping payload", packet.command_id
+            )
+            command = None
+
+        self.emit(
+            GreenPowerCommandReceived.event_type,
+            GreenPowerCommandReceived(
+                device_ieee=str(self.ieee),
+                endpoint_id=packet.endpoint,
+                command_id=packet.command_id,
+                command=command,
+            ),
+        )
+
+
+class ZigbeeDevice(BaseDevice):
+    """A conventional Zigbee device on the network."""
+
+    manufacturer_id_override = None
+
+    def __init__(self, application: ControllerApplication, ieee: t.EUI64, nwk: t.NWK):
+        super().__init__(application, ieee, nwk)
+        self.zdo: zdo.ZDO = zdo.ZDO(self)
+        self.endpoints: dict[int, zdo.ZDO | zigpy.endpoint.Endpoint] = {0: self.zdo}
+
         self.ota_in_progress: bool = False
-        self._last_seen: datetime | None = None
 
         self._initialize_task: asyncio.Task | None = None
         self._reinterview_in_progress: bool = False
         self._group_scan_task: asyncio.Task | None = None
         self._fast_polling_reset_task: asyncio.Task | None = None
 
-        self._listeners = {}
         self._manufacturer: str | None = None
         self._model: str | None = None
         self.node_desc: zdo_t.NodeDescriptor | None = None
@@ -115,8 +573,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._send_sequence: int = 0
 
         self._fast_polling = False
-        self._on_remove_callbacks: list[typing.Callable[[], None]] = []
-        self._tasks: set[asyncio.Future[Any]] = set()
 
         self._packet_debouncer = zigpy.datastructures.Debouncer()
         self._concurrent_requests_semaphore = zigpy.datastructures.RequestLimiter(
@@ -138,30 +594,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 callback=self.poll_control_checkin_callback,
             )
         )
-
-    def create_task(
-        self, target: Coroutine[Any, Any, _R], name: str | None = None
-    ) -> asyncio.Task[_R]:
-        """Create a task and store a reference to it until the task completes.
-
-        target: target to call.
-        """
-        task = asyncio.get_running_loop().create_task(target, name=name)
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.remove)
-        return task
-
-    def on_remove(self) -> None:
-        """Call on remove callbacks."""
-        for callback in self._on_remove_callbacks:
-            callback()
-
-        self._on_remove_callbacks.clear()
-
-        for task in self._tasks:
-            task.cancel()
-
-        self._tasks.clear()
 
     @contextlib.asynccontextmanager
     async def _limit_concurrency(self, *, priority: int | None = None):
@@ -208,27 +640,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     @property
     def name(self) -> str:
         return f"0x{self.nwk:04X}"
-
-    def update_last_seen(self) -> None:
-        """Update the `last_seen` attribute to the current time and emit an event."""
-
-        warnings.warn(
-            "Calling `update_last_seen` directly is deprecated", DeprecationWarning
-        )
-
-        self.last_seen = datetime.now(UTC)
-
-    @property
-    def last_seen(self) -> float | None:
-        return self._last_seen.timestamp() if self._last_seen is not None else None
-
-    @last_seen.setter
-    def last_seen(self, value: datetime | float | None):
-        if isinstance(value, int | float):
-            value = datetime.fromtimestamp(value, UTC)
-
-        self._last_seen = value
-        self.listener_event("device_last_seen_updated", self._last_seen)
 
     @property
     def non_zdo_endpoints(self) -> list[zigpy.endpoint.Endpoint]:
@@ -322,7 +733,7 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         self._reinterview_in_progress = True
 
         try:
-            shadow = Device(self._application, self._ieee, self.nwk)
+            shadow = ZigbeeDevice(self._application, self._ieee, self.nwk)
             shadow._reinterview_in_progress = True  # prevent auto-initialization
 
             # Temporarily register the shadow in app.devices so it receives
@@ -531,6 +942,12 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
 
             for ep in self.non_zdo_endpoints:
                 await ep.initialize()
+
+                # Some devices list endpoints as active but have no simple descriptor
+                if ep.status == zigpy.endpoint.Status.ENDPOINT_INACTIVE:
+                    self.info("Removing inactive endpoint %s", ep.endpoint_id)
+                    del self.endpoints[ep.endpoint_id]
+                    continue
 
                 if not initiated_fast_polling:
                     # Ask the device to enter fast polling mode as soon as we are
@@ -1085,24 +1502,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                     return cluster.last_query_cmd
         return None
 
-    def radio_details(self, lqi=None, rssi=None) -> None:
-        if lqi is not None:
-            self.lqi = lqi
-        if rssi is not None:
-            self.rssi = rssi
-
     def log(self, lvl, msg, *args, **kwargs) -> None:
         msg = "[0x%04x] " + msg
         args = (self.nwk, *args)
         LOGGER.log(lvl, msg, *args, **kwargs)
-
-    @property
-    def application(self) -> ControllerApplication:
-        return self._application
-
-    @property
-    def ieee(self) -> t.EUI64:
-        return self._ieee
 
     @property
     def manufacturer(self) -> str | None:
@@ -1133,17 +1536,6 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self._model = value
 
     @property
-    def original_signature(self) -> dict[str, Any] | None:
-        return self._original_signature
-
-    @original_signature.setter
-    def original_signature(self, value: dict[str, Any] | None) -> None:
-        if self._original_signature is not None:
-            return
-
-        self._original_signature = value
-
-    @property
     def skip_configuration(self) -> bool:
         return self._skip_configuration
 
@@ -1172,9 +1564,9 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     def __getitem__(self, key):
         return self.endpoints[key]
 
-    def clone(self) -> Device:
+    def clone(self) -> ZigbeeDevice:
         """Return a detached copy of this device for independent modification."""
-        new = Device(self.application, self.ieee, self.nwk)
+        new = ZigbeeDevice(self.application, self.ieee, self.nwk)
         new.lqi = self.lqi
         new.rssi = self.rssi
         new.last_seen = self.last_seen
@@ -1246,6 +1638,10 @@ class Device(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             f" is_initialized={self.is_initialized}"
             f">"
         )
+
+
+# Backwards-compatible alias
+Device = ZigbeeDevice
 
 
 async def broadcast(

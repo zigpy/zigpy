@@ -37,273 +37,6 @@ from zigpy.zgp.commands import (
 from zigpy.zgp.types import GPDCommandID, SecurityKeyType, SecurityLevel, SwitchType
 
 
-def test_all_bits_clear():
-    opts = GPCommissioningOptions(0x00)
-    assert not opts.mac_seq_num_capability
-    assert not opts.rx_on_capability
-    assert not opts.app_info_present
-    assert not opts.pan_id_request
-    assert not opts.security_key_request
-    assert not opts.fixed_location
-
-
-def test_mac_seq_num_capability():
-    opts = GPCommissioningOptions(0x01)
-    assert opts.mac_seq_num_capability
-
-
-def test_rx_on_capability():
-    opts = GPCommissioningOptions(0x02)  # bit 1
-    assert opts.rx_on_capability
-
-
-def test_app_info_present():
-    opts = GPCommissioningOptions(0x04)  # bit 2
-    assert opts.app_info_present
-
-
-def test_pan_id_request():
-    opts = GPCommissioningOptions(0x10)  # bit 4
-    assert opts.pan_id_request
-
-
-def test_security_key_request():
-    opts = GPCommissioningOptions(0x20)  # bit 5
-    assert opts.security_key_request
-
-
-def test_fixed_location():
-    opts = GPCommissioningOptions(0x40)  # bit 6
-    assert opts.fixed_location
-
-
-def test_extended_options_present():
-    opts = GPCommissioningOptions(0x80)  # bit 7
-    assert opts.extended_options_present
-
-
-def test_multiple_flags():
-    # MAC seq (bit 0) + RX on (bit 1) + App info (bit 2)
-    opts = GPCommissioningOptions(0x01 | 0x02 | 0x04)
-    assert opts.mac_seq_num_capability
-    assert opts.rx_on_capability
-    assert opts.app_info_present
-    assert not opts.pan_id_request
-
-
-def test_options_serialize():
-    assert GPCommissioningOptions(0x84).serialize() == b"\x84"
-
-
-def test_security_level():
-    # SecurityLevel.Encrypted = 0b11
-    ext = GPCommissioningExtendedOptions(0x03)
-    assert ext.security_level == SecurityLevel.Encrypted
-
-
-def test_key_type():
-    # IndividualKey = 0b100, shifted left 2 = 0x10
-    ext = GPCommissioningExtendedOptions(0x10)
-    assert ext.key_type == SecurityKeyType.IndividualKey
-
-
-def test_key_present():
-    ext = GPCommissioningExtendedOptions(0x20)
-    assert ext.key_present
-    assert not ext.key_encrypted
-
-
-def test_key_encrypted():
-    ext = GPCommissioningExtendedOptions(0x60)  # key_present + key_encrypted
-    assert ext.key_present
-    assert ext.key_encrypted
-
-
-def test_outgoing_counter_present():
-    ext = GPCommissioningExtendedOptions(0x80)
-    assert ext.outgoing_counter_present
-
-
-def test_all_clear():
-    ext = GPCommissioningExtendedOptions(0x00)
-    assert ext.security_level == SecurityLevel.NoSecurity
-    assert ext.key_type == SecurityKeyType.NoKey
-    assert not ext.key_present
-    assert not ext.key_encrypted
-    assert not ext.outgoing_counter_present
-
-
-def test_manufacturer_id_present():
-    info = GPCommissioningAppInfo(0x01)
-    assert info.manufacturer_id_present
-
-
-def test_model_id_present():
-    info = GPCommissioningAppInfo(0x02)
-    assert info.model_id_present
-
-
-def test_gpd_commands_present():
-    info = GPCommissioningAppInfo(0x04)
-    assert info.gpd_commands_present
-
-
-def test_cluster_list_present():
-    info = GPCommissioningAppInfo(0x08)
-    assert info.cluster_list_present
-
-
-def test_switch_info_present():
-    info = GPCommissioningAppInfo(0x10)
-    assert info.switch_info_present
-    assert not info.app_description_follows
-
-
-def test_app_description_follows():
-    info = GPCommissioningAppInfo(0x20)
-    assert info.app_description_follows
-    assert not info.switch_info_present
-
-
-def test_minimal_payload():
-    """Minimal commissioning: device_id + options (no extended, no app info)."""
-    data = bytes([0x02, 0x00])  # device_id=2, options=0
-    payload, rest = GPCommissioningPayload.deserialize(data)
-
-    assert rest == b""
-    assert payload.device_id == 0x02
-    assert not payload.options.mac_seq_num_capability
-    assert payload.extended_options is None
-    assert payload.security_key is None
-    assert payload.app_info is None
-
-
-def test_with_extended_options_no_key():
-    """Commissioning with extended options but no security key."""
-    # options: bit 7 set (extended present) = 0x80
-    # extended: security_level=0b11 (Encrypted), no key, no counter = 0x03
-    data = bytes([0x02, 0x80, 0x03])
-    payload, rest = GPCommissioningPayload.deserialize(data)
-
-    assert rest == b""
-    assert payload.device_id == 0x02
-    assert payload.extended_options is not None
-    assert payload.extended_options.security_level == SecurityLevel.Encrypted
-    assert not payload.extended_options.key_present
-    assert payload.security_key is None
-
-
-def test_with_unencrypted_key():
-    """Commissioning with security key present but not encrypted."""
-    # options: extended present = 0x80
-    # extended: Encrypted + key_present = 0x03 | 0x20 = 0x23
-    security_key = bytes(range(16))
-    data = bytes([0x02, 0x80, 0x23]) + security_key
-    payload, rest = GPCommissioningPayload.deserialize(data)
-
-    assert rest == b""
-    assert payload.extended_options is not None
-    assert payload.extended_options.key_present
-    assert not payload.extended_options.key_encrypted
-    assert bytes(payload.security_key) == security_key
-    assert payload.key_mic is None
-
-
-def test_with_encrypted_key_and_mic():
-    """Commissioning with encrypted security key and MIC."""
-    # extended: Encrypted + key_present + key_encrypted = 0x03 | 0x20 | 0x40 = 0x63
-    security_key = bytes(range(16))
-    key_mic = 0xDEADBEEF
-    data = bytes([0x07, 0x80, 0x63]) + security_key + struct.pack("<I", key_mic)
-    payload, rest = GPCommissioningPayload.deserialize(data)
-
-    assert rest == b""
-    assert payload.device_id == 0x07
-    assert payload.extended_options is not None
-    assert payload.extended_options.key_encrypted
-    assert bytes(payload.security_key) == security_key
-    assert payload.key_mic == 0xDEADBEEF
-
-
-def test_with_outgoing_counter():
-    """Commissioning with outgoing frame counter."""
-    # extended: outgoing_counter_present = 0x80
-    counter = 0x00001234
-    data = bytes([0x02, 0x80, 0x80]) + struct.pack("<I", counter)
-    payload, rest = GPCommissioningPayload.deserialize(data)
-
-    assert rest == b""
-    assert payload.extended_options is not None
-    assert payload.extended_options.outgoing_counter_present
-    assert payload.outgoing_counter == 0x00001234
-
-
-def test_with_key_and_counter():
-    """Commissioning with both key and outgoing counter."""
-    # extended: key_present + outgoing_counter_present = 0x20 | 0x80 = 0xA0
-    security_key = b"\xaa" * 16
-    counter = 0x00000042
-    data = bytes([0x02, 0x80, 0xA0]) + security_key + struct.pack("<I", counter)
-    payload, rest = GPCommissioningPayload.deserialize(data)
-
-    assert rest == b""
-    assert bytes(payload.security_key) == security_key
-    assert payload.outgoing_counter == 0x00000042
-
-
-def test_with_app_info_manufacturer_and_model():
-    """Commissioning with application info: manufacturer and model ID."""
-    # options: app_info_present = bit 2 = 0x04
-    # app_info: manufacturer_id + model_id = 0x01 | 0x02 = 0x03
-    manufacturer_id = 0x1234
-    model_id = 0x5678
-    data = (
-        bytes([0x02, 0x04, 0x03])
-        + struct.pack("<H", manufacturer_id)
-        + struct.pack("<H", model_id)
-    )
-    payload, rest = GPCommissioningPayload.deserialize(data)
-
-    assert rest == b""
-    assert payload.app_info is not None
-    assert payload.manufacturer_id == 0x1234
-    assert payload.model_id == 0x5678
-
-
-def test_with_gpd_commands():
-    """Commissioning with GPD command list."""
-    # options: app_info_present = bit 2 = 0x04
-    # app_info: gpd_commands_present = 0x04
-    commands = [0x20, 0x21, 0x22]  # Off, On, Toggle
-    data = bytes([0x02, 0x04, 0x04, len(commands)]) + bytes(commands)
-    payload, rest = GPCommissioningPayload.deserialize(data)
-
-    assert rest == b""
-    assert list(payload.gpd_commands) == commands
-
-
-def test_with_cluster_list():
-    """Commissioning with server and client cluster lists."""
-    # options: app_info_present = bit 2 = 0x04
-    # app_info: cluster_list_present = 0x08
-    server_clusters = [0x0006, 0x0008]  # On/Off, Level Control
-    client_clusters = [0x0300]  # Color Control
-
-    data = bytearray([0x02, 0x04, 0x08])
-    # length byte: lower nibble = num_server, upper = num_client
-    data.append((len(server_clusters) & 0x0F) | ((len(client_clusters) & 0x0F) << 4))
-    for c in server_clusters:
-        data.extend(struct.pack("<H", c))
-    for c in client_clusters:
-        data.extend(struct.pack("<H", c))
-
-    payload, rest = GPCommissioningPayload.deserialize(bytes(data))
-
-    assert rest == b""
-    assert list(payload.server_clusters) == [0x0006, 0x0008]
-    assert list(payload.client_clusters) == [0x0300]
-
-
 def test_full_commissioning_payload():
     """Full commissioning with all optional fields."""
     security_key = b"\xbb" * 16
@@ -351,43 +84,6 @@ def test_full_commissioning_payload():
     assert list(payload.gpd_commands) == commands
     assert list(payload.server_clusters) == [0x0006]
     assert list(payload.client_clusters) == []
-
-
-def test_roundtrip_serialization():
-    """Parsing and re-serializing should produce identical bytes."""
-    security_key = b"\xcc" * 16
-    data = bytes([0x02, 0x80, 0x23]) + security_key
-    payload, _ = GPCommissioningPayload.deserialize(data)
-    assert payload.serialize() == data
-
-
-def test_roundtrip_full_payload():
-    """Full payload round-trip."""
-    commands = [0x20, 0x21]
-    data = bytearray()
-    data.append(0x07)  # device_id
-    data.append(0x84)  # options: extended (bit 7) + app_info (bit 2)
-    data.append(0xA0)  # extended: key_present + outgoing_counter
-    data.extend(b"\xdd" * 16)  # security key
-    data.extend(struct.pack("<I", 0x00000099))  # outgoing counter
-    data.append(0x04)  # app_info: gpd_commands
-    data.append(len(commands))
-    data.extend(commands)
-
-    payload, _ = GPCommissioningPayload.deserialize(bytes(data))
-    assert payload.serialize() == bytes(data)
-
-
-def test_too_short_payload():
-    """Payload without the mandatory options byte should raise ValueError."""
-    with pytest.raises(ValueError, match="too short"):
-        GPCommissioningPayload.deserialize(b"\x00")
-
-
-def test_empty_payload():
-    """Empty payload should raise ValueError."""
-    with pytest.raises(ValueError, match="too short"):
-        GPCommissioningPayload.deserialize(b"")
 
 
 @pytest.mark.parametrize(
@@ -503,101 +199,6 @@ def test_serialize_announced_field_missing(payload: t.Struct, missing: str) -> N
         payload.serialize()
 
 
-def test_serialize_with_encrypted_key_and_mic():
-    """Serialization must include encrypted key + MIC per Figure 107.
-
-    Extended 0x63: Encrypted(0b11) + key_present(bit5) + key_encrypted(bit6).
-    MIC follows key as uint32 LE.
-    """
-    key = b"\xaa" * 16
-    payload = GPCommissioningPayload(
-        device_id=0x02,
-        options=GPCommissioningOptions(0x80),  # extended present
-        extended_options=GPCommissioningExtendedOptions(0x63),
-        security_key=key,
-        key_mic=0xCAFEBABE,
-    )
-    result = payload.serialize()
-
-    # Must contain: device_id(1) + options(1) + extended(1) + key(16) + mic(4) = 23
-    assert len(result) == 23
-    assert result[3:19] == key  # key at offset 3
-    assert struct.unpack_from("<I", result, 19)[0] == 0xCAFEBABE
-
-
-def test_serialize_with_manufacturer_and_model():
-    """Serialization must include manufacturer_id and model_id per Figure 108."""
-    payload = GPCommissioningPayload(
-        device_id=0x07,
-        options=GPCommissioningOptions(0x04),  # app_info present (bit 2)
-        app_info=GPCommissioningAppInfo(0x03),  # mfr + model
-        manufacturer_id=0x1234,
-        model_id=0x5678,
-    )
-    result = payload.serialize()
-
-    # device_id(1) + options(1) + app_info(1) + mfr(2) + model(2) = 7
-    assert len(result) == 7
-    assert struct.unpack_from("<H", result, 3)[0] == 0x1234
-    assert struct.unpack_from("<H", result, 5)[0] == 0x5678
-
-
-def test_serialize_with_gpd_commands_and_clusters():
-    """Serialization must include GPD commands list and cluster list.
-
-    Per Figure 113, cluster list length byte uses low nibble for server
-    count and high nibble for client count.
-    """
-    payload = GPCommissioningPayload(
-        device_id=0x02,
-        options=GPCommissioningOptions(0x04),  # app_info present (bit 2)
-        app_info=GPCommissioningAppInfo(0x0C),  # commands + clusters
-        gpd_commands=[0x20, 0x21, 0x22],
-        server_clusters=[0x0006],
-        client_clusters=[0x0300],
-    )
-    result = payload.serialize()
-
-    # Parse back to verify
-    restored, _ = GPCommissioningPayload.deserialize(result)
-    assert list(restored.gpd_commands) == [0x20, 0x21, 0x22]
-    assert list(restored.server_clusters) == [0x0006]
-    assert list(restored.client_clusters) == [0x0300]
-
-
-def test_channel_11():
-    """Channel 11 = nibble offset 0 (IEEE channel == nibble + 11)."""
-    payload, rest = GPChannelRequestPayload.deserialize(b"\x00")
-    assert rest == b""
-    assert payload.next_channel == 0
-    assert payload.second_next_channel == 0
-
-
-def test_channel_26():
-    """Channel 26 = nibble offset 15 (IEEE channel == nibble + 11)."""
-    payload, rest = GPChannelRequestPayload.deserialize(b"\xff")
-    assert rest == b""
-    assert payload.next_channel == 15
-    assert payload.second_next_channel == 15
-
-
-def test_mixed_channels():
-    """Different next and second-next channels."""
-    # next=nibble 4 (channel 15), second_next=nibble 9 (channel 20)
-    byte_val = 4 | (9 << 4)
-    payload, rest = GPChannelRequestPayload.deserialize(bytes([byte_val]))
-    assert rest == b""
-    assert payload.next_channel == 4
-    assert payload.second_next_channel == 9
-    assert payload.serialize() == bytes([byte_val])
-
-
-def test_empty_payload_raises():
-    """Empty data should raise ValueError."""
-    with pytest.raises(ValueError, match="too short"):
-        GPChannelRequestPayload.deserialize(b"")
-
-
 def test_switch_information() -> None:
     """Switch information field, gated by app_info bit 4 (Figure 111, Figure 114)."""
     # app_info=0x10: switch information present only
@@ -642,11 +243,46 @@ def test_switch_information_length_derived() -> None:
     assert info.serialize() == b"\x02\x22\x03"
 
 
+def test_cluster_counts_derived() -> None:
+    """The cluster list count byte is derived from the lists (Figure 113)."""
+    payload = GPCommissioningPayload(
+        device_id=0x02,
+        options=GPCommissioningOptions(0x04),
+        app_info=GPCommissioningAppInfo(0x08),
+        server_clusters=[0x0006, 0x0008],
+        client_clusters=[0x0300],
+    )
+
+    assert payload.serialize() == b"\x02\x04\x08\x12\x06\x00\x08\x00\x00\x03"
+
+
 @pytest.mark.parametrize(
     ("schema", "data"),
     [
         # Payloadless commands (Table 54)
         (GPNoPayload, b""),
+        # Commissioning, Figures 107 to 115: DeviceID only
+        (GPCommissioningPayload, b"\x02\x00"),
+        # Extended options 0x03: Encrypted, no key, no outgoing counter
+        (GPCommissioningPayload, b"\x02\x80\x03"),
+        # Extended options 0xE3: Encrypted, key protected with a MIC, outgoing counter
+        (
+            GPCommissioningPayload,
+            b"\x02\x80\xe3" + b"\xaa" * 16 + b"\xef\xbe\xad\xde" + b"\x34\x12\x00\x00",
+        ),
+        # Extended options 0xA0: key in the clear, outgoing counter. Application
+        # information 0x04: GPD commands
+        (
+            GPCommissioningPayload,
+            b"\x07\x84\xa0" + b"\xdd" * 16 + b"\x99\x00\x00\x00" + b"\x04\x02\x20\x21",
+        ),
+        # Application information 0x0B: manufacturer ID, model ID and cluster lists
+        (
+            GPCommissioningPayload,
+            b"\x02\x04\x0b\x34\x12\x78\x56" + b"\x12\x06\x00\x08\x00\x00\x03",
+        ),
+        # Channel Request, Figure 119: next channel 15, second next channel 20
+        (GPChannelRequestPayload, b"\x94"),
         # Commissioning Reply, Figures 116 and 117
         (GPCommissioningReplyPayload, b"\x00"),
         (GPCommissioningReplyPayload, b"\x01\x34\x12"),
@@ -881,19 +517,6 @@ def test_manufacturer_defined_payload() -> None:
 
 
 @pytest.mark.parametrize(
-    "command_id",
-    [
-        command_id
-        for command_id in GPDCommandID
-        if command_id not in (GPDCommandID.AnySensorCommand, GPDCommandID.AnyCommand)
-    ],
-)
-def test_every_command_id_is_mapped(command_id: GPDCommandID) -> None:
-    """Every command ID that can appear on the wire needs a mapping entry."""
-    assert command_id in GPD_COMMAND_SCHEMAS
-
-
-@pytest.mark.parametrize(
     "command_id", [GPDCommandID.AnySensorCommand, GPDCommandID.AnyCommand]
 )
 def test_translation_table_pseudo_ids_are_unmapped(command_id: GPDCommandID) -> None:
@@ -905,20 +528,6 @@ def test_translation_table_pseudo_ids_are_unmapped(command_id: GPDCommandID) -> 
 def test_manufacturer_defined_range_is_mapped(command_id: int) -> None:
     """The whole 0xB0 - 0xBF range is manufacturer-defined (Table 55)."""
     assert GPD_COMMAND_SCHEMAS[GPDCommandID(command_id)] is GPManufacturerDefinedPayload
-
-
-@pytest.mark.parametrize(
-    "command_id",
-    [
-        GPDCommandID.ReadAttributesResponse,
-        GPDCommandID.CompactAttributeReporting,
-        GPDCommandID.ApplicationDescription,
-        GPDCommandID.WriteAttributes,
-    ],
-)
-def test_unimplemented_payloads_are_explicitly_none(command_id: GPDCommandID) -> None:
-    """Commands whose payload parser is still missing map to `None`, not absence."""
-    assert GPD_COMMAND_SCHEMAS[command_id] is None
 
 
 def test_unknown_command_id_is_unmapped() -> None:

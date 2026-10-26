@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone, tzinfo
+import io
 import re
+import struct
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -11,8 +13,20 @@ import pytest
 from zigpy import device, types, zcl
 import zigpy.endpoint
 from zigpy.ota import OTA, OtaImagesResult
+from zigpy.time import TimeSnapshot, utc_periods
 from zigpy.zcl import OtaImageAvailableEvent, OtaQueryCacheUpdatedEvent, foundation
-from zigpy.zcl.clusters.general import Basic, KeepAlive, Ota, Time
+from zigpy.zcl.clusters.general import (
+    Basic,
+    CoordinateSystem,
+    KeepAlive,
+    LocationType,
+    Ota,
+    Partition,
+    PartitionAckOptions,
+    PartitionFragmentationOptions,
+    RSSILocation,
+    Time,
+)
 import zigpy.zcl.clusters.security as sec
 from zigpy.zdo import types as zdo_t
 
@@ -170,44 +184,6 @@ async def test_keepalive_cluster() -> None:
     )
 
 
-def _make_patched_datetime(fake_now):
-    """Create a PatchedDatetime class that returns `fake_now` as the current time."""
-
-    class PatchedDatetime(datetime):
-        _fake_now = fake_now
-
-        def astimezone(self):
-            return self.replace(tzinfo=self._fake_now.tzinfo)
-
-        @classmethod
-        def now(cls, tzinfo=None):
-            if tzinfo is None:
-                return cls(
-                    cls._fake_now.year,
-                    cls._fake_now.month,
-                    cls._fake_now.day,
-                    cls._fake_now.hour,
-                    cls._fake_now.minute,
-                    cls._fake_now.second,
-                )
-            else:
-                assert tzinfo is UTC
-                return (
-                    cls(
-                        cls._fake_now.year,
-                        cls._fake_now.month,
-                        cls._fake_now.day,
-                        cls._fake_now.hour,
-                        cls._fake_now.minute,
-                        cls._fake_now.second,
-                        tzinfo=tzinfo,
-                    )
-                    - cls._fake_now.utcoffset()
-                )
-
-    return PatchedDatetime
-
-
 @pytest.mark.parametrize(
     ("fake_now", "expected_utc", "expected_tz", "expected_standard", "expected_local"),
     [
@@ -240,10 +216,12 @@ def _make_patched_datetime(fake_now):
     ],
 )
 async def test_time_cluster(
-    fake_now, expected_utc, expected_tz, expected_standard, expected_local
+    fake_now, expected_utc, expected_tz, expected_standard, expected_local, app_mock
 ):
     ep = MagicMock()
     ep.reply = AsyncMock()
+    ep.device.application = app_mock
+    app_mock.local_timezone = fake_now.tzinfo
 
     cluster = Time(ep)
 
@@ -251,9 +229,8 @@ async def test_time_cluster(
         foundation.GeneralCommand.Read_Attributes_rsp
     ].schema
 
-    PatchedDatetime = _make_patched_datetime(fake_now)
-
-    with patch("zigpy.zcl.clusters.general.datetime", PatchedDatetime):
+    with patch("zigpy.zcl.clusters.general.datetime", wraps=datetime) as clock:
+        clock.now.return_value = fake_now.astimezone(UTC)
         # Supported attributes
         rsp1 = await read_attributes(
             cluster,
@@ -321,6 +298,298 @@ async def test_time_cluster(
             )
         ]
     )
+
+
+async def test_time_cluster_dst_attributes(app_mock):
+    ep = MagicMock()
+    ep.reply = AsyncMock()
+    ep.device.application = app_mock
+    cluster = Time(ep)
+
+    response = await read_attributes(cluster, [0x0003, 0x0004, 0x0005])
+
+    assert [record.status for record in response.status_records] == [
+        foundation.Status.SUCCESS,
+        foundation.Status.SUCCESS,
+        foundation.Status.SUCCESS,
+    ]
+
+
+@pytest.mark.parametrize(
+    ("zone_name", "instant", "start", "end", "shift"),
+    [
+        ("Europe/Berlin", "2026-01-15", "2026-03-29T01:00", "2026-10-25T01:00", 3600),
+        ("Europe/Berlin", "2026-07-15", "2026-03-29T01:00", "2026-10-25T01:00", 3600),
+        ("Europe/Berlin", "2026-12-15", "2027-03-28T01:00", "2027-10-31T01:00", 3600),
+        (
+            "America/Los_Angeles",
+            "2026-07-15",
+            "2026-03-08T10:00",
+            "2026-11-01T09:00",
+            3600,
+        ),
+        (
+            "Australia/Sydney",
+            "2026-01-15",
+            "2025-10-04T16:00",
+            "2026-04-04T16:00",
+            3600,
+        ),
+        (
+            "Australia/Sydney",
+            "2026-07-15",
+            "2026-10-03T16:00",
+            "2027-04-03T16:00",
+            3600,
+        ),
+        (
+            "Australia/Sydney",
+            "2026-12-15",
+            "2026-10-03T16:00",
+            "2027-04-03T16:00",
+            3600,
+        ),
+        (
+            "Australia/Lord_Howe",
+            "2026-01-15",
+            "2025-10-04T15:30",
+            "2026-04-04T15:00",
+            1800,
+        ),
+        ("Australia/Sydney", "2000-01-02", "2000-01-01", "2000-03-25T16:00", 3600),
+    ],
+)
+async def test_time_cluster_dst_period(zone_name, instant, start, end, shift, app_mock):
+    zone = ZoneInfo(zone_name)
+    now = datetime.fromisoformat(instant).replace(tzinfo=UTC)
+    ep = MagicMock()
+    ep.reply = AsyncMock()
+    ep.device.application = app_mock
+    app_mock.local_timezone = zone
+    cluster = Time(ep)
+
+    with patch("zigpy.zcl.clusters.general.datetime", wraps=datetime) as clock:
+        clock.now.return_value = now
+        response = await read_attributes(cluster, list(range(8)))
+        clock.now.assert_called_once_with(UTC)
+
+    assert all(
+        record.status == foundation.Status.SUCCESS for record in response.status_records
+    )
+    values = {record.attrid: record.value.value for record in response.status_records}
+    assert values[3] == types.UTCTime.from_datetime(
+        datetime.fromisoformat(start).replace(tzinfo=UTC)
+    )
+    assert (
+        values[4]
+        == types.UTCTime.from_datetime(datetime.fromisoformat(end).replace(tzinfo=UTC))
+        - 1
+    )
+    assert values[5] == shift
+    assert response.status_records[3].value.type == foundation.DataTypeId.uint32
+    assert response.status_records[4].value.type == foundation.DataTypeId.uint32
+    assert response.status_records[5].value.type == foundation.DataTypeId.int32
+    assert values[6] == values[0] + values[2]
+    assert values[7] == values[6] + (
+        shift if values[3] <= values[0] <= values[4] else 0
+    )
+    assert values[7] == types.UTCTime.from_datetime(
+        now + now.astimezone(zone).utcoffset()
+    )
+
+
+@pytest.mark.parametrize(
+    "zone", [UTC, timezone(timedelta(hours=5, minutes=30)), ZoneInfo("Asia/Tokyo")]
+)
+def test_snapshot_no_dst(zone):
+    now = datetime(2026, 7, 15, tzinfo=UTC)
+    values = TimeSnapshot.compute(zone, now)
+    assert values.authoritative
+    assert (values.dst_start, values.dst_end, values.dst_shift) == (
+        types.UTCTime.INVALID,
+        types.UTCTime.INVALID,
+        0,
+    )
+    assert values.standard_time == values.local_time
+    assert values.local_time == values.time + values.time_zone
+
+
+@pytest.mark.parametrize(
+    "zone_name",
+    [
+        "Europe/Berlin",
+        "Australia/Sydney",
+        "Australia/Lord_Howe",
+        "Europe/Dublin",
+        "Africa/Casablanca",
+    ],
+)
+def test_snapshot_transition_boundaries(zone_name):
+    zone = ZoneInfo(zone_name)
+    for start, end, _offset, _is_dst in utc_periods(zone, 2026):
+        for transition in (start, end):
+            for seconds in (-1, 0, 1):
+                now = types.UTCTime(transition).to_datetime() + timedelta(
+                    seconds=seconds
+                )
+                values = TimeSnapshot.compute(zone, now)
+                current_shift = values.local_time - values.standard_time
+                advertised_shift = (
+                    values.dst_shift
+                    if values.dst_start <= values.time <= values.dst_end
+                    else 0
+                )
+                assert values.authoritative
+                assert advertised_shift == current_shift
+                assert bool(current_shift) == bool(now.astimezone(zone).dst())
+                assert values.local_time == values.standard_time + current_shift
+                assert values.local_time == types.UTCTime.from_datetime(
+                    now + now.astimezone(zone).utcoffset()
+                )
+
+
+def test_utc_periods_cache():
+    utc_periods.cache_clear()
+    zone = ZoneInfo("Europe/Berlin")
+    winter = TimeSnapshot.compute(zone, datetime(2026, 1, 15, tzinfo=UTC))
+    summer = TimeSnapshot.compute(zone, datetime(2026, 7, 15, tzinfo=UTC))
+    assert winter.dst_start == summer.dst_start
+    assert winter.dst_shift == summer.dst_shift == 3600
+    assert utc_periods.cache_info().misses == 1
+    assert TimeSnapshot.compute(zone, datetime(2026, 1, 15, tzinfo=UTC)) == winter
+    TimeSnapshot.compute(zone, datetime(2027, 1, 15, tzinfo=UTC))
+    assert utc_periods.cache_info().misses == 2
+    changed = TimeSnapshot.compute(
+        ZoneInfo("Australia/Sydney"), datetime(2027, 1, 15, tzinfo=UTC)
+    )
+    assert changed.time_zone == 36000
+    assert utc_periods.cache_info().misses == 3
+
+
+def test_snapshot_equivalent_aware_datetimes():
+    zone = ZoneInfo("Europe/Berlin")
+    now = datetime(2026, 10, 25, 0, 30, tzinfo=UTC)
+
+    assert TimeSnapshot.compute(zone, now.astimezone(zone)) == TimeSnapshot.compute(
+        zone, now
+    )
+
+
+def test_snapshot_negative_dst():
+    start = datetime(2026, 3, 1, tzinfo=UTC)
+    end = datetime(2026, 6, 1, tzinfo=UTC)
+    header = b"TZif\0" + bytes(15) + struct.pack(">6I", 0, 0, 0, 3, 2, 8)
+    transitions = struct.pack(
+        ">3i",
+        int(datetime(2025, 1, 1, tzinfo=UTC).timestamp()),
+        int(start.timestamp()),
+        int(end.timestamp()),
+    )
+    offsets = struct.pack(">iBBiBB", 3600, 0, 0, 0, 1, 4)
+    zone = ZoneInfo.from_file(
+        io.BytesIO(header + transitions + b"\0\1\0" + offsets + b"STD\0DST\0")
+    )
+    now = datetime(2026, 4, 15, tzinfo=UTC)
+    values = TimeSnapshot.compute(zone, now)
+    assert values.time_zone == 3600
+    assert values.dst_shift == -3600
+    assert values.local_time == values.time
+    assert values.dst_start == types.UTCTime.from_datetime(start)
+    assert values.dst_end == types.UTCTime.from_datetime(end) - 1
+    assert types.int32s.deserialize(types.int32s(values.dst_shift).serialize()) == (
+        -3600,
+        b"",
+    )
+
+
+@pytest.mark.parametrize(
+    "seconds", [-0.5, -1, types.UTCTime.INVALID, types.UTCTime.INVALID + 1]
+)
+def test_snapshot_out_of_range(seconds):
+    values = TimeSnapshot.compute(
+        UTC, types.UTCTime(0).to_datetime() + timedelta(seconds=seconds)
+    )
+    assert values.time == types.UTCTime.INVALID
+    assert not values.authoritative
+
+
+@pytest.mark.parametrize("seconds", [0, 1, types.UTCTime.INVALID - 1])
+def test_snapshot_valid_range(seconds):
+    values = TimeSnapshot.compute(
+        UTC, types.UTCTime(0).to_datetime() + timedelta(seconds=seconds)
+    )
+    assert values.time == seconds
+    assert values.authoritative
+
+
+def test_snapshot_missing_timezone():
+    now = datetime(2026, 7, 15, tzinfo=UTC)
+    values = TimeSnapshot.compute(None, now)
+    assert not values.authoritative
+    assert values.local_time == types.UTCTime.from_datetime(
+        now + now.astimezone().utcoffset()
+    )
+    assert values.dst_start == values.dst_end == types.UTCTime.INVALID
+
+
+@pytest.mark.parametrize("valid_clock", [True, False])
+async def test_time_cluster_status(valid_clock, app_mock):
+    ep = MagicMock()
+    ep.device.application = app_mock
+    cluster = Time(ep)
+    now = datetime(2026 if valid_clock else 1999, 7, 15, tzinfo=UTC)
+    with patch("zigpy.zcl.clusters.general.datetime", wraps=datetime) as clock:
+        clock.now.return_value = now
+        response = await read_attributes(cluster, [0, 1, 3, 4, 5])
+    values = {record.attrid: record.value.value for record in response.status_records}
+    assert values[1] == (Time.TimeStatus.Master if valid_clock else 0)
+    assert values[3] == values[4] == types.UTCTime.INVALID
+    assert values[5] == 0
+
+
+def test_snapshot_unbounded_dst():
+    class PermanentDST(tzinfo):
+        def utcoffset(self, value):
+            return timedelta(hours=2)
+
+        def dst(self, value):
+            return timedelta(hours=1)
+
+    values = TimeSnapshot.compute(PermanentDST(), datetime(2026, 7, 15, tzinfo=UTC))
+    assert values.authoritative
+    assert values.time_zone == 7200
+    assert values.dst_start == values.dst_end == types.UTCTime.INVALID
+    assert values.dst_shift == 0
+
+
+def test_snapshot_inferred_dst_magnitude():
+    # CPython infers dst() per offset type from its first transition. Inuvik
+    # jumped from PST straight to MDT in 1979, so dst() reports two hours.
+    zone = ZoneInfo("America/Inuvik")
+    now = datetime(2025, 7, 15, tzinfo=UTC)
+    assert now.astimezone(zone).dst() == timedelta(hours=2)
+    values = TimeSnapshot.compute(zone, now)
+    assert values.time_zone == -25200
+    assert values.dst_shift == 3600
+    assert values.local_time == values.standard_time + 3600
+
+
+async def test_time_cluster_shared_utc_periods_cache(app_mock):
+    zone = ZoneInfo("Europe/Berlin")
+    app_mock.local_timezone = zone
+    endpoints = [MagicMock(), MagicMock()]
+    for endpoint in endpoints:
+        endpoint.device.application = app_mock
+        endpoint.reply = AsyncMock()
+    clusters = [Time(endpoint) for endpoint in endpoints]
+    utc_periods.cache_clear()
+    responses = await asyncio.gather(
+        *(read_attributes(cluster, [3, 4, 5]) for cluster in clusters)
+    )
+    assert utc_periods.cache_info().misses == 1
+    assert responses[0] == responses[1]
+    serialized = responses[0].serialize()
+    assert type(responses[0]).deserialize(serialized) == (responses[0], b"")
 
 
 @pytest.fixture
@@ -763,3 +1032,82 @@ def test_ias_zone_enum_subclass_zcl_type():
     """Test `IasZone.zone_type` is an enum16, not a uint16."""
 
     assert sec.IasZone.AttributeDefs.zone_type.zcl_type == foundation.DataTypeId.enum16
+
+
+@pytest.mark.parametrize(
+    ("fragmentation_options", "partition_indicator", "serialized"),
+    [
+        (PartitionFragmentationOptions.First_Block, 0x07, "010702aabb"),
+        (
+            PartitionFragmentationOptions.First_Block
+            | PartitionFragmentationOptions.Indicator_Length_16bit,
+            0x0107,
+            "03070102aabb",
+        ),
+    ],
+)
+def test_partition_indicator_width(
+    fragmentation_options: PartitionFragmentationOptions,
+    partition_indicator: int,
+    serialized: str,
+) -> None:
+    """`partition_indicator` is 1 or 2 octets wide, per ZCL R8 Figure 9-8."""
+    schema = Partition.ServerCommandDefs.transfer_partitioned_frame.schema
+    command = schema(
+        fragmentation_options=fragmentation_options,
+        partition_indicator=partition_indicator,
+        partitioned_frame=b"\xaa\xbb",
+    )
+
+    assert command.serialize() == bytes.fromhex(serialized)
+    assert schema.deserialize(bytes.fromhex(serialized)) == (command, b"")
+
+
+@pytest.mark.parametrize(
+    ("ack_options", "first_frame_id", "nack_ids", "serialized"),
+    [
+        (PartitionAckOptions(0), 0x03, [], "0003"),
+        (PartitionAckOptions(0), 0x03, [0x04, 0x05], "00030405"),
+        (
+            PartitionAckOptions.NACKId_Length_16bit,
+            0x0103,
+            [0x0104, 0x0105],
+            "01030104010501",
+        ),
+        (PartitionAckOptions.NACKId_Length_16bit, 0x0103, [], "010301"),
+    ],
+)
+def test_partition_nack_id_width(
+    ack_options: PartitionAckOptions,
+    first_frame_id: int,
+    nack_ids: list[int],
+    serialized: str,
+) -> None:
+    """`first_frame_id` and NACK ids are 1 or 2 octets wide, per ZCL R8 Figure 9-13."""
+    schema = Partition.ClientCommandDefs.multiple_ack.schema
+    command = schema(
+        ack_options=ack_options,
+        first_frame_id=first_frame_id,
+        nack_ids=nack_ids,
+    )
+
+    assert command.serialize() == bytes.fromhex(serialized)
+    assert schema.deserialize(bytes.fromhex(serialized)) == (command, b"")
+
+
+def test_rssi_location_type_report() -> None:
+    """Test a `data8` location type report is coerced into `LocationType`."""
+
+    ep = MagicMock()
+    cluster = RSSILocation(ep)
+
+    # Report_Attributes: attribute 0x0000, data8, value 0x03
+    hdr, args = cluster.deserialize(bytes.fromhex("18010a00000803"))
+    cluster.handle_message(hdr, args)
+
+    assert cluster.get(RSSILocation.AttributeDefs.type.name) == LocationType(
+        absolute=1,
+        two_dimensional=1,
+        coordinate_system=CoordinateSystem.Rectangular,
+        _reserved=0,
+    )

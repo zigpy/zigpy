@@ -75,8 +75,8 @@ class DriftCompensation(t.enum8):
     NONE = 0x00
     Other_or_unknown = 0x01
     Temperature_monitoring = 0x02
-    Luminance_monitoring = 0x03
-    Color_monitoring = 0x03
+    Optical_luminance_monitoring_and_feedback = 0x03
+    Optical_color_monitoring_and_feedback = 0x04
 
 
 class OptionsMask(t.bitmap8):
@@ -133,7 +133,9 @@ class Color(Cluster):
             id=0x000F, type=Options, access="rw", mandatory=True
         )
         # Defined Primaries Information
-        num_primaries: Final = ZCLAttributeDef(id=0x0010, type=t.uint8_t, access="r")
+        num_primaries: Final = ZCLAttributeDef(
+            id=0x0010, type=t.uint8_t, access="r", mandatory=True
+        )
         primary1_x: Final = ZCLAttributeDef(id=0x0011, type=t.uint16_t, access="r")
         primary1_y: Final = ZCLAttributeDef(id=0x0012, type=t.uint16_t, access="r")
         primary1_intensity: Final = ZCLAttributeDef(
@@ -166,22 +168,34 @@ class Color(Cluster):
             id=0x002A, type=t.uint8_t, access="r"
         )
         # Defined Color Point Settings
-        white_point_x: Final = ZCLAttributeDef(id=0x0030, type=t.uint16_t, access="r")
-        white_point_y: Final = ZCLAttributeDef(id=0x0031, type=t.uint16_t, access="r")
-        color_point_r_x: Final = ZCLAttributeDef(id=0x0032, type=t.uint16_t, access="r")
-        color_point_r_y: Final = ZCLAttributeDef(id=0x0033, type=t.uint16_t, access="r")
+        white_point_x: Final = ZCLAttributeDef(id=0x0030, type=t.uint16_t, access="rw")
+        white_point_y: Final = ZCLAttributeDef(id=0x0031, type=t.uint16_t, access="rw")
+        color_point_r_x: Final = ZCLAttributeDef(
+            id=0x0032, type=t.uint16_t, access="rw"
+        )
+        color_point_r_y: Final = ZCLAttributeDef(
+            id=0x0033, type=t.uint16_t, access="rw"
+        )
         color_point_r_intensity: Final = ZCLAttributeDef(
-            id=0x0034, type=t.uint8_t, access="r"
+            id=0x0034, type=t.uint8_t, access="rw"
         )
-        color_point_g_x: Final = ZCLAttributeDef(id=0x0036, type=t.uint16_t, access="r")
-        color_point_g_y: Final = ZCLAttributeDef(id=0x0037, type=t.uint16_t, access="r")
+        color_point_g_x: Final = ZCLAttributeDef(
+            id=0x0036, type=t.uint16_t, access="rw"
+        )
+        color_point_g_y: Final = ZCLAttributeDef(
+            id=0x0037, type=t.uint16_t, access="rw"
+        )
         color_point_g_intensity: Final = ZCLAttributeDef(
-            id=0x0038, type=t.uint8_t, access="r"
+            id=0x0038, type=t.uint8_t, access="rw"
         )
-        color_point_b_x: Final = ZCLAttributeDef(id=0x003A, type=t.uint16_t, access="r")
-        color_point_b_y: Final = ZCLAttributeDef(id=0x003B, type=t.uint16_t, access="r")
+        color_point_b_x: Final = ZCLAttributeDef(
+            id=0x003A, type=t.uint16_t, access="rw"
+        )
+        color_point_b_y: Final = ZCLAttributeDef(
+            id=0x003B, type=t.uint16_t, access="rw"
+        )
         color_point_b_intensity: Final = ZCLAttributeDef(
-            id=0x003C, type=t.uint8_t, access="r"
+            id=0x003C, type=t.uint8_t, access="rw"
         )
         # ...
         enhanced_current_hue: Final = ZCLAttributeDef(
@@ -304,8 +318,8 @@ class Color(Cluster):
         move_color: Final = ZCLCommandDef(
             id=0x08,
             schema={
-                "rate_x": t.uint16_t,
-                "rate_y": t.uint16_t,
+                "rate_x": t.int16s,
+                "rate_y": t.int16s,
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },
@@ -313,9 +327,9 @@ class Color(Cluster):
         step_color: Final = ZCLCommandDef(
             id=0x09,
             schema={
-                "step_x": t.uint16_t,
-                "step_y": t.uint16_t,
-                "duration": t.uint16_t,
+                "step_x": t.int16s,
+                "step_y": t.int16s,
+                "transition_time": t.uint16_t,
                 "options_mask?": OptionsMask,
                 "options_override?": Options,
             },

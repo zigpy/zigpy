@@ -1,33 +1,46 @@
 from __future__ import annotations
 
+from typing import Self
+
 import zigpy.types as t
 from zigpy.types import basic
 
 __all__ = [
     "GP_ENDPOINT",
-    "GP_CLUSTER_ID",
     "GP_GROUP_ID",
+    "GP_PROTOCOL_VERSION",
     "DEFAULT_GP_LINK_KEY",
+    "SrcID",
     "DeviceID",
     "GPDCommandID",
     "SwitchType",
     "FrameType",
+    "NWKFrameControl",
+    "ExtendedNWKFrameControl",
     "ApplicationID",
     "SecurityLevel",
     "SecurityKeyType",
+    "SecurityStatus",
+    "SinkSecurityLevel",
+    "SinkCommissioningExitMode",
     "ProxyCommissioningModeExitMode",
     "CommunicationMode",
+    "SinkCommunicationMode",
     "CommunicationDirection",
+    "GPLinkQuality",
+    "GPPGPDLink",
+    "GPDCommandPayload",
 ]
 
 # Green Power endpoint as defined in the ZGP specification
 GP_ENDPOINT: int = 242
 
-# Green Power cluster ID
-GP_CLUSTER_ID: int = 0x0021
+# The Zigbee protocol version of a GPDF (A.1.4.1.2)
+GP_PROTOCOL_VERSION: int = 3
 
-# Green Power group ID used for groupcast forwarding
-GP_GROUP_ID: int = 0x0B84
+# The pre-commissioned group proxies forward the GPDFs of all GPDs to, one group for
+# the sink to join instead of one per GPD in derived groupcast
+GP_GROUP_ID: t.Group = t.Group(0x0B84)
 
 # Default ZigBee Green Power shared key ("ZigBeeAlliance09" TC link key).
 # Used to unwrap GP security keys that a GPD provides during commissioning
@@ -35,8 +48,30 @@ GP_GROUP_ID: int = 0x0B84
 DEFAULT_GP_LINK_KEY = t.KeyData(b"ZigBeeAlliance09")
 
 
-class DeviceID(basic.uint32_t, repr="hex"):
+class SrcID(basic.uint32_t, repr="hex"):
     pass
+
+
+# GPD DeviceIDs, defined in the "List of Green Power Device Definitions"
+# (CSA document 13-0166, normative reference [13] of the ZGP specification)
+class DeviceID(basic.enum8):
+    SimpleGenericOneStateSwitch = 0x00
+    SimpleGenericTwoStateSwitch = 0x01
+    OnOffSwitch = 0x02
+    LevelControlSwitch = 0x03
+    SimpleSensor = 0x04
+    AdvancedGenericOneStateSwitch = 0x05
+    AdvancedGenericTwoStateSwitch = 0x06
+    GenericSwitch = 0x07
+    ColorDimmerSwitch = 0x10
+    LightSensor = 0x11
+    OccupancySensor = 0x12
+    DoorLockController = 0x20
+    TemperatureSensor = 0x30
+    PressureSensor = 0x31
+    FlowSensor = 0x32
+    IndoorEnvironmentSensor = 0x33
+    Undefined = 0xFE
 
 
 # GPD Command IDs (Tables 54-56 in the ZGP specification)
@@ -178,6 +213,39 @@ class SecurityLevel(basic.enum2):
     Encrypted = 0b11
 
 
+class CommunicationDirection(basic.enum1):
+    GPDtoGPP = 0
+    GPPtoGPD = 1
+
+
+# A.1.4.1.2
+class NWKFrameControl(t.IntStruct, basic.uint8_t):
+    frame_type: FrameType
+    protocol_version: basic.uint4_t
+    auto_commissioning: basic.uint1_t
+    extended: basic.uint1_t
+
+
+# A.1.4.1.3
+class ExtendedNWKFrameControl(t.IntStruct, basic.uint8_t):
+    application_id: ApplicationID
+    security_level: SecurityLevel
+    # The 1-bit SecurityKey sub-field: an individual key, see Table 12
+    security_key: basic.uint1_t
+    rx_after_tx: basic.uint1_t
+    direction: CommunicationDirection
+
+
+# Table 5, the `Status` parameter of the GP-DATA.indication primitive: the outcome of
+# GPDF security processing, which is what makes the other security fields meaningful
+class SecurityStatus(basic.enum8):
+    SecuritySuccess = 0x00
+    NoSecurity = 0x01
+    CounterFailure = 0x02
+    AuthFailure = 0x03
+    Unprocessed = 0x04
+
+
 # Table 53
 class SecurityKeyType(basic.enum3):
     NoKey = 0b000
@@ -188,13 +256,30 @@ class SecurityKeyType(basic.enum3):
     DerivedIndividual = 0b111
 
 
-# ZGP spec Figure 22 — each bit is an independent exit condition and
-# can be combined with the others.
-class ProxyCommissioningModeExitMode(basic.bitmap3):
+# Figure 23, the `gpsSecurityLevel` attribute of a sink
+class SinkSecurityLevel(t.IntStruct, basic.uint8_t):
+    minimal_security_level: SecurityLevel
+    protection_with_gp_link_key: basic.uint1_t
+    involve_tc: basic.uint1_t
+    _reserved: basic.uint4_t
+
+
+# Figure 22, the `gpsCommissioningExitMode` attribute of a sink. Each bit is an
+# independent exit condition and can be combined with the others.
+class SinkCommissioningExitMode(basic.bitmap8):
     NotDefined = 0b000
     OnExpire = 0b001
     OnFirstPairing = 0b010
     OnExplicitExit = 0b100
+
+
+# Figure 57, the Exit mode sub-field of the GP Proxy Commissioning Mode command. The
+# sink attribute's conditions minus "on expiration", which proxies track themselves
+# through the CommissioningWindow field, so the remaining bits are shifted down one.
+class ProxyCommissioningModeExitMode(basic.bitmap2):
+    NotDefined = 0b00
+    OnFirstPairing = 0b01
+    OnExplicitExit = 0b10
 
 
 # Table 27
@@ -205,6 +290,59 @@ class CommunicationMode(basic.enum2):
     UnicastLightweight = 0b11
 
 
-class CommunicationDirection(basic.enum1):
-    GPDtoGPP = 0
-    GPPtoGPD = 1
+# A.3.3.2.3, the `gpsCommunicationMode` attribute of a sink
+class SinkCommunicationMode(t.IntStruct, basic.uint8_t):
+    communication_mode: CommunicationMode
+    _reserved: basic.uint6_t
+
+
+# Table 32
+class GPLinkQuality(basic.enum2):
+    Poor = 0b00
+    Moderate = 0b01
+    High = 0b10
+    Excellent = 0b11
+
+
+# Figure 27 — GPP-GPD link field appended to notifications by the forwarding proxy
+class GPPGPDLink(t.IntStruct, basic.uint8_t):
+    rssi: basic.uint6_t
+    link_quality: GPLinkQuality
+
+    @property
+    def rssi_dbm(self) -> int:
+        # The proxy caps RSSI to [-109, +8] dBm, adds 110, and halves it
+        return self.rssi * 2 - 110
+
+
+class GPDCommandPayload(basic.LVBytes):
+    """GPD command payload; a length byte of 0xff means unspecified/no payload."""
+
+    # An unspecified payload is empty, but it is not the same as an explicitly empty
+    # one, so it round-trips back to the 0xff marker rather than to a zero length.
+    # Note that `==` and `hash` compare only the bytes content, not the marker.
+    unspecified: bool = False
+
+    def __new__(cls, *args) -> Self:
+        instance = super().__new__(cls, *args)
+
+        if args and isinstance(args[0], cls):
+            instance.unspecified = args[0].unspecified
+
+        return instance
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
+        if data[:1] == b"\xff":
+            instance = cls(b"")
+            instance.unspecified = True
+
+            return instance, data[1:]
+
+        return super().deserialize(data)
+
+    def serialize(self) -> bytes:
+        if self.unspecified:
+            return b"\xff"
+
+        return super().serialize()

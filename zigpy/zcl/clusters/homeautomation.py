@@ -94,6 +94,20 @@ class MeterIdentification(Cluster):
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
 
+# Figure 15-8, with the Alerts Count field split up per Table 15-19
+class GetAlertsResponseSchema(foundation.CommandSchema):
+    number_of_alerts: t.uint4_t
+    alert_structure_type: t.uint4_t
+    alerts: t.List[t.uint24_t] = t.StructField(length=lambda s: s.number_of_alerts)
+
+
+# Figure 15-9
+class AlertsNotificationSchema(foundation.CommandSchema):
+    number_of_alerts: t.uint4_t
+    alert_structure_type: t.uint4_t
+    alerts: t.List[t.uint24_t] = t.StructField(length=lambda s: s.number_of_alerts)
+
+
 class ApplianceEventAlerts(Cluster):
     cluster_id: Final[t.uint16_t] = 0x0B02
     name: Final = "Appliance Event Alerts"
@@ -107,9 +121,44 @@ class ApplianceEventAlerts(Cluster):
         get_alerts: Final = ZCLCommandDef(id=0x00, schema={})
 
     class ClientCommandDefs(BaseCommandDefs):
-        get_alerts_response: Final = ZCLCommandDef(id=0x00, schema={})
-        alerts_notification: Final = ZCLCommandDef(id=0x01, schema={})
-        event_notification: Final = ZCLCommandDef(id=0x02, schema={})
+        get_alerts_response: Final = ZCLCommandDef(
+            id=0x00, schema=GetAlertsResponseSchema
+        )
+        alerts_notification: Final = ZCLCommandDef(
+            id=0x01, schema=AlertsNotificationSchema
+        )
+        event_notification: Final = ZCLCommandDef(
+            id=0x02,
+            schema={"event_header": t.uint8_t, "event_id": t.uint8_t},
+        )
+
+
+# Figure 15-11
+class LogNotificationSchema(foundation.CommandSchema):
+    time_stamp: t.UTCTime
+    log_id: t.uint32_t
+    log_length: t.uint32_t
+    log_payload: t.List[t.uint8_t] = t.StructField(length=lambda s: s.log_length)
+
+
+# Figure 15-13
+class LogResponseSchema(foundation.CommandSchema):
+    time_stamp: t.UTCTime
+    log_id: t.uint32_t
+    log_length: t.uint32_t
+    log_payload: t.List[t.uint8_t] = t.StructField(length=lambda s: s.log_length)
+
+
+# Figure 15-14
+class LogQueueResponseSchema(foundation.CommandSchema):
+    log_queue_size: t.uint8_t
+    log_ids: t.List[t.uint32_t] = t.StructField(length=lambda s: s.log_queue_size)
+
+
+# Figure 15-15
+class StatisticsAvailableSchema(foundation.CommandSchema):
+    log_queue_size: t.uint8_t
+    log_ids: t.List[t.uint32_t] = t.StructField(length=lambda s: s.log_queue_size)
 
 
 class ApplianceStatistics(Cluster):
@@ -128,14 +177,18 @@ class ApplianceStatistics(Cluster):
         reporting_status: Final = foundation.ZCL_REPORTING_STATUS_ATTR
 
     class ServerCommandDefs(BaseCommandDefs):
-        log: Final = ZCLCommandDef(id=0x00, schema={})
-        log_queue: Final = ZCLCommandDef(id=0x01, schema={})
+        log_request: Final = ZCLCommandDef(id=0x00, schema={"log_id": t.uint32_t})
+        log_queue_request: Final = ZCLCommandDef(id=0x01, schema={})
 
     class ClientCommandDefs(BaseCommandDefs):
-        log_notification: Final = ZCLCommandDef(id=0x00, schema={})
-        log_response: Final = ZCLCommandDef(id=0x01, schema={})
-        log_queue_response: Final = ZCLCommandDef(id=0x02, schema={})
-        statistics_available: Final = ZCLCommandDef(id=0x03, schema={})
+        log_notification: Final = ZCLCommandDef(id=0x00, schema=LogNotificationSchema)
+        log_response: Final = ZCLCommandDef(id=0x01, schema=LogResponseSchema)
+        log_queue_response: Final = ZCLCommandDef(
+            id=0x02, schema=LogQueueResponseSchema
+        )
+        statistics_available: Final = ZCLCommandDef(
+            id=0x03, schema=StatisticsAvailableSchema
+        )
 
 
 class MeasurementType(t.bitmap32):
@@ -168,6 +221,46 @@ class ACAlarmsMask(t.bitmap16):
     RMS_Voltage_Swell = 1 << 9
 
 
+class ProfileIntervalPeriod(t.enum8):
+    """Profile interval period timeframes per Figure 4-7.
+
+    Unlike the Metering cluster's equivalent, this one defines no 1 minute timeframe.
+    """
+
+    Daily = 0x00
+    Minutes_60 = 0x01
+    Minutes_30 = 0x02
+    Minutes_15 = 0x03
+    Minutes_10 = 0x04
+    Minutes_7_5 = 0x05
+    Minutes_5 = 0x06
+    Minutes_2_5 = 0x07
+
+
+class GetMeasurementProfileStatus(t.enum8):
+    """Get Measurement Profile Response status values per Table 4-42."""
+
+    Success = 0x00
+    Attribute_Profile_Not_Supported = 0x01
+    Invalid_Start_Time = 0x02
+    More_Intervals_Requested_Than_Can_Be_Returned = 0x03
+    No_Intervals_Available_For_The_Requested_Time = 0x04
+
+
+# Figure 4-8. The interval width really follows the profiled attribute's own type
+# ("For scaling and data type use the respective attribute set"), but the spec also
+# marks invalid intervals as 0xFFFF, so uint16 is used as an approximation.
+class GetMeasurementProfileResponseSchema(foundation.CommandSchema):
+    start_time: t.UTCTime
+    status: GetMeasurementProfileStatus
+    profile_interval_period: ProfileIntervalPeriod
+    number_of_intervals_delivered: t.uint8_t
+    attribute_id: t.uint16_t
+    intervals: t.List[t.uint16_t] = t.StructField(
+        length=lambda s: s.number_of_intervals_delivered
+    )
+
+
 class ElectricalMeasurement(Cluster):
     cluster_id: Final[t.uint16_t] = 0x0B04
     name: Final = "Electrical Measurement"
@@ -176,6 +269,8 @@ class ElectricalMeasurement(Cluster):
     MeasurementType: Final = MeasurementType
     DCOverloadAlarmMark: Final = DCOverloadAlarmMark
     ACAlarmsMask: Final = ACAlarmsMask
+    ProfileIntervalPeriod: Final = ProfileIntervalPeriod
+    GetMeasurementProfileStatus: Final = GetMeasurementProfileStatus
 
     class AttributeDefs(BaseAttributeDefs):
         # Basic Information
@@ -285,6 +380,8 @@ class ElectricalMeasurement(Cluster):
             id=0x0405, type=t.int8s, access="rp"
         )
         # AC (Single Phase or Phase A) Measurements
+        # Note: 0x0500 and 0x0504 are not formally defined in ZCL R8 Table 4-35,
+        # but are referenced in the ACVoltageMultiplier/ACPowerMultiplier descriptions.
         instantaneous_voltage: Final = ZCLAttributeDef(
             id=0x0500, type=t.int16s, access="rp"
         )
@@ -354,13 +451,13 @@ class ElectricalMeasurement(Cluster):
         )
         # DC Manufacturer Threshold Alarms
         dc_overload_alarms_mask: Final = ZCLAttributeDef(
-            id=0x0700, type=DCOverloadAlarmMark, access="rp"
+            id=0x0700, type=DCOverloadAlarmMark, access="rw"
         )
         dc_voltage_overload: Final = ZCLAttributeDef(
-            id=0x0701, type=t.int16s, access="rp"
+            id=0x0701, type=t.int16s, access="r"
         )
         dc_current_overload: Final = ZCLAttributeDef(
-            id=0x0702, type=t.int16s, access="rp"
+            id=0x0702, type=t.int16s, access="r"
         )
         # AC Manufacturer Threshold Alarms
         ac_alarms_mask: Final = ZCLAttributeDef(
@@ -529,11 +626,30 @@ class ElectricalMeasurement(Cluster):
 
     class ServerCommandDefs(BaseCommandDefs):
         get_profile_info: Final = ZCLCommandDef(id=0x00, schema={})
-        get_measurement_profile: Final = ZCLCommandDef(id=0x01, schema={})
+        get_measurement_profile: Final = ZCLCommandDef(
+            id=0x01,
+            schema={
+                "attribute_id": t.uint16_t,
+                "start_time": t.UTCTime,
+                "number_of_intervals": t.uint8_t,
+            },
+        )
 
     class ClientCommandDefs(BaseCommandDefs):
-        get_profile_info_response: Final = ZCLCommandDef(id=0x00, schema={})
-        get_measurement_profile_response: Final = ZCLCommandDef(id=0x01, schema={})
+        # Figure 4-6. `attributes` runs to the end of the frame: the spec has no count
+        # field for it, despite zigbee-herdsman carrying one.
+        get_profile_info_response: Final = ZCLCommandDef(
+            id=0x00,
+            schema={
+                "profile_count": t.uint8_t,
+                "profile_interval_period": ProfileIntervalPeriod,
+                "max_number_of_intervals": t.uint8_t,
+                "attributes": t.List[t.uint16_t],
+            },
+        )
+        get_measurement_profile_response: Final = ZCLCommandDef(
+            id=0x01, schema=GetMeasurementProfileResponseSchema
+        )
 
 
 class Diagnostic(Cluster):

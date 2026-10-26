@@ -437,6 +437,36 @@ async def test_read_attributes_uncached(cluster):
     assert cluster._attr_cache.is_unsupported(Basic.AttributeDefs.location_desc)
 
 
+async def test_read_attributes_listener_error(cluster):
+    """Test a failing event listener does not drop the rest of a read response."""
+
+    async def mockrequest(
+        is_general_req, command, schema, args, manufacturer=None, **kwargs
+    ):
+        return [[_mk_rar(0, 99), _mk_rar(4, "Manufacturer"), _mk_rar(5, "Model")]]
+
+    cluster.request = mockrequest
+
+    def failing_listener(event: AttributeReadEvent) -> None:
+        raise RuntimeError("listener failed")
+
+    events = []
+    cluster.on_event(AttributeReadEvent.event_type, failing_listener)
+    cluster.on_event(AttributeReadEvent.event_type, events.append)
+
+    success, failure = await cluster.read_attributes([0, "manufacturer", "model"])
+
+    assert success == {0: 99, "manufacturer": "Manufacturer", "model": "Model"}
+    assert not failure
+    assert cluster.get("manufacturer") == "Manufacturer"
+    assert cluster.get("model") == "Model"
+    assert [e.attribute_name for e in events] == [
+        "zcl_version",
+        "manufacturer",
+        "model",
+    ]
+
+
 async def test_read_attributes_cached(cluster):
     cluster.request = MagicMock()
     cluster._attr_cache.set_value(Basic.AttributeDefs.zcl_version, 99)
@@ -1762,6 +1792,7 @@ async def test_received_onoff_toggle_generates_default_response():
             priority=t.PacketPriority.LOW,
             retries=None,
             retry_delay=None,
+            aps_encryption=False,
         )
     ]
 
@@ -1951,7 +1982,8 @@ def test_find_attributes() -> None:
         TestCluster.find_attributes(0x0002, manufacturer_code=0xABCD)
 
 
-async def test_read_attributes_complex() -> None:
+@pytest.mark.parametrize("split_requests", [True, False])
+async def test_read_attributes_complex(split_requests: bool) -> None:
     """Test reading attributes, complex scenario."""
 
     class TestCluster(zcl.Cluster):
@@ -1962,6 +1994,14 @@ async def test_read_attributes_complex() -> None:
         class AttributeDefs(zcl.BaseAttributeDefs):
             attribute1 = foundation.ZCLAttributeDef(id=0x0001, type=t.uint8_t)
             attribute2 = foundation.ZCLAttributeDef(id=0x0002, type=t.uint8_t)
+
+            # Six attributes without a manufacturer code in total, so that group spans
+            # two requests with splitting enabled (MAX_READ_ATTRIBUTES_PER_REQ is 5)
+            # and exactly one with it disabled
+            attribute7 = foundation.ZCLAttributeDef(id=0x0003, type=t.uint8_t)
+            attribute8 = foundation.ZCLAttributeDef(id=0x0004, type=t.uint8_t)
+            attribute9 = foundation.ZCLAttributeDef(id=0x0005, type=t.uint8_t)
+            attribute10 = foundation.ZCLAttributeDef(id=0x0006, type=t.uint8_t)
 
             # These two can be read together
             attribute3 = foundation.ZCLAttributeDef(
@@ -1985,54 +2025,71 @@ async def test_read_attributes_complex() -> None:
     async def mock_read_attributes(
         attribute_ids: list[int], manufacturer: int | None = None, **kwargs
     ):
-        status_records = {
-            (None, (0x0001, 0x0002)): [
-                # One is supported
-                foundation.ReadAttributeRecord(
-                    attrid=0x0001,
+        # The attributes without a manufacturer code are split across two requests
+        # or read in one, depending on `split_requests`, so respond per attribute ID
+        no_manuf_code_records = {
+            # This one is supported
+            0x0001: foundation.ReadAttributeRecord(
+                attrid=0x0001,
+                status=foundation.Status.SUCCESS,
+                value=foundation.TypeValue(
+                    type=foundation.DataTypeId.uint8,
+                    value=t.uint8_t(123),
+                ),
+            ),
+            # This one is not
+            0x0002: foundation.ReadAttributeRecord(
+                attrid=0x0002,
+                status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
+            ),
+            **{
+                attrid: foundation.ReadAttributeRecord(
+                    attrid=attrid,
                     status=foundation.Status.SUCCESS,
                     value=foundation.TypeValue(
                         type=foundation.DataTypeId.uint8,
-                        value=t.uint8_t(123),
+                        value=t.uint8_t(attrid),
                     ),
-                ),
-                # The other is not
-                foundation.ReadAttributeRecord(
-                    attrid=0x0002,
-                    status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
-                ),
-            ],
-            (0x1234, (0x0001, 0x0002)): [
-                # Both are supported
-                foundation.ReadAttributeRecord(
-                    attrid=0x0001,
-                    status=foundation.Status.SUCCESS,
-                    value=foundation.TypeValue(
-                        type=foundation.DataTypeId.uint8,
-                        value=t.uint8_t(12),
+                )
+                for attrid in (0x0003, 0x0004, 0x0005, 0x0006)
+            },
+        }
+
+        if manufacturer is None:
+            status_records = [no_manuf_code_records[attrid] for attrid in attribute_ids]
+        else:
+            status_records = {
+                (0x1234, (0x0001, 0x0002)): [
+                    # Both are supported
+                    foundation.ReadAttributeRecord(
+                        attrid=0x0001,
+                        status=foundation.Status.SUCCESS,
+                        value=foundation.TypeValue(
+                            type=foundation.DataTypeId.uint8,
+                            value=t.uint8_t(12),
+                        ),
                     ),
-                ),
-                foundation.ReadAttributeRecord(
-                    attrid=0x0002,
-                    status=foundation.Status.SUCCESS,
-                    value=foundation.TypeValue(
-                        type=foundation.DataTypeId.uint8,
-                        value=t.uint8_t(34),
+                    foundation.ReadAttributeRecord(
+                        attrid=0x0002,
+                        status=foundation.Status.SUCCESS,
+                        value=foundation.TypeValue(
+                            type=foundation.DataTypeId.uint8,
+                            value=t.uint8_t(34),
+                        ),
                     ),
-                ),
-            ],
-            (0x5678, (0x0003, 0x0004)): [
-                # Neither of these are supported
-                foundation.ReadAttributeRecord(
-                    attrid=0x0003,
-                    status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
-                ),
-                foundation.ReadAttributeRecord(
-                    attrid=0x0004,
-                    status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
-                ),
-            ],
-        }[manufacturer, tuple(attribute_ids)]
+                ],
+                (0x5678, (0x0003, 0x0004)): [
+                    # Neither of these are supported
+                    foundation.ReadAttributeRecord(
+                        attrid=0x0003,
+                        status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
+                    ),
+                    foundation.ReadAttributeRecord(
+                        attrid=0x0004,
+                        status=foundation.Status.UNSUPPORTED_ATTRIBUTE,
+                    ),
+                ],
+            }[manufacturer, tuple(attribute_ids)]
 
         return foundation.GENERAL_COMMANDS[
             foundation.GeneralCommand.Read_Attributes_rsp
@@ -2051,13 +2108,22 @@ async def test_read_attributes_complex() -> None:
                 TestCluster.AttributeDefs.attribute2,  # Batch 1  (no code)
                 TestCluster.AttributeDefs.attribute4,  # Batch 2  (0x5678)
                 TestCluster.AttributeDefs.attribute6,  # Batch 3  (0x1234)
-            ]
+                TestCluster.AttributeDefs.attribute7,  # Batch 1  (no code)
+                TestCluster.AttributeDefs.attribute8,  # Batch 1  (no code)
+                TestCluster.AttributeDefs.attribute9,  # Batch 1  (no code)
+                TestCluster.AttributeDefs.attribute10,  # Batch 1  (no code)
+            ],
+            split_requests=split_requests,
         )
 
     assert success == {
         TestCluster.AttributeDefs.attribute1: 123,
         TestCluster.AttributeDefs.attribute3: 12,
         TestCluster.AttributeDefs.attribute4: 34,
+        TestCluster.AttributeDefs.attribute7: 0x0003,
+        TestCluster.AttributeDefs.attribute8: 0x0004,
+        TestCluster.AttributeDefs.attribute9: 0x0005,
+        TestCluster.AttributeDefs.attribute10: 0x0006,
     }
 
     assert failure == {
@@ -2066,11 +2132,22 @@ async def test_read_attributes_complex() -> None:
         TestCluster.AttributeDefs.attribute6: foundation.Status.UNSUPPORTED_ATTRIBUTE,
     }
 
-    assert mock_raw.mock_calls == [
-        call([0x0001, 0x0002], manufacturer=None),
-        call([0x0003, 0x0004], manufacturer=0x5678),
-        call([0x0001, 0x0002], manufacturer=0x1234),
-    ]
+    if split_requests:
+        # The six attributes without a manufacturer code need two requests
+        assert mock_raw.mock_calls == [
+            call([0x0001, 0x0002, 0x0003, 0x0004, 0x0005], manufacturer=None),
+            call([0x0006], manufacturer=None),
+            call([0x0003, 0x0004], manufacturer=0x5678),
+            call([0x0001, 0x0002], manufacturer=0x1234),
+        ]
+    else:
+        # They all fit into a single request, but the manufacturer code grouping
+        # still applies
+        assert mock_raw.mock_calls == [
+            call([0x0001, 0x0002, 0x0003, 0x0004, 0x0005, 0x0006], manufacturer=None),
+            call([0x0003, 0x0004], manufacturer=0x5678),
+            call([0x0001, 0x0002], manufacturer=0x1234),
+        ]
 
 
 async def test_command_explicit_manufacturer():
@@ -2333,6 +2410,125 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
             value=77,
         ),
         # No AttributeUpdatedEvent for passthrough_attr since value wasn't transformed
+    ]
+
+
+class _DeferringCluster(zcl.Cluster):
+    """A quirk cluster that updates attributes outside of the original update."""
+
+    cluster_id = 0xABCE
+    ep_attribute = "deferring"
+    _skip_registry = True
+
+    class AttributeDefs(zcl.foundation.BaseAttributeDefs):
+        test_attr = foundation.ZCLAttributeDef(id=0x0001, type=t.uint8_t, access="r")
+
+    # What `_update_attribute` does in addition to updating the attribute
+    action: str | None = None
+
+    async def _update_later(self, value):
+        await asyncio.sleep(0)
+        self._update_attribute(self.AttributeDefs.test_attr.id, value)
+
+    def _update_attribute(self, attrid, value):
+        super()._update_attribute(attrid, value)
+
+        action, self.action = self.action, None
+
+        if action == "task":
+            self.create_catching_task(self._update_later(value * 2))
+        elif action == "timer":
+            asyncio.get_running_loop().call_later(
+                0, self._update_attribute, attrid, value * 2
+            )
+        elif action == "forward":
+            self.endpoint.device.endpoints[2].deferring.update_attribute(attrid, value)
+
+
+def _deferring_cluster_setup(
+    app_mock,
+) -> tuple[_DeferringCluster, _DeferringCluster, list]:
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    dev.add_endpoint(2)
+
+    cluster1 = _DeferringCluster(dev.endpoints[1])
+    cluster2 = _DeferringCluster(dev.endpoints[2])
+    dev.endpoints[1].add_input_cluster(_DeferringCluster.cluster_id, cluster1)
+    dev.endpoints[2].add_input_cluster(_DeferringCluster.cluster_id, cluster2)
+
+    events: list = []
+
+    for cluster in (cluster1, cluster2):
+        cluster.on_event(AttributeReadEvent.event_type, events.append)
+        cluster.on_event(AttributeReportedEvent.event_type, events.append)
+        cluster.on_event(AttributeUpdatedEvent.event_type, events.append)
+
+    return cluster1, cluster2, events
+
+
+async def _update_deferring_cluster(cluster: _DeferringCluster, source: str) -> None:
+    attr = _DeferringCluster.AttributeDefs.test_attr
+
+    if source == "report":
+        await mock_attribute_report(cluster, {attr: t.uint8_t(50)})
+    else:
+        with mock_attribute_reads(cluster, {attr: t.uint8_t(50)}):
+            await cluster.read_attributes([attr])
+
+
+@pytest.mark.parametrize("source", ["report", "read"])
+@pytest.mark.parametrize("action", ["task", "timer"])
+async def test_quirk_deferred_attribute_update_emits_event(
+    app_mock, source: str, action: str
+) -> None:
+    """Test that a quirk updating the same attribute later emits an event."""
+    cluster, _, events = _deferring_cluster_setup(app_mock)
+    cluster.action = action
+
+    await _update_deferring_cluster(cluster, source)
+
+    # The quirk passed the value through unchanged
+    assert [type(event) for event in events] == [
+        AttributeReportedEvent if source == "report" else AttributeReadEvent
+    ]
+    assert events[0].value == 50
+    events.clear()
+
+    # The task or timer started by the quirk updates the same attribute afterwards.
+    # The original update's event suppression must not carry over to it.
+    await asyncio.sleep(0.01)
+
+    assert cluster.get(_DeferringCluster.AttributeDefs.test_attr) == 100
+    assert events == [
+        AttributeUpdatedEvent(
+            device_ieee=str(cluster.endpoint.device.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=_DeferringCluster.cluster_id,
+            attribute_name="test_attr",
+            attribute_id=_DeferringCluster.AttributeDefs.test_attr.id,
+            manufacturer_code=None,
+            value=100,
+        )
+    ]
+
+
+@pytest.mark.parametrize("source", ["report", "read"])
+async def test_quirk_forwards_attribute_update_to_other_endpoint(
+    app_mock, source: str
+) -> None:
+    """Test that a quirk updating the same attribute on another endpoint emits."""
+    cluster1, cluster2, events = _deferring_cluster_setup(app_mock)
+    cluster1.action = "forward"
+
+    await _update_deferring_cluster(cluster1, source)
+
+    assert cluster2.get(_DeferringCluster.AttributeDefs.test_attr) == 50
+
+    # Only the event of the cluster that received the value is suppressed
+    assert [(type(event), event.endpoint_id, event.value) for event in events] == [
+        (AttributeUpdatedEvent, 2, 50),
+        (AttributeReportedEvent if source == "report" else AttributeReadEvent, 1, 50),
     ]
 
 
@@ -2659,6 +2855,47 @@ async def test_read_attributes_chunked_by_count(app_mock) -> None:
     }
 
 
+async def test_read_attributes_unsplit(app_mock) -> None:
+    """Read_attributes sends a single request when splitting is disabled."""
+
+    class TestCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            attr_0 = foundation.ZCLAttributeDef(id=0xFF00, type=t.uint8_t)
+            attr_1 = foundation.ZCLAttributeDef(id=0xFF01, type=t.uint8_t)
+            attr_2 = foundation.ZCLAttributeDef(id=0xFF02, type=t.uint8_t)
+            attr_3 = foundation.ZCLAttributeDef(id=0xFF03, type=t.uint8_t)
+            attr_4 = foundation.ZCLAttributeDef(id=0xFF04, type=t.uint8_t)
+            attr_5 = foundation.ZCLAttributeDef(id=0xFF05, type=t.uint8_t)
+            attr_6 = foundation.ZCLAttributeDef(id=0xFF06, type=t.uint8_t)
+            attr_7 = foundation.ZCLAttributeDef(id=0xFF07, type=t.uint8_t)
+            attr_8 = foundation.ZCLAttributeDef(id=0xFF08, type=t.uint8_t)
+            attr_9 = foundation.ZCLAttributeDef(id=0xFF09, type=t.uint8_t)
+            attr_10 = foundation.ZCLAttributeDef(id=0xFF0A, type=t.uint8_t)
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = TestCluster(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
+
+    attrs = [getattr(TestCluster.AttributeDefs, f"attr_{i}") for i in range(11)]
+
+    # Exclude 2 and 7 so the mock returns UNSUPPORTED
+    supported = {attr: i for i, attr in enumerate(attrs) if i not in (2, 7)}
+    with mock_attribute_reads(cluster, supported) as (mock_read, _):
+        success, failure = await cluster.read_attributes(attrs, split_requests=False)
+
+    # All 11 attributes are requested in a single request, in order
+    chunks = [call_obj.args[0] for call_obj in mock_read.call_args_list]
+    assert chunks == [[attr.id for attr in attrs]]
+
+    assert success == supported
+    assert failure == {
+        attrs[2]: foundation.Status.UNSUPPORTED_ATTRIBUTE,
+        attrs[7]: foundation.Status.UNSUPPORTED_ATTRIBUTE,
+    }
+
+
 async def test_read_attributes_insufficient_space_retry_success(app_mock) -> None:
     """An INSUFFICIENT_SPACE record is re-read individually and can then succeed."""
 
@@ -2820,8 +3057,9 @@ async def test_read_attributes_insufficient_space_single_chunk_no_retry(
 
 
 @pytest.mark.parametrize("omitted_again", [False, True])
+@pytest.mark.parametrize("split_requests", [True, False])
 async def test_read_attributes_omitted_record_retry(
-    app_mock, omitted_again: bool
+    app_mock, omitted_again: bool, split_requests: bool
 ) -> None:
     """Records omitted from a response are re-read individually (ZCL R8 §2.5.2.3)."""
 
@@ -2846,7 +3084,9 @@ async def test_read_attributes_omitted_record_retry(
     }
 
     with mock_attribute_reads(cluster, supported) as (mock_read, _):
-        success, failure = await cluster.read_attributes(attrs)
+        success, failure = await cluster.read_attributes(
+            attrs, split_requests=split_requests
+        )
 
     if omitted_again:
         assert success == {TestCluster.AttributeDefs.attr_0: 10}
@@ -3250,6 +3490,106 @@ async def test_quirk_manufacturer_code_context_isolation(app_mock) -> None:
         raw_value=42,
         value=42,
     )
+
+
+@pytest.mark.parametrize("known_attribute", [True, False])
+async def test_quirk_manufacturer_code_context_other_cluster(
+    app_mock, known_attribute: bool
+) -> None:
+    """Test that the manufacturer code is not applied to other clusters.
+
+    A quirk forwarding a manufacturer-specific report to an attribute with the same ID
+    on another cluster must not look up that attribute with the manufacturer code.
+    """
+
+    class UnknownAttributeCluster(zcl.Cluster):
+        cluster_id = 0xFC00
+        ep_attribute = "manuf_cluster"
+        _skip_registry = True
+
+        def _update_attribute(self, attrid, value):
+            super()._update_attribute(attrid, value)
+
+            if attrid == OccupancySensing.AttributeDefs.occupancy.id:
+                self.endpoint.occupancy.update_attribute(attrid, value)
+
+    class KnownAttributeCluster(UnknownAttributeCluster):
+        _skip_registry = True
+
+        class AttributeDefs(zcl.foundation.BaseAttributeDefs):
+            manuf_attr = foundation.ZCLAttributeDef(
+                id=OccupancySensing.AttributeDefs.occupancy.id,
+                type=t.uint8_t,
+                manufacturer_code=0x1234,
+            )
+
+    cluster_cls = KnownAttributeCluster if known_attribute else UnknownAttributeCluster
+
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = cluster_cls(dev.endpoints[1])
+    occupancy_cluster = OccupancySensing(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(cluster_cls.cluster_id, cluster)
+    dev.endpoints[1].add_input_cluster(OccupancySensing.cluster_id, occupancy_cluster)
+
+    events = []
+    occupancy_cluster.on_event(AttributeUpdatedEvent.event_type, events.append)
+
+    # Report the attribute with a manufacturer code
+    hdr = foundation.ZCLHeader.general(
+        tsn=1,
+        command_id=foundation.GeneralCommand.Report_Attributes,
+        manufacturer=0x1234,
+        direction=foundation.Direction.Server_to_Client,
+    )
+    attr = foundation.Attribute(
+        attrid=OccupancySensing.AttributeDefs.occupancy.id,
+        value=foundation.TypeValue(type=t.uint8_t, value=t.uint8_t(1)),
+    )
+    report = foundation.GENERAL_COMMANDS[foundation.GeneralCommand.Report_Attributes]
+    cluster.handle_message(hdr, report.schema([attr]))
+
+    if known_attribute:
+        assert cluster.get(KnownAttributeCluster.AttributeDefs.manuf_attr) == 1
+
+    # The attribute of the other cluster is found and not stored as a legacy value
+    assert occupancy_cluster._attr_cache._legacy_cache == {}
+    assert (
+        occupancy_cluster.get(OccupancySensing.AttributeDefs.occupancy)
+        == OccupancySensing.Occupancy.Occupied
+    )
+    assert events == [
+        AttributeUpdatedEvent(
+            device_ieee=str(dev.ieee),
+            endpoint_id=1,
+            cluster_type=zcl.ClusterType.Server,
+            cluster_id=OccupancySensing.cluster_id,
+            attribute_name="occupancy",
+            attribute_id=OccupancySensing.AttributeDefs.occupancy.id,
+            manufacturer_code=None,
+            value=OccupancySensing.Occupancy.Occupied,
+        )
+    ]
+
+
+def test_quirk_attribute_update_nested_and_failing(cluster) -> None:
+    """Test that tracking of quirk attribute updates is always restored."""
+    assert cluster._quirk_attribute_updates == {}
+
+    with cluster._quirk_attribute_update(0x0001, None):
+        with cluster._quirk_attribute_update(0x0001, 0x1234):
+            assert cluster._quirk_attribute_updates == {0x0001: 0x1234}
+
+        assert cluster._quirk_attribute_updates == {0x0001: None}
+
+    assert cluster._quirk_attribute_updates == {}
+
+    with (
+        pytest.raises(RuntimeError),
+        cluster._quirk_attribute_update(0x0001, None),
+    ):
+        raise RuntimeError
+
+    assert cluster._quirk_attribute_updates == {}
 
 
 async def test_read_attributes_structured_raw(cluster):

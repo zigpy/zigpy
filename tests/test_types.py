@@ -1,3 +1,5 @@
+import dataclasses
+from datetime import UTC, datetime, timedelta
 import itertools
 import logging
 import math
@@ -967,3 +969,71 @@ def test_bytes() -> None:
     assert obj == data
     assert rest == b""
     assert obj.serialize() == data
+
+
+ZIGBEE_PACKET_VALUES = {
+    "priority": 1,
+    "src": t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x1234),
+    "src_ep": t.uint8_t(1),
+    "dst": t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x1234),
+    "dst_ep": t.uint8_t(1),
+    "source_route": [t.NWK(0x1234)],
+    "extended_timeout": True,
+    "tsn": t.uint8_t(1),
+    "profile_id": t.uint16_t(1),
+    "cluster_id": t.uint16_t(1),
+    "data": t.SerializableBytes(b"\x01"),
+    "tx_options": t.TransmitOptions.ACK,
+    "radius": t.uint8_t(1),
+    "non_member_radius": t.uint8_t(1),
+    "alias_src": t.NWK(0x1234),
+    "alias_seq": t.uint8_t(1),
+    "lqi": t.uint8_t(1),
+    "rssi": t.int8s(-1),
+}
+
+
+@pytest.mark.parametrize(
+    "field",
+    [f.name for f in dataclasses.fields(t.ZigbeePacket) if f.compare],
+)
+def test_zigbee_packet_hash(field: str) -> None:
+    """Every compared field is hashed, `__hash__` lists them by hand."""
+    packet = t.ZigbeePacket()
+    other = packet.replace(**{field: ZIGBEE_PACKET_VALUES[field]})
+
+    assert packet != other
+    assert hash(packet) != hash(other)
+
+
+def test_zigbee_packet_hash_timestamp() -> None:
+    """The timestamp is excluded from the hash and from comparisons."""
+    packet = t.ZigbeePacket()
+    later = packet.replace(timestamp=datetime(2030, 1, 1, tzinfo=UTC))
+
+    assert packet == later
+    assert hash(packet) == hash(later)
+
+
+@pytest.mark.parametrize("cls", [t.UTCTime, t.StandardTime, t.LocalTime])
+@pytest.mark.parametrize(
+    ("delta", "expected"),
+    [
+        (timedelta(microseconds=-1), t.UTCTime.INVALID),
+        (timedelta(0), 0),
+        (timedelta(seconds=1, microseconds=999999), 1),
+        (timedelta(seconds=t.UTCTime.INVALID - 1), t.UTCTime.INVALID - 1),
+        (timedelta(seconds=t.UTCTime.INVALID), t.UTCTime.INVALID),
+    ],
+)
+def test_time_from_datetime(cls, delta, expected):
+    value = cls.from_datetime(datetime(2000, 1, 1, tzinfo=UTC) + delta)
+    assert value == expected
+    assert isinstance(value, cls)
+
+
+@pytest.mark.parametrize("seconds", [0, 1, 0x7FFFFFFF, t.UTCTime.INVALID - 1])
+def test_time_to_datetime(seconds):
+    value = t.UTCTime(seconds).to_datetime()
+    assert value.tzinfo is UTC
+    assert t.UTCTime.from_datetime(value) == seconds
