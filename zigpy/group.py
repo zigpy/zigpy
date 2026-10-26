@@ -245,6 +245,9 @@ class GroupEndpoint(LocalLogMixin):
         return self.request(cluster, sequence, data, *args, **kwargs)
 
     def log(self, lvl: int, msg: str, *args: Any, **kwargs: Any) -> None:
+        if not LOGGER.isEnabledFor(lvl):
+            return
+
         msg = "[0x%04x] " + msg
         args = (self._group.group_id, *args)
         LOGGER.log(lvl, msg, *args, **kwargs)

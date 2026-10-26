@@ -277,6 +277,9 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         return self.Mgmt_Permit_Joining_req(duration, tc_significance)
 
     def log(self, lvl, msg, *args, **kwargs):
+        if not LOGGER.isEnabledFor(lvl):
+            return None
+
         msg = "[0x%04x:zdo] " + msg
         args = (self._device.nwk, *args)
         return LOGGER.log(lvl, msg, *args, **kwargs)

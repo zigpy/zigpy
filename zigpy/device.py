@@ -1220,9 +1220,25 @@ class ZigbeeDevice(BaseDevice):
 
     def _should_filter_packet(self, packet: t.ZigbeePacket) -> bool:
         """Check if packet should be filtered as duplicate."""
+        # Be conservative with deduplication: everything but the timestamp, TSN, and
+        # link quality has to match. Building a tuple is much cheaper than copying and
+        # hashing the packet itself.
         return self._packet_debouncer.filter(
-            # Be conservative with deduplication
-            obj=packet.replace(timestamp=None, tsn=None, lqi=None, rssi=None),
+            obj=(
+                packet.priority,
+                packet.src,
+                packet.src_ep,
+                packet.dst,
+                packet.dst_ep,
+                packet.source_route,
+                packet.extended_timeout,
+                packet.profile_id,
+                packet.cluster_id,
+                packet.data,
+                packet.tx_options,
+                packet.radius,
+                packet.non_member_radius,
+            ),
             expire_in=PACKET_DEBOUNCE_WINDOW,
         )
 
@@ -1288,7 +1304,11 @@ class ZigbeeDevice(BaseDevice):
                 return endpoint, zcl_cluster
 
     def _parse_packet_command(
-        self, packet: t.ZigbeePacket, endpoint: typing.Any, zcl_cluster: Cluster | None
+        self,
+        packet: t.ZigbeePacket,
+        endpoint: typing.Any,
+        zcl_cluster: Cluster | None,
+        hdr: zdo_t.ZDOHeader | foundation.ZCLHeader,
     ) -> typing.Any:
         """Deserialize packet data."""
         data = packet.data.serialize()
@@ -1297,7 +1317,16 @@ class ZigbeeDevice(BaseDevice):
             _, cmd = endpoint.deserialize(packet.cluster_id, data)
         else:
             assert zcl_cluster is not None
-            _, cmd = zcl_cluster.deserialize(data)
+            assert isinstance(hdr, foundation.ZCLHeader)
+
+            if type(zcl_cluster).deserialize is Cluster.deserialize:
+                # The ZCL header has already been parsed, do not parse it again
+                _, cmd = zcl_cluster._deserialize_command(
+                    hdr, data[len(hdr.serialize()) :]
+                )
+            else:
+                # Quirks can override `deserialize` to rewrite the whole frame
+                _, cmd = zcl_cluster.deserialize(data)
 
         return cmd
 
@@ -1360,7 +1389,7 @@ class ZigbeeDevice(BaseDevice):
 
         # Deserialize packet data
         try:
-            cmd = self._parse_packet_command(packet, endpoint, zcl_cluster)
+            cmd = self._parse_packet_command(packet, endpoint, zcl_cluster, hdr)
         except Exception as exc:  # noqa: BLE001
             cmd = None
             error = zigpy.exceptions.ParsingError()
@@ -1503,6 +1532,9 @@ class ZigbeeDevice(BaseDevice):
         return None
 
     def log(self, lvl, msg, *args, **kwargs) -> None:
+        if not LOGGER.isEnabledFor(lvl):
+            return
+
         msg = "[0x%04x] " + msg
         args = (self.nwk, *args)
         LOGGER.log(lvl, msg, *args, **kwargs)

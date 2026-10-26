@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import inspect
 import typing
 from typing import TYPE_CHECKING, Any, ClassVar, Self, cast
 
@@ -93,18 +92,13 @@ class Struct:
         super().__init_subclass__()
 
         # We generate fields up here to fail early and cache it
-        cls.fields = cls._real_cls()._get_fields()
-        cls._signature = inspect.Signature(
-            parameters=[
-                inspect.Parameter(
-                    name=f.name,
-                    kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                    default=f.default,
-                    annotation=f.type,
-                )
-                for f in cls.fields
-            ]
-        )
+        cls._real_type = cls._real_cls()
+        cls.fields = cls._real_type._get_fields()
+
+        # `Struct.__setattr__` only guards frozen instances, which a new instance
+        # never is. Only route through it if a subclass has its own hook.
+        cls._direct_setattr = cls.__setattr__ is Struct.__setattr__
+        cls._generated_new = cls._generate_new()
 
         # Check to see if the Struct is also an integer
         if next(
@@ -121,9 +115,7 @@ class Struct:
         cls._frozen = False
 
     def __new__(cls: type[Self], *args, **kwargs) -> Self:
-        cls = cls._real_cls()  # noqa: PLW0642
-
-        if len(args) == 1 and isinstance(args[0], cls):
+        if len(args) == 1 and isinstance(args[0], cls._real_type):
             # Like a copy constructor
             if kwargs:
                 raise ValueError(f"Cannot use copy constructor with kwargs: {kwargs!r}")
@@ -131,18 +123,57 @@ class Struct:
             kwargs = args[0].as_dict()
             args = ()
 
-        # Pretend our signature is `__new__(cls, p1: t1, p2: t2, ...)`
-        bound = cls._signature.bind(*args, **kwargs)
-        bound.apply_defaults()
+        return cls._generated_new(*args, **kwargs)
 
-        instance = super().__new__(cls)
+    @classmethod
+    def _generate_new(cls) -> typing.Callable[..., Self]:
+        # Generate a `__new__(p1=d1, p2=d2, ...)` so argument binding, type
+        # conversion, and attribute assignment are unrolled with no per-field
+        # lookups. This is much faster than `inspect.Signature.bind`.
+        namespace = {
+            "__real_type": cls._real_type,
+            # Mixins like `tuple` must allocate the instance, not `object`
+            "__base_new": super(Struct, cls._real_type).__new__,
+            "__isinstance": isinstance,
+        }
 
-        # Set each attributes on the instance
-        for name, value in bound.arguments.items():
-            field = getattr(cls.fields, name)
-            setattr(instance, name, field._convert_type(value))
+        params = []
+        lines = []
 
-        return instance
+        direct_setattr = cls._direct_setattr
+
+        if direct_setattr:
+            lines.append("    __dict = __instance.__dict__")
+
+        for index, field in enumerate(cls.fields):
+            namespace[f"__field{index}"] = field
+            namespace[f"__type{index}"] = field.type
+            namespace[f"__default{index}"] = field.default
+            params.append(f"{field.name}=__default{index}")
+
+            lines.append(
+                f"    if {field.name} is not None"
+                f" and not __isinstance({field.name}, __type{index}):"
+                f" {field.name} = __field{index}._convert_type({field.name})"
+            )
+
+            if direct_setattr:
+                lines.append(f"    __dict[{field.name!r}] = {field.name}")
+            else:
+                lines.append(f"    __instance.{field.name} = {field.name}")
+
+        source = "\n".join(
+            [
+                f"def __new__({', '.join(params)}):",
+                "    __instance = __base_new(__real_type)",
+                *lines,
+                "    return __instance",
+            ]
+        )
+
+        exec(source, namespace)  # noqa: S102
+
+        return namespace["__new__"]
 
     @classmethod
     def _get_fields(cls) -> list[ResolvedStructField]:
@@ -271,6 +302,7 @@ class Struct:
 
         bit_offset = 0
         bitfields = []
+        packed = 0
 
         for field, value in self.assigned_fields(strict=True):
             if value is None and field.optional:
@@ -302,14 +334,17 @@ class Struct:
             if issubclass(field.type, t.FixedIntType) and not (
                 value._bits % 8 == 0 and bit_offset % 8 == 0
             ):
+                # Little endian, so [11, 1000, 00] is packed as 00_1000_11
+                packed |= (value & ((1 << value._bits) - 1)) << bit_offset
                 bit_offset += value._bits
                 bitfields.append(value)
 
                 # Serialize the current segment of bitfields once we reach a boundary
                 if bit_offset % 8 == 0:
-                    segment = t.Bits.from_bitfields(bitfields).serialize()[::-1]
-                    chunks.append(segment)
+                    chunks.append(packed.to_bytes(bit_offset // 8, "little"))
+                    bit_offset = 0
                     bitfields = []
+                    packed = 0
 
                 continue
             elif bitfields:
@@ -359,15 +394,20 @@ class Struct:
                     if len(data) < bit_length // 8:
                         raise ValueError(f"Data is too short to contain {bitfields}")
 
-                    bits, _ = t.Bits.deserialize(data[: bit_length // 8][::-1])
+                    packed = int.from_bytes(data[: bit_length // 8], "little")
                     data = data[bit_length // 8 :]
 
                     for f in bitfields:
-                        value, bits = f.type.from_bits(bits)
+                        bits = f.type._bits
+                        value = packed & ((1 << bits) - 1)
+                        packed >>= bits
+
+                        if f.type._signed and value > f.type.max_value:
+                            value -= 1 << bits
+
+                        value = f.type(value)
                         result[f.name] = value
                         setattr(temp_instance, f.name, value)
-
-                    assert not bits
 
                     bit_length = 0
                     bitfields = []
@@ -524,11 +564,15 @@ class Struct:
 
 
 class IntStruct(Struct, IntMixin):
+    _int_type: ClassVar[type[t.FixedIntType]]
+    _bit_layout: ClassVar[tuple[tuple[ResolvedStructField, int, int], ...]]
+    _instance_cache: ClassVar[dict[int, Any] | None]
+
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
 
         try:
-            cls._int_type: type[t.FixedIntType] = next(
+            cls._int_type = next(
                 c
                 for c in cls.__mro__[1:]
                 if issubclass(c, t.FixedIntType) and not issubclass(c, Struct)
@@ -536,14 +580,48 @@ class IntStruct(Struct, IntMixin):
         except StopIteration:
             raise TypeError("Integer structs must be an integer subclasses") from None
 
-    def __new__(
-        cls: type[Self], *args, _underlying_int: int | None = None, **kwargs
-    ) -> Self:
+        # Every field of an integer struct is a fixed-width integer at a fixed bit
+        # offset, so the layout is computed once and used for packing and unpacking
+        layout = []
+        shift = 0
+
+        for field in cls.fields:
+            if field.requires is not None or field.optional or field.length is not None:
+                raise TypeError(
+                    f"Field {field.name!r} of an integer struct cannot be conditional"
+                )
+
+            if not issubclass(field.type, t.FixedIntType):
+                raise TypeError(
+                    f"Field {field.name!r} of an integer struct must be an integer"
+                    f" type, not {field.type}"
+                )
+
+            layout.append((field, shift, (1 << field.type._bits) - 1))
+            shift += field.type._bits
+
+        if shift != cls._int_type._bits:
+            raise TypeError(
+                f"Fields of {cls} span {shift} bits but {cls._int_type} has"
+                f" {cls._int_type._bits} bits"
+            )
+
+        cls._bit_layout = tuple(layout)
+
+        # Instances are immutable so small integer structs are shared, like enum
+        # members. `FrameControl` is constructed for every ZCL frame.
+        if cls is not cls._real_type:
+            cls._instance_cache = cls._real_type._instance_cache
+        elif cls._int_type._bits <= 8:
+            cls._instance_cache = {}
+        else:
+            cls._instance_cache = None
+
+    def __new__(cls: type[Self], *args, **kwargs) -> Self:
         # Integers are immutable in Python so we need to know, at creation time, what
         # the integer value of this object will be. This means that these structs *must*
         # also be immutable.
         cls = cls._real_cls()  # noqa: PLW0642
-        underlying_int = _underlying_int
 
         if len(args) > 1:
             raise TypeError(f"{cls} takes no positional arguments")
@@ -557,43 +635,50 @@ class IntStruct(Struct, IntMixin):
                 )
 
             underlying_int = args[0]
+        else:
+            underlying_int = 0
 
-            data = cls._int_type(underlying_int).serialize()
-            kwargs, _ = cls._deserialize_internal(cls.fields, data)
-            args = ()
+            for field, shift, mask in cls._bit_layout:
+                if field.name in kwargs:
+                    value = kwargs.pop(field.name)
+                else:
+                    value = field.default
 
-        if underlying_int is None:
-            # To compute the underlying integer, we create a temp instance and serialize
-            temp_instance = super(Struct, cls).__new__(cls, 0)
+                if value is None:
+                    raise ValueError(f"Value for field {field.name!r} is required")
 
-            # Set the correct attributes on the instance so we can serialize
-            bound = cls._signature.bind(*args, **kwargs)
-            bound.apply_defaults()
+                underlying_int |= (field._convert_type(value) & mask) << shift
 
-            for name, value in bound.arguments.items():
-                field = getattr(cls.fields, name)
-                setattr(temp_instance, name, value)
+            if kwargs:
+                raise TypeError(f"{cls} got unexpected keyword arguments: {kwargs!r}")
 
-            # Finally, serialize
-            underlying_int, rest = cls._int_type.deserialize(temp_instance.serialize())
-            assert not rest
+        cache = cls._instance_cache
 
-            # Pretend we were called with the correct kwargs
-            args = ()
-            kwargs = temp_instance.as_dict()
-
-        bound = cls._signature.bind(*args, **kwargs)
-        bound.apply_defaults()
+        if cache is not None:
+            try:
+                return cache[underlying_int]
+            except KeyError:
+                pass
 
         instance = super(Struct, cls).__new__(cls, underlying_int)
 
-        # Set attributes on the final instance
-        for name, value in bound.arguments.items():
-            field = getattr(cls.fields, name)
-            setattr(instance, name, field._convert_type(value))
+        # Attributes are always unpacked from the integer so they are canonical
+        for field, shift, mask in cls._bit_layout:
+            value = (underlying_int >> shift) & mask
+
+            if field.type._signed and value > field.type.max_value:
+                value -= mask + 1
+
+            if cls._direct_setattr:
+                instance.__dict__[field.name] = field.type(value)
+            else:
+                setattr(instance, field.name, field.type(value))
 
         # Freeze it
-        instance._frozen = True
+        instance.__dict__["_frozen"] = True
+
+        if cache is not None:
+            cache[int(instance)] = instance
 
         return instance
 
@@ -609,14 +694,10 @@ class IntStruct(Struct, IntMixin):
 
         return int(self) == int(other)
 
+    def serialize(self) -> bytes:
+        return self._int_type.serialize(self)
+
     @classmethod
     def deserialize(cls: type[Self], data: bytes) -> tuple[Self, bytes]:
-        fields, remaining = cls._deserialize_internal(cls.fields, data)
-        underlying_int, _ = cls._int_type.deserialize(
-            data[: len(data) - len(remaining)]
-        )
-
-        # We overload deserialization to avoid an unnecessary serialize-deserialize
-        # during `cls.__new__` to compute the underlying integer, since we have all the
-        # data here already
-        return cls(_underlying_int=underlying_int, **fields), remaining
+        underlying_int, remaining = cls._int_type.deserialize(data)
+        return cls(underlying_int), remaining

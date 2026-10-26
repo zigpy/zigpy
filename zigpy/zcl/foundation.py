@@ -1128,9 +1128,12 @@ class ZCLHeader(t.Struct):
         super().__setattr__(name, value)
 
         if name == "manufacturer" and self.frame_control is not None:
-            self.frame_control = self.frame_control.replace(
-                is_manufacturer_specific=value is not None
-            )
+            is_manufacturer_specific = value is not None
+
+            if self.frame_control.is_manufacturer_specific != is_manufacturer_specific:
+                self.frame_control = self.frame_control.replace(
+                    is_manufacturer_specific=is_manufacturer_specific
+                )
 
     @classmethod
     def general(
