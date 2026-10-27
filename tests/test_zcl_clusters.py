@@ -15,8 +15,10 @@ import zigpy.endpoint
 from zigpy.ota import OTA, OtaImagesResult
 from zigpy.time import TimeSnapshot, utc_periods
 from zigpy.zcl import OtaImageAvailableEvent, OtaQueryCacheUpdatedEvent, foundation
+from zigpy.zcl.clusters.closures import DoorLock
 from zigpy.zcl.clusters.general import (
     Basic,
+    Commissioning,
     CoordinateSystem,
     KeepAlive,
     LocationType,
@@ -24,6 +26,7 @@ from zigpy.zcl.clusters.general import (
     Partition,
     PartitionAckOptions,
     PartitionFragmentationOptions,
+    ResetStartupParametersOptions,
     RSSILocation,
     Time,
 )
@@ -948,6 +951,24 @@ def test_hvac_thermostat_system_type():
     assert sys_type.heating_fuel_source == hvac.HeatingFuelSource.Gas
     assert sys_type.heating_system_type == hvac.HeatingSystemType.Heat_Pump
 
+    # ZCL R8 Table 6-12: the stage sub-fields are 2-bit values, 0b10 is Stage 3
+    sys_type = hvac.Thermostat.SystemType(0x0A)
+    assert sys_type.cooling_system_stage == hvac.CoolingSystemStage.Cool_Stage_3
+    assert sys_type.heating_system_stage == hvac.HeatingSystemStage.Heat_Stage_3
+    assert sys_type == hvac.Thermostat.SystemType(
+        cooling_system_stage=hvac.CoolingSystemStage.Cool_Stage_3,
+        heating_system_stage=hvac.HeatingSystemStage.Heat_Stage_3,
+        heating_system_type=hvac.HeatingSystemType.Conventional,
+        heating_fuel_source=hvac.HeatingFuelSource.Electric,
+        _reserved=0,
+    )
+    assert sys_type.serialize() == b"\x0a"
+
+    # Reserved bits are kept
+    sys_type = hvac.Thermostat.SystemType(0xFF)
+    assert sys_type._reserved == 0b11
+    assert sys_type.serialize() == b"\xff"
+
 
 @patch("zigpy.zcl.Cluster.send_default_rsp")
 async def test_ias_zone(send_rsp_mock):
@@ -1032,6 +1053,134 @@ def test_ias_zone_enum_subclass_zcl_type():
     """Test `IasZone.zone_type` is an enum16, not a uint16."""
 
     assert sec.IasZone.AttributeDefs.zone_type.zcl_type == foundation.DataTypeId.enum16
+
+
+def test_thermostat_system_type_zcl_type() -> None:
+    """`Thermostat.system_type_config` is a `map8` on the wire, per ZCL R8 Table 6-12."""
+
+    attr = zcl.clusters.hvac.Thermostat.AttributeDefs.system_type_config
+    assert attr.zcl_type == foundation.DataTypeId.map8
+
+
+async def test_thermostat_system_type_read() -> None:
+    """A `map8` read of `system_type_config` decodes into `SystemType` fields."""
+
+    hvac = zcl.clusters.hvac
+    cluster = hvac.Thermostat(MagicMock())
+
+    # Read_Attributes_rsp: attribute 0x0009, SUCCESS, map8, 0x3A
+    hdr, rsp = cluster.deserialize(bytes.fromhex("18010109000018" + "3a"))
+
+    with patch.object(cluster, "_read_attributes", new=AsyncMock(return_value=rsp)):
+        success, failure = await cluster.read_attributes(["system_type_config"])
+
+    assert not failure
+    value = success["system_type_config"]
+    assert type(value) is hvac.SystemType
+    assert value.cooling_system_stage == hvac.CoolingSystemStage.Cool_Stage_3
+    assert value.heating_system_stage == hvac.HeatingSystemStage.Heat_Stage_3
+    assert value.heating_system_type == hvac.HeatingSystemType.Heat_Pump
+    assert value.heating_fuel_source == hvac.HeatingFuelSource.Gas
+    assert cluster.get("system_type_config") == value
+
+
+async def test_thermostat_system_type_write() -> None:
+    """Writing `system_type_config` serializes a `map8` with the spec bit layout."""
+
+    hvac = zcl.clusters.hvac
+    cluster = hvac.Thermostat(MagicMock())
+    success_response = [
+        [foundation.WriteAttributesStatusRecord(status=foundation.Status.SUCCESS)]
+    ]
+
+    write_mock = AsyncMock(return_value=success_response)
+
+    with patch.object(cluster, "_write_attributes", new=write_mock):
+        await cluster.write_attributes(
+            {
+                "system_type_config": hvac.SystemType(
+                    cooling_system_stage=hvac.CoolingSystemStage.Cool_Stage_2,
+                    heating_system_stage=hvac.HeatingSystemStage.Heat_Stage_3,
+                    heating_system_type=hvac.HeatingSystemType.Heat_Pump,
+                    heating_fuel_source=hvac.HeatingFuelSource.Electric,
+                    _reserved=0,
+                )
+            }
+        )
+
+    (records,) = write_mock.call_args.args
+    # Attribute 0x0009, map8, 0b0001_1001
+    assert b"".join(r.serialize() for r in records) == bytes.fromhex("090018" + "19")
+
+
+@pytest.mark.parametrize(
+    ("command_id", "command_name"),
+    [(0x05, "set_pin_code_response"), (0x16, "set_rfid_code_response")],
+)
+@pytest.mark.parametrize(
+    ("raw", "status"),
+    [
+        (0x00, DoorLock.SetPinOrIdStatus.Success),
+        (0x01, DoorLock.SetPinOrIdStatus.GeneralFailure),
+        (0x02, DoorLock.SetPinOrIdStatus.MemoryFull),
+        (0x03, DoorLock.SetPinOrIdStatus.DuplicateCodeError),
+    ],
+)
+def test_door_lock_set_pin_or_id_status(
+    command_id: int,
+    command_name: str,
+    raw: int,
+    status: DoorLock.SetPinOrIdStatus,
+) -> None:
+    """Set PIN/RFID Code responses carry cluster-specific status values.
+
+    ZCL R8 7.3.2.16.6 and 7.3.2.16.23: 0 Success, 1 General failure, 2 Memory full,
+    3 Duplicate code/ID error. These are not ZCL `Status` values.
+    """
+
+    cluster = DoorLock(MagicMock())
+    data = bytes([0x19, 0x01, command_id, raw])
+
+    hdr, args = cluster.deserialize(data)
+    assert hdr.command_id == command_id
+    assert cluster.client_commands[command_id].name == command_name
+    assert type(args.status) is DoorLock.SetPinOrIdStatus
+    assert args.status == status
+    assert args.status.name == status.name
+
+    schema = cluster.client_commands[command_id].schema
+    assert schema(status=status).serialize() == bytes([raw])
+
+
+@pytest.mark.parametrize(
+    ("raw", "options"),
+    [
+        (0x00, ResetStartupParametersOptions(0)),
+        (0x01, ResetStartupParametersOptions.Reset_current),
+        (0x02, ResetStartupParametersOptions.Reset_all),
+        (
+            0x06,
+            ResetStartupParametersOptions.Reset_all
+            | ResetStartupParametersOptions.Erase_index,
+        ),
+    ],
+)
+def test_commissioning_reset_startup_parameters_options(
+    raw: int, options: ResetStartupParametersOptions
+) -> None:
+    """Reset Startup Parameters options are defined bits, per ZCL R8 Figure 13-6."""
+
+    cluster = Commissioning(MagicMock())
+    data = bytes([0x01, 0x01, 0x03, raw, 0x02])
+
+    hdr, args = cluster.deserialize(data)
+    assert hdr.command_id == 0x03
+    assert type(args.options) is ResetStartupParametersOptions
+    assert args.options == options
+    assert args.index == 0x02
+
+    schema = Commissioning.ServerCommandDefs.reset_startup_parameters.schema
+    assert schema(options=options, index=0x02).serialize() == data[3:]
 
 
 @pytest.mark.parametrize(

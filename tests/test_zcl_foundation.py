@@ -628,6 +628,15 @@ def test_status_enum():
     assert status.name not in nwk_names
     assert status.name in mac_names
 
+    # ZCL LIMIT_REACHED shadows the APS/NWK NWK_STARTUP_FAILURE (also 0xC4)
+    status = foundation.Status(0xC4)
+    assert status is foundation.Status.LIMIT_REACHED
+    assert status.name == "LIMIT_REACHED"
+    assert foundation.Status.deserialize(b"\xc4") == (
+        foundation.Status.LIMIT_REACHED,
+        b"",
+    )
+
     status = foundation.Status(0xFF)
     assert status.name not in status_names
     assert status.name not in aps_names
