@@ -421,6 +421,63 @@ def test_limited_char_string():
         t.LimitedCharString(5)("123456").serialize()
 
 
+@pytest.mark.parametrize(
+    ("string_type", "prefix_length"),
+    [
+        (t.CharacterString, 1),
+        (t.LongCharacterString, 2),
+        (t.LimitedCharString(16), 1),
+    ],
+)
+def test_char_string_multibyte(string_type, prefix_length):
+    """The length prefix counts UTF-8 octets, not characters."""
+    text = "é1€😀"  # 2 + 1 + 3 + 4 octets in 4 characters
+    encoded = b"\xc3\xa91\xe2\x82\xac\xf0\x9f\x98\x80"
+    serialized = (10).to_bytes(prefix_length, "little") + encoded
+
+    assert string_type(text).serialize() == serialized
+
+    d, rest = string_type.deserialize(serialized + b"rest")
+    assert d == text
+    assert d.raw == encoded
+    assert rest == b"rest"
+    assert d.serialize() == serialized
+
+
+def test_char_string_multibyte_too_long():
+    # 127 characters, but 254 octets: the largest valid character string
+    assert len(t.CharacterString("é" * 127).serialize()) == 1 + 254
+
+    # 128 characters, but 256 octets
+    with pytest.raises(ValueError, match="too long"):
+        t.CharacterString("é" * 128).serialize()
+
+
+def test_limited_char_string_multibyte():
+    # The limit is in characters (e.g. "0 to 16 characters" for scene names), while
+    # the length prefix counts octets
+    assert t.LimitedCharString(2)("éé").serialize() == b"\x04\xc3\xa9\xc3\xa9"
+
+    with pytest.raises(ValueError, match="too long"):
+        t.LimitedCharString(2)("ééé").serialize()
+
+
+def test_long_char_string_invalid():
+    # The non-value of a long character string is 0xFFFF, not 0x00FF
+    r, rest = t.LongCharacterString.deserialize(b"\xff\xffabcd")
+    assert r == ""
+    assert r.invalid is True
+    assert rest == b"abcd"
+
+    assert r.serialize() == b"\xff\xff"
+
+    # A 255-octet long character string is a regular value
+    r, rest = t.LongCharacterString.deserialize(b"\xff\x00" + b"a" * 255 + b"rest")
+    assert r == "a" * 255
+    assert r.invalid is False
+    assert rest == b"rest"
+
+
 def test_lvlist():
     d, r = t.LVList[t.uint8_t, t.uint8_t].deserialize(b"\x0412345")
     assert r == b"5"
