@@ -2000,6 +2000,14 @@ class RestartDeviceOptions(t.bitmap8):
     Immediate = 0x08
 
 
+class ResetStartupParametersOptions(t.bitmap8):
+    """Reset Startup Parameters command options bitmap."""
+
+    Reset_current = 0x01
+    Reset_all = 0x02
+    Erase_index = 0x04
+
+
 class Commissioning(Cluster):
     """Attributes and commands for commissioning and
     managing a Zigbee device.
@@ -2007,6 +2015,7 @@ class Commissioning(Cluster):
 
     StartupControl: Final = StartupControl
     NetworkKeyType: Final = NetworkKeyType
+    ResetStartupParametersOptions: Final = ResetStartupParametersOptions
 
     cluster_id: Final[t.uint16_t] = 0x0015
     ep_attribute: Final = "commissioning"
@@ -2096,7 +2105,7 @@ class Commissioning(Cluster):
                 "jitter": t.uint8_t,
             },
         )
-        # Options field is reserved for save/restore/reset commands
+        # Options field is reserved for save/restore commands
         save_startup_parameters: Final = ZCLCommandDef(
             id=0x01,
             schema={"options": t.bitmap8, "index": t.uint8_t},
@@ -2107,7 +2116,7 @@ class Commissioning(Cluster):
         )
         reset_startup_parameters: Final = ZCLCommandDef(
             id=0x03,
-            schema={"options": t.bitmap8, "index": t.uint8_t},
+            schema={"options": ResetStartupParametersOptions, "index": t.uint8_t},
         )
 
     class ClientCommandDefs(BaseCommandDefs):

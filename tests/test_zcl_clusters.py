@@ -18,6 +18,7 @@ from zigpy.zcl import OtaImageAvailableEvent, OtaQueryCacheUpdatedEvent, foundat
 from zigpy.zcl.clusters.closures import DoorLock
 from zigpy.zcl.clusters.general import (
     Basic,
+    Commissioning,
     CoordinateSystem,
     KeepAlive,
     LocationType,
@@ -25,6 +26,7 @@ from zigpy.zcl.clusters.general import (
     Partition,
     PartitionAckOptions,
     PartitionFragmentationOptions,
+    ResetStartupParametersOptions,
     RSSILocation,
     Time,
 )
@@ -1072,6 +1074,37 @@ def test_door_lock_set_pin_or_id_status(
 
     schema = cluster.client_commands[command_id].schema
     assert schema(status=status).serialize() == bytes([raw])
+
+
+@pytest.mark.parametrize(
+    ("raw", "options"),
+    [
+        (0x00, ResetStartupParametersOptions(0)),
+        (0x01, ResetStartupParametersOptions.Reset_current),
+        (0x02, ResetStartupParametersOptions.Reset_all),
+        (
+            0x06,
+            ResetStartupParametersOptions.Reset_all
+            | ResetStartupParametersOptions.Erase_index,
+        ),
+    ],
+)
+def test_commissioning_reset_startup_parameters_options(
+    raw: int, options: ResetStartupParametersOptions
+) -> None:
+    """Reset Startup Parameters options are defined bits, per ZCL R8 Figure 13-6."""
+
+    cluster = Commissioning(MagicMock())
+    data = bytes([0x01, 0x01, 0x03, raw, 0x02])
+
+    hdr, args = cluster.deserialize(data)
+    assert hdr.command_id == 0x03
+    assert type(args.options) is ResetStartupParametersOptions
+    assert args.options == options
+    assert args.index == 0x02
+
+    schema = Commissioning.ServerCommandDefs.reset_startup_parameters.schema
+    assert schema(options=options, index=0x02).serialize() == data[3:]
 
 
 @pytest.mark.parametrize(
