@@ -772,169 +772,124 @@ def test_basic_cluster_power_source():
 
 
 @pytest.mark.parametrize(
-    ("raw", "mode", "name"),
+    ("raw", "mode", "strobe", "level"),
     [
-        (0x00, 0, "Stop"),
-        (0x01, 0, "Stop"),
-        (0x02, 0, "Stop"),
-        (0x03, 0, "Stop"),
-        (0x30, 3, "Emergency"),
-        (0x31, 3, "Emergency"),
-        (0x32, 3, "Emergency"),
-        (0x33, 3, "Emergency"),
+        (
+            0x00,
+            sec.WarningMode.Stop,
+            sec.Strobe.No_strobe,
+            sec.SirenLevel.Low_level_sound,
+        ),
+        (
+            0x04,
+            sec.WarningMode.Stop,
+            sec.Strobe.Strobe,
+            sec.SirenLevel.Low_level_sound,
+        ),
+        (
+            0x17,
+            sec.WarningMode.Burglar,
+            sec.Strobe.Strobe,
+            sec.SirenLevel.Very_high_level_sound,
+        ),
+        (
+            0x32,
+            sec.WarningMode.Emergency,
+            sec.Strobe.No_strobe,
+            sec.SirenLevel.High_level_sound,
+        ),
+        (
+            0x65,
+            sec.WarningMode.Emergency_Panic,
+            sec.Strobe.Strobe,
+            sec.SirenLevel.Medium_level_sound,
+        ),
     ],
 )
-def test_security_iaswd_warning_mode(raw, mode, name):
-    """Test warning command class of IasWD cluster."""
-
-    def _test(warning, data):
-        assert warning.serialize() == data
-        assert warning == raw
-        assert warning.mode == mode
-        assert warning.mode.name == name
-        warning.mode = mode
-        assert warning.serialize() == data
-        assert warning.mode == mode
-
-    data = types.uint8_t(raw).serialize()
-    _test(sec.IasWd.Warning(raw), data)
-
+def test_security_iaswd_warning(raw, mode, strobe, level):
+    """Test the warning bitmap of the IAS WD Start Warning command."""
     extra = b"The rest of the owl\xaa\x55"
-    warn, rest = sec.IasWd.Warning.deserialize(data + extra)
+    warning, rest = sec.IasWd.Warning.deserialize(bytes([raw]) + extra)
+
     assert rest == extra
-    _test(warn, data)
-    repr(warn)
-
-
-def test_security_iaswd_warning_mode_2():
-    """Test warning command class of IasWD cluster."""
-
-    def _test(data, raw, mode, name):
-        warning, _ = sec.IasWd.Warning.deserialize(data)
-        assert warning.serialize() == data
-        assert warning == raw
-        assert warning.mode == mode
-        assert warning.mode.name == name
-        warning.mode = mode
-        assert warning.serialize() == data
-        assert warning.mode == mode
-
-    for mode in sec.IasWd.Warning.WarningMode:
-        for other in range(16):
-            raw = mode << 4 | other
-            data = types.uint8_t(raw).serialize()
-            _test(data, raw, mode.value, mode.name)
-
-
-def test_security_iaswd_warning_strobe():
-    """Test strobe of warning command class of IasWD cluster."""
-
-    for strobe in sec.IasWd.Warning.Strobe:
-        for mode in range(16):
-            for siren in range(4):
-                raw = mode << 4 | siren
-                raw |= strobe.value << 2
-                data = types.uint8_t(raw).serialize()
-                warning, _ = sec.IasWd.Warning.deserialize(data)
-                assert warning.serialize() == data
-                assert warning == raw
-                assert warning.strobe == strobe.value
-                assert warning.strobe.name == strobe.name
-                warning.strobe = strobe
-                assert warning.serialize() == data
-                assert warning.strobe == strobe.value
-
-
-def test_security_iaswd_warning_siren():
-    """Test siren of warning command class of IasWD cluster."""
-
-    for siren in sec.IasWd.Warning.SirenLevel:
-        for mode in range(16):
-            for strobe in range(4):
-                raw = mode << 4 | (strobe << 2)
-                raw |= siren.value
-                data = types.uint8_t(raw).serialize()
-                warning, _ = sec.IasWd.Warning.deserialize(data)
-                assert warning.serialize() == data
-                assert warning == raw
-                assert warning.level == siren.value
-                assert warning.level.name == siren.name
-                warning.level = siren
-                assert warning.serialize() == data
-                assert warning.level == siren.value
+    assert warning == raw
+    assert warning.mode == mode
+    assert warning.strobe == strobe
+    assert warning.level == level
+    assert sec.IasWd.Warning(mode=mode, strobe=strobe, level=level) == raw
+    assert warning.serialize() == bytes([raw])
 
 
 @pytest.mark.parametrize(
-    ("raw", "mode", "name"),
+    ("raw", "strobe", "expected"),
     [
-        (0x00, 0, "Armed"),
-        (0x01, 0, "Armed"),
-        (0x02, 0, "Armed"),
-        (0x03, 0, "Armed"),
-        (0x10, 1, "Disarmed"),
-        (0x11, 1, "Disarmed"),
-        (0x12, 1, "Disarmed"),
-        (0x13, 1, "Disarmed"),
+        (0b0011_0111, sec.Strobe.No_strobe, 0b0011_0011),
+        (0b0011_1011, sec.Strobe.No_strobe, 0b0011_0011),
+        (0b0011_0011, sec.Strobe.Strobe, 0b0011_0111),
+        (0b0011_1011, sec.Strobe.Strobe, 0b0011_0111),
     ],
 )
-def test_security_iaswd_squawk_mode(raw, mode, name):
-    """Test squawk command class of IasWD cluster."""
+def test_security_iaswd_warning_strobe_replace(raw, strobe, expected):
+    """Test replacing the strobe of a warning replaces both strobe bits."""
+    warning = sec.IasWd.Warning(raw).replace(strobe=strobe)
 
-    def _test(squawk, data):
-        assert squawk.serialize() == data
-        assert squawk == raw
-        assert squawk.mode == mode
-        assert squawk.mode.name == name
-        squawk.mode = mode
-        assert squawk.serialize() == data
-        assert squawk.mode == mode
+    assert warning == expected
+    assert warning.strobe == strobe
 
-    data = types.uint8_t(raw).serialize()
-    _test(sec.IasWd.Squawk(raw), data)
 
+@pytest.mark.parametrize(
+    ("raw", "mode", "strobe", "level"),
+    [
+        (
+            0x00,
+            sec.SquawkMode.Armed,
+            sec.SquawkStrobe.No_strobe,
+            sec.SquawkLevel.Low_level_sound,
+        ),
+        (
+            0x08,
+            sec.SquawkMode.Armed,
+            sec.SquawkStrobe.Strobe,
+            sec.SquawkLevel.Low_level_sound,
+        ),
+        (
+            0x13,
+            sec.SquawkMode.Disarmed,
+            sec.SquawkStrobe.No_strobe,
+            sec.SquawkLevel.Very_high_level_sound,
+        ),
+        (
+            0x1A,
+            sec.SquawkMode.Disarmed,
+            sec.SquawkStrobe.Strobe,
+            sec.SquawkLevel.High_level_sound,
+        ),
+    ],
+)
+def test_security_iaswd_squawk(raw, mode, strobe, level):
+    """Test the squawk bitmap of the IAS WD Squawk command."""
     extra = b"The rest of the owl\xaa\x55"
-    squawk, rest = sec.IasWd.Squawk.deserialize(data + extra)
+    squawk, rest = sec.IasWd.Squawk.deserialize(bytes([raw]) + extra)
+
     assert rest == extra
-    _test(squawk, data)
-    repr(squawk)
+    assert squawk == raw
+    assert squawk.mode == mode
+    assert squawk.strobe == strobe
+    assert squawk.level == level
+    assert sec.IasWd.Squawk(mode=mode, strobe=strobe, level=level) == raw
+    assert squawk.serialize() == bytes([raw])
 
 
-def test_security_iaswd_squawk_strobe():
-    """Test strobe of squawk command class of IasWD cluster."""
+def test_security_iaswd_squawk_warning_strobe():
+    """Test a squawk accepts the warning strobe enum."""
+    squawk = sec.IasWd.Squawk(
+        mode=sec.SquawkMode.Armed,
+        strobe=sec.Strobe.Strobe,
+        level=sec.SquawkLevel.Low_level_sound,
+    )
 
-    for strobe in sec.IasWd.Squawk.Strobe:
-        for mode in range(16):
-            for level in range(4):
-                raw = mode << 4 | level
-                raw |= strobe.value << 3
-                data = types.uint8_t(raw).serialize()
-                squawk, _ = sec.IasWd.Squawk.deserialize(data)
-                assert squawk.serialize() == data
-                assert squawk == raw
-                assert squawk.strobe == strobe.value
-                assert squawk.strobe == strobe
-                assert squawk.strobe.name == strobe.name
-                squawk.strobe = strobe
-                assert squawk.serialize() == data
-                assert squawk.strobe == strobe
-
-
-def test_security_iaswd_squawk_level():
-    """Test level of squawk command class of IasWD cluster."""
-
-    for level in sec.IasWd.Squawk.SquawkLevel:
-        for other in range(64):
-            raw = other << 2 | level.value
-            data = types.uint8_t(raw).serialize()
-            squawk, _ = sec.IasWd.Squawk.deserialize(data)
-            assert squawk.serialize() == data
-            assert squawk == raw
-            assert squawk.level == level.value
-            assert squawk.level == level
-            assert squawk.level.name == level.name
-            squawk.level = level
-            assert squawk.serialize() == data
-            assert squawk.level == level
+    assert squawk == 0x08
+    assert squawk.strobe == sec.SquawkStrobe.Strobe
 
 
 def test_hvac_thermostat_system_type():

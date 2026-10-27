@@ -1063,11 +1063,21 @@ class LevelControl(Cluster):
         )
         move_to_level_with_on_off: Final = ZCLCommandDef(
             id=0x04,
-            schema={"level": t.uint8_t, "transition_time": t.uint16_t},
+            schema={
+                "level": t.uint8_t,
+                "transition_time": t.uint16_t,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
+            },
         )
         move_with_on_off: Final = ZCLCommandDef(
             id=0x05,
-            schema={"move_mode": MoveMode, "rate": t.uint8_t},
+            schema={
+                "move_mode": MoveMode,
+                "rate": t.uint8_t,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
+            },
         )
         step_with_on_off: Final = ZCLCommandDef(
             id=0x06,
@@ -1075,9 +1085,17 @@ class LevelControl(Cluster):
                 "step_mode": StepMode,
                 "step_size": t.uint8_t,
                 "transition_time": t.uint16_t,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
         )
-        stop_with_on_off: Final = ZCLCommandDef(id=0x07, schema={})
+        stop_with_on_off: Final = ZCLCommandDef(
+            id=0x07,
+            schema={
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
+            },
+        )
         move_to_closest_frequency: Final = ZCLCommandDef(
             id=0x08,
             schema={"frequency": t.uint16_t},
@@ -2554,7 +2572,8 @@ class ImageBlockResponseCommand(foundation.CommandSchema):
         requires=lambda s: s.status == foundation.Status.WAIT_FOR_DATA
     )
     minimum_block_period: t.uint16_t = t.StructField(
-        requires=lambda s: s.status == foundation.Status.WAIT_FOR_DATA
+        requires=lambda s: s.status == foundation.Status.WAIT_FOR_DATA,
+        optional=True,
     )
 
 
