@@ -951,6 +951,19 @@ def test_hvac_thermostat_system_type():
     assert sys_type.heating_fuel_source == hvac.HeatingFuelSource.Gas
     assert sys_type.heating_system_type == hvac.HeatingSystemType.Heat_Pump
 
+    # ZCL R8 Table 6-12: the stage sub-fields are 2-bit values, 0b10 is Stage 3
+    sys_type = hvac.Thermostat.SystemType(0x0A)
+    assert sys_type.cooling_system_stage == hvac.CoolingSystemStage.Cool_Stage_3
+    assert sys_type.heating_system_stage == hvac.HeatingSystemStage.Heat_Stage_3
+    assert sys_type == hvac.Thermostat.SystemType(
+        cooling_system_stage=hvac.CoolingSystemStage.Cool_Stage_3,
+        heating_system_stage=hvac.HeatingSystemStage.Heat_Stage_3,
+        heating_system_type=hvac.HeatingSystemType.Conventional,
+        heating_fuel_source=hvac.HeatingFuelSource.Electric,
+        _reserved=0,
+    )
+    assert sys_type.serialize() == b"\x0a"
+
 
 @patch("zigpy.zcl.Cluster.send_default_rsp")
 async def test_ias_zone(send_rsp_mock):
@@ -1035,6 +1048,64 @@ def test_ias_zone_enum_subclass_zcl_type():
     """Test `IasZone.zone_type` is an enum16, not a uint16."""
 
     assert sec.IasZone.AttributeDefs.zone_type.zcl_type == foundation.DataTypeId.enum16
+
+
+def test_thermostat_system_type_zcl_type() -> None:
+    """`Thermostat.system_type_config` is a `map8` on the wire, per ZCL R8 Table 6-12."""
+
+    attr = zcl.clusters.hvac.Thermostat.AttributeDefs.system_type_config
+    assert attr.zcl_type == foundation.DataTypeId.map8
+
+
+async def test_thermostat_system_type_read() -> None:
+    """A `map8` read of `system_type_config` decodes into `SystemType` fields."""
+
+    hvac = zcl.clusters.hvac
+    cluster = hvac.Thermostat(MagicMock())
+
+    # Read_Attributes_rsp: attribute 0x0009, SUCCESS, map8, 0x3A
+    hdr, rsp = cluster.deserialize(bytes.fromhex("18010109000018" + "3a"))
+
+    with patch.object(cluster, "_read_attributes", new=AsyncMock(return_value=rsp)):
+        success, failure = await cluster.read_attributes(["system_type_config"])
+
+    assert not failure
+    value = success["system_type_config"]
+    assert type(value) is hvac.SystemType
+    assert value.cooling_system_stage == hvac.CoolingSystemStage.Cool_Stage_3
+    assert value.heating_system_stage == hvac.HeatingSystemStage.Heat_Stage_3
+    assert value.heating_system_type == hvac.HeatingSystemType.Heat_Pump
+    assert value.heating_fuel_source == hvac.HeatingFuelSource.Gas
+    assert cluster.get("system_type_config") == value
+
+
+async def test_thermostat_system_type_write() -> None:
+    """Writing `system_type_config` serializes a `map8` with the spec bit layout."""
+
+    hvac = zcl.clusters.hvac
+    cluster = hvac.Thermostat(MagicMock())
+    success_response = [
+        [foundation.WriteAttributesStatusRecord(status=foundation.Status.SUCCESS)]
+    ]
+
+    write_mock = AsyncMock(return_value=success_response)
+
+    with patch.object(cluster, "_write_attributes", new=write_mock):
+        await cluster.write_attributes(
+            {
+                "system_type_config": hvac.SystemType(
+                    cooling_system_stage=hvac.CoolingSystemStage.Cool_Stage_2,
+                    heating_system_stage=hvac.HeatingSystemStage.Heat_Stage_3,
+                    heating_system_type=hvac.HeatingSystemType.Heat_Pump,
+                    heating_fuel_source=hvac.HeatingFuelSource.Electric,
+                    _reserved=0,
+                )
+            }
+        )
+
+    (records,) = write_mock.call_args.args
+    # Attribute 0x0009, map8, 0b0001_1001
+    assert b"".join(r.serialize() for r in records) == bytes.fromhex("090018" + "19")
 
 
 @pytest.mark.parametrize(
