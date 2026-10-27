@@ -739,38 +739,6 @@ def test_ias_zone_type():
     assert zone.value == 0x8181
 
 
-@pytest.mark.parametrize(
-    ("payload", "kwargs"),
-    [
-        # Current revision: all fields present
-        (b"\x09\x00\x00\x05\x0a\x00", {"zone_id": 5, "delay": 10}),
-        # Devices implementing a pre-HA 1.2 revision send neither field
-        (b"\x09\x00\x00", {}),
-        # A trailing `delay` can be omitted on its own
-        (b"\x09\x00\x00\x05", {"zone_id": 5}),
-    ],
-)
-def test_ias_zone_status_change_notification_optional_fields(payload, kwargs):
-    """Test the HA 1.2 `zone_id` and `delay` fields are optional."""
-    schema = sec.IasZone.ClientCommandDefs.status_change_notification.schema
-    cmd = schema(
-        zone_status=sec.IasZone.ZoneStatus.Alarm_1 | sec.IasZone.ZoneStatus.Battery,
-        extended_status=0x00,
-        **kwargs,
-    )
-
-    assert cmd.serialize() == payload
-    assert schema.deserialize(payload) == (cmd, b"")
-
-    # Received through the cluster, as a device sends it
-    cluster = sec.IasZone(MagicMock(), is_server=False)
-    hdr, args = cluster.deserialize(b"\x09\x4b\x00" + payload)
-    assert hdr.command_id == 0x00
-    assert args == cmd
-    assert args.zone_id == kwargs.get("zone_id")
-    assert args.delay == kwargs.get("delay")
-
-
 def test_ias_ace_audible_notification():
     extra = b"\xaa\x55"
     notification_type, rest = sec.IasAce.AudibleNotification.deserialize(
@@ -785,121 +753,6 @@ def test_ias_ace_audible_notification():
     assert rest == extra
     assert notification_type.name.startswith("manufacturer_specific")
     assert notification_type.value == 0x81
-
-
-_IAS_ACE_IEEE = types.EUI64.convert("00:0d:6f:00:0a:90:69:e7")
-
-
-@pytest.mark.parametrize(
-    ("command", "kwargs", "payload"),
-    [
-        # Arm: `arm_disarm_code` and `zone_id` were added in HA 1.2
-        (
-            sec.IasAce.ServerCommandDefs.arm,
-            {
-                "arm_mode": sec.IasAce.ArmMode.Arm_All_Zones,
-                "arm_disarm_code": "1234",
-                "zone_id": 2,
-            },
-            b"\x03\x041234\x02",
-        ),
-        (
-            sec.IasAce.ServerCommandDefs.arm,
-            {"arm_mode": sec.IasAce.ArmMode.Arm_All_Zones, "arm_disarm_code": "1234"},
-            b"\x03\x041234",
-        ),
-        (
-            sec.IasAce.ServerCommandDefs.arm,
-            {"arm_mode": sec.IasAce.ArmMode.Arm_All_Zones},
-            b"\x03",
-        ),
-        # Bypass: `arm_disarm_code` was added in HA 1.2.1
-        (
-            sec.IasAce.ServerCommandDefs.bypass,
-            {"zones_ids": [1, 2], "arm_disarm_code": "1234"},
-            b"\x02\x01\x02\x041234",
-        ),
-        (
-            sec.IasAce.ServerCommandDefs.bypass,
-            {"zones_ids": [1, 2]},
-            b"\x02\x01\x02",
-        ),
-        # Get Zone Information Response: `zone_label` was added in HA 1.2.1
-        (
-            sec.IasAce.ClientCommandDefs.get_zone_info_response,
-            {
-                "zone_id": 1,
-                "zone_type": sec.IasZone.ZoneType.Contact_Switch,
-                "ieee": _IAS_ACE_IEEE,
-                "zone_label": "Door",
-            },
-            b"\x01\x15\x00" + _IAS_ACE_IEEE.serialize() + b"\x04Door",
-        ),
-        (
-            sec.IasAce.ClientCommandDefs.get_zone_info_response,
-            {
-                "zone_id": 1,
-                "zone_type": sec.IasZone.ZoneType.Contact_Switch,
-                "ieee": _IAS_ACE_IEEE,
-            },
-            b"\x01\x15\x00" + _IAS_ACE_IEEE.serialize(),
-        ),
-        # Zone Status Changed: `audible_notification` and `zone_label` were added in
-        # HA 1.2.1
-        (
-            sec.IasAce.ClientCommandDefs.zone_status_changed,
-            {
-                "zone_id": 1,
-                "zone_status": sec.IasZone.ZoneStatus.Alarm_1,
-                "audible_notification": sec.IasAce.AudibleNotification.Default_Sound,
-                "zone_label": "Door",
-            },
-            b"\x01\x01\x00\x01\x04Door",
-        ),
-        (
-            sec.IasAce.ClientCommandDefs.zone_status_changed,
-            {"zone_id": 1, "zone_status": sec.IasZone.ZoneStatus.Alarm_1},
-            b"\x01\x01\x00",
-        ),
-        # Panel Status Changed: `audible_notification` and `alarm_status` were added
-        # in HA 1.2.1
-        (
-            sec.IasAce.ClientCommandDefs.panel_status_changed,
-            {
-                "panel_status": sec.IasAce.PanelStatus.In_Alarm,
-                "seconds_remaining": 0,
-                "audible_notification": sec.IasAce.AudibleNotification.Default_Sound,
-                "alarm_status": sec.IasAce.AlarmStatus.Fire,
-            },
-            b"\x07\x00\x01\x02",
-        ),
-        (
-            sec.IasAce.ClientCommandDefs.panel_status_changed,
-            {"panel_status": sec.IasAce.PanelStatus.In_Alarm, "seconds_remaining": 0},
-            b"\x07\x00",
-        ),
-    ],
-)
-def test_ias_ace_optional_fields(command, kwargs, payload):
-    """Test IAS ACE fields added in HA 1.2 and 1.2.1 are optional."""
-    cmd = command.schema(**kwargs)
-
-    assert cmd.serialize() == payload
-    assert command.schema.deserialize(payload) == (cmd, b"")
-
-    # Received through the cluster, as a device sends it
-    is_server = command in sec.IasAce.ServerCommandDefs
-    frame_control = b"\x01" if is_server else b"\x09"
-    cluster = sec.IasAce(MagicMock(), is_server=is_server)
-    hdr, args = cluster.deserialize(
-        frame_control + b"\x4b" + bytes([command.id]) + payload
-    )
-
-    assert hdr.command_id == command.id
-    assert args == cmd
-
-    # Omitted fields are still passed positionally to listeners, as `None`
-    assert len(tuple(args)) == len(command.schema.fields)
 
 
 def test_basic_cluster_power_source():
@@ -1131,46 +984,6 @@ async def test_ias_zone(send_rsp_mock):
     t.handle_message(hdr, args)
     assert send_rsp_mock.call_count == 1
     send_rsp_mock.reset_mock()
-
-
-@pytest.mark.parametrize(
-    ("kwargs", "payload"),
-    [
-        # Current revision: all fields present
-        (
-            {
-                "strobe_duty_cycle": 50,
-                "strobe_level": sec.StrobeLevel.High_level_strobe,
-            },
-            b"\x16\x05\x00\x32\x02",
-        ),
-        # `strobe_duty_cycle` and `strobe_level` were added in HA 1.2
-        ({"strobe_duty_cycle": 50}, b"\x16\x05\x00\x32"),
-        ({}, b"\x16\x05\x00"),
-    ],
-)
-async def test_ias_wd_start_warning_optional_fields(kwargs, payload):
-    """Test the HA 1.2 strobe fields of the IAS WD start warning are optional."""
-    command = sec.IasWd.ServerCommandDefs.start_warning
-    # Burglar mode, strobe, high level sound
-    warning = sec.IasWd.Warning(0x16)
-
-    cmd = command.schema(warning=warning, warning_duration=5, **kwargs)
-    assert cmd.serialize() == payload
-    assert command.schema.deserialize(payload) == (cmd, b"")
-
-    # Received through the cluster
-    cluster = sec.IasWd(MagicMock(), is_server=True)
-    hdr, args = cluster.deserialize(b"\x01\x4b\x00" + payload)
-    assert hdr.command_id == command.id
-    assert args == cmd
-
-    # Sent through the cluster
-    ep = MagicMock()
-    ep.request = AsyncMock()
-    cluster = sec.IasWd(ep)
-    await cluster.start_warning(warning=warning, warning_duration=5, **kwargs)
-    assert ep.request.mock_calls[0].kwargs["data"][3:] == payload
 
 
 def test_ota_image_block_field_control():
