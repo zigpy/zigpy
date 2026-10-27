@@ -132,7 +132,8 @@ class BacnetProtocolTunnel(Cluster):
     ep_attribute: Final = "bacnet_tunnel"
 
     class ServerCommandDefs(BaseCommandDefs):
-        transfer_npdu: Final = ZCLCommandDef(id=0x00, schema={"npdu": t.LVBytes})
+        # Figure 9-4: the NPDU runs to the end of the frame, without a length prefix
+        transfer_npdu: Final = ZCLCommandDef(id=0x00, schema={"npdu": t.Bytes})
 
 
 class AnalogInputRegular(Cluster):

@@ -30,6 +30,7 @@ from zigpy.zcl.clusters.general import (
     RSSILocation,
     Time,
 )
+from zigpy.zcl.clusters.protocol import BacnetProtocolTunnel
 import zigpy.zcl.clusters.security as sec
 from zigpy.zdo import types as zdo_t
 
@@ -1096,6 +1097,20 @@ def test_partition_nack_id_width(
 
     assert command.serialize() == bytes.fromhex(serialized)
     assert schema.deserialize(bytes.fromhex(serialized)) == (command, b"")
+
+
+def test_bacnet_protocol_tunnel_transfer_npdu() -> None:
+    """The NPDU has no length prefix, per ZCL R8 Figure 9-4."""
+    cluster = BacnetProtocolTunnel(MagicMock())
+    schema = BacnetProtocolTunnel.ServerCommandDefs.transfer_npdu.schema
+    npdu = bytes.fromhex("0120ffff00ff1008")
+
+    assert schema(npdu=npdu).serialize() == npdu
+
+    # Cluster-specific, client to server, TSN 0x12, Transfer NPDU
+    hdr, command = cluster.deserialize(bytes.fromhex("011200") + npdu)
+    assert hdr.command_id == BacnetProtocolTunnel.ServerCommandDefs.transfer_npdu.id
+    assert command == schema(npdu=npdu)
 
 
 def test_power_profile_transferred_phase() -> None:
