@@ -117,7 +117,11 @@ def _is_storable_value(value: Any) -> bool:
     """Check if a value can be bound as an SQLite parameter, either natively or via
     a registered adapter. List and struct values, for example, cannot be.
     """
-    if value is None or isinstance(value, (int, float, str, bytes, bytearray)):
+    # SQLite integers are signed 64-bit, so large `uint64_t` values don't fit
+    if isinstance(value, int):
+        return -(2**63) <= value < 2**63
+
+    if value is None or isinstance(value, (float, str, bytes, bytearray)):
         return True
 
     try:

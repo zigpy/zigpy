@@ -1357,6 +1357,10 @@ async def test_attribute_reads_persist(tmp_path) -> None:
     [
         (None, True),
         (t.uint8_t(1), True),
+        (t.uint64_t(2**63 - 1), True),
+        (t.uint64_t(2**63), False),
+        (t.int64s(-(2**63)), True),
+        (True, True),
         (zdo_t.LogicalType.Router, True),
         (t.Single(1.5), True),
         (t.CharacterString("text"), True),
