@@ -56,6 +56,14 @@ def _convert_attribute_value(
     if isinstance(type_value.value, foundation.TypedCollection):
         type_value = type_value.value
 
+    # Attributes declared as an untyped array, set, or bag keep the element type
+    if (
+        isinstance(type_value, foundation.TypedCollection)
+        and isinstance(attr_def.type, type)
+        and issubclass(attr_def.type, foundation.TypedCollection)
+    ):
+        return attr_def.type(type_value)
+
     # `dataN` values are untyped bytes, so they are re-read with the declared type
     if isinstance(
         type_value.value,
