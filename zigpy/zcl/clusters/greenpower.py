@@ -126,15 +126,7 @@ class ResponseSchema(foundation.CommandSchema):
     options: ResponseOptions
     temp_master_short_addr: t.uint16_t
     temp_master_tx_channel: TempMasterTxChannel
-    gpd_id: zgptypes.SrcID = StructField(
-        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.SrcID
-    )
-    gpd_ieee: t.EUI64 = StructField(
-        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.IEEE
-    )
-    gpd_endpoint: t.uint8_t = StructField(
-        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.IEEE
-    )
+    gpd_id: zgptypes.SrcID
     gpd_command_id: zgptypes.GPDCommandID
     gpd_command_payload: t.LVBytes
 
@@ -153,15 +145,7 @@ class PairingSearchOptions(t.Struct):
 # Figure 28
 class PairingSearchSchema(foundation.CommandSchema):
     options: PairingSearchOptions
-    gpd_id: zgptypes.SrcID = StructField(
-        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.SrcID
-    )
-    gpd_ieee: t.EUI64 = StructField(
-        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.IEEE
-    )
-    gpd_endpoint: t.uint8_t = StructField(
-        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.IEEE
-    )
+    gpd_id: zgptypes.SrcID
 
 
 # Figures 25 and 26 — 16 bits total
@@ -205,7 +189,7 @@ class NotificationSchema(foundation.CommandSchema):
     )
 
 
-# Figures 53 and 54
+# Figure 40, 41
 class PairingOptions(t.Struct):
     application_id: zgptypes.ApplicationID
     add_sink: t.uint1_t
@@ -222,18 +206,10 @@ class PairingOptions(t.Struct):
     _reserved: t.uint6_t
 
 
-# Figures 51 and 52
+# Figure 38, 39
 class PairingSchema(foundation.CommandSchema):
     options: PairingOptions
-    gpd_id: zgptypes.SrcID = StructField(
-        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.SrcID
-    )
-    gpd_ieee: t.EUI64 = StructField(
-        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.IEEE
-    )
-    gpd_endpoint: t.uint8_t = StructField(
-        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.IEEE
-    )
+    gpd_id: zgptypes.SrcID
     # Table 37
     sink_ieee: t.EUI64 = StructField(
         requires=lambda s: (
@@ -283,7 +259,7 @@ class PairingSchema(foundation.CommandSchema):
     )
 
 
-# Figure 50
+# Figure 37
 class NotificationResponseOptions(t.Struct):
     application_id: zgptypes.ApplicationID
     first_to_forward: t.uint1_t
@@ -291,18 +267,9 @@ class NotificationResponseOptions(t.Struct):
     _reserved: t.uint3_t
 
 
-# Figure 49
 class NotificationResponseSchema(foundation.CommandSchema):
     options: NotificationResponseOptions
-    gpd_id: zgptypes.SrcID = StructField(
-        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.SrcID
-    )
-    gpd_ieee: t.EUI64 = StructField(
-        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.IEEE
-    )
-    gpd_endpoint: t.uint8_t = StructField(
-        requires=lambda s: s.options.application_id == zgptypes.ApplicationID.IEEE
-    )
+    gpd_id: zgptypes.SrcID
     frame_counter: t.uint32_t
 
 
