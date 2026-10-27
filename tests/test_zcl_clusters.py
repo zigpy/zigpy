@@ -1133,6 +1133,46 @@ async def test_ias_zone(send_rsp_mock):
     send_rsp_mock.reset_mock()
 
 
+@pytest.mark.parametrize(
+    ("kwargs", "payload"),
+    [
+        # Current revision: all fields present
+        (
+            {
+                "strobe_duty_cycle": 50,
+                "strobe_level": sec.StrobeLevel.High_level_strobe,
+            },
+            b"\x16\x05\x00\x32\x02",
+        ),
+        # `strobe_duty_cycle` and `strobe_level` were added in HA 1.2
+        ({"strobe_duty_cycle": 50}, b"\x16\x05\x00\x32"),
+        ({}, b"\x16\x05\x00"),
+    ],
+)
+async def test_ias_wd_start_warning_optional_fields(kwargs, payload):
+    """Test the HA 1.2 strobe fields of the IAS WD start warning are optional."""
+    command = sec.IasWd.ServerCommandDefs.start_warning
+    # Burglar mode, strobe, high level sound
+    warning = sec.IasWd.Warning(0x16)
+
+    cmd = command.schema(warning=warning, warning_duration=5, **kwargs)
+    assert cmd.serialize() == payload
+    assert command.schema.deserialize(payload) == (cmd, b"")
+
+    # Received through the cluster
+    cluster = sec.IasWd(MagicMock(), is_server=True)
+    hdr, args = cluster.deserialize(b"\x01\x4b\x00" + payload)
+    assert hdr.command_id == command.id
+    assert args == cmd
+
+    # Sent through the cluster
+    ep = MagicMock()
+    ep.request = AsyncMock()
+    cluster = sec.IasWd(ep)
+    await cluster.start_warning(warning=warning, warning_duration=5, **kwargs)
+    assert ep.request.mock_calls[0].kwargs["data"][3:] == payload
+
+
 def test_ota_image_block_field_control():
     """Test OTA image_block with field control deserializes properly."""
     data = bytes.fromhex("01d403020b101d01001f000100000000400000")

@@ -527,8 +527,9 @@ class IasWd(Cluster):
             schema={
                 "warning": WarningType,
                 "warning_duration": t.uint16_t,
-                "strobe_duty_cycle": t.uint8_t,
-                "strobe_level": StrobeLevel,
+                # Added in HA 1.2, devices implementing an older revision omit them
+                "strobe_duty_cycle?": t.uint8_t,
+                "strobe_level?": StrobeLevel,
             },
         )
         squawk: Final = ZCLCommandDef(
