@@ -2462,7 +2462,8 @@ class ImageBlockResponseCommand(foundation.CommandSchema):
         requires=lambda s: s.status == foundation.Status.WAIT_FOR_DATA
     )
     minimum_block_period: t.uint16_t = t.StructField(
-        requires=lambda s: s.status == foundation.Status.WAIT_FOR_DATA
+        requires=lambda s: s.status == foundation.Status.WAIT_FOR_DATA,
+        optional=True,
     )
 
 
