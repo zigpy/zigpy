@@ -689,12 +689,25 @@ class Groups(Cluster):
         )
 
 
+class ExtensionFieldSet(t.Struct):
+    """Scene extension field set: the scene's attribute values for one cluster.
+
+    The extension field set bytes are the cluster's scene table extension
+    attribute values concatenated in the order given in that cluster's
+    specification, without attribute IDs or data types.
+    """
+
+    cluster_id: t.ClusterId
+    extension: t.LVBytes
+
+
 class Scenes(Cluster):
     """Attributes and commands for scene configuration and
     manipulation.
     """
 
     NameSupport: Final = NameSupport
+    ExtensionFieldSet: Final = ExtensionFieldSet
 
     cluster_id: Final[t.uint16_t] = 0x0005
     ep_attribute: Final = "scenes"
@@ -728,9 +741,9 @@ class Scenes(Cluster):
                 "scene_id": t.uint8_t,
                 "transition_time": t.uint16_t,
                 "scene_name": t.LimitedCharString(16),
+                "extension_field_sets?": t.List[ExtensionFieldSet],
             },
         )
-        # TODO: + extension field sets
         view: Final = ZCLCommandDef(
             id=0x01,
             schema={"group_id": t.Group, "scene_id": t.uint8_t},
@@ -762,6 +775,7 @@ class Scenes(Cluster):
                 "scene_id": t.uint8_t,
                 "transition_time": t.uint16_t,
                 "scene_name": t.LimitedCharString(16),
+                "extension_field_sets?": t.List[ExtensionFieldSet],
             },
         )
         enhanced_view: Final = ZCLCommandDef(
@@ -796,9 +810,9 @@ class Scenes(Cluster):
                 "scene_id": t.uint8_t,
                 "transition_time?": t.uint16_t,
                 "scene_name?": t.LimitedCharString(16),
+                "extension_field_sets?": t.List[ExtensionFieldSet],
             },
         )
-        # TODO: + extension field sets
         remove_scene_response: Final = ZCLCommandDef(
             id=0x02,
             schema={
@@ -844,9 +858,9 @@ class Scenes(Cluster):
                 "scene_id": t.uint8_t,
                 "transition_time?": t.uint16_t,
                 "scene_name?": t.LimitedCharString(16),
+                "extension_field_sets?": t.List[ExtensionFieldSet],
             },
         )
-        # TODO: + extension field sets
         copy_response: Final = ZCLCommandDef(
             id=0x42,
             schema={
