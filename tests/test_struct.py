@@ -876,6 +876,30 @@ def test_struct_optional():
     )
 
 
+def test_struct_optional_trailing_only():
+    class TestStruct(t.Struct):
+        foo: t.uint8_t
+        bar: t.uint8_t = t.StructField(optional=True)
+        baz: t.uint16_t = t.StructField(optional=True)
+        asd: t.uint8_t = t.StructField(requires=lambda s: s.foo == 1, optional=True)
+
+    # Optional fields can be omitted from the end
+    assert TestStruct(foo=0).serialize() == b"\x00"
+    assert TestStruct(foo=0, bar=1).serialize() == b"\x00\x01"
+    assert TestStruct(foo=0, bar=1, baz=2).serialize() == b"\x00\x01\x02\x00"
+    assert TestStruct.deserialize(b"\x00\x01") == (TestStruct(foo=0, bar=1), b"")
+
+    # A field that isn't required doesn't count as being set
+    assert TestStruct(foo=0, bar=1, asd=3).serialize() == b"\x00\x01"
+
+    # But not from the middle: `baz` would be deserialized as `bar`
+    with pytest.raises(ValueError, match="'bar' cannot be omitted when field 'baz'"):
+        TestStruct(foo=0, baz=2).serialize()
+
+    with pytest.raises(ValueError, match="'bar' cannot be omitted when field 'asd'"):
+        TestStruct(foo=1, asd=3).serialize()
+
+
 def test_struct_field_repr():
     class TestStruct(t.Struct):
         foo: t.uint8_t = t.StructField(repr=lambda v: v + 1)

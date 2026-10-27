@@ -816,6 +816,18 @@ async def test_invalid_arguments_cluster_client_command(client_cluster):
         )
 
 
+async def test_cluster_command_optional_field_gap(cluster_by_id):
+    """Test an omitted optional field can't be followed by a set one."""
+    cluster = cluster_by_id(0x0008)
+
+    # `options_override` would otherwise be deserialized as the `options_mask`
+    with pytest.raises(ValueError, match="'options_mask' cannot be omitted"):
+        await cluster.move_to_level(level=10, transition_time=0, options_override=1)
+
+    # Nothing is sent
+    assert cluster._endpoint.request.call_count == 0
+
+
 def test_name(cluster):
     assert cluster.name == "Basic"
 
