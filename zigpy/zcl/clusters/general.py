@@ -2630,6 +2630,7 @@ class PowerProfilePhase(t.Struct):
     expected_duration: t.uint16_t
     peak_power: t.uint16_t
     energy: t.uint16_t
+    max_activation_delay: t.uint16_t
 
 
 class PowerProfileType(t.Struct):
@@ -2776,14 +2777,14 @@ class PowerProfile(Cluster):
             id=0x07,
             schema={
                 "power_profile_id": t.uint8_t,
-                "num_scheduled_energy_phases": t.uint8_t,
+                "scheduled_phases": t.LVList[ScheduleRecord, t.uint8_t],
             },
         )
         energy_phases_schedule_state_notification: Final = ZCLCommandDef(
             id=0x08,
             schema={
                 "power_profile_id": t.uint8_t,
-                "num_scheduled_energy_phases": t.uint8_t,
+                "scheduled_phases": t.LVList[ScheduleRecord, t.uint8_t],
             },
         )
         power_profile_schedule_constraints_notification: Final = ZCLCommandDef(

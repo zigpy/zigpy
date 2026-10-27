@@ -24,6 +24,7 @@ from zigpy.zcl.clusters.general import (
     Partition,
     PartitionAckOptions,
     PartitionFragmentationOptions,
+    PowerProfile,
     RSSILocation,
     Time,
 )
@@ -1089,6 +1090,70 @@ def test_partition_nack_id_width(
         ack_options=ack_options,
         first_frame_id=first_frame_id,
         nack_ids=nack_ids,
+    )
+
+    assert command.serialize() == bytes.fromhex(serialized)
+    assert schema.deserialize(bytes.fromhex(serialized)) == (command, b"")
+
+
+def test_power_profile_transferred_phase() -> None:
+    """Each transferred phase is 10 octets, per ZCL R8 Figure 3-72."""
+    schema = PowerProfile.ClientCommandDefs.power_profile_notification.schema
+    command = schema(
+        total_profile_num=1,
+        power_profile_id=1,
+        transfer_phases=[
+            PowerProfile.PowerProfilePhase(
+                energy_phase_id=1,
+                macro_phase_id=2,
+                expected_duration=0x0003,
+                peak_power=0x0004,
+                energy=0x0005,
+                max_activation_delay=0x0006,
+            ),
+            PowerProfile.PowerProfilePhase(
+                energy_phase_id=2,
+                macro_phase_id=3,
+                expected_duration=0x0103,
+                peak_power=0x0104,
+                energy=0x0105,
+                max_activation_delay=0x0106,
+            ),
+        ],
+    )
+    # Header, then two phases: IDs, duration, peak power, energy, max activation delay
+    serialized = bytes.fromhex("010102 0102030004000500 0600 0203030104010501 0601")
+
+    assert len(serialized) == 1 + 1 + 1 + 2 * 10
+    assert command.serialize() == serialized
+    assert schema.deserialize(serialized) == (command, b"")
+
+
+@pytest.mark.parametrize(
+    "command_name",
+    [
+        "energy_phases_schedule_state_response",
+        "energy_phases_schedule_state_notification",
+    ],
+)
+@pytest.mark.parametrize(
+    ("scheduled_phases", "serialized"),
+    [
+        ([], "0100"),
+        ([(1, 0x0010), (2, 0x0120)], "0102011000022001"),
+    ],
+)
+def test_power_profile_schedule_state(
+    command_name: str, scheduled_phases: list[tuple[int, int]], serialized: str
+) -> None:
+    """Schedule state commands carry the phase records, per ZCL R8 3.17.6.8/9."""
+    schema = getattr(PowerProfile.ClientCommandDefs, command_name).schema
+    command = schema(
+        power_profile_id=1,
+        scheduled_phases=[
+            PowerProfile.ScheduleRecord(phase_id=phase_id, scheduled_time=time)
+            for phase_id, time in scheduled_phases
+        ],
     )
 
     assert command.serialize() == bytes.fromhex(serialized)
