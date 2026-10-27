@@ -583,6 +583,8 @@ async def test_write_attributes_wrong_type(cluster):
     [
         (0, "zcl_version", 0xAA, b"\x00\x00\x20\xaa"),
         (0, "model", "model x", b"\x05\x00\x42\x07model x"),
+        # The length prefix counts octets, not characters
+        (0, "location_desc", "Küche", b"\x10\x00\x42\x06K\xc3\xbcche"),
         (0, "device_enabled", True, b"\x12\x00\x10\x01"),
         (0, "alarm_mask", 0x55, b"\x13\x00\x18\x55"),
         (0x0202, "fan_mode", 0xDE, b"\x00\x00\x30\xde"),

@@ -1195,10 +1195,20 @@ class FixedList(list, Generic[_T], metaclass=KwargTypeMeta):
 
 
 class CharacterString(str):
+    """ZCL character string: UTF-8 data prefixed by its length in octets.
+
+    The length prefix counts encoded octets, not characters, so it differs from
+    `len()` for non-ASCII text. The all-ones prefix is the non-value (`invalid`).
+    """
+
     __slots__ = ("invalid", "raw")
 
     _prefix_length = 1
     _invalid_length = (1 << (8 * _prefix_length)) - 1
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        cls._invalid_length = (1 << (8 * cls._prefix_length)) - 1
 
     def __new__(cls, value: str = "", *, invalid: bool = False) -> Self:
         instance = super().__new__(cls, value)
@@ -1208,15 +1218,16 @@ class CharacterString(str):
         return instance
 
     def serialize(self) -> bytes:
-        if len(self) >= pow(256, self._prefix_length) - 1:
-            raise ValueError("String is too long")
-
         if self.invalid:
             return self._invalid_length.to_bytes(self._prefix_length, "little")
 
-        return len(self).to_bytes(
-            self._prefix_length, "little", signed=False
-        ) + self.encode("utf8")
+        data = self.encode("utf8")
+
+        # The all-ones length is reserved for the non-value
+        if len(data) >= self._invalid_length:
+            raise ValueError("String is too long")
+
+        return len(data).to_bytes(self._prefix_length, "little") + data
 
     @classmethod
     def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
@@ -1251,8 +1262,9 @@ def LimitedCharString(max_len):  # noqa: N802
         _max_len = max_len
 
         def serialize(self) -> bytes:
-            if len(self) > self._max_len:
-                raise ValueError(f"String is too long (>{self._max_len})")
+            # Like the length prefix, the limit is in encoded octets
+            if len(self.encode("utf8")) > self._max_len:
+                raise ValueError(f"String is too long (>{self._max_len} octets)")
             return super().serialize()
 
     return LimitedCharString
