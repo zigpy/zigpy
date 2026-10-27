@@ -529,7 +529,7 @@ class Thermostat(Cluster):
             id=0x01,
             schema={
                 "time_of_day": t.uint16_t,
-                "relay_status": t.bitmap16,
+                "relay_status": t.bitmap8,
                 "local_temperature": t.int16s,
                 "humidity_in_percentage": t.uint8_t,
                 "set_point": t.int16s,
