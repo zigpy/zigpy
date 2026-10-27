@@ -205,7 +205,7 @@ class NotificationSchema(foundation.CommandSchema):
     )
 
 
-# Figure 40, 41
+# Figures 53 and 54
 class PairingOptions(t.Struct):
     application_id: zgptypes.ApplicationID
     add_sink: t.uint1_t
@@ -222,7 +222,7 @@ class PairingOptions(t.Struct):
     _reserved: t.uint6_t
 
 
-# Figure 38, 39
+# Figures 51 and 52
 class PairingSchema(foundation.CommandSchema):
     options: PairingOptions
     gpd_id: zgptypes.SrcID = StructField(
@@ -283,7 +283,7 @@ class PairingSchema(foundation.CommandSchema):
     )
 
 
-# Figure 37
+# Figure 50
 class NotificationResponseOptions(t.Struct):
     application_id: zgptypes.ApplicationID
     first_to_forward: t.uint1_t
@@ -291,6 +291,7 @@ class NotificationResponseOptions(t.Struct):
     _reserved: t.uint3_t
 
 
+# Figure 49
 class NotificationResponseSchema(foundation.CommandSchema):
     options: NotificationResponseOptions
     gpd_id: zgptypes.SrcID = StructField(
