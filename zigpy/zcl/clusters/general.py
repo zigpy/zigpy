@@ -689,6 +689,10 @@ class Groups(Cluster):
         )
 
 
+class CopyMode(t.bitmap8):
+    Copy_All_Scenes = 0b00000001
+
+
 class ExtensionFieldSet(t.Struct):
     """Scene extension field set: the scene's attribute values for one cluster.
 
@@ -707,6 +711,7 @@ class Scenes(Cluster):
     """
 
     NameSupport: Final = NameSupport
+    CopyMode: Final = CopyMode
     ExtensionFieldSet: Final = ExtensionFieldSet
 
     cluster_id: Final[t.uint16_t] = 0x0005
@@ -785,7 +790,7 @@ class Scenes(Cluster):
         copy: Final = ZCLCommandDef(
             id=0x42,
             schema={
-                "mode": t.uint8_t,
+                "mode": CopyMode,
                 "group_id_from": t.uint16_t,
                 "scene_id_from": t.uint8_t,
                 "group_id_to": t.uint16_t,

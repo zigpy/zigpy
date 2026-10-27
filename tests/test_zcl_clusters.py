@@ -286,6 +286,48 @@ def test_scenes_view_response_extension_field_sets(
 
 
 @pytest.mark.parametrize(
+    ("raw_mode", "mode"),
+    [
+        (0x00, Scenes.CopyMode(0)),
+        (0x01, Scenes.CopyMode.Copy_All_Scenes),
+        # Reserved bits are kept
+        (0x81, Scenes.CopyMode.Copy_All_Scenes | Scenes.CopyMode(0x80)),
+    ],
+)
+def test_scenes_copy_mode(raw_mode: int, mode: Scenes.CopyMode) -> None:
+    """The Copy Scene mode field is a map8 with a Copy All Scenes bit."""
+    data = (
+        bytes([raw_mode])
+        + b"\x34\x12"  # Group identifier from
+        + b"\x05"  # Scene identifier from
+        + b"\x78\x56"  # Group identifier to
+        + b"\x06"  # Scene identifier to
+    )
+    schema = Scenes.ServerCommandDefs.copy.schema
+
+    cmd, rest = schema.deserialize(data)
+    assert rest == b""
+    assert type(cmd.mode) is Scenes.CopyMode
+    assert cmd.mode == mode
+    assert cmd.group_id_from == 0x1234
+    assert cmd.scene_id_from == 5
+    assert cmd.group_id_to == 0x5678
+    assert cmd.scene_id_to == 6
+
+    # Plain integers keep working
+    assert (
+        schema(
+            mode=raw_mode,
+            group_id_from=0x1234,
+            scene_id_from=5,
+            group_id_to=0x5678,
+            scene_id_to=6,
+        ).serialize()
+        == data
+    )
+
+
+@pytest.mark.parametrize(
     ("fake_now", "expected_utc", "expected_tz", "expected_standard", "expected_local"),
     [
         pytest.param(
