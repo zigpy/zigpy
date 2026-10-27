@@ -454,6 +454,42 @@ async def test_read_attributes_array(cluster_by_id):
     assert isinstance(value, foundation.ZCLArray[t.CharacterString])
 
 
+def test_report_attributes_array(cluster_by_id):
+    """An array attribute report is converted into the attribute's typed array."""
+    cluster = cluster_by_id(0x0014)
+    hdr, msg = cluster.deserialize(
+        b"\x18\x01\x0a" + b"\x0e\x00\x48\x42\x02\x00\x03Off\x03L\xc3\xb6"
+    )
+    cluster.handle_message(hdr, msg)
+
+    value = cluster.get("state_text")
+    assert value == ["Off", "Lö"]
+    assert isinstance(value, foundation.ZCLArray[t.CharacterString])
+
+
+@pytest.mark.parametrize(
+    "type_value",
+    [
+        # Read attribute record value
+        foundation.ReadAttributeRecord.deserialize(
+            b"\x01\x00\x00\x48\x20\x02\x00\x01\x02"
+        )[0].value,
+        # Attribute report value
+        foundation.TypeValue.deserialize(b"\x48\x20\x02\x00\x01\x02")[0],
+    ],
+)
+def test_convert_untyped_array_attribute(type_value):
+    """An attribute declared as an untyped `Array` keeps the received element type."""
+    attr_def = foundation.ZCLAttributeDef(
+        id=0x0001, type=foundation.Array, access="r"
+    ).replace(name="array")
+
+    value = zcl._convert_attribute_value(attr_def, type_value)
+    assert isinstance(value, foundation.Array)
+    assert value.value == [1, 2]
+    assert value.serialize() == b"\x20\x02\x00\x01\x02"
+
+
 async def test_read_attributes_listener_error(cluster):
     """Test a failing event listener does not drop the rest of a read response."""
 
