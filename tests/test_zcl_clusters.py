@@ -18,7 +18,9 @@ from zigpy.zcl import OtaImageAvailableEvent, OtaQueryCacheUpdatedEvent, foundat
 from zigpy.zcl.clusters.general import (
     Basic,
     CoordinateSystem,
+    GetLocationDataFlags,
     KeepAlive,
+    LocationMethod,
     LocationType,
     Ota,
     Partition,
@@ -1158,6 +1160,208 @@ def test_power_profile_schedule_state(
 
     assert command.serialize() == bytes.fromhex(serialized)
     assert schema.deserialize(bytes.fromhex(serialized)) == (command, b"")
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "serialized"),
+    [
+        (
+            {
+                "packed": GetLocationDataFlags.Absolute_Only,
+                "num_responses": 1,
+                "target_addr": types.EUI64.convert("00:11:22:33:44:55:66:77"),
+            },
+            "01017766554433221100",
+        ),
+        # The target address is omitted when the broadcast indicator is set
+        (
+            {
+                "packed": (
+                    GetLocationDataFlags.Broadcast_Indicator
+                    | GetLocationDataFlags.Compact_Response
+                ),
+                "num_responses": 2,
+            },
+            "1402",
+        ),
+    ],
+)
+def test_rssi_location_get_location_data(
+    kwargs: dict[str, Any], serialized: str
+) -> None:
+    """Test the Get Location Data payload, per ZCL R8 Figure 3-52."""
+    schema = RSSILocation.ServerCommandDefs.get_location_data.schema
+    command = schema(**kwargs)
+
+    assert command.serialize() == bytes.fromhex(serialized)
+    assert schema.deserialize(bytes.fromhex(serialized)) == (command, b"")
+
+
+RSSI_LOCATION_DATA = {
+    "coordinate1": 0x0102,
+    "coordinate2": 0x0304,
+    "coordinate3": 0x0506,
+    "power": 0x0708,
+    "path_loss_exponent": 0x090A,
+    "location_method": LocationMethod.Centralized,
+    "quality_measure": 0x50,
+    "location_age": 0x0B0C,
+}
+
+
+@pytest.mark.parametrize(
+    ("command_name", "location_type", "fields", "serialized"),
+    [
+        (
+            "location_data_notification",
+            0b00,
+            RSSI_LOCATION_DATA.keys(),
+            "00 0201 0403 0605 0807 0a09 04 50 0c0b",
+        ),
+        (
+            "location_data_notification",
+            0b01,
+            [
+                "coordinate1",
+                "coordinate2",
+                "coordinate3",
+                "power",
+                "path_loss_exponent",
+            ],
+            "01 0201 0403 0605 0807 0a09",
+        ),
+        (
+            "location_data_notification",
+            0b10,
+            RSSI_LOCATION_DATA.keys() - {"coordinate3"},
+            "02 0201 0403 0807 0a09 04 50 0c0b",
+        ),
+        (
+            "location_data_notification",
+            0b11,
+            ["coordinate1", "coordinate2", "power", "path_loss_exponent"],
+            "03 0201 0403 0807 0a09",
+        ),
+        (
+            "compact_location_data_notification",
+            0b00,
+            [
+                "coordinate1",
+                "coordinate2",
+                "coordinate3",
+                "quality_measure",
+                "location_age",
+            ],
+            "00 0201 0403 0605 50 0c0b",
+        ),
+        (
+            "compact_location_data_notification",
+            0b01,
+            ["coordinate1", "coordinate2", "coordinate3"],
+            "01 0201 0403 0605",
+        ),
+        (
+            "compact_location_data_notification",
+            0b10,
+            ["coordinate1", "coordinate2", "quality_measure", "location_age"],
+            "02 0201 0403 50 0c0b",
+        ),
+        (
+            "compact_location_data_notification",
+            0b11,
+            ["coordinate1", "coordinate2"],
+            "03 0201 0403",
+        ),
+    ],
+)
+def test_rssi_location_data_notification(
+    command_name: str, location_type: int, fields: list[str], serialized: str
+) -> None:
+    """Test the location data notifications, per ZCL R8 Figure 3-58 and 3.13.2.4.4.
+
+    Coordinate 3 is omitted for 2-D locations, the calculated location fields for
+    absolute ones.
+    """
+    schema = getattr(RSSILocation.ClientCommandDefs, command_name).schema
+    command = schema(
+        location_type=LocationType(location_type),
+        **{field: RSSI_LOCATION_DATA[field] for field in fields},
+    )
+
+    assert command.serialize() == bytes.fromhex(serialized)
+    assert schema.deserialize(bytes.fromhex(serialized)) == (command, b"")
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "serialized"),
+    [
+        # Only the status is sent when it isn't `SUCCESS`
+        ({"status": foundation.Status.NOT_FOUND}, "8b"),
+        (
+            {
+                "status": foundation.Status.SUCCESS,
+                "location_type": LocationType(0b00),
+                **RSSI_LOCATION_DATA,
+            },
+            "00 00 0201 0403 0605 0807 0a09 04 50 0c0b",
+        ),
+        (
+            {
+                "status": foundation.Status.SUCCESS,
+                "location_type": LocationType(0b01),
+                "coordinate1": 0x0102,
+                "coordinate2": 0x0304,
+                "coordinate3": 0x0506,
+                "power": 0x0708,
+                "path_loss_exponent": 0x090A,
+            },
+            "00 01 0201 0403 0605 0807 0a09",
+        ),
+        (
+            {
+                "status": foundation.Status.SUCCESS,
+                "location_type": LocationType(0b10),
+                "coordinate1": 0x0102,
+                "coordinate2": 0x0304,
+                "power": 0x0708,
+                "path_loss_exponent": 0x090A,
+                "location_method": LocationMethod.Centralized,
+                "quality_measure": 0x50,
+                "location_age": 0x0B0C,
+            },
+            "00 02 0201 0403 0807 0a09 04 50 0c0b",
+        ),
+        (
+            {
+                "status": foundation.Status.SUCCESS,
+                "location_type": LocationType(0b11),
+                "coordinate1": 0x0102,
+                "coordinate2": 0x0304,
+                "power": 0x0708,
+                "path_loss_exponent": 0x090A,
+            },
+            "00 03 0201 0403 0807 0a09",
+        ),
+    ],
+)
+def test_rssi_location_data_response(kwargs: dict[str, Any], serialized: str) -> None:
+    """Test the Location Data Response payload, per ZCL R8 Figure 3-57."""
+    schema = RSSILocation.ClientCommandDefs.location_data_response.schema
+    command = schema(**kwargs)
+
+    assert command.serialize() == bytes.fromhex(serialized)
+    assert schema.deserialize(bytes.fromhex(serialized)) == (command, b"")
+
+
+def test_rssi_location_data_response_incomplete() -> None:
+    """An incomplete response without a location type can still be displayed."""
+    command = RSSILocation.LocationDataResponseCommand(status=foundation.Status.SUCCESS)
+
+    assert "coordinate3" not in repr(command)
+    assert "location_method" not in repr(command)
+
+    with pytest.raises(ValueError, match="location_type"):
+        command.serialize()
 
 
 def test_rssi_location_type_report() -> None:
