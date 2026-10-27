@@ -275,7 +275,9 @@ class Struct:
 
         for field, value in self.assigned_fields(strict=True):
             if value is None and field.optional:
-                omitted_field = omitted_field or field
+                if omitted_field is None:
+                    omitted_field = field
+
                 continue
 
             # Optional fields can only be omitted from the end, the data would
