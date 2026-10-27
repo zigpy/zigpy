@@ -454,6 +454,19 @@ async def test_read_attributes_array(cluster_by_id):
     assert isinstance(value, foundation.ZCLArray[t.CharacterString])
 
 
+def test_report_attributes_array(cluster_by_id):
+    """An array attribute report is converted into the attribute's typed array."""
+    cluster = cluster_by_id(0x0014)
+    hdr, msg = cluster.deserialize(
+        b"\x18\x01\x0a" + b"\x0e\x00\x48\x42\x02\x00\x03Off\x03L\xc3\xb6"
+    )
+    cluster.handle_message(hdr, msg)
+
+    value = cluster.get("state_text")
+    assert value == ["Off", "Lö"]
+    assert isinstance(value, foundation.ZCLArray[t.CharacterString])
+
+
 async def test_read_attributes_listener_error(cluster):
     """Test a failing event listener does not drop the rest of a read response."""
 

@@ -1262,9 +1262,8 @@ def LimitedCharString(max_len):  # noqa: N802
         _max_len = max_len
 
         def serialize(self) -> bytes:
-            # Like the length prefix, the limit is in encoded octets
-            if len(self.encode("utf8")) > self._max_len:
-                raise ValueError(f"String is too long (>{self._max_len} octets)")
+            if len(self) > self._max_len:
+                raise ValueError(f"String is too long (>{self._max_len})")
             return super().serialize()
 
     return LimitedCharString

@@ -51,6 +51,11 @@ def _convert_attribute_value(
 ) -> Any:
     """Convert a received attribute value into the attribute's declared type."""
 
+    # Attribute reports wrap arrays, sets, and bags in another `TypeValue`, unlike
+    # read attribute records
+    if isinstance(type_value.value, foundation.TypedCollection):
+        type_value = type_value.value
+
     # `dataN` values are untyped bytes, so they are re-read with the declared type
     if isinstance(
         type_value.value,

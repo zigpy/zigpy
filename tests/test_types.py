@@ -454,11 +454,12 @@ def test_char_string_multibyte_too_long():
 
 
 def test_limited_char_string_multibyte():
-    # The limit is in octets, like the length prefix
-    assert t.LimitedCharString(4)("éé").serialize() == b"\x04\xc3\xa9\xc3\xa9"
+    # The limit is in characters (e.g. "0 to 16 characters" for scene names), while
+    # the length prefix counts octets
+    assert t.LimitedCharString(2)("éé").serialize() == b"\x04\xc3\xa9\xc3\xa9"
 
     with pytest.raises(ValueError, match="too long"):
-        t.LimitedCharString(4)("ééé").serialize()
+        t.LimitedCharString(2)("ééé").serialize()
 
 
 def test_long_char_string_invalid():
