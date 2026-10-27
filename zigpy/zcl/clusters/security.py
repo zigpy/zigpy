@@ -428,12 +428,12 @@ class WarningType(_SquawkOrWarningCommand):
 
     @property
     def strobe(self) -> Strobe:
-        return Strobe((self.value >> 2) & 0x01)
+        return Strobe((self.value >> 2) & 0x03)
 
     @strobe.setter
     def strobe(self, strobe: Strobe) -> None:
-        self.value = (self.value & 0xF7) | (
-            (strobe & 0x01) << 2  # type:ignore[operator]
+        self.value = (self.value & 0xF3) | (
+            (strobe & 0x03) << 2  # type:ignore[operator]
         )
 
     @property

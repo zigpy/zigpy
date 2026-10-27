@@ -840,6 +840,24 @@ def test_security_iaswd_warning_strobe():
                 assert warning.strobe == strobe.value
 
 
+@pytest.mark.parametrize(
+    ("raw", "strobe", "expected"),
+    [
+        (0b0011_0111, sec.IasWd.Warning.Strobe.No_strobe, 0b0011_0011),
+        (0b0011_1011, sec.IasWd.Warning.Strobe.No_strobe, 0b0011_0011),
+        (0b0011_0011, sec.IasWd.Warning.Strobe.Strobe, 0b0011_0111),
+        (0b0011_1011, sec.IasWd.Warning.Strobe.Strobe, 0b0011_0111),
+    ],
+)
+def test_security_iaswd_warning_strobe_overwrite(raw, strobe, expected):
+    """Test setting the strobe of a warning replaces both strobe bits."""
+    warning = sec.IasWd.Warning(raw)
+    warning.strobe = strobe
+
+    assert warning == expected
+    assert warning.strobe == strobe
+
+
 def test_security_iaswd_warning_siren():
     """Test siren of warning command class of IasWD cluster."""
 
