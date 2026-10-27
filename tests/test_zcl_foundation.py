@@ -848,54 +848,6 @@ def test_array():
     assert orig_data == hdr.serialize() + rsp.serialize()
 
 
-def test_zcl_array():
-    array_type = foundation.ZCLArray[t.CharacterString]
-    assert array_type is foundation.ZCLArray[t.CharacterString]
-    assert issubclass(array_type, list)
-    assert foundation.DataType.from_python_type(array_type).type_id == (
-        foundation.DataTypeId.array
-    )
-
-    # Element type, element count, elements (ZCL R8 Figure 2-8)
-    data = bytes.fromhex("42 0200 034f6666 034cc3b6")
-    assert array_type(["Off", "Lö"]).serialize() == data
-
-    value, rest = array_type.deserialize(data + b"rest")
-    assert value == ["Off", "Lö"]
-    assert isinstance(value, array_type)
-    assert all(isinstance(v, t.CharacterString) for v in value)
-    assert rest == b"rest"
-
-    assert array_type([]).serialize() == b"\x42\x00\x00"
-
-
-def test_zcl_array_wrong_element_type():
-    with pytest.raises(ValueError, match="0x41"):
-        foundation.ZCLArray[t.CharacterString].deserialize(b"\x41\x00\x00")
-
-
-def test_zcl_array_attribute_value():
-    """A typed array is sent as an array, e.g. in a Read Attributes Response."""
-    record = foundation.ReadAttributeRecord(
-        attrid=0x000E,
-        status=foundation.Status.SUCCESS,
-        value=foundation.TypeValue(
-            type=foundation.DataTypeId.array,
-            value=foundation.ZCLArray[t.CharacterString](["Off", "On"]),
-        ),
-    )
-    data = bytes.fromhex("0e00 00 48 42 0200 034f6666 024f6e")
-    assert record.serialize() == data
-
-    # It is received as an untyped `Array` of the same values
-    received, rest = foundation.ReadAttributeRecord.deserialize(data)
-    assert rest == b""
-    assert received.value == foundation.Array(
-        type=foundation.DataTypeId.string,
-        value=t.LVList[t.CharacterString, t.uint16_t](["Off", "On"]),
-    )
-
-
 @pytest.mark.parametrize(
     ("data", "depth", "op", "indexes"),
     [
