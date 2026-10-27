@@ -130,8 +130,9 @@ class IasZone(Cluster):
             schema={
                 "zone_status": ZoneStatus,
                 "extended_status": t.bitmap8,
-                "zone_id": t.uint8_t,
-                "delay": t.uint16_t,
+                # Added in HA 1.2, devices implementing an older revision omit them
+                "zone_id?": t.uint8_t,
+                "delay?": t.uint16_t,
             },
         )
         enroll: Final = ZCLCommandDef(

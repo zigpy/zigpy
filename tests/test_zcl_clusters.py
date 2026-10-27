@@ -739,6 +739,38 @@ def test_ias_zone_type():
     assert zone.value == 0x8181
 
 
+@pytest.mark.parametrize(
+    ("payload", "kwargs"),
+    [
+        # Current revision: all fields present
+        (b"\x09\x00\x00\x05\x0a\x00", {"zone_id": 5, "delay": 10}),
+        # Devices implementing a pre-HA 1.2 revision send neither field
+        (b"\x09\x00\x00", {}),
+        # A trailing `delay` can be omitted on its own
+        (b"\x09\x00\x00\x05", {"zone_id": 5}),
+    ],
+)
+def test_ias_zone_status_change_notification_optional_fields(payload, kwargs):
+    """Test the HA 1.2 `zone_id` and `delay` fields are optional."""
+    schema = sec.IasZone.ClientCommandDefs.status_change_notification.schema
+    cmd = schema(
+        zone_status=sec.IasZone.ZoneStatus.Alarm_1 | sec.IasZone.ZoneStatus.Battery,
+        extended_status=0x00,
+        **kwargs,
+    )
+
+    assert cmd.serialize() == payload
+    assert schema.deserialize(payload) == (cmd, b"")
+
+    # Received through the cluster, as a device sends it
+    cluster = sec.IasZone(MagicMock(), is_server=False)
+    hdr, args = cluster.deserialize(b"\x09\x4b\x00" + payload)
+    assert hdr.command_id == 0x00
+    assert args == cmd
+    assert args.zone_id == kwargs.get("zone_id")
+    assert args.delay == kwargs.get("delay")
+
+
 def test_ias_ace_audible_notification():
     extra = b"\xaa\x55"
     notification_type, rest = sec.IasAce.AudibleNotification.deserialize(
