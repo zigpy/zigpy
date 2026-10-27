@@ -787,6 +787,121 @@ def test_ias_ace_audible_notification():
     assert notification_type.value == 0x81
 
 
+_IAS_ACE_IEEE = types.EUI64.convert("00:0d:6f:00:0a:90:69:e7")
+
+
+@pytest.mark.parametrize(
+    ("command", "kwargs", "payload"),
+    [
+        # Arm: `arm_disarm_code` and `zone_id` were added in HA 1.2
+        (
+            sec.IasAce.ServerCommandDefs.arm,
+            {
+                "arm_mode": sec.IasAce.ArmMode.Arm_All_Zones,
+                "arm_disarm_code": "1234",
+                "zone_id": 2,
+            },
+            b"\x03\x041234\x02",
+        ),
+        (
+            sec.IasAce.ServerCommandDefs.arm,
+            {"arm_mode": sec.IasAce.ArmMode.Arm_All_Zones, "arm_disarm_code": "1234"},
+            b"\x03\x041234",
+        ),
+        (
+            sec.IasAce.ServerCommandDefs.arm,
+            {"arm_mode": sec.IasAce.ArmMode.Arm_All_Zones},
+            b"\x03",
+        ),
+        # Bypass: `arm_disarm_code` was added in HA 1.2.1
+        (
+            sec.IasAce.ServerCommandDefs.bypass,
+            {"zones_ids": [1, 2], "arm_disarm_code": "1234"},
+            b"\x02\x01\x02\x041234",
+        ),
+        (
+            sec.IasAce.ServerCommandDefs.bypass,
+            {"zones_ids": [1, 2]},
+            b"\x02\x01\x02",
+        ),
+        # Get Zone Information Response: `zone_label` was added in HA 1.2.1
+        (
+            sec.IasAce.ClientCommandDefs.get_zone_info_response,
+            {
+                "zone_id": 1,
+                "zone_type": sec.IasZone.ZoneType.Contact_Switch,
+                "ieee": _IAS_ACE_IEEE,
+                "zone_label": "Door",
+            },
+            b"\x01\x15\x00" + _IAS_ACE_IEEE.serialize() + b"\x04Door",
+        ),
+        (
+            sec.IasAce.ClientCommandDefs.get_zone_info_response,
+            {
+                "zone_id": 1,
+                "zone_type": sec.IasZone.ZoneType.Contact_Switch,
+                "ieee": _IAS_ACE_IEEE,
+            },
+            b"\x01\x15\x00" + _IAS_ACE_IEEE.serialize(),
+        ),
+        # Zone Status Changed: `audible_notification` and `zone_label` were added in
+        # HA 1.2.1
+        (
+            sec.IasAce.ClientCommandDefs.zone_status_changed,
+            {
+                "zone_id": 1,
+                "zone_status": sec.IasZone.ZoneStatus.Alarm_1,
+                "audible_notification": sec.IasAce.AudibleNotification.Default_Sound,
+                "zone_label": "Door",
+            },
+            b"\x01\x01\x00\x01\x04Door",
+        ),
+        (
+            sec.IasAce.ClientCommandDefs.zone_status_changed,
+            {"zone_id": 1, "zone_status": sec.IasZone.ZoneStatus.Alarm_1},
+            b"\x01\x01\x00",
+        ),
+        # Panel Status Changed: `audible_notification` and `alarm_status` were added
+        # in HA 1.2.1
+        (
+            sec.IasAce.ClientCommandDefs.panel_status_changed,
+            {
+                "panel_status": sec.IasAce.PanelStatus.In_Alarm,
+                "seconds_remaining": 0,
+                "audible_notification": sec.IasAce.AudibleNotification.Default_Sound,
+                "alarm_status": sec.IasAce.AlarmStatus.Fire,
+            },
+            b"\x07\x00\x01\x02",
+        ),
+        (
+            sec.IasAce.ClientCommandDefs.panel_status_changed,
+            {"panel_status": sec.IasAce.PanelStatus.In_Alarm, "seconds_remaining": 0},
+            b"\x07\x00",
+        ),
+    ],
+)
+def test_ias_ace_optional_fields(command, kwargs, payload):
+    """Test IAS ACE fields added in HA 1.2 and 1.2.1 are optional."""
+    cmd = command.schema(**kwargs)
+
+    assert cmd.serialize() == payload
+    assert command.schema.deserialize(payload) == (cmd, b"")
+
+    # Received through the cluster, as a device sends it
+    is_server = command in sec.IasAce.ServerCommandDefs
+    frame_control = b"\x01" if is_server else b"\x09"
+    cluster = sec.IasAce(MagicMock(), is_server=is_server)
+    hdr, args = cluster.deserialize(
+        frame_control + b"\x4b" + bytes([command.id]) + payload
+    )
+
+    assert hdr.command_id == command.id
+    assert args == cmd
+
+    # Omitted fields are still passed positionally to listeners, as `None`
+    assert len(tuple(args)) == len(command.schema.fields)
+
+
 def test_basic_cluster_power_source():
     extra = b"The rest of the owl\xaa\x55"
     pwr_src, rest = zcl.clusters.general.Basic.PowerSource.deserialize(b"\x81" + extra)
