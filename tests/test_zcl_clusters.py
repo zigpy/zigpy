@@ -964,6 +964,11 @@ def test_hvac_thermostat_system_type():
     )
     assert sys_type.serialize() == b"\x0a"
 
+    # Reserved bits are kept
+    sys_type = hvac.Thermostat.SystemType(0xFF)
+    assert sys_type._reserved == 0b11
+    assert sys_type.serialize() == b"\xff"
+
 
 @patch("zigpy.zcl.Cluster.send_default_rsp")
 async def test_ias_zone(send_rsp_mock):

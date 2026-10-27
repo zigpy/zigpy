@@ -62,7 +62,7 @@ class Status(t.enum8):
     SOFTWARE_FAILURE = 0xC1  # An operation was unsuccessful due to a
     CALIBRATION_ERROR = 0xC2  # An error occurred during calibration
     UNSUPPORTED_CLUSTER = 0xC3  # The cluster is not supported
-    LIMIT_REACHED = 0xC4  # Limit of attribute range reached. Value is trimmed to
+    LIMIT_REACHED = 0xC4  # Value was trimmed to the closest range limit
 
     @classmethod
     def _missing_(cls, value):
