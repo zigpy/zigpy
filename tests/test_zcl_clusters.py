@@ -15,6 +15,7 @@ import zigpy.endpoint
 from zigpy.ota import OTA, OtaImagesResult
 from zigpy.time import TimeSnapshot, utc_periods
 from zigpy.zcl import OtaImageAvailableEvent, OtaQueryCacheUpdatedEvent, foundation
+from zigpy.zcl.clusters.closures import DoorLock
 from zigpy.zcl.clusters.general import (
     Basic,
     CoordinateSystem,
@@ -1032,6 +1033,45 @@ def test_ias_zone_enum_subclass_zcl_type():
     """Test `IasZone.zone_type` is an enum16, not a uint16."""
 
     assert sec.IasZone.AttributeDefs.zone_type.zcl_type == foundation.DataTypeId.enum16
+
+
+@pytest.mark.parametrize(
+    ("command_id", "command_name"),
+    [(0x05, "set_pin_code_response"), (0x16, "set_rfid_code_response")],
+)
+@pytest.mark.parametrize(
+    ("raw", "status"),
+    [
+        (0x00, DoorLock.SetPinOrIdStatus.Success),
+        (0x01, DoorLock.SetPinOrIdStatus.GeneralFailure),
+        (0x02, DoorLock.SetPinOrIdStatus.MemoryFull),
+        (0x03, DoorLock.SetPinOrIdStatus.DuplicateCodeError),
+    ],
+)
+def test_door_lock_set_pin_or_id_status(
+    command_id: int,
+    command_name: str,
+    raw: int,
+    status: DoorLock.SetPinOrIdStatus,
+) -> None:
+    """Set PIN/RFID Code responses carry cluster-specific status values.
+
+    ZCL R8 7.3.2.16.6 and 7.3.2.16.23: 0 Success, 1 General failure, 2 Memory full,
+    3 Duplicate code/ID error. These are not ZCL `Status` values.
+    """
+
+    cluster = DoorLock(MagicMock())
+    data = bytes([0x19, 0x01, command_id, raw])
+
+    hdr, args = cluster.deserialize(data)
+    assert hdr.command_id == command_id
+    assert cluster.client_commands[command_id].name == command_name
+    assert type(args.status) is DoorLock.SetPinOrIdStatus
+    assert args.status == status
+    assert args.status.name == status.name
+
+    schema = cluster.client_commands[command_id].schema
+    assert schema(status=status).serialize() == bytes([raw])
 
 
 @pytest.mark.parametrize(
