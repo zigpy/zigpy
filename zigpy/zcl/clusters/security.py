@@ -130,8 +130,9 @@ class IasZone(Cluster):
             schema={
                 "zone_status": ZoneStatus,
                 "extended_status": t.bitmap8,
-                "zone_id": t.uint8_t,
-                "delay": t.uint16_t,
+                # Added in HA 1.2, devices implementing an older revision omit them
+                "zone_id?": t.uint8_t,
+                "delay?": t.uint16_t,
             },
         )
         enroll: Final = ZCLCommandDef(
@@ -253,15 +254,17 @@ class IasAce(Cluster):
             id=0x00,
             schema={
                 "arm_mode": ArmMode,
-                "arm_disarm_code": t.CharacterString,
-                "zone_id": t.uint8_t,
+                # Added in HA 1.2, devices implementing an older revision omit them
+                "arm_disarm_code?": t.CharacterString,
+                "zone_id?": t.uint8_t,
             },
         )
         bypass: Final = ZCLCommandDef(
             id=0x01,
             schema={
                 "zones_ids": t.LVList[t.uint8_t, t.uint8_t],
-                "arm_disarm_code": t.CharacterString,
+                # Added in HA 1.2.1, devices implementing an older revision omit it
+                "arm_disarm_code?": t.CharacterString,
             },
         )
         emergency: Final = ZCLCommandDef(
@@ -317,7 +320,8 @@ class IasAce(Cluster):
                 "zone_id": t.uint8_t,
                 "zone_type": ZoneType,
                 "ieee": t.EUI64,
-                "zone_label": t.CharacterString,
+                # Added in HA 1.2.1, devices implementing an older revision omit it
+                "zone_label?": t.CharacterString,
             },
         )
         zone_status_changed: Final = ZCLCommandDef(
@@ -325,8 +329,9 @@ class IasAce(Cluster):
             schema={
                 "zone_id": t.uint8_t,
                 "zone_status": ZoneStatus,
-                "audible_notification": AudibleNotification,
-                "zone_label": t.CharacterString,
+                # Added in HA 1.2.1, devices implementing an older revision omit them
+                "audible_notification?": AudibleNotification,
+                "zone_label?": t.CharacterString,
             },
         )
         panel_status_changed: Final = ZCLCommandDef(
@@ -334,8 +339,9 @@ class IasAce(Cluster):
             schema={
                 "panel_status": PanelStatus,
                 "seconds_remaining": t.uint8_t,
-                "audible_notification": AudibleNotification,
-                "alarm_status": AlarmStatus,
+                # Added in HA 1.2.1, devices implementing an older revision omit them
+                "audible_notification?": AudibleNotification,
+                "alarm_status?": AlarmStatus,
             },
         )
         panel_status_response: Final = ZCLCommandDef(
@@ -521,8 +527,9 @@ class IasWd(Cluster):
             schema={
                 "warning": WarningType,
                 "warning_duration": t.uint16_t,
-                "strobe_duty_cycle": t.uint8_t,
-                "strobe_level": StrobeLevel,
+                # Added in HA 1.2, devices implementing an older revision omit them
+                "strobe_duty_cycle?": t.uint8_t,
+                "strobe_level?": StrobeLevel,
             },
         )
         squawk: Final = ZCLCommandDef(

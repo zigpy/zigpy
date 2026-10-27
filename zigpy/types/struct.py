@@ -271,10 +271,22 @@ class Struct:
 
         bit_offset = 0
         bitfields = []
+        omitted_field = None
 
         for field, value in self.assigned_fields(strict=True):
             if value is None and field.optional:
+                if omitted_field is None:
+                    omitted_field = field
+
                 continue
+
+            # Optional fields can only be omitted from the end, the data would
+            # otherwise be shifted into the omitted field when deserialized
+            if omitted_field is not None:
+                raise ValueError(
+                    f"Optional field {omitted_field.name!r} cannot be omitted when"
+                    f" field {field.name!r} is set: {self!r}"
+                )
 
             value = field._convert_type(value)
 

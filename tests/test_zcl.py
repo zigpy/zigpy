@@ -583,6 +583,8 @@ async def test_write_attributes_wrong_type(cluster):
     [
         (0, "zcl_version", 0xAA, b"\x00\x00\x20\xaa"),
         (0, "model", "model x", b"\x05\x00\x42\x07model x"),
+        # The length prefix counts octets, not characters
+        (0, "location_desc", "Küche", b"\x10\x00\x42\x06K\xc3\xbcche"),
         (0, "device_enabled", True, b"\x12\x00\x10\x01"),
         (0, "alarm_mask", 0x55, b"\x13\x00\x18\x55"),
         (0x0202, "fan_mode", 0xDE, b"\x00\x00\x30\xde"),
@@ -814,6 +816,18 @@ async def test_invalid_arguments_cluster_client_command(client_cluster):
             image_type=0,
             # Missing: file_version, current_time, upgrade_time
         )
+
+
+async def test_cluster_command_optional_field_gap(cluster_by_id):
+    """Test an omitted optional field can't be followed by a set one."""
+    cluster = cluster_by_id(0x0008)
+
+    # `options_override` would otherwise be deserialized as the `options_mask`
+    with pytest.raises(ValueError, match="'options_mask' cannot be omitted"):
+        await cluster.move_to_level(level=10, transition_time=0, options_override=1)
+
+    # Nothing is sent
+    assert cluster._endpoint.request.call_count == 0
 
 
 def test_name(cluster):
