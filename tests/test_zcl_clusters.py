@@ -32,6 +32,7 @@ from zigpy.zcl.clusters.general import (
 )
 from zigpy.zcl.clusters.protocol import BacnetProtocolTunnel
 import zigpy.zcl.clusters.security as sec
+from zigpy.zcl.clusters.wwah import WorksWithAllHubs
 from zigpy.zdo import types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, call, patch, sentinel
@@ -1111,6 +1112,23 @@ def test_bacnet_protocol_tunnel_transfer_npdu() -> None:
     hdr, command = cluster.deserialize(bytes.fromhex("011200") + npdu)
     assert hdr.command_id == BacnetProtocolTunnel.ServerCommandDefs.transfer_npdu.id
     assert command == schema(npdu=npdu)
+
+
+def test_wwah_debug_report_query_response() -> None:
+    """The debug report data is opaque and has no length prefix."""
+    cluster = WorksWithAllHubs(MagicMock())
+    command_def = WorksWithAllHubs.ClientCommandDefs.debug_report_query_response
+    data = bytes.fromhex("0102030405")
+    command = command_def.schema(debug_report_id=0x07, debug_report_data=data)
+
+    assert command.serialize() == b"\x07" + data
+
+    # Manufacturer-specific (0x1217), cluster-specific, server to client, TSN 0x12
+    hdr, deserialized = cluster.deserialize(
+        bytes.fromhex("1d171212") + bytes([command_def.id]) + b"\x07" + data
+    )
+    assert hdr.command_id == command_def.id
+    assert deserialized == command
 
 
 def test_power_profile_transferred_phase() -> None:

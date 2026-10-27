@@ -479,7 +479,8 @@ class WorksWithAllHubs(Cluster):
             id=0x07,
             schema={
                 "debug_report_id": t.uint8_t,
-                "debug_report_data": t.LVList[t.uint8_t, t.uint8_t],
+                # Opaque data running to the end of the frame, without a length prefix
+                "debug_report_data": t.Bytes,
             },
             manufacturer_code=0x1217,
         )
