@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta, tzinfo
 import functools
 
 import zigpy.types as t
+from zigpy.types.named import _ZIGBEE_EPOCH
 
 # Shorter than any gap between two tzdata transitions, so no interval is skipped.
 PROBE_STEP = 6 * 60 * 60
@@ -14,8 +15,17 @@ PROBE_STEP = 6 * 60 * 60
 
 def _offset(zone: tzinfo, seconds: int) -> tuple[int, bool]:
     """Return the UTC offset and DST flag, both stored exactly in tzdata."""
-    local = t.UTCTime(seconds).to_datetime().astimezone(zone)
-    return int((local.utcoffset() or timedelta(0)).total_seconds()), bool(local.dst())
+    if type(seconds) is not int or not 0 <= seconds <= t.UTCTime.INVALID:
+        seconds = int(t.UTCTime(seconds))
+    local = (_ZIGBEE_EPOCH + timedelta(seconds=seconds)).astimezone(zone)
+    offset = local.utcoffset()
+    if not offset:
+        offset_seconds = 0
+    elif type(offset) is timedelta and not offset.microseconds:
+        offset_seconds = offset.days * 86400 + offset.seconds
+    else:
+        offset_seconds = int(offset.total_seconds())
+    return offset_seconds, bool(local.dst())
 
 
 def _first_change(
@@ -57,7 +67,9 @@ def utc_periods(zone: tzinfo, year: int) -> list[tuple[int, int, int, bool]]:
     offset = _offset(zone, lower)
 
     while probe < upper:
-        following = min(probe + PROBE_STEP, upper)
+        following = probe + PROBE_STEP
+        if following > upper:  # noqa: PLR1730 - avoid a call on every probe
+            following = upper
         following_offset = _offset(zone, following)
         if following_offset != offset:
             change = _first_change(zone, probe, following, offset)
