@@ -1995,10 +1995,86 @@ async def test_device_reinterviewed_with_db(app):
     ep.device_type = 0x0100
     ep.status = zigpy.endpoint.Status.ZDO_INIT
 
+    app.devices[ieee] = shadow
     await app._device_reinterviewed(old_dev, shadow)
 
     # DB removal should have been called for the old device
     db_listener._remove_device.assert_awaited_once_with(old_dev, force_commit=False)
+
+
+async def test_device_reinterviewed_skips_device_removed_during_swap(app):
+    """A device removed while the old one is deleted from the DB is not re-registered."""
+    ieee = make_ieee()
+    nwk = t.NWK(0x1234)
+
+    old_dev = app.add_device(ieee=ieee, nwk=nwk)
+    old_dev.node_desc = make_node_desc()
+
+    shadow = zigpy.device.Device(app, ieee, nwk)
+    shadow.node_desc = make_node_desc()
+    shadow.status = zigpy.device.Status.ENDPOINTS_INIT
+    ep = shadow.add_endpoint(1)
+    ep.profile_id = 260
+    ep.device_type = 0x0100
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    app.devices[ieee] = shadow
+
+    async def remove_old_device(device, **kwargs):
+        # The device is removed while the DB delete is awaited
+        app.devices.pop(ieee)
+        shadow.on_remove()
+
+    db_listener = MagicMock()
+    db_listener._remove_device = AsyncMock(side_effect=remove_old_device)
+    app._dblistener = db_listener
+
+    with patch.object(app, "listener_event", wraps=app.listener_event):
+        await app._device_reinterviewed(old_dev, shadow)
+
+        assert ieee not in app.devices
+        assert call("device_reinterviewed", ANY) not in app.listener_event.mock_calls
+        assert call("device_reinterview_failure", old_dev) in (
+            app.listener_event.mock_calls
+        )
+
+
+async def test_device_reinterviewed_keeps_rejoined_device_during_swap(app):
+    """A device removed and re-added while the old one is deleted from the DB wins."""
+    ieee = make_ieee()
+    nwk = t.NWK(0x1234)
+
+    old_dev = app.add_device(ieee=ieee, nwk=nwk)
+    old_dev.node_desc = make_node_desc()
+
+    shadow = zigpy.device.Device(app, ieee, nwk)
+    shadow.node_desc = make_node_desc()
+    shadow.status = zigpy.device.Status.ENDPOINTS_INIT
+    ep = shadow.add_endpoint(1)
+    ep.profile_id = 260
+    ep.device_type = 0x0100
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    app.devices[ieee] = shadow
+
+    fresh_devices = []
+
+    async def remove_and_rejoin(device, **kwargs):
+        # The device is removed and re-added while the DB delete is awaited
+        app.devices.pop(ieee)
+        shadow.on_remove()
+        fresh_devices.append(app.add_device(ieee, t.NWK(0x5678)))
+
+    db_listener = MagicMock()
+    db_listener._remove_device = AsyncMock(side_effect=remove_and_rejoin)
+    app._dblistener = db_listener
+
+    with patch.object(app, "listener_event", wraps=app.listener_event):
+        await app._device_reinterviewed(old_dev, shadow)
+
+        assert app.devices[ieee] is fresh_devices[0]
+        assert call("device_reinterviewed", ANY) not in app.listener_event.mock_calls
+        assert call("device_reinterview_failure", old_dev) in (
+            app.listener_event.mock_calls
+        )
 
 
 async def test_reinterview_device_public_api(app):
@@ -2048,6 +2124,7 @@ async def test_device_reinterviewed_preserves_groups(app):
     new_ep.device_type = 0x0100
     new_ep.status = zigpy.endpoint.Status.ZDO_INIT
 
+    app.devices[ieee] = shadow
     await app._device_reinterviewed(old_dev, shadow)
 
     new_dev = app.devices[ieee]
@@ -2106,6 +2183,7 @@ async def test_device_reinterviewed_skips_group_removed_during_swap(app):
     new_ep.device_type = 0x0100
     new_ep.status = zigpy.endpoint.Status.ZDO_INIT
 
+    app.devices[ieee] = shadow
     await app._device_reinterviewed(old_dev, shadow)
 
     new_dev = app.devices[ieee]
@@ -2134,6 +2212,8 @@ async def test_device_reinterviewed_finalization_failure_propagates(app):
     app._finalize_device = Mock(side_effect=RuntimeError("finalization boom"))
 
     # Exception should propagate — reinterview() is responsible for restoration
+    app.devices[ieee] = shadow
+
     with pytest.raises(RuntimeError, match="finalization boom"):
         await app._device_reinterviewed(old_dev, shadow)
 
@@ -2160,6 +2240,7 @@ async def test_device_reinterviewed_persists_relays(app):
     ep.device_type = 0x0100
     ep.status = zigpy.endpoint.Status.ZDO_INIT
 
+    app.devices[ieee] = shadow
     await app._device_reinterviewed(old_dev, shadow)
 
     new_dev = app.devices[ieee]
