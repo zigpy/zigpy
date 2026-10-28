@@ -488,10 +488,32 @@ async def test_device_join_rejoin(is_init_mock, group_scan_mock, init_mock, app,
     group_scan_mock.reset_mock()
     init_mock.assert_not_called()
 
+    # A device that explicitly left and rejoins with the same NWK is a new join
+    app.handle_leave(0x0001, ieee)
+    app.listener_event.reset_mock()
+
+    app.handle_join(0x0001, ieee, None)
+    app.listener_event.assert_called_once_with("device_joined", ANY)
+    group_scan_mock.assert_not_called()
+    init_mock.assert_called_once()
+    app.listener_event.reset_mock()
+    init_mock.reset_mock()
+
     # Join with a different NWK but the same IEEE is a re-join
     app.handle_join(0x0002, ieee, None)
     app.listener_event.assert_called_once_with("device_joined", ANY)
     group_scan_mock.assert_not_called()
+    init_mock.assert_called_once()
+
+    # An address response can reveal a new NWK before Device Announce arrives
+    app.listener_event.reset_mock()
+    init_mock.reset_mock()
+    app.handle_leave(0x0002, ieee)
+    app.listener_event.reset_mock()
+
+    app.handle_join(0x0003, ieee, None, handle_rejoin=False)
+    app.handle_join(0x0003, ieee, None)
+    app.listener_event.assert_called_once_with("device_joined", ANY)
     init_mock.assert_called_once()
 
 

@@ -79,6 +79,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
 
     def __init__(self, config: dict) -> None:
         self.devices: dict[t.EUI64, BaseDevice] = {}
+        # Track explicit leaves so a same-address rejoin is not mistaken for an announce.
+        self._left_device_ieees: set[t.EUI64] = set()
         self.state: zigpy.state.State = zigpy.state.State()
         self._listeners = {}
         self._config = self.SCHEMA(config)
@@ -876,6 +878,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             dev.nwk = nwk
             new_join = True
 
+        if (handle_rejoin or new_join) and ieee in self._left_device_ieees:
+            # A device can receive the same NWK address after explicitly leaving.
+            self._left_device_ieees.remove(ieee)
+            new_join = True
+
         # Not all stacks send a ZDO command when a device joins so the last_seen should
         # be updated
         dev.last_seen = datetime.now(UTC)
@@ -912,6 +919,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             zigpy.exceptions.DeliveryError("Device has left the network")
         )
 
+        self._left_device_ieees.add(ieee)
         self.listener_event("device_left", dev)
 
     def handle_relays(self, nwk: t.NWK, relays: list[t.NWK]) -> None:
