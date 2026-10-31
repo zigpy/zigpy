@@ -501,18 +501,27 @@ async def test_read_attributes_mixed_cached(cluster):
 
 async def test_read_attributes_default_response(cluster):
     async def mockrequest(
-        foundation, command, schema, args, manufacturer=None, **kwargs
+        is_general_req, command, schema, args, manufacturer=None, **kwargs
     ):
-        assert foundation is True
+        assert is_general_req is True
         assert command == 0
-        return [0xC1]
+        return foundation.DefaultResponse(
+            command_id=foundation.GeneralCommand.Read_Attributes,
+            status=foundation.Status.UNSUP_GENERAL_COMMAND,
+        )
 
     cluster.request = mockrequest
     success, failure = await cluster.read_attributes(
         ["zcl_version", "model", "hw_version"], allow_cache=False
     )
     assert success == {}
-    assert failure == {"zcl_version": 0xC1, "model": 0xC1, "hw_version": 0xC1}
+
+    # The status comes from the Default Response, not the echoed command ID
+    assert failure == {
+        "zcl_version": foundation.Status.UNSUP_GENERAL_COMMAND,
+        "model": foundation.Status.UNSUP_GENERAL_COMMAND,
+        "hw_version": foundation.Status.UNSUP_GENERAL_COMMAND,
+    }
 
 
 async def test_item_access_attributes(cluster):
@@ -610,6 +619,9 @@ async def test_write_attribute_types(
     "status", [foundation.Status.SUCCESS, foundation.Status.UNSUPPORTED_ATTRIBUTE]
 )
 async def test_write_attributes_cache_default_response(cluster, status):
+    event_listener = MagicMock()
+    cluster.on_event(AttributeWrittenEvent.event_type, event_listener)
+
     write_mock = AsyncMock(
         return_value=[foundation.GeneralCommand.Write_Attributes, status]
     )
@@ -617,8 +629,16 @@ async def test_write_attributes_cache_default_response(cluster, status):
         attributes = {4: "manufacturer", 5: "model", 12: 12}
         await cluster.write_attributes(attributes)
         assert cluster._write_attributes.call_count == 1
-        for attr_id in attributes:
-            assert attr_id not in cluster._attr_cache
+        for attr_id, value in attributes.items():
+            if status == foundation.Status.SUCCESS:
+                assert cluster._attr_cache[attr_id] == value
+            else:
+                assert attr_id not in cluster._attr_cache
+
+    # The status comes from the Default Response, not the echoed command ID
+    assert [c.args[0].status for c in event_listener.mock_calls] == [status] * len(
+        attributes
+    )
 
 
 @pytest.mark.parametrize(
