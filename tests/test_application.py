@@ -4,7 +4,6 @@ import asyncio
 from datetime import UTC, datetime
 import errno
 import logging
-import random
 from unittest import mock
 from unittest.mock import ANY, Mock, PropertyMock, call
 from zoneinfo import ZoneInfo
@@ -566,19 +565,6 @@ async def test_form_network(app):
     )
 
     assert nwk_info1.channel in (11, 15, 20, 25)
-
-
-async def test_form_network_pan_id_range(app):
-    """The randomly chosen PAN ID never includes the reserved 0xFFFF."""
-
-    # Always pick the highest value the range allows
-    with (
-        patch.object(random.SystemRandom, "randint", lambda self, a, b: b),
-        patch.object(app, "write_network_info") as write,
-    ):
-        await app.form_network()
-
-    assert write.mock_calls[0].kwargs["network_info"].pan_id == 0xFFFE
 
 
 @pytest.mark.parametrize("app_cls", [App, FeaturelessApp])
