@@ -2339,6 +2339,35 @@ async def test_reinterview_failure_preserves_device(monkeypatch, dev, exception)
     )
 
 
+async def test_reinterview_cancelled_preserves_device(dev):
+    """Test that cancelling a re-interview during discovery restores the old device."""
+    dev._application.devices = {dev.ieee: dev}
+    dev._application._device_reinterviewed = AsyncMock()
+
+    discovery_started = asyncio.Event()
+
+    async def slow_discover(self):
+        discovery_started.set()
+        await asyncio.Event().wait()
+
+    with patch.object(device.Device, "_discover", slow_discover):
+        task = asyncio.create_task(dev.reinterview())
+        await discovery_started.wait()
+        shadow = dev._application.devices[dev.ieee]
+        assert shadow is not dev
+
+        task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    dev._application._device_reinterviewed.assert_not_called()
+
+    # The shadow is gone and the old device is back
+    assert dev._application.devices[dev.ieee] is dev
+    assert not dev.reinterviewing
+
+
 async def test_reinterview_blocks_auto_init(dev):
     """Test that schedule_initialize is a no-op while reinterviewing."""
     dev._reinterview_in_progress = True
