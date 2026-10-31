@@ -533,6 +533,62 @@ async def test_combine_concurrent_calls():
     assert f.slow_error_calls == 2
 
 
+async def test_combine_concurrent_calls_cancellation():
+    """Cancelling one caller does not cancel the call for the others."""
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls = 0
+
+    @util.combine_concurrent_calls
+    async def slow():
+        nonlocal calls
+        calls += 1
+        started.set()
+        await release.wait()
+        return calls
+
+    caller1 = asyncio.create_task(slow())
+    caller2 = asyncio.create_task(slow())
+    await started.wait()
+
+    caller1.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await caller1
+
+    release.set()
+    assert await caller2 == 1
+    assert calls == 1
+
+
+async def test_combine_concurrent_calls_cancel_all_callers():
+    """The shared call is cancelled once every caller has been cancelled."""
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    @util.combine_concurrent_calls
+    async def slow():
+        started.set()
+
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    callers = [asyncio.create_task(slow()) for _ in range(2)]
+    await started.wait()
+
+    for caller in callers:
+        caller.cancel()
+
+    for caller in callers:
+        with pytest.raises(asyncio.CancelledError):
+            await caller
+
+    await asyncio.wait_for(cancelled.wait(), timeout=1)
+
+
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_deprecated():
     @util.deprecated("This function is deprecated")
