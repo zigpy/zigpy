@@ -603,6 +603,33 @@ async def test_request_limiter_cascading_priority():
     assert limiter.waiting_requests == 0
 
 
+async def test_request_limiter_higher_tiers_count_towards_total():
+    """Lower-priority requests cannot run when higher ones fill the limiter."""
+    # 2 slots for low priority, 1 extra for high priority (total 3)
+    limiter = datastructures.RequestLimiter(3, {0: 2 / 3, 10: 1 / 3})
+    release = asyncio.Event()
+
+    async def worker(priority):
+        async with limiter(priority=priority):
+            await release.wait()
+
+    tasks = [asyncio.create_task(worker(10)) for _ in range(3)]
+    await asyncio.sleep(0)
+    assert limiter.active_requests == 3
+
+    # The limiter is full, so a low-priority request must wait
+    tasks.append(asyncio.create_task(worker(0)))
+    await asyncio.sleep(0)
+    assert limiter.active_requests == 3
+    assert limiter.waiting_requests == 1
+
+    release.set()
+    await asyncio.gather(*tasks)
+
+    assert limiter.active_requests == 0
+    assert limiter.waiting_requests == 0
+
+
 async def test_request_limiter_priority_queueing():
     """Test that waiters are woken up according to their priority."""
     limiter = datastructures.RequestLimiter(1, {0: 1})
