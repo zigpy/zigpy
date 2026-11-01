@@ -827,3 +827,37 @@ async def test_migration_v16_to_v17_green_power(tmp_path, open_twice):
     assert app.devices[zigbee_ieee].nwk == 0x1234
 
     await app.shutdown()
+
+
+async def test_migration_v16_to_v17(tmp_path):
+    """v17 adds the empty device_store table and carries the other tables over."""
+    db_path = str(tmp_path / "test.db")
+    ieee = "00:11:22:33:44:55:66:77"
+
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(zigpy.appdb_schemas.SCHEMAS[16])
+        conn.execute(
+            "INSERT INTO devices_v16 (ieee, nwk, status, last_seen) VALUES (?, ?, ?, ?)",
+            (ieee, 0x1234, 2, 1700000000.0),
+        )
+        conn.commit()
+
+    app = await make_app_with_db(db_path)
+    dev = app.get_device(ieee=t.EUI64.convert(ieee))
+
+    assert dev.nwk == 0x1234
+    assert dev.last_seen == 1700000000.0
+
+    dev.store.namespace("ns")["k"] = [1, 2]
+    await app.shutdown()
+
+    user_version, sql = dump_db(db_path)
+
+    assert user_version == 17
+    assert "CREATE TABLE device_store_v17" in sql
+
+    with sqlite3.connect(db_path) as conn:
+        rows = list(conn.execute("SELECT * FROM device_store_v17"))
+
+    assert len(rows) == 1
+    assert rows[0][:5] == (ieee, "ns", "k", "[1, 2]", 1)

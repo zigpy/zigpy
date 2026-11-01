@@ -44,6 +44,7 @@ from zigpy.device import Device, GreenPowerDevice, Status
 import zigpy.endpoint
 import zigpy.group
 import zigpy.ota
+from zigpy.store import StoredValue
 import zigpy.types as t
 import zigpy.zcl
 from zigpy.zcl import (
@@ -3387,3 +3388,114 @@ async def test_load_with_green_power_device(tmp_path):
     assert app.devices[gpd.ieee] is gpd
 
     await app.shutdown()
+
+
+STORE_COUNT = StoredValue(namespace="quirk:test", key="count", type=int)
+
+
+def _count_store_rows(db, ieee=None) -> int:
+    with sqlite3.connect(db) as conn:
+        if ieee is None:
+            cur = conn.execute(f"SELECT COUNT(*) FROM device_store{zigpy.appdb.DB_V}")
+        else:
+            cur = conn.execute(
+                f"SELECT COUNT(*) FROM device_store{zigpy.appdb.DB_V} WHERE ieee = ?",
+                (str(ieee),),
+            )
+        return cur.fetchone()[0]
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_round_trip(tmp_path):
+    """Store values set before and after initialization survive a reload."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ep.add_input_cluster(0)
+
+    # Set before the device is initialized, persisted by the full save
+    dev.store.namespace("tuya").set("1", {"a": [1, 2.5, None, "x"]}, version=3)
+    app.device_initialized(dev)
+
+    # Set after, persisted by the event
+    dev.store[STORE_COUNT] = 42
+    tuya_item = dev.store.namespace("tuya").item("1")
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(ieee)
+
+    assert dev2.store[STORE_COUNT] == 42
+    assert dev2.store.last_updated(STORE_COUNT).timestamp() == pytest.approx(
+        dev.store.last_updated(STORE_COUNT).timestamp()
+    )
+
+    item = dev2.store.namespace("tuya").item("1")
+    assert item.value == {"a": [1, 2.5, None, "x"]}
+    assert item.version == 3
+    assert item.last_updated.timestamp() == pytest.approx(
+        tuya_item.last_updated.timestamp()
+    )
+
+    # Update and delete persist as well
+    dev2.store[STORE_COUNT] = 43
+    del dev2.store.namespace("tuya")["1"]
+    await app2.shutdown()
+
+    app3 = await make_app_with_db(db)
+    dev3 = app3.get_device(ieee)
+
+    assert dev3.store[STORE_COUNT] == 43
+    assert "1" not in dev3.store.namespace("tuya")
+    assert _count_store_rows(db) == 1
+
+    await app3.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_removed_with_device(tmp_path):
+    """Removing a device drops its store rows and in-memory store."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev, _, _ = _add_joined_device(app)
+    dev.store[STORE_COUNT] = 1
+    await app._dblistener._callback_handlers.join()
+
+    assert _count_store_rows(db, dev.ieee) == 1
+
+    app._dblistener.device_removed(dev)
+    await app._dblistener._callback_handlers.join()
+
+    assert _count_store_rows(db, dev.ieee) == 0
+
+    await app.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_visible_to_resolver(tmp_path):
+    """Quirks resolving a device at load time can read its store."""
+    seen = []
+
+    def resolver(device):
+        seen.append(device.store.get(STORE_COUNT))
+        return device
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    dev, _, _ = _add_joined_device(app)
+    dev.store[STORE_COUNT] = 7
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db, device_resolver=resolver)
+
+    assert seen == [7]
+
+    await app2.shutdown()

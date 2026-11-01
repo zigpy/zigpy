@@ -32,6 +32,7 @@ import zigpy.listeners
 import zigpy.ota
 import zigpy.profiles
 import zigpy.state
+from zigpy.store import DeviceStores
 import zigpy.topology
 import zigpy.types as t
 import zigpy.util
@@ -79,6 +80,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
 
     def __init__(self, config: dict) -> None:
         self.devices: dict[t.EUI64, BaseDevice] = {}
+        self.device_stores = DeviceStores()
         self.state: zigpy.state.State = zigpy.state.State()
         self._listeners = {}
         self._config = self.SCHEMA(config)
@@ -824,6 +826,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             LOGGER.debug("Sending 'zdo_leave_req' failed: %s", ex)
 
         self.devices.pop(device.ieee, None)
+        self.device_stores.pop(device.ieee)
 
     def deserialize(
         self,

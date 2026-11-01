@@ -65,6 +65,7 @@ from zigpy.zgp.util import derive_alias, synthetic_ieee
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
     from zigpy.ota.providers import OtaImageWithMetadata
+    from zigpy.store import DeviceStore
 
 
 LOGGER = logging.getLogger(__name__)
@@ -569,6 +570,11 @@ class ZigbeeDevice(BaseDevice):
     """A conventional Zigbee device on the network."""
 
     manufacturer_id_override = None
+
+    @property
+    def store(self) -> DeviceStore:
+        """Persistent key/value store for device state that is not a ZCL attribute."""
+        return self._application.device_stores[self.ieee]
 
     def __init__(self, application: ControllerApplication, ieee: t.EUI64, nwk: t.NWK):
         super().__init__(application, ieee, nwk)
