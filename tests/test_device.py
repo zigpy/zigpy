@@ -2526,6 +2526,10 @@ async def test_request_retry_failure(app) -> None:
             retries=3,
         )
 
+    # Every attempt carries the first attempt's request id, and counts up from 0
+    request_id = app.send_packet.mock_calls[0].args[0].request_id
+    assert request_id is not None
+
     packet = t.ZigbeePacket(
         priority=None,
         src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
@@ -2541,26 +2545,51 @@ async def test_request_retry_failure(app) -> None:
         tx_options=t.TransmitOptions.NONE,
         radius=0,
         non_member_radius=0,
+        request_id=request_id,
     )
 
     assert app.send_packet.mock_calls == [
         call(packet),
         call(
             packet.replace(
-                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY
+                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY,
+                attempt=1,
             )
         ),
         call(
             packet.replace(
-                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY
+                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY,
+                attempt=2,
             )
         ),
         call(
             packet.replace(
-                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY
+                tx_options=packet.tx_options | t.TransmitOptions.FORCE_ROUTE_DISCOVERY,
+                attempt=3,
             )
         ),
     ]
+
+
+async def test_request_ids_differ_between_requests(app) -> None:
+    """Separate requests carry separate request ids."""
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+
+    for sequence in (1, 2):
+        await dev.request(
+            profile=0x1234,
+            cluster=0x0006,
+            src_ep=1,
+            dst_ep=1,
+            sequence=sequence,
+            data=b"",
+            expect_reply=False,
+        )
+
+    first, second = (c.args[0].request_id for c in app.send_packet.mock_calls)
+    assert first is not None
+    assert second is not None
+    assert first != second
 
 
 async def test_request_retry_reply_timeout(app) -> None:

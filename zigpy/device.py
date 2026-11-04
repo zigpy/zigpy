@@ -1084,6 +1084,8 @@ class ZigbeeDevice(BaseDevice):
             rsp_key = None
 
         max_attempts = retries + 1
+        # Every attempt of one request carries the same id
+        request_id = self._application.get_request_id()
 
         # Use a lambda so we don't leave the coroutine unawaited in case of an exception
         send_request = lambda attempt: self._application.request(  # noqa: E731
@@ -1100,6 +1102,8 @@ class ZigbeeDevice(BaseDevice):
             ask_for_ack=ask_for_ack,
             priority=priority,
             force_route_discovery=(attempt > 0),
+            request_id=request_id,
+            attempt=attempt,
             **kwargs,
         )
 
