@@ -269,6 +269,55 @@ async def test_reply_general(cluster):
     assert cluster._endpoint.reply.call_count == 1
 
 
+@pytest.mark.parametrize(
+    ("cluster_id", "is_server", "direction"),
+    [
+        (Basic.cluster_id, True, foundation.Direction.Client_to_Server),
+        (Basic.cluster_id, False, foundation.Direction.Server_to_Client),
+        # The coordinator is always the OTA server
+        (Ota.cluster_id, True, foundation.Direction.Server_to_Client),
+        (Ota.cluster_id, False, foundation.Direction.Server_to_Client),
+    ],
+)
+async def test_send_direction(cluster_id, is_server, direction):
+    """Test the direction of requests and replies sent to a cluster."""
+    epmock = MagicMock()
+    epmock.device.get_sequence.return_value = DEFAULT_TSN
+    epmock.request = AsyncMock()
+    epmock.reply = AsyncMock()
+    cluster = zcl.Cluster.from_id(epmock, cluster_id, is_server=is_server)
+
+    assert cluster.send_direction == direction
+
+    await cluster.request(
+        general=True,
+        command_id=foundation.GeneralCommand.Read_Attributes,
+        schema=foundation.GENERAL_COMMANDS[
+            foundation.GeneralCommand.Read_Attributes
+        ].schema,
+        attribute_ids=[0x0000],
+    )
+    await cluster.reply(
+        True,
+        foundation.GeneralCommand.Default_Response,
+        foundation.GENERAL_COMMANDS[foundation.GeneralCommand.Default_Response].schema,
+        0x00,
+        foundation.Status.SUCCESS,
+    )
+
+    for send in (epmock.request, epmock.reply):
+        hdr, _ = foundation.ZCLHeader.deserialize(send.mock_calls[0].kwargs["data"])
+        assert hdr.direction == direction
+
+    # Default responses are only requested for client to server requests
+    hdr, _ = foundation.ZCLHeader.deserialize(
+        epmock.request.mock_calls[0].kwargs["data"]
+    )
+    assert hdr.frame_control.disable_default_response == (
+        direction == foundation.Direction.Server_to_Client
+    )
+
+
 async def test_reply_manufacturer(cluster):
     command = foundation.ZCLCommandDef(
         name="test_command",

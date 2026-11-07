@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 import zigpy.datastructures
 import zigpy.ota
 import zigpy.types as t
-from zigpy.zcl import ClusterType, foundation
+from zigpy.zcl import foundation
 from zigpy.zcl.clusters.general import (
     ImageBlockCommand,
     ImagePageCommand,
@@ -60,9 +60,7 @@ class OTAManager:
         force: bool = False,
     ) -> None:
         self.device = device
-        self.ota_cluster = device.find_cluster(
-            cluster_id=Ota.cluster_id, cluster_type=ClusterType.Client
-        )
+        self.ota_cluster = device.find_ota_cluster()
 
         self.image = image
         self._image_data = image.firmware.serialize()
