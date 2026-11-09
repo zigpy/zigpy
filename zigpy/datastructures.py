@@ -455,18 +455,17 @@ class RequestLimiter:
     def locked(self, priority: int) -> bool:
         """Checks if a request with a given priority can run."""
         effective_tier = self._get_effective_priority_tier(priority)
-        limit = self._cumulative_capacity[effective_tier]
-        waiting_requests = 0
+        active_requests = 0
 
-        if limit == 0:
-            return True
+        for tier in self._sorted_priorities:
+            active_requests += self._active_requests_by_tier[tier]
 
-        for tier, count in self._active_requests_by_tier.items():
-            if tier > effective_tier:
-                continue
-
-            waiting_requests += count
-            if waiting_requests >= limit:
+            # A new request also counts against the capacity of every higher tier, so
+            # each of them must have room, not just our own
+            if (
+                tier >= effective_tier
+                and active_requests >= self._cumulative_capacity[tier]
+            ):
                 return True
 
         return False
