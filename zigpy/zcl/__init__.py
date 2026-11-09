@@ -1285,6 +1285,13 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         insufficient_space_attrs: list[foundation.ZCLAttributeDef] = []
 
         for record in result[0]:
+            if record.attrid not in potential_attributes:
+                # Some devices include attributes that were never requested
+                self.debug(
+                    "Ignoring unrequested attribute in read response: %s", record
+                )
+                continue
+
             attr_def = potential_attributes[record.attrid]
             seen_attr_ids.add(record.attrid)
 

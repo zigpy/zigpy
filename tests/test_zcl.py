@@ -467,6 +467,20 @@ async def test_read_attributes_listener_error(cluster):
     ]
 
 
+async def test_read_attributes_unrequested_attribute(cluster):
+    """Records for attributes that were not requested are ignored."""
+    cluster.request = AsyncMock(
+        return_value=[[_mk_rar(4, "Manufacturer"), _mk_rar(5, "Model")]]
+    )
+
+    success, failure = await cluster.read_attributes(["manufacturer"])
+
+    assert success == {"manufacturer": "Manufacturer"}
+    assert not failure
+    assert cluster.request.await_count == 1
+    assert Basic.AttributeDefs.model not in cluster._attr_cache
+
+
 async def test_read_attributes_cached(cluster):
     cluster.request = MagicMock()
     cluster._attr_cache.set_value(Basic.AttributeDefs.zcl_version, 99)
