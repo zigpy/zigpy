@@ -47,6 +47,10 @@ OTA_FETCH_TIMEOUT = 20
 MAX_DEVICES_CHECKING_IN_PER_BROADCAST = 15
 BROADCAST_SETTLE_DELAY = 60
 
+# Rate limit for user-initiated index refreshes, to avoid hammering the OTA
+# providers when the user repeatedly checks for updates
+USER_REFRESH_RATE_LIMIT = datetime.timedelta(minutes=2)
+
 
 @dataclasses.dataclass(frozen=True)
 class OtaImagesResult(t.BaseDataclassMixin):
@@ -246,6 +250,7 @@ class OTA:
         ] = {}
 
         self._broadcast_loop_task = None
+        self._last_user_refresh = datetime.datetime.fromtimestamp(0, tz=datetime.UTC)
 
         if config[CONF_OTA_ENABLED]:
             self._register_providers(self._config)
@@ -299,6 +304,24 @@ class OTA:
             provider._index_last_updated = datetime.datetime.fromtimestamp(
                 0, tz=datetime.UTC
             )
+
+    async def check_for_updates(self, *, force: bool = False) -> None:
+        """Check all devices for new firmware with refreshed provider indexes.
+
+        Intended for user-initiated "check for updates" actions: invalidates
+        the provider index caches (rate-limited to once per
+        USER_REFRESH_RATE_LIMIT unless `force`) and re-checks every device
+        with a cached query command against the refreshed indexes. Devices
+        without a cached query command are covered by the periodic broadcasts
+        or an explicit `broadcast_notify()`.
+        """
+        now = datetime.datetime.now(datetime.UTC)
+
+        if force or now - self._last_user_refresh >= USER_REFRESH_RATE_LIMIT:
+            self._last_user_refresh = now
+            self.invalidate_provider_caches()
+
+        await self.check_all_devices_for_ota()
 
     async def check_cluster_for_ota(self, cluster: Ota) -> None:
         """Check OTA image availability for a single OTA cluster.
