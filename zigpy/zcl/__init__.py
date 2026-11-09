@@ -1270,10 +1270,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     ) -> list[foundation.ZCLAttributeDef]:
         """Process a Read Attributes Response, updating `success`/`failure` in place."""
 
-        # If we get back a single response status, all reads failed
+        # A Default Response `(command_id, status)` means all reads failed
         if not isinstance(result[0], list):
             for attr_def in chunk:
-                failure[attribute_map[attr_def]] = result[0]
+                failure[attribute_map[attr_def]] = result[1]
 
             return []
 
@@ -1553,7 +1553,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                                 )
                 else:
                     # Default response: apply status to all attributes in this group
-                    status = result[0]
+                    status = result[1]
                     records_group.extend(
                         foundation.WriteAttributesStatusRecord(
                             status=status, attrid=zcl_attr.attrid
