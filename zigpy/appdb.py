@@ -2058,7 +2058,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                             extra_commissioning_payload, security_key, security_key_type, security_level, frame_counter, last_seen
                         )
                         VALUES (
-                            :application_id, :src_id, :device_id, :gpd_manufacturer_id, :gpd_model_id, :commands, :server_cluster_ids,
+                            :ieee, :application_id, :src_id, :device_id, :gpd_manufacturer_id, :gpd_model_id, :commands, :server_cluster_ids,
                             :client_cluster_ids, :switch_configuration, :mac_seq_num_capability, :rx_on_capability, :fixed_location,
                             :extra_commissioning_payload, :security_key, :security_key_type, :security_level, :frame_counter, :last_seen
                         )
