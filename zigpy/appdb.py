@@ -70,7 +70,7 @@ if sqlite3.sqlite_version_info < MIN_SQLITE_VERSION:
 
 LOGGER = logging.getLogger(__name__)
 
-DB_VERSION = 16
+DB_VERSION = 17
 DB_V = f"_v{DB_VERSION}"
 
 UNIX_EPOCH = datetime.fromtimestamp(0, tz=UTC)
@@ -898,6 +898,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             ),
             "security_key_type": device.security_key_type,
             "security_level": device.security_level,
+            "extra_commissioning_payload": device.extra_commissioning_payload,
             "frame_counter": device.frame_counter,
             "last_seen": device.last_seen or UNIX_EPOCH.timestamp(),
         }
@@ -1382,6 +1383,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 mac_seq_num_capability,
                 rx_on_capability,
                 fixed_location,
+                extra_commissioning_payload,
                 security_key,
                 security_key_type,
                 security_level,
@@ -1418,6 +1420,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 device.mac_seq_num_capability = bool(mac_seq_num_capability)
                 device.rx_on_capability = bool(rx_on_capability)
                 device.fixed_location = bool(fixed_location)
+                device.extra_commissioning_payload = extra_commissioning_payload
                 device.security_key = (
                     None if security_key is None else t.KeyData(security_key)
                 )
@@ -1534,6 +1537,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 (self._migrate_to_v14, 14),
                 (self._migrate_to_v15, 15),
                 (self._migrate_to_v16, 16),
+                (self._migrate_to_v17, 17),
             ]:
                 if db_version >= min(to_db_version, DB_VERSION):
                     continue
@@ -2018,4 +2022,49 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "ota_query_cache_v15": "ota_query_cache_v16",
             }
         )
-        # gp_devices_v16 is new - starts empty
+        # gp_devices_v16 is new and starts empty
+
+    async def _migrate_to_v17(self) -> None:
+        """Schema v17 adds `extra_commissioning_payload` to the `gp_devices` table."""
+        await self._migrate_tables(
+            {
+                "devices_v16": "devices_v17",
+                "endpoints_v16": "endpoints_v17",
+                "neighbors_v16": "neighbors_v17",
+                "routes_v16": "routes_v17",
+                "node_descriptors_v16": "node_descriptors_v17",
+                "groups_v16": "groups_v17",
+                "group_members_v16": "group_members_v17",
+                "relays_v16": "relays_v17",
+                "network_backups_v16": "network_backups_v17",
+                "clusters_v16": "clusters_v17",
+                "attributes_cache_v16": "attributes_cache_v17",
+                "ota_query_cache_v16": "ota_query_cache_v17",
+                "gp_devices_v16": None,
+            }
+        )
+
+        async with self.execute("SELECT * FROM gp_devices_v16") as cursor:
+            async for row in cursor:
+                row_dict = {
+                    k[0]: v for k, v in zip(cursor.description, row, strict=True)
+                }
+
+                await self.execute(
+                    """
+                        INSERT INTO gp_devices_v17 (
+                            ieee, application_id, src_id, device_id, gpd_manufacturer_id, gpd_model_id, commands, server_cluster_ids,
+                            client_cluster_ids, switch_configuration, mac_seq_num_capability, rx_on_capability, fixed_location,
+                            extra_commissioning_payload, security_key, security_key_type, security_level, frame_counter, last_seen
+                        )
+                        VALUES (
+                            :application_id, :src_id, :device_id, :gpd_manufacturer_id, :gpd_model_id, :commands, :server_cluster_ids,
+                            :client_cluster_ids, :switch_configuration, :mac_seq_num_capability, :rx_on_capability, :fixed_location,
+                            :extra_commissioning_payload, :security_key, :security_key_type, :security_level, :frame_counter, :last_seen
+                        )
+                    """,
+                    {
+                        "extra_commissioning_payload": b"",
+                        **row_dict,
+                    },
+                )
