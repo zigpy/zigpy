@@ -5,6 +5,7 @@ import json
 import pathlib
 from unittest.mock import Mock
 
+import aiohttp
 from aioresponses import aioresponses
 import attrs
 import pytest
@@ -662,6 +663,143 @@ async def test_zigpy_ota_provider():
         cached_index = await provider.load_index()
         assert cached_index is None
         mock_http.assert_not_called()
+
+
+async def test_zigpy_ota_provider_skips_unchanged_index():
+    version_json = (FILES_DIR / "zigpy_ota_version_stable.json").read_text()
+    version_obj = json.loads(version_json)
+    index_json = (FILES_DIR / "zigpy_ota_index.json").read_text()
+
+    provider = providers.ZigpyOtaProvider()
+    version_url = (
+        "https://raw.githubusercontent.com/zigpy/zigpy-ota/release/version/stable.json"
+    )
+    index_url = version_obj["schemas"]["zigpy_v2"]["url"]
+
+    with aioresponses() as mock_http:
+        mock_http.get(version_url, body=version_json, content_type="application/json")
+        mock_http.get(index_url, body=index_json, content_type="application/json")
+
+        index = await provider.load_index()
+
+    assert index is not None
+
+    # On a forced early refresh with an unchanged version file, only the version
+    # file is downloaded: the index request would fail, as it is not mocked
+    with aioresponses() as mock_http:
+        mock_http.get(version_url, body=version_json, content_type="application/json")
+
+        provider._index_last_updated -= 2 * provider.INDEX_EXPIRATION_TIME
+        unchanged = await provider.load_index()
+
+    # The cached images are kept, as if the index had not expired
+    assert unchanged is None
+
+    # A change to an unrelated schema entry does not trigger an index download
+    unrelated_version_obj = json.loads(version_json)
+    unrelated_version_obj["schemas"]["z2m_v1"]["version"] = "9999.99.99"
+
+    with aioresponses() as mock_http:
+        mock_http.get(
+            version_url,
+            body=json.dumps(unrelated_version_obj),
+            content_type="application/json",
+        )
+
+        provider._index_last_updated -= 2 * provider.INDEX_EXPIRATION_TIME
+        unchanged = await provider.load_index()
+
+    assert unchanged is None
+
+    # Once the `zigpy_v2` version file entry changes, the index is downloaded
+    new_version_obj = json.loads(version_json)
+    new_version_obj["schemas"]["zigpy_v2"]["version"] = "9999.99.99"
+
+    with aioresponses() as mock_http:
+        mock_http.get(
+            version_url,
+            body=json.dumps(new_version_obj),
+            content_type="application/json",
+        )
+        mock_http.get(index_url, body=index_json, content_type="application/json")
+
+        provider._index_last_updated -= 2 * provider.INDEX_EXPIRATION_TIME
+        new_index = await provider.load_index()
+
+    assert new_index is not None
+    assert len(new_index) == len(index)
+
+
+async def test_zigpy_ota_provider_version_marker_commit():
+    """The version marker is only committed when `load_index` fully succeeds.
+
+    A load that fails after the index generator has finished (e.g. the fetch
+    timeout cancelling `load_index` while its HTTP session is being closed)
+    must not mark the index as loaded, or the provider would skip every future
+    index download while its caller never received this one.
+    """
+    version_json = (FILES_DIR / "zigpy_ota_version_stable.json").read_text()
+    version_obj = json.loads(version_json)
+    index_json = (FILES_DIR / "zigpy_ota_index.json").read_text()
+
+    provider = providers.ZigpyOtaProvider()
+    version_url = (
+        "https://raw.githubusercontent.com/zigpy/zigpy-ota/release/version/stable.json"
+    )
+    index_url = version_obj["schemas"]["zigpy_v2"]["url"]
+
+    # Consuming the index generator alone stages the version info but does not
+    # commit it
+    with aioresponses() as mock_http:
+        mock_http.get(version_url, body=version_json, content_type="application/json")
+        mock_http.get(index_url, body=index_json, content_type="application/json")
+
+        async with aiohttp.ClientSession(raise_for_status=True) as session:
+            index = [meta async for meta in provider._load_index(session)]
+
+    assert index
+    assert provider._pending_version_data == version_obj["schemas"]["zigpy_v2"]
+    assert provider._loaded_version_data is None
+
+    # A successful `load_index()` call commits it
+    with aioresponses() as mock_http:
+        mock_http.get(version_url, body=version_json, content_type="application/json")
+        mock_http.get(index_url, body=index_json, content_type="application/json")
+
+        index = await provider.load_index()
+
+    assert index is not None
+    assert provider._loaded_version_data == version_obj["schemas"]["zigpy_v2"]
+
+
+async def test_zigpy_ota_provider_failed_index_load_is_retried():
+    version_json = (FILES_DIR / "zigpy_ota_version_stable.json").read_text()
+    version_obj = json.loads(version_json)
+    index_json = (FILES_DIR / "zigpy_ota_index.json").read_text()
+
+    provider = providers.ZigpyOtaProvider()
+    version_url = (
+        "https://raw.githubusercontent.com/zigpy/zigpy-ota/release/version/stable.json"
+    )
+    index_url = version_obj["schemas"]["zigpy_v2"]["url"]
+
+    # The version file downloads but the index fails
+    with aioresponses() as mock_http:
+        mock_http.get(version_url, body=version_json, content_type="application/json")
+        mock_http.get(index_url, status=500)
+
+        with pytest.raises(aiohttp.ClientResponseError):
+            await provider.load_index()
+
+    # The version file is not remembered so the next attempt downloads the index
+    with aioresponses() as mock_http:
+        mock_http.get(version_url, body=version_json, content_type="application/json")
+        mock_http.get(index_url, body=index_json, content_type="application/json")
+
+        provider._index_last_updated -= 2 * provider.INDEX_EXPIRATION_TIME
+        index = await provider.load_index()
+
+    assert index is not None
 
 
 @pytest.mark.parametrize(
