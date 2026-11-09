@@ -74,6 +74,10 @@ class OTAManager:
             self._stall_callback
         )
 
+        # The image notify is only a hint, the device drives the actual OTA process
+        self._notify_task: asyncio.Task[None] | None = None
+        self._device_responded = False
+
         self.stack = contextlib.ExitStack()
 
     def __enter__(self) -> Self:
@@ -129,14 +133,37 @@ class OTAManager:
     def _finish(self, status: foundation.Status) -> None:
         """Finish the OTA process."""
         self._stall_timer.cancel()
+        self._cancel_notify()
 
         if not self._upgrade_end_future.done():
             self._upgrade_end_future.set_result(status)
+
+    def _cancel_notify(self) -> None:
+        """Stop sending the image notify, it is no longer needed."""
+        if self._notify_task is not None:
+            self._notify_task.cancel()
+
+    def _on_device_request(self) -> None:
+        """Handle the device sending us an OTA request."""
+        if self._device_responded:
+            return
+
+        self._device_responded = True
+
+        # A pending image notify would delay our responses to the device
+        self._cancel_notify()
+
+        # Make sure the OTA cannot stall forever once the device has started talking to
+        # us. Only the first request does this, so it can never shorten a longer timeout
+        # set by the handlers (e.g. for the final block).
+        if not self._upgrade_end_future.done():
+            self._stall_timer.reschedule(MAX_TIME_WITHOUT_PROGRESS)
 
     async def _image_query_req(
         self, hdr: foundation.ZCLHeader, command: QueryNextImageCommand
     ) -> None:
         """Handle image query request."""
+        self._on_device_request()
 
         # If we try to send a device an old image (e.g. cache issue), don't bother
         if not self.force and (
@@ -180,6 +207,7 @@ class OTAManager:
         self, hdr: foundation.ZCLHeader, command: ImageBlockCommand
     ) -> None:
         """Handle image block request."""
+        self._on_device_request()
         default_image_block_size = _image_block_size_for_manufacturer(
             command.manufacturer_code, command.maximum_data_size
         )
@@ -226,6 +254,7 @@ class OTAManager:
         self, hdr: foundation.ZCLHeader, command: ImagePageCommand
     ) -> None:
         """Handle image page request."""
+        self._on_device_request()
         offset = command.file_offset
         max_block_size = _image_block_size_for_manufacturer(
             command.manufacturer_code, command.maximum_data_size
@@ -292,6 +321,7 @@ class OTAManager:
         self, hdr: foundation.ZCLHeader, command: foundation.CommandSchema
     ) -> None:
         """Handle upgrade end request."""
+        self._on_device_request()
         try:
             await self.ota_cluster.upgrade_end_response(
                 manufacturer_code=self.image.firmware.header.manufacturer_id,
@@ -307,8 +337,8 @@ class OTAManager:
             self.device.debug("OTA upgrade_end handler exception", exc_info=ex)
             self._finish(foundation.Status.FAILURE)
 
-    async def notify(self) -> None:
-        """Notify device of new image."""
+    async def _send_image_notify(self) -> None:
+        """Send the image notify command."""
         try:
             await self.ota_cluster.image_notify(
                 payload_type=(
@@ -317,9 +347,28 @@ class OTAManager:
                 query_jitter=100,
             )
         except Exception as ex:  # noqa: BLE001
+            # Sleepy end devices often cannot receive unsolicited commands. Image notify
+            # is optional and the device can still query for the image on its own.
             self.device.debug("OTA image_notify handler exception", exc_info=ex)
-            self._finish(foundation.Status.FAILURE)
-        else:
+            self.device.info(
+                "OTA image notify could not be delivered, waiting %ss for the device to"
+                " request the image. Battery-powered devices may need to be woken up.",
+                MAX_TIME_WITHOUT_PROGRESS,
+            )
+
+    async def notify(self) -> None:
+        """Notify device of new image."""
+        self._notify_task = asyncio.create_task(self._send_image_notify())
+
+        try:
+            # The device can respond before sending the notify completes, in which case
+            # the notify is cancelled. We do not want to cancel ourselves here.
+            await asyncio.wait([self._notify_task])
+        finally:
+            self._notify_task.cancel()
+
+        # Once the device has responded, the request handlers manage the stall timer
+        if not self._device_responded and not self._upgrade_end_future.done():
             self._stall_timer.reschedule(MAX_TIME_WITHOUT_PROGRESS)
 
     async def wait(self) -> foundation.Status:
