@@ -651,6 +651,11 @@ class ZigbeePacket(BaseDataclassMixin):
     radius: basic.uint8_t = dataclasses.field(default=0)
     non_member_radius: basic.uint8_t = dataclasses.field(default=0)
 
+    # The same for every attempt of one request. Opaque to zigpy
+    request_id: int | None = dataclasses.field(default=None)
+    # Which attempt of the request this packet is, from 0
+    attempt: int = dataclasses.field(default=0)
+
     # Send on behalf of another node, as a Green Power proxy does for a GPD (GP spec
     # A.2.5.3). The radio uses `alias_src` as the NWK source address and `alias_seq`
     # as both the NWK sequence number and the APS counter. Only for broadcasts and
@@ -683,6 +688,8 @@ class ZigbeePacket(BaseDataclassMixin):
                 self.lqi,
                 self.rssi,
                 self.priority,
+                self.request_id,
+                self.attempt,
             )
         )
 
