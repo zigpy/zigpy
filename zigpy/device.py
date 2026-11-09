@@ -745,8 +745,8 @@ class ZigbeeDevice(BaseDevice):
                     t.PacketPriority.CRITICAL
                 ):
                     await shadow._discover()
-            except Exception:
-                # Discovery failed — restore old device, clean up shadow
+            except BaseException:
+                # Discovery failed or was cancelled — restore old device, drop shadow
                 self._application.devices[self._ieee] = self
                 shadow.on_remove()
                 raise
