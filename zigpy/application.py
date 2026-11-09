@@ -499,7 +499,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             stack_specific["form_quickly"] = True
 
         if pan_id is None:
-            pan_id = random.SystemRandom().randint(0x0001, 0xFFFE + 1)
+            pan_id = random.SystemRandom().randint(0x0001, 0xFFFE)
 
         if channel is None and fast:
             # Don't run an energy scan if this is an ephemeral network
