@@ -437,6 +437,59 @@ async def test_read_attributes_uncached(cluster):
     assert cluster._attr_cache.is_unsupported(Basic.AttributeDefs.location_desc)
 
 
+async def test_read_attributes_array(cluster_by_id):
+    """An array attribute value is converted into the attribute's typed array."""
+    cluster = cluster_by_id(0x0014)
+    record, rest = foundation.ReadAttributeRecord.deserialize(
+        b"\x0e\x00\x00\x48\x42\x02\x00\x03Off\x03L\xc3\xb6"
+    )
+    assert rest == b""
+
+    with patch.object(cluster, "request", new=AsyncMock(return_value=[[record]])):
+        success, failure = await cluster.read_attributes(["state_text"])
+
+    assert not failure
+    value = success["state_text"]
+    assert value == ["Off", "Lö"]
+    assert isinstance(value, foundation.ZCLArray[t.CharacterString])
+
+
+def test_report_attributes_array(cluster_by_id):
+    """An array attribute report is converted into the attribute's typed array."""
+    cluster = cluster_by_id(0x0014)
+    hdr, msg = cluster.deserialize(
+        b"\x18\x01\x0a" + b"\x0e\x00\x48\x42\x02\x00\x03Off\x03L\xc3\xb6"
+    )
+    cluster.handle_message(hdr, msg)
+
+    value = cluster.get("state_text")
+    assert value == ["Off", "Lö"]
+    assert isinstance(value, foundation.ZCLArray[t.CharacterString])
+
+
+@pytest.mark.parametrize(
+    "type_value",
+    [
+        # Read attribute record value
+        foundation.ReadAttributeRecord.deserialize(
+            b"\x01\x00\x00\x48\x20\x02\x00\x01\x02"
+        )[0].value,
+        # Attribute report value
+        foundation.TypeValue.deserialize(b"\x48\x20\x02\x00\x01\x02")[0],
+    ],
+)
+def test_convert_untyped_array_attribute(type_value):
+    """An attribute declared as an untyped `Array` keeps the received element type."""
+    attr_def = foundation.ZCLAttributeDef(
+        id=0x0001, type=foundation.Array, access="r"
+    ).replace(name="array")
+
+    value = zcl._convert_attribute_value(attr_def, type_value)
+    assert isinstance(value, foundation.Array)
+    assert value.value == [1, 2]
+    assert value.serialize() == b"\x20\x02\x00\x01\x02"
+
+
 async def test_read_attributes_listener_error(cluster):
     """Test a failing event listener does not drop the rest of a read response."""
 
@@ -588,6 +641,13 @@ async def test_write_attributes_wrong_type(cluster):
         (0, "device_enabled", True, b"\x12\x00\x10\x01"),
         (0, "alarm_mask", 0x55, b"\x13\x00\x18\x55"),
         (0x0202, "fan_mode", 0xDE, b"\x00\x00\x30\xde"),
+        # Array of character strings: element type, count, elements
+        (
+            0x0014,
+            "state_text",
+            ["Off", "Lö"],
+            b"\x0e\x00\x48\x42\x02\x00\x03Off\x03L\xc3\xb6",
+        ),
     ],
 )
 async def test_write_attribute_types(
