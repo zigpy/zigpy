@@ -948,7 +948,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         )
 
     def _drop_blocked_nwk_packet(self, nwk: t.NWK) -> bool:
-        """Return whether to drop a packet from an unknown NWK a blocked device used.
+        """Return whether to drop a packet from the NWK a blocked device last used.
 
         The address may belong to another device by now, so its IEEE address is
         rediscovered at most once per interval: the answer goes through `handle_join`,
@@ -987,7 +987,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         # left to the user: zigpy can't know whether its consumers are listening yet
         if ieee not in self.devices:
             self._forget_blocked_device_nwk(ieee)
-            self._blocked_device_nwks[nwk] = (ieee, time.monotonic())
+
+            # Never shadow the coordinator's own address, whatever a device claims
+            if nwk != self.state.node_info.nwk:
+                self._blocked_device_nwks[nwk] = (ieee, time.monotonic())
 
         if not self._blocked_device_leave_due(ieee):
             LOGGER.debug("Ignoring packet from blocked device 0x%04x (%s)", nwk, ieee)
@@ -1055,12 +1058,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
 
     def handle_relays(self, nwk: t.NWK, relays: list[t.NWK]) -> None:
         """Called when a list of relaying devices is received."""
+        # Checked first: another device may still have the address stored
+        if self._drop_blocked_nwk_packet(nwk):
+            return
+
         try:
             device = self.get_device(nwk=nwk)
         except KeyError:
-            if self._drop_blocked_nwk_packet(nwk):
-                return
-
             LOGGER.warning("Received relays from an unknown device: %s", nwk)
             self.create_task(
                 self._discover_unknown_device(nwk),
@@ -1520,6 +1524,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         if zigpy.zdo.ZDO_ENDPOINT in (packet.src_ep, packet.dst_ep):
             self._maybe_parse_zdo(packet)
 
+        # A blocked device's last address is checked before the device lookup: another
+        # device may still have it stored. ZDO parsing above has already forgotten it if
+        # the packet announces a device that isn't blocked as its new owner.
+        if packet.src.addr_mode == t.AddrMode.NWK and self._drop_blocked_nwk_packet(
+            typing.cast(t.NWK, packet.src.address)
+        ):
+            return None
+
         try:
             device = self.get_device_with_address(packet.src)
         except KeyError:
@@ -1536,11 +1548,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
                 LOGGER.debug(
                     "Ignoring announce packet from Green Power alias: %r", packet
                 )
-                return None
-
-            if packet.src.addr_mode == t.AddrMode.NWK and self._drop_blocked_nwk_packet(
-                typing.cast(t.NWK, packet.src.address)
-            ):
                 return None
 
             LOGGER.warning("Unknown device %r", packet.src)

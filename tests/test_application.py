@@ -2497,3 +2497,44 @@ async def test_blocked_coordinator_startup_warning(caplog):
         await app.startup(auto_form=False)
 
     assert "Ignoring the coordinator's own IEEE address" in caplog.text
+
+
+async def test_blocked_device_takes_stale_address(blocking_app):
+    """A blocked device using an address another device still has stored is dropped."""
+    stale = blocking_app.add_device(make_ieee(0x40), 0x1234)
+    stale.packet_received = MagicMock()
+    stale.relays = [0x1111]
+    listener = MagicMock()
+    blocking_app.add_listener(listener)
+
+    blocking_app.handle_join(nwk=0x1234, ieee=BLOCKED_IEEE, parent_nwk=None)
+
+    with patch.object(
+        type(stale), "is_initialized", new_callable=PropertyMock, return_value=True
+    ):
+        blocking_app.packet_received(_make_packet(0x1234))
+    blocking_app.handle_relays(nwk=0x1234, relays=[0x5678])
+    await _settle()
+
+    assert stale.packet_received.call_count == 0
+    assert listener.handle_message.call_count == 0
+    assert stale.relays == [0x1111]
+
+    # Once the stored device announces itself with the address again, it is its own
+    stale.packet_received.reset_mock()
+    blocking_app.handle_join(nwk=0x1234, ieee=stale.ieee, parent_nwk=None)
+    assert blocking_app._blocked_device_nwks == {}
+
+    with patch.object(
+        type(stale), "is_initialized", new_callable=PropertyMock, return_value=True
+    ):
+        blocking_app.packet_received(_make_packet(0x1234))
+
+    assert stale.packet_received.call_count == 1
+
+
+async def test_blocked_device_coordinator_address(blocking_app):
+    """A blocked device claiming the coordinator's address never shadows it."""
+    blocking_app.handle_join(nwk=0x0000, ieee=BLOCKED_IEEE, parent_nwk=None)
+
+    assert blocking_app._blocked_device_nwks == {}
