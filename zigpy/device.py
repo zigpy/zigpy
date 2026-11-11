@@ -224,11 +224,49 @@ class BaseDevice(
     async def reinterview(self) -> None:
         raise NotImplementedError
 
+    @property
+    def non_zdo_endpoints(self) -> list[zigpy.endpoint.Endpoint]:
+        raise NotImplementedError
+
     def load_attribute_cache(
         self, rows: list[AttributeCacheRow]
     ) -> AttributeCacheLoadResult:
         """Populate cluster attribute caches from the device's database rows."""
-        raise NotImplementedError
+        result = AttributeCacheLoadResult()
+        existing_keys = {row.key for row in rows}
+        endpoints = {ep.endpoint_id: ep for ep in self.non_zdo_endpoints}
+
+        for row in rows:
+            self.debug("Loading attribute cache row %s", row)
+
+            if row.endpoint_id not in endpoints:
+                continue
+
+            ep = endpoints[row.endpoint_id]
+            clusters = (
+                ep.in_clusters
+                if row.cluster_type == ClusterType.Server
+                else ep.out_clusters
+            )
+
+            if row.cluster_id not in clusters:
+                self.debug("Unknown cluster 0x%04X, skipping", row.cluster_id)
+                continue
+
+            cluster = clusters[row.cluster_id]
+            loaded = cluster._load_attribute_cache_row(
+                row, existing_keys=existing_keys, result=result
+            )
+
+            if loaded is not None:
+                self._attribute_cache_loaded(cluster, *loaded)
+
+        return result
+
+    def _attribute_cache_loaded(
+        self, cluster: Cluster, attr_def: foundation.ZCLAttributeDef, value: Any
+    ) -> None:
+        """Handle an attribute value loaded from the database."""
 
 
 class GreenPowerDevice(BaseDevice):
@@ -290,6 +328,11 @@ class GreenPowerDevice(BaseDevice):
         # Opaque data trailing the `GPCommissioningPayload`
         self.extra_commissioning_payload: bytes | None = None
 
+        # SrcID addressing has no endpoint
+        self.endpoints: dict[int | None, zigpy.endpoint.Endpoint] = {
+            None: zigpy.endpoint.Endpoint(self, None)
+        }
+
     @classmethod
     def from_commissioning(
         cls,
@@ -316,6 +359,7 @@ class GreenPowerDevice(BaseDevice):
         ]
         device.server_cluster_ids = list(commissioning.server_clusters or [])
         device.client_cluster_ids = list(commissioning.client_clusters or [])
+        device.add_clusters()
 
         if commissioning.switch_information is not None:
             device.switch_configuration = commissioning.switch_information.configuration
@@ -344,6 +388,20 @@ class GreenPowerDevice(BaseDevice):
         device.rssi = packet.rssi
 
         return device
+
+    @property
+    def non_zdo_endpoints(self) -> list[zigpy.endpoint.Endpoint]:
+        return list(self.endpoints.values())
+
+    def add_clusters(self) -> None:
+        """Create the clusters the GPD listed during commissioning."""
+        endpoint = self.endpoints[None]
+
+        for cluster_id in self.server_cluster_ids:
+            endpoint.add_input_cluster(cluster_id)
+
+        for cluster_id in self.client_cluster_ids:
+            endpoint.add_output_cluster(cluster_id)
 
     @property
     def src_id(self) -> SrcID | None:
@@ -729,48 +787,16 @@ class ZigbeeDevice(BaseDevice):
 
         return self._initialize_task
 
-    def load_attribute_cache(
-        self, rows: list[AttributeCacheRow]
-    ) -> AttributeCacheLoadResult:
-        """Populate cluster attribute caches from the device's database rows."""
-        result = AttributeCacheLoadResult()
-        existing_keys = {row.key for row in rows}
+    def _attribute_cache_loaded(
+        self, cluster: Cluster, attr_def: foundation.ZCLAttributeDef, value: Any
+    ) -> None:
+        if cluster.cluster_id != Basic.cluster_id:
+            return
 
-        for row in rows:
-            self.debug("Loading attribute cache row %s", row)
-
-            if row.endpoint_id not in self.endpoints:
-                continue
-
-            ep = self.endpoints[row.endpoint_id]
-            clusters = (
-                ep.in_clusters
-                if row.cluster_type == ClusterType.Server
-                else ep.out_clusters
-            )
-
-            if row.cluster_id not in clusters:
-                self.debug("Unknown cluster 0x%04X, skipping", row.cluster_id)
-                continue
-
-            loaded = clusters[row.cluster_id]._load_attribute_cache_row(
-                row, existing_keys=existing_keys, result=result
-            )
-
-            if loaded is None:
-                continue
-
-            attr_def, value = loaded
-
-            if row.cluster_id != Basic.cluster_id:
-                continue
-
-            if attr_def == Basic.AttributeDefs.manufacturer:
-                self.manufacturer = value
-            elif attr_def == Basic.AttributeDefs.model:
-                self.model = value
-
-        return result
+        if attr_def == Basic.AttributeDefs.manufacturer:
+            self.manufacturer = value
+        elif attr_def == Basic.AttributeDefs.model:
+            self.model = value
 
     async def reinterview(self) -> None:
         """Re-interview this device using a shadow device for safety.

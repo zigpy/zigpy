@@ -19,6 +19,7 @@ from zigpy.profiles import zha as zha_profile
 import zigpy.types as t
 import zigpy.zcl
 from zigpy.zcl.clusters.general import Basic
+from zigpy.zcl.clusters.smartenergy import Metering
 from zigpy.zcl.foundation import BaseAttributeDefs, Status, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
 from zigpy.zgp.types import DeviceID, SrcID
@@ -793,7 +794,7 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
 
 @pytest.mark.parametrize("open_twice", [False, True])
 async def test_migration_v16_to_v17_green_power(tmp_path, open_twice):
-    """GPDs from v16 keep their fields and get an empty extra commissioning payload."""
+    """Zigbee and GP devices from v16 both end up in the v17 `devices` table."""
     db_path = str(tmp_path / "test.db")
     zigbee_ieee = t.EUI64.convert("aa:bb:cc:dd:11:22:33:44")
     gp_ieee = synthetic_ieee(SrcID(0x0040F4E4))
@@ -807,10 +808,9 @@ async def test_migration_v16_to_v17_green_power(tmp_path, open_twice):
         conn.execute(
             "INSERT INTO gp_devices_v16 (ieee, application_id, src_id, device_id,"
             " commands, server_cluster_ids, client_cluster_ids,"
-            " mac_seq_num_capability, rx_on_capability, fixed_location,"
-            " frame_counter, last_seen)"
-            " VALUES (?, 0, ?, 2, '[]', '[]', '[]', 0, 0, 0, 99, 0)",
-            (str(gp_ieee), 0x0040F4E4),
+            " mac_seq_num_capability, rx_on_capability, fixed_location, last_seen)"
+            " VALUES (?, 0, ?, 2, '[]', ?, '[]', 0, 0, 0, 0)",
+            (str(gp_ieee), 0x0040F4E4, f"[{Metering.cluster_id}]"),
         )
 
     if open_twice:
@@ -824,6 +824,16 @@ async def test_migration_v16_to_v17_green_power(tmp_path, open_twice):
     assert gp_device.device_id == DeviceID.OnOffSwitch
     assert gp_device.frame_counter == 99
     assert gp_device.extra_commissioning_payload == b""
+    assert list(gp_device.endpoints[None].in_clusters) == [Metering.cluster_id]
     assert app.devices[zigbee_ieee].nwk == 0x1234
 
     await app.shutdown()
+
+    with contextlib.closing(sqlite3.connect(db_path)) as conn:
+        assert {
+            row[0]
+            for row in conn.execute(f"SELECT ieee FROM devices{zigpy.appdb.DB_V}")
+        } == {str(zigbee_ieee), str(gp_ieee)}
+        assert conn.execute(
+            f"SELECT ieee FROM zigbee_devices{zigpy.appdb.DB_V}"
+        ).fetchall() == [(str(zigbee_ieee),)]

@@ -52,8 +52,10 @@ from zigpy.zcl import (
     UnsupportedAttribute,
 )
 from zigpy.zcl.clusters.general import Basic, Identify, MultistateInput, OnOff, Ota
+from zigpy.zcl.clusters.homeautomation import ElectricalMeasurement
 from zigpy.zcl.clusters.measurement import TemperatureMeasurement
 from zigpy.zcl.clusters.security import IasZone
+from zigpy.zcl.clusters.smartenergy import Metering
 from zigpy.zcl.foundation import (
     DataTypeId,
     Status as ZCLStatus,
@@ -2542,6 +2544,65 @@ async def test_gp_device_round_trip(tmp_path, attrs):
         "extra_commissioning_payload",
     ):
         assert getattr(restored, name) == getattr(device, name)
+
+    await app2.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("cluster", "is_server", "attr_def", "value"),
+    [
+        (
+            Metering,
+            True,
+            Metering.AttributeDefs.current_summ_delivered,
+            t.uint48_t(1234),
+        ),
+        (
+            ElectricalMeasurement,
+            True,
+            ElectricalMeasurement.AttributeDefs.rms_voltage,
+            t.uint16_t(230),
+        ),
+        (OnOff, False, OnOff.AttributeDefs.on_off, t.Bool.true),
+    ],
+)
+async def test_gp_device_attribute_round_trip(
+    tmp_path, cluster, is_server, attr_def, value
+):
+    """Attributes of a GPD's clusters are restored, under no endpoint."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
+    )
+
+    if is_server:
+        device.server_cluster_ids = [cluster.cluster_id]
+    else:
+        device.client_cluster_ids = [cluster.cluster_id]
+
+    device.add_clusters()
+    app.device_initialized(device)
+
+    clusters = (
+        device.endpoints[None].in_clusters
+        if is_server
+        else device.endpoints[None].out_clusters
+    )
+    clusters[cluster.cluster_id].update_attribute(attr_def, value)
+    await app.shutdown()
+
+    with contextlib.closing(sqlite3.connect(db)) as conn:
+        assert conn.execute(
+            f"SELECT endpoint_id, value, data_type FROM attributes_cache{zigpy.appdb.DB_V}"
+        ).fetchall() == [(None, value.serialize(), attr_def.zcl_type)]
+
+    app2 = await make_app_with_db(db)
+    endpoint = app2.devices[device.ieee].endpoints[None]
+    clusters2 = endpoint.in_clusters if is_server else endpoint.out_clusters
+
+    assert clusters2[cluster.cluster_id].get_cached_value(attr_def) == value
 
     await app2.shutdown()
 

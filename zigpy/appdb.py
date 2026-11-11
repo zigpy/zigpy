@@ -666,7 +666,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         q = f"""INSERT INTO attributes_cache{DB_V} (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code, status, value, data_type, last_updated)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code_idx)
+                    ON CONFLICT (ieee, endpoint_id_idx, cluster_type, cluster_id, attr_id, manufacturer_code_idx)
                     DO UPDATE SET status=excluded.status, value=excluded.value, data_type=excluded.data_type, last_updated=excluded.last_updated"""
         await self._db.executemany(q, clusters)
 
@@ -688,7 +688,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         ]
         q = f"""INSERT INTO attributes_cache{DB_V} (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code, status, value, last_updated)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code_idx)
+                    ON CONFLICT (ieee, endpoint_id_idx, cluster_type, cluster_id, attr_id, manufacturer_code_idx)
                     DO NOTHING"""
         await self._db.executemany(q, clusters)
 
@@ -765,7 +765,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             f"""
             INSERT INTO attributes_cache{DB_V} (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code, status, value, data_type, last_updated)
             VALUES (:ieee, :endpoint_id, :cluster_type, :cluster_id, :attr_id, :manufacturer_code, :status, :value, :data_type, :timestamp)
-                ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code_idx) DO UPDATE
+                ON CONFLICT (ieee, endpoint_id_idx, cluster_type, cluster_id, attr_id, manufacturer_code_idx) DO UPDATE
                 SET status=excluded.status, value=excluded.value, data_type=excluded.data_type, last_updated=excluded.last_updated
                 WHERE
                     value != excluded.value
@@ -798,7 +798,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             DELETE FROM attributes_cache{DB_V}
             WHERE
                 ieee = :ieee
-                AND endpoint_id = :endpoint_id
+                AND endpoint_id IS :endpoint_id
                 AND cluster_type = :cluster_type
                 AND cluster_id = :cluster_id
                 AND attr_id = :attr_id
@@ -826,7 +826,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     ) -> None:
         q = f"""INSERT INTO attributes_cache{DB_V} (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code, status, value, last_updated)
                    VALUES (:ieee, :endpoint_id, :cluster_type, :cluster_id, :attr_id, :manufacturer_code, :status, :value, :timestamp)
-                   ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code_idx)
+                   ON CONFLICT (ieee, endpoint_id_idx, cluster_type, cluster_id, attr_id, manufacturer_code_idx)
                    DO UPDATE SET status=excluded.status, value=excluded.value, data_type=excluded.data_type, last_updated=excluded.last_updated"""
 
         await self.execute(
@@ -1023,10 +1023,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         # Clear the attribute cache to ensure the quirked state is correct
         for device in self._application.devices.values():
-            # Only Zigbee devices have endpoints with an attribute cache
-            if not isinstance(device, Device):
-                continue
-
             for ep in device.non_zdo_endpoints:
                 for cluster in ep.in_clusters.values():
                     cluster._attr_cache.clear()
@@ -1084,7 +1080,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             DELETE FROM attributes_cache{DB_V}
             WHERE
                 ieee = ?
-                AND endpoint_id = ?
+                AND endpoint_id IS ?
                 AND cluster_type = ?
                 AND cluster_id = ?
                 AND attr_id = ?
@@ -1309,6 +1305,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 if last_seen > 0:
                     device.last_seen = last_seen
 
+                device.add_clusters()
                 self._application.devices[device.ieee] = device
 
     async def _register_device_listeners(self) -> None:
