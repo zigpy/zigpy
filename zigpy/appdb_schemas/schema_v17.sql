@@ -67,7 +67,8 @@ CREATE UNIQUE INDEX clusters_idx_v17
 DROP TABLE IF EXISTS attributes_cache_v17;
 CREATE TABLE attributes_cache_v17 (
     ieee ieee NOT NULL,
-    endpoint_id INTEGER NOT NULL,
+    -- Green Power devices using SrcID addressing have no endpoint
+    endpoint_id INTEGER,
     cluster_type INTEGER NOT NULL,
     cluster_id INTEGER NOT NULL,
     attr_id INTEGER NOT NULL,
@@ -75,6 +76,7 @@ CREATE TABLE attributes_cache_v17 (
     -- NULL is not considered equal to itself in unique indexes, so we need a non-NULL
     -- column to use in the unique index
     manufacturer_code_idx INTEGER NOT NULL GENERATED ALWAYS AS (IFNULL(manufacturer_code, -2)) STORED,
+    endpoint_id_idx INTEGER NOT NULL GENERATED ALWAYS AS (IFNULL(endpoint_id, -1)) STORED,
     status INTEGER,
     -- The ZCL data type of a serialized `value`. Untyped values are stored as-is.
     data_type INTEGER,
@@ -89,7 +91,7 @@ CREATE TABLE attributes_cache_v17 (
 );
 
 CREATE UNIQUE INDEX attributes_cache_idx_v17
-    ON attributes_cache_v17(ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code_idx);
+    ON attributes_cache_v17(ieee, endpoint_id_idx, cluster_type, cluster_id, attr_id, manufacturer_code_idx);
 
 
 -- neighbors
