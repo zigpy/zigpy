@@ -1,3 +1,4 @@
+import contextlib
 from datetime import UTC, datetime
 import logging
 import pathlib
@@ -12,6 +13,7 @@ from tests.conftest import make_node_desc
 from tests.test_appdb import make_app_with_db
 import zigpy.appdb
 import zigpy.appdb_schemas
+from zigpy.device import GreenPowerDevice
 import zigpy.endpoint
 from zigpy.profiles import zha as zha_profile
 import zigpy.types as t
@@ -19,6 +21,8 @@ import zigpy.zcl
 from zigpy.zcl.clusters.general import Basic
 from zigpy.zcl.foundation import BaseAttributeDefs, Status, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
+from zigpy.zgp.types import DeviceID, SrcID
+from zigpy.zgp.util import synthetic_ieee
 
 pytestmark = pytest.mark.usefixtures("auto_kill_aiosqlite")
 
@@ -785,3 +789,41 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
             (str(dev.ieee), 0xFC02, 0x0020),
         ).fetchall()
         assert rows == [(-1,)]
+
+
+@pytest.mark.parametrize("open_twice", [False, True])
+async def test_migration_v16_to_v17_green_power(tmp_path, open_twice):
+    """GPDs from v16 keep their fields and get an empty extra commissioning payload."""
+    db_path = str(tmp_path / "test.db")
+    zigbee_ieee = t.EUI64.convert("aa:bb:cc:dd:11:22:33:44")
+    gp_ieee = synthetic_ieee(SrcID(0x0040F4E4))
+
+    with contextlib.closing(sqlite3.connect(db_path)) as conn, conn:
+        conn.executescript(zigpy.appdb_schemas.SCHEMAS[16])
+        conn.execute(
+            "INSERT INTO devices_v16 (ieee, nwk, status, last_seen) VALUES (?, ?, ?, ?)",
+            (str(zigbee_ieee), 0x1234, 2, 0),
+        )
+        conn.execute(
+            "INSERT INTO gp_devices_v16 (ieee, application_id, src_id, device_id,"
+            " commands, server_cluster_ids, client_cluster_ids,"
+            " mac_seq_num_capability, rx_on_capability, fixed_location,"
+            " frame_counter, last_seen)"
+            " VALUES (?, 0, ?, 2, '[]', '[]', '[]', 0, 0, 0, 99, 0)",
+            (str(gp_ieee), 0x0040F4E4),
+        )
+
+    if open_twice:
+        app = await make_app_with_db(db_path)
+        await app.shutdown()
+
+    app = await make_app_with_db(db_path)
+
+    gp_device = app.devices[gp_ieee]
+    assert isinstance(gp_device, GreenPowerDevice)
+    assert gp_device.device_id == DeviceID.OnOffSwitch
+    assert gp_device.frame_counter == 99
+    assert gp_device.extra_commissioning_payload == b""
+    assert app.devices[zigbee_ieee].nwk == 0x1234
+
+    await app.shutdown()

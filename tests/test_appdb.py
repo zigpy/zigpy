@@ -2299,6 +2299,7 @@ GP_SOURCE_ID = SrcID(0x0040F4E4)
             "security_key_type": SecurityKeyType.IndividualKey,
             "security_level": SecurityLevel.FullFrameCounterAndMIC,
             "frame_counter": t.uint32_t(99),
+            "extra_commissioning_payload": b"qerh7pox@GP0001\xcb",
             "last_seen": datetime(2026, 10, 14, 12, 0, 0, tzinfo=UTC),
         },
     ],
@@ -2333,6 +2334,7 @@ async def test_gp_device_round_trip(tmp_path, attrs):
         "security_key_type",
         "security_level",
         "frame_counter",
+        "extra_commissioning_payload",
     ):
         assert getattr(restored, name) == getattr(device, name)
 
