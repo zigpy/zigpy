@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+from collections import defaultdict
 import contextlib
 from datetime import UTC, datetime, timedelta
+import functools
 import json
 import logging
 import re
 import sqlite3
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, Any
 
 import aiosqlite
 
@@ -29,7 +31,6 @@ import zigpy.profiles
 import zigpy.state
 import zigpy.types as t
 import zigpy.typing
-from zigpy.typing import UNDEFINED
 import zigpy.util
 from zigpy.zcl import (
     AttributeClearedEvent,
@@ -42,8 +43,14 @@ from zigpy.zcl import (
     OtaQueryCacheClearedEvent,
     OtaQueryCacheUpdatedEvent,
 )
-from zigpy.zcl.clusters.general import Basic, Ota
-from zigpy.zcl.foundation import Status
+from zigpy.zcl.clusters.general import Ota
+from zigpy.zcl.foundation import DataTypeId, Status, ZCLAttributeDef
+from zigpy.zcl.helpers import (
+    UNMIGRATED_MANUFACTURER_CODE,
+    AttributeCacheRow,
+    AttributeCacheRowChange,
+    _encode_attribute_value,
+)
 from zigpy.zdo import types as zdo_t
 from zigpy.zgp.commands import GPGenericSwitchConfiguration
 from zigpy.zgp.types import (
@@ -78,27 +85,6 @@ DB_V_REGEX = re.compile(r"(?:_v\d+)?$")
 
 MIN_UPDATE_DELTA = timedelta(seconds=30).total_seconds()
 
-# The old attribute cache was a simple `attrid: value` mapping. This works 99.9% of the
-# time but unfortunately some devices reuse the same attribute ID on a standard cluster
-# for two separate purposes, using a manufacturer code to distinguish them. We migrate
-# attributes safely at runtime, once a device quirk has loaded and we can tell for sure
-# if the device has "colliding" attributes.
-UNMIGRATED_MANUFACTURER_CODE = -1
-
-
-class AttributeCacheRow(NamedTuple):
-    """A row from the attribute cache table. This format is internal and will change."""
-
-    ieee: t.EUI64
-    endpoint_id: int
-    cluster_type: ClusterType
-    cluster_id: int
-    attr_id: int
-    manufacturer_code: int | None
-    status: Status
-    value: Any
-    last_updated: float
-
 
 def _register_sqlite_adapters():
     def adapt_ieee(eui64):
@@ -132,6 +118,22 @@ def _is_storable_value(value: Any) -> bool:
     return True
 
 
+def _encode_attribute_value_or_warn(
+    attr_def: ZCLAttributeDef, value: Any
+) -> tuple[DataTypeId | None, Any]:
+    data_type, encoded = _encode_attribute_value(attr_def, value)
+
+    if data_type is None:
+        LOGGER.warning(
+            "Attribute %s value %r does not fit its type %s, storing it untyped",
+            attr_def.name,
+            value,
+            attr_def.type,
+        )
+
+    return data_type, encoded
+
+
 def aiosqlite_connect(
     database: str, iter_chunk_size: int = 64, **kwargs
 ) -> aiosqlite.Connection:
@@ -143,13 +145,6 @@ def aiosqlite_connect(
         connector=lambda: sqlite3.connect(str(database), **kwargs),
         iter_chunk_size=iter_chunk_size,
     )
-
-
-def decode_str_attribute(value: str | bytes) -> str:
-    if isinstance(value, str):
-        return value
-
-    return value.split(b"\x00", 1)[0].decode("utf-8")
 
 
 class PersistingListener(zigpy.util.CatchingTaskMixin):
@@ -315,10 +310,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 )
 
     def register_cluster_events(self, cluster) -> None:
-        cluster.on_event(AttributeReadEvent.event_type, self.on_attribute_read)
-        cluster.on_event(AttributeReportedEvent.event_type, self.on_attribute_reported)
-        cluster.on_event(AttributeUpdatedEvent.event_type, self.on_attribute_updated)
-        cluster.on_event(AttributeWrittenEvent.event_type, self.on_attribute_written)
+        # The cluster's attribute definitions are needed to serialize values
+        on_attribute_changed = functools.partial(self.on_attribute_changed, cluster)
+
+        cluster.on_event(AttributeReadEvent.event_type, on_attribute_changed)
+        cluster.on_event(AttributeReportedEvent.event_type, on_attribute_changed)
+        cluster.on_event(AttributeUpdatedEvent.event_type, on_attribute_changed)
+        cluster.on_event(AttributeWrittenEvent.event_type, on_attribute_changed)
         cluster.on_event(
             AttributeUnsupportedEvent.event_type, self.on_attribute_unsupported
         )
@@ -364,7 +362,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self.enqueue("_update_device_nwk", device.ieee, device.nwk)
 
     async def _update_device_nwk(self, ieee: t.EUI64, nwk: t.NWK) -> None:
-        await self.execute(f"UPDATE devices{DB_V} SET nwk=? WHERE ieee=?", (nwk, ieee))
+        await self.execute(
+            f"UPDATE zigbee_devices{DB_V} SET nwk=? WHERE ieee=?", (nwk, ieee)
+        )
         await self._commit(force=True)
 
     def device_initialized(self, device: Device) -> None:
@@ -382,7 +382,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self.enqueue("_save_device_last_seen", device.ieee, last_seen)
 
     async def _save_device_last_seen(self, ieee: t.EUI64, last_seen: datetime) -> None:
-        q = f"""UPDATE devices{DB_V}
+        q = f"""UPDATE zigbee_devices{DB_V}
                     SET last_seen=:ts
                     WHERE ieee=:ieee AND :ts - last_seen > :min_update_delta"""
         await self.execute(
@@ -491,6 +491,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         self.enqueue("_remove_device", device)
 
+    async def _save_device_ieee(self, ieee: t.EUI64) -> None:
+        # `INSERT OR REPLACE` would delete the existing row and cascade
+        await self.execute(
+            f"INSERT INTO devices{DB_V} (ieee) VALUES (?) ON CONFLICT (ieee) DO NOTHING",
+            (ieee,),
+        )
+
     async def _remove_device(
         self, device: Device, *, force_commit: bool = True
     ) -> None:
@@ -521,7 +528,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         if device.original_signature is not None:
             raise ValueError("A device with quirks cannot be saved to the database")
 
-        q = f"""INSERT INTO devices{DB_V} (ieee, nwk, status, last_seen)
+        await self._save_device_ieee(device.ieee)
+
+        q = f"""INSERT INTO zigbee_devices{DB_V} (ieee, nwk, status, last_seen)
                     VALUES (?, ?, ?, ?)
                     ON CONFLICT (ieee)
                     DO UPDATE SET
@@ -613,13 +622,22 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         clusters = []
 
         for cluster in ep.clusters:
+            attr_defs = {
+                cluster._attr_cache._cache_key(attr_def): attr_def
+                for attr_def in cluster.attributes_by_name.values()
+            }
+
             for (
                 attrid,
                 manufacturer_code,
             ), cache_item in cluster._attr_cache._cache.items():
+                data_type, value = _encode_attribute_value_or_warn(
+                    attr_defs[attrid, manufacturer_code], cache_item.value
+                )
+
                 # A single unbindable value would fail the entire `executemany` below
                 # and abort the rest of the device save
-                if not _is_storable_value(cache_item.value):
+                if not _is_storable_value(value):
                     LOGGER.warning(
                         "[%s:%s:0x%04x] Not persisting attribute 0x%04x, its value"
                         " cannot be stored in the database: %r",
@@ -627,7 +645,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         ep.endpoint_id,
                         cluster.cluster_id,
                         attrid,
-                        cache_item.value,
+                        value,
                     )
                     continue
 
@@ -640,15 +658,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         attrid,
                         manufacturer_code,
                         Status.SUCCESS,
-                        cache_item.value,
+                        value,
+                        data_type,
                         cache_item.last_updated.timestamp(),
                     )
                 )
 
-        q = f"""INSERT INTO attributes_cache{DB_V} (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code, status, value, last_updated)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        q = f"""INSERT INTO attributes_cache{DB_V} (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code, status, value, data_type, last_updated)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code_idx)
-                    DO UPDATE SET status=excluded.status, value=excluded.value, last_updated=excluded.last_updated"""
+                    DO UPDATE SET status=excluded.status, value=excluded.value, data_type=excluded.data_type, last_updated=excluded.last_updated"""
         await self._db.executemany(q, clusters)
 
     async def _save_unsupported_attributes(self, ep: Endpoint) -> None:
@@ -703,20 +722,19 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         last_updated=excluded.last_updated"""
             await self._db.executemany(q, rows)
 
-    def on_attribute_read(self, event: AttributeReadEvent) -> None:
-        self.enqueue("_save_attribute", event)
-
-    def on_attribute_reported(self, event: AttributeReportedEvent) -> None:
-        self.enqueue("_save_attribute", event)
-
-    def on_attribute_updated(self, event: AttributeUpdatedEvent) -> None:
-        self.enqueue("_save_attribute", event)
-
-    def on_attribute_written(self, event: AttributeWrittenEvent) -> None:
-        self.enqueue("_save_attribute", event)
+    def on_attribute_changed(
+        self,
+        cluster: Cluster,
+        event: AttributeReadEvent
+        | AttributeReportedEvent
+        | AttributeUpdatedEvent
+        | AttributeWrittenEvent,
+    ) -> None:
+        self.enqueue("_save_attribute", cluster, event)
 
     async def _save_attribute(
         self,
+        cluster: Cluster,
         event: AttributeReadEvent
         | AttributeReportedEvent
         | AttributeUpdatedEvent
@@ -726,8 +744,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             LOGGER.debug("Ignoring failed attribute write event: %s", event)
             return
 
+        # Unknown attributes have no type to serialize them with
+        if event.attribute_name is None:
+            data_type, value = None, event.value
+        else:
+            data_type, value = _encode_attribute_value_or_warn(
+                cluster.find_attribute(event.attribute_name), event.value
+            )
+
         # Logged at debug level only: these values are re-read or re-reported often
-        if not _is_storable_value(event.value):
+        if not _is_storable_value(value):
             LOGGER.debug(
                 "Not persisting attribute event, its value cannot be stored in the"
                 " database: %s",
@@ -737,12 +763,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         await self.execute(
             f"""
-            INSERT INTO attributes_cache{DB_V} (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code, status, value, last_updated)
-            VALUES (:ieee, :endpoint_id, :cluster_type, :cluster_id, :attr_id, :manufacturer_code, :status, :value, :timestamp)
+            INSERT INTO attributes_cache{DB_V} (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code, status, value, data_type, last_updated)
+            VALUES (:ieee, :endpoint_id, :cluster_type, :cluster_id, :attr_id, :manufacturer_code, :status, :value, :data_type, :timestamp)
                 ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code_idx) DO UPDATE
-                SET status=excluded.status, value=excluded.value, last_updated=excluded.last_updated
+                SET status=excluded.status, value=excluded.value, data_type=excluded.data_type, last_updated=excluded.last_updated
                 WHERE
                     value != excluded.value
+                    OR data_type IS NOT excluded.data_type
                     OR status != excluded.status
                     OR :timestamp - last_updated > :min_update_delta
             """,
@@ -754,7 +781,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 "attr_id": event.attribute_id,
                 "manufacturer_code": event.manufacturer_code,
                 "status": Status.SUCCESS,
-                "value": event.value,
+                "value": value,
+                "data_type": data_type,
                 "timestamp": datetime.now(UTC).timestamp(),
                 "min_update_delta": MIN_UPDATE_DELTA,
             },
@@ -799,7 +827,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         q = f"""INSERT INTO attributes_cache{DB_V} (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code, status, value, last_updated)
                    VALUES (:ieee, :endpoint_id, :cluster_type, :cluster_id, :attr_id, :manufacturer_code, :status, :value, :timestamp)
                    ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code_idx)
-                   DO UPDATE SET status=excluded.status, value=excluded.value, last_updated=excluded.last_updated"""
+                   DO UPDATE SET status=excluded.status, value=excluded.value, data_type=excluded.data_type, last_updated=excluded.last_updated"""
 
         await self.execute(
             q,
@@ -904,6 +932,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         }
 
     async def _save_gp_device(self, row: dict[str, Any]) -> None:
+        await self._save_device_ieee(row["ieee"])
+
         columns = ", ".join(row)
         values = ", ".join(f":{column}" for column in row)
         updates = ", ".join(f"{column}=excluded.{column}" for column in row)
@@ -925,7 +955,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._commit()
 
     async def _remove_gp_device(self, ieee: t.EUI64) -> None:
-        await self.execute(f"DELETE FROM gp_devices{DB_V} WHERE ieee=?", (ieee,))
+        await self.execute(f"DELETE FROM devices{DB_V} WHERE ieee=?", (ieee,))
         await self._commit(force=True)
 
     def network_backup_created(self, backup: zigpy.backups.NetworkBackup) -> None:
@@ -957,7 +987,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         async with self.execute(
             f"""
             SELECT ieee, endpoint_id, cluster_type, cluster_id, attr_id,
-                   manufacturer_code, status, value, last_updated
+                   manufacturer_code, status, value, data_type, last_updated
             FROM attributes_cache{DB_V}
             """
         ) as cursor:
@@ -972,10 +1002,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_clusters()
 
         # Read all attribute rows from the database once
-        all_attributes = await self._read_all_attributes()
+        attribute_rows: defaultdict[t.EUI64, list[AttributeCacheRow]] = defaultdict(
+            list
+        )
 
-        # First pass: populate cache on bare clusters for quirks
-        await self._populate_attribute_cache(all_attributes)
+        for row in await self._read_all_attributes():
+            attribute_rows[row.ieee].append(row)
+
+        # First pass: populate the caches of the bare clusters, for quirk matching
+        for ieee, rows in attribute_rows.items():
+            self._application.get_device(ieee).load_attribute_cache(rows)
 
         for device in self._application.devices.values():
             # Populate the device signature before we apply any quirks, which can modify
@@ -998,11 +1034,27 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 for cluster in ep.out_clusters.values():
                     cluster._attr_cache.clear()
 
-        # Second pass: populate the attribute cache for the final device state and
-        # migrate attributes with unknown manufacturer codes to the correct codes. Only
-        # the migration pass modifies the database so we do it in a transaction.
+        # Second pass: populate the caches of the final clusters. Only their attribute
+        # definitions decide how rows should be rewritten.
+        results = [
+            self._application.get_device(ieee).load_attribute_cache(rows)
+            for ieee, rows in attribute_rows.items()
+        ]
+
         async with self._transaction():
-            await self._populate_attribute_cache(all_attributes, migrate=True)
+            for result in results:
+                for change in result.changes:
+                    await self._replace_attribute_cache_row(change)
+
+        for result in results:
+            for row, attr_def in result.untyped:
+                LOGGER.warning(
+                    "Attribute %s value %r does not fit its type %s, storing it"
+                    " untyped",
+                    attr_def.name,
+                    row.value,
+                    attr_def.type,
+                )
 
         await self._load_groups()
         await self._load_group_members()
@@ -1024,220 +1076,38 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         return device
 
-    async def _populate_attribute_cache(
-        self,
-        rows: list[AttributeCacheRow],
-        *,
-        migrate: bool = False,
+    async def _replace_attribute_cache_row(
+        self, change: AttributeCacheRowChange
     ) -> None:
-        """Populate cluster attribute cache from pre-loaded rows.
+        await self.execute(
+            f"""
+            DELETE FROM attributes_cache{DB_V}
+            WHERE
+                ieee = ?
+                AND endpoint_id = ?
+                AND cluster_type = ?
+                AND cluster_id = ?
+                AND attr_id = ?
+                AND manufacturer_code IS ?
+            """,
+            change.old.key,
+        )
 
-        When `migrate` is True, unmigrated rows with ambiguous attribute IDs are
-        resolved using the (now-quirked) cluster definitions and the database is
-        updated to match.
-        """
-        for row in rows:
-            dev = self._get_zigbee_device(row.ieee)
+        if change.new is None:
+            return
 
-            LOGGER.debug(
-                "[0x%04x:%s:0x%04x] Loading attribute %s=%r status=%r mfg_code=%r",
-                dev.nwk,
-                row.endpoint_id,
-                row.cluster_id,
-                (
-                    row.attr_id
-                    if isinstance(row.attr_id, str)
-                    else f"0x{row.attr_id:04x}"
-                ),
-                row.value,
-                row.status,
-                row.manufacturer_code,
-            )
-
-            if row.endpoint_id not in dev.endpoints:
-                continue
-
-            ep = dev.endpoints[row.endpoint_id]
-            clusters = (
-                ep.in_clusters
-                if row.cluster_type == ClusterType.Server
-                else ep.out_clusters
-            )
-
-            if row.cluster_id not in clusters:
-                LOGGER.debug("Unknown ZCL cluster, skipping")
-                continue
-
-            cluster = clusters[row.cluster_id]
-
-            # For unmigrated rows on the second pass, try to resolve the
-            # manufacturer code using the full quirk cluster definitions
-            manufacturer_code = row.manufacturer_code
-
-            if migrate and row.manufacturer_code == UNMIGRATED_MANUFACTURER_CODE:
-                resolved_manufacturer_code = self._resolve_unmigrated_attribute(
-                    cluster=cluster,
-                    attr_id=row.attr_id,
-                    value=row.value,
-                    dev=dev,
-                )
-
-                if resolved_manufacturer_code is not UNDEFINED:
-                    manufacturer_code = resolved_manufacturer_code
-
-                    row_params = {
-                        "ieee": row.ieee,
-                        "endpoint_id": row.endpoint_id,
-                        "cluster_type": row.cluster_type,
-                        "cluster_id": row.cluster_id,
-                        "attr_id": row.attr_id,
-                    }
-
-                    # Delete the unmigrated row and re-insert with the resolved
-                    # manufacturer code. INSERT OR IGNORE handles the case where a row
-                    # with the resolved code already exists (e.g. the user manually
-                    # read the attribute through the UI).
-                    await self.execute(
-                        f"""
-                        DELETE FROM attributes_cache{DB_V}
-                        WHERE
-                            ieee = :ieee
-                            AND endpoint_id = :endpoint_id
-                            AND cluster_type = :cluster_type
-                            AND cluster_id = :cluster_id
-                            AND attr_id = :attr_id
-                            AND manufacturer_code = :old_manufacturer_code
-                        """,
-                        {
-                            **row_params,
-                            "old_manufacturer_code": UNMIGRATED_MANUFACTURER_CODE,
-                        },
-                    )
-
-                    async with self.execute(
-                        f"""
-                        INSERT OR IGNORE INTO attributes_cache{DB_V}
-                            (ieee, endpoint_id, cluster_type, cluster_id,
-                             attr_id, manufacturer_code, status, value,
-                             last_updated)
-                        VALUES
-                            (:ieee, :endpoint_id, :cluster_type, :cluster_id,
-                             :attr_id, :manufacturer_code, :status, :value,
-                             :last_updated)
-                        """,
-                        {
-                            **row_params,
-                            "manufacturer_code": manufacturer_code,
-                            "status": row.status,
-                            "value": row.value,
-                            "last_updated": row.last_updated,
-                        },
-                    ) as cursor:
-                        # A resolved row already exists, it will populate the cache
-                        if cursor.rowcount == 0:
-                            continue
-
-            try:
-                attr_def = cluster.find_attribute(
-                    row.attr_id,
-                    manufacturer_code=(
-                        UNDEFINED
-                        if manufacturer_code == UNMIGRATED_MANUFACTURER_CODE
-                        else manufacturer_code
-                    ),
-                )
-            except KeyError:
-                LOGGER.debug("Unknown ZCL attribute, skipping")
-
-                # Unsupported unknown attributes are dropped
-                if row.status == Status.SUCCESS:
-                    cluster._attr_cache.set_legacy_value(
-                        row.attr_id,
-                        row.value,
-                        last_updated=datetime.fromtimestamp(row.last_updated, UTC),
-                    )
-
-                continue
-
-            if row.status == Status.SUCCESS:
-                cluster._attr_cache.set_value(
-                    attr_def,
-                    row.value,
-                    last_updated=datetime.fromtimestamp(row.last_updated, UTC),
-                )
-            else:
-                cluster._attr_cache.mark_unsupported(attr_def)
-                continue
-
-            # Populate the device's manufacturer and model attributes
-            if (
-                row.cluster_id == Basic.cluster_id
-                and attr_def == Basic.AttributeDefs.manufacturer
-            ):
-                dev.manufacturer = decode_str_attribute(row.value)
-            elif (
-                row.cluster_id == Basic.cluster_id
-                and attr_def == Basic.AttributeDefs.model
-            ):
-                dev.model = decode_str_attribute(row.value)
-
-    @staticmethod
-    def _resolve_unmigrated_attribute(
-        cluster: Cluster,
-        attr_id: int,
-        value: Any,
-        dev: Device,
-    ) -> int | None | zigpy.typing.UndefinedType:
-        """Try to resolve the manufacturer code for an unmigrated attribute.
-
-        When multiple attribute definitions share an ID, the manufacturer-specific one
-        is preferred if there are exactly two candidates (one standard, one
-        manufacturer-specific). Otherwise the attribute is considered ambiguous and
-        skipped (left unmigrated).
-
-        Returns the resolved manufacturer code (including `None`), or UNDEFINED if
-        unresolvable.
-        """
-        try:
-            attr_defs = cluster.find_attributes(attr_id)
-        except KeyError:
-            LOGGER.debug(
-                "Unable to find any attributes %r=%r on cluster %r for %r"
-                " for data migration, skipping",
-                attr_id,
-                value,
-                cluster,
-                dev,
-            )
-            return UNDEFINED
-
-        manuf_attrs = [
-            a
-            for a in attr_defs
-            if cluster._get_effective_manufacturer_code(a) is not None
-        ]
-
-        if len(attr_defs) == 1:
-            attr_def = attr_defs[0]
-        elif len(attr_defs) == 2 and len(manuf_attrs) == 1:
-            # One standard + one manufacturer-specific: prefer manufacturer-specific
-            attr_def = manuf_attrs[0]
-        else:
-            LOGGER.debug(
-                "Unable to find unique attribute %r=%r on cluster %r for %r"
-                " for data migration, skipping (candidates: %r)",
-                attr_id,
-                value,
-                cluster,
-                dev,
-                attr_defs,
-            )
-            return UNDEFINED
-
-        return cluster._get_effective_manufacturer_code(attr_def)
+        await self.execute(
+            f"""
+            INSERT INTO attributes_cache{DB_V}
+                (ieee, endpoint_id, cluster_type, cluster_id, attr_id,
+                 manufacturer_code, status, value, data_type, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            change.new,
+        )
 
     async def _load_devices(self) -> None:
-        async with self.execute(f"SELECT * FROM devices{DB_V}") as cursor:
+        async with self.execute(f"SELECT * FROM zigbee_devices{DB_V}") as cursor:
             async for ieee, nwk, status, last_seen in cursor:
                 dev = self._application.add_device(ieee, nwk)
                 dev.status = DeviceStatus(status)
@@ -2025,10 +1895,20 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         # gp_devices_v16 is new and starts empty
 
     async def _migrate_to_v17(self) -> None:
-        """Schema v17 adds `extra_commissioning_payload` to the `gp_devices` table."""
+        """Schema v17 adds a `devices` parent table, `extra_commissioning_payload`, and typed attribute values."""
+        # `devices` now holds every IEEE, Zigbee or GP, and must be filled first
+        await self.execute(
+            """
+            INSERT INTO devices_v17 (ieee)
+                SELECT ieee FROM devices_v16
+                UNION
+                SELECT ieee FROM gp_devices_v16
+            """
+        )
+
         await self._migrate_tables(
             {
-                "devices_v16": "devices_v17",
+                "devices_v16": "zigbee_devices_v17",
                 "endpoints_v16": "endpoints_v17",
                 "neighbors_v16": "neighbors_v17",
                 "routes_v16": "routes_v17",

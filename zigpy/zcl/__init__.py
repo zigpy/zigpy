@@ -22,7 +22,18 @@ from zigpy.typing import UNDEFINED, UndefinedType
 from zigpy.zcl import foundation
 from zigpy.zcl.foundation import BaseAttributeDefs, BaseCommandDefs, CommandSchema
 
-from .helpers import AttributeCache, ReportingConfig, UnsupportedAttribute
+from .helpers import (
+    UNMIGRATED_MANUFACTURER_CODE,
+    AttributeCache,
+    AttributeCacheLoadResult,
+    AttributeCacheRow,
+    AttributeCacheRowChange,
+    ReportingConfig,
+    UnsupportedAttribute,
+    _convert_attribute_value,
+    _decode_attribute_value,
+    _encode_attribute_value,
+)
 
 if TYPE_CHECKING:
     from zigpy.endpoint import Endpoint
@@ -44,33 +55,6 @@ MAX_ATTRIBUTE_RECORDS_BYTES = 50
 MAX_READ_ATTRIBUTES_PER_REQ = 5
 
 _RecordT = TypeVar("_RecordT")
-
-
-def _convert_attribute_value(
-    attr_def: foundation.ZCLAttributeDef, type_value: foundation.TypeValue
-) -> Any:
-    """Convert a received attribute value into the attribute's declared type."""
-
-    # `dataN` values are untyped bytes, so they are re-read with the declared type
-    if isinstance(
-        type_value.value,
-        (
-            t.data8,
-            t.data16,
-            t.data24,
-            t.data32,
-            t.data40,
-            t.data48,
-            t.data56,
-            t.data64,
-        ),
-    ):
-        value, rest = attr_def.type.deserialize(type_value.value.serialize())
-        assert not rest
-
-        return value
-
-    return attr_def.type(type_value.value)
 
 
 def _chunk_records_by_size(
@@ -1123,6 +1107,145 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             )
 
         return None
+
+    def _resolve_unmigrated_manufacturer_code(
+        self, attr_id: int
+    ) -> int | None | UndefinedType:
+        """Try to resolve the manufacturer code of an unmigrated attribute.
+
+        When multiple attribute definitions share an ID, the manufacturer-specific one
+        is preferred if there are exactly two candidates (one standard, one
+        manufacturer-specific). Otherwise the attribute is considered ambiguous and
+        skipped (left unmigrated).
+        """
+        try:
+            attr_defs = self.find_attributes(attr_id)
+        except KeyError:
+            self.debug("No attribute %r to migrate, skipping", attr_id)
+            return UNDEFINED
+
+        manuf_attrs = [
+            a for a in attr_defs if self._get_effective_manufacturer_code(a) is not None
+        ]
+
+        if len(attr_defs) == 1:
+            attr_def = attr_defs[0]
+        elif len(attr_defs) == 2 and len(manuf_attrs) == 1:
+            # One standard + one manufacturer-specific: prefer manufacturer-specific
+            attr_def = manuf_attrs[0]
+        else:
+            self.debug(
+                "No unique attribute %r to migrate, skipping (candidates: %r)",
+                attr_id,
+                attr_defs,
+            )
+            return UNDEFINED
+
+        return self._get_effective_manufacturer_code(attr_def)
+
+    def _load_attribute_cache_row(
+        self,
+        row: AttributeCacheRow,
+        *,
+        existing_keys: set[tuple],
+        result: AttributeCacheLoadResult,
+    ) -> tuple[foundation.ZCLAttributeDef, Any] | None:
+        """Populate the attribute cache from a database row.
+
+        Returns the attribute definition and value, if the row is a known attribute.
+        """
+        new_row, loaded = self._read_attribute_cache_row(row, existing_keys, result)
+
+        if new_row != row:
+            result.changes.append(AttributeCacheRowChange(old=row, new=new_row))
+
+        return loaded
+
+    def _read_attribute_cache_row(
+        self,
+        row: AttributeCacheRow,
+        existing_keys: set[tuple],
+        result: AttributeCacheLoadResult,
+    ) -> tuple[AttributeCacheRow | None, tuple[foundation.ZCLAttributeDef, Any] | None]:
+        manufacturer_code = row.manufacturer_code
+
+        if manufacturer_code == UNMIGRATED_MANUFACTURER_CODE:
+            resolved_manufacturer_code = self._resolve_unmigrated_manufacturer_code(
+                row.attr_id
+            )
+
+            if resolved_manufacturer_code is not UNDEFINED:
+                # A row with the resolved code already exists, it populates the cache
+                if (
+                    row._replace(manufacturer_code=resolved_manufacturer_code).key
+                    in existing_keys
+                ):
+                    return None, None
+
+                manufacturer_code = resolved_manufacturer_code
+
+        new_row = row._replace(manufacturer_code=manufacturer_code)
+        last_updated = datetime.fromtimestamp(row.last_updated, UTC)
+
+        try:
+            attr_def = self.find_attribute(
+                row.attr_id,
+                manufacturer_code=(
+                    UNDEFINED
+                    if manufacturer_code == UNMIGRATED_MANUFACTURER_CODE
+                    else manufacturer_code
+                ),
+            )
+        except KeyError:
+            self.debug("Unknown attribute %r", row.attr_id)
+
+            # Unsupported unknown attributes are dropped
+            if row.status != foundation.Status.SUCCESS:
+                return new_row, None
+
+            if row.data_type is None:
+                value = row.value
+            else:
+                value = _decode_attribute_value(None, row.data_type, row.value)
+
+            if value is UNDEFINED:
+                self.debug("Unknown attribute %r has an unknown type", row.attr_id)
+                return new_row, None
+
+            self._attr_cache.set_legacy_value(
+                row.attr_id, value, last_updated=last_updated
+            )
+            return new_row, None
+
+        if row.status != foundation.Status.SUCCESS:
+            self._attr_cache.mark_unsupported(attr_def)
+            return new_row, None
+
+        if row.data_type is not None:
+            value = _decode_attribute_value(attr_def, row.data_type, row.value)
+
+            if value is UNDEFINED:
+                self.debug("Attribute %s type cannot be decoded", attr_def.name)
+                return new_row, None
+        else:
+            # Untyped rows are stored typed. The SQLite adapter stored EUI64 values as
+            # strings.
+            if isinstance(row.value, str) and issubclass(attr_def.type, t.EUI64):
+                value = attr_def.type.convert(row.value)
+            else:
+                value = row.value
+
+            data_type, data = _encode_attribute_value(attr_def, value)
+
+            if data_type is None:
+                value = row.value
+                result.untyped.append((new_row, attr_def))
+            else:
+                value = _decode_attribute_value(attr_def, data_type, data)
+                new_row = new_row._replace(value=data, data_type=data_type)
+
+        self._attr_cache.set_value(attr_def, value, last_updated=last_updated)
+        return new_row, (attr_def, value)
 
     async def read_attributes(
         self,
