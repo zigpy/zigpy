@@ -362,6 +362,7 @@ class GreenPowerDevice(BaseDevice):
             "client_cluster_ids": list(self.client_cluster_ids),
             "switch_configuration": self.switch_configuration,
             "mac_seq_num_capability": self.mac_seq_num_capability,
+            "extra_commissioning_payload": self.extra_commissioning_payload,
         }
 
     @property
