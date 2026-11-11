@@ -42,7 +42,8 @@ import zigpy.types as t
 import zigpy.util
 from zigpy.util import CreateTaskMixin
 from zigpy.zcl import Cluster, ClusterType, OtaQueryCacheClearedEvent, foundation
-from zigpy.zcl.clusters.general import Ota, PollControl, QueryNextImageCommand
+from zigpy.zcl.clusters.general import Basic, Ota, PollControl, QueryNextImageCommand
+from zigpy.zcl.helpers import AttributeCacheLoadResult, AttributeCacheRow
 import zigpy.zdo.types as zdo_t
 from zigpy.zgp.commands import (
     GPD_COMMAND_SCHEMAS,
@@ -221,6 +222,12 @@ class BaseDevice(
         raise NotImplementedError
 
     async def reinterview(self) -> None:
+        raise NotImplementedError
+
+    def load_attribute_cache(
+        self, rows: list[AttributeCacheRow]
+    ) -> AttributeCacheLoadResult:
+        """Populate cluster attribute caches from the device's database rows."""
         raise NotImplementedError
 
 
@@ -721,6 +728,49 @@ class ZigbeeDevice(BaseDevice):
         self._initialize_task = self.create_task(self.initialize(), name="initialize")
 
         return self._initialize_task
+
+    def load_attribute_cache(
+        self, rows: list[AttributeCacheRow]
+    ) -> AttributeCacheLoadResult:
+        """Populate cluster attribute caches from the device's database rows."""
+        result = AttributeCacheLoadResult()
+        existing_keys = {row.key for row in rows}
+
+        for row in rows:
+            self.debug("Loading attribute cache row %s", row)
+
+            if row.endpoint_id not in self.endpoints:
+                continue
+
+            ep = self.endpoints[row.endpoint_id]
+            clusters = (
+                ep.in_clusters
+                if row.cluster_type == ClusterType.Server
+                else ep.out_clusters
+            )
+
+            if row.cluster_id not in clusters:
+                self.debug("Unknown cluster 0x%04X, skipping", row.cluster_id)
+                continue
+
+            loaded = clusters[row.cluster_id]._load_attribute_cache_row(
+                row, existing_keys=existing_keys, result=result
+            )
+
+            if loaded is None:
+                continue
+
+            attr_def, value = loaded
+
+            if row.cluster_id != Basic.cluster_id:
+                continue
+
+            if attr_def == Basic.AttributeDefs.manufacturer:
+                self.manufacturer = value
+            elif attr_def == Basic.AttributeDefs.model:
+                self.model = value
+
+        return result
 
     async def reinterview(self) -> None:
         """Re-interview this device using a shadow device for safety.
