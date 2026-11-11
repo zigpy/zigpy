@@ -1,16 +1,31 @@
 PRAGMA user_version = 17;
 
--- devices
+-- devices: every device, Zigbee or Green Power. Rows that apply to both kinds of
+-- device reference this table, rows specific to one kind reference its own table
 DROP TABLE IF EXISTS devices_v17;
 CREATE TABLE devices_v17 (
-    ieee ieee NOT NULL,
-    nwk INTEGER NOT NULL,
-    status INTEGER NOT NULL,
-    last_seen REAL NOT NULL
+    ieee ieee NOT NULL
 );
 
 CREATE UNIQUE INDEX devices_idx_v17
     ON devices_v17(ieee);
+
+
+-- Zigbee devices
+DROP TABLE IF EXISTS zigbee_devices_v17;
+CREATE TABLE zigbee_devices_v17 (
+    ieee ieee NOT NULL,
+    nwk INTEGER NOT NULL,
+    status INTEGER NOT NULL,
+    last_seen REAL NOT NULL,
+
+    FOREIGN KEY(ieee)
+        REFERENCES devices_v17(ieee)
+        ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX zigbee_devices_idx_v17
+    ON zigbee_devices_v17(ieee);
 
 
 -- endpoints
@@ -23,7 +38,7 @@ CREATE TABLE endpoints_v17 (
     status INTEGER NOT NULL,
 
     FOREIGN KEY(ieee)
-        REFERENCES devices_v17(ieee)
+        REFERENCES zigbee_devices_v17(ieee)
         ON DELETE CASCADE
 );
 
@@ -92,7 +107,7 @@ CREATE TABLE neighbors_v17 (
     lqi INTEGER NOT NULL,
 
     FOREIGN KEY(device_ieee)
-        REFERENCES devices_v17(ieee)
+        REFERENCES zigbee_devices_v17(ieee)
         ON DELETE CASCADE
 );
 
@@ -137,7 +152,7 @@ CREATE TABLE node_descriptors_v17 (
     descriptor_capability_field INTEGER NOT NULL,
 
     FOREIGN KEY(ieee)
-        REFERENCES devices_v17(ieee)
+        REFERENCES zigbee_devices_v17(ieee)
         ON DELETE CASCADE
 );
 
@@ -182,7 +197,7 @@ CREATE TABLE relays_v17 (
     relays BLOB NOT NULL,
 
     FOREIGN KEY(ieee)
-        REFERENCES devices_v17(ieee)
+        REFERENCES zigbee_devices_v17(ieee)
         ON DELETE CASCADE
 );
 
@@ -240,7 +255,11 @@ CREATE TABLE gp_devices_v17 (
     security_key_type INTEGER,
     security_level INTEGER,
     frame_counter INTEGER,
-    last_seen REAL NOT NULL
+    last_seen REAL NOT NULL,
+
+    FOREIGN KEY(ieee)
+        REFERENCES devices_v17(ieee)
+        ON DELETE CASCADE
 );
 
 CREATE UNIQUE INDEX gp_devices_idx_v17

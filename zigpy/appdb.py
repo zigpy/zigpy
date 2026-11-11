@@ -364,7 +364,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self.enqueue("_update_device_nwk", device.ieee, device.nwk)
 
     async def _update_device_nwk(self, ieee: t.EUI64, nwk: t.NWK) -> None:
-        await self.execute(f"UPDATE devices{DB_V} SET nwk=? WHERE ieee=?", (nwk, ieee))
+        await self.execute(
+            f"UPDATE zigbee_devices{DB_V} SET nwk=? WHERE ieee=?", (nwk, ieee)
+        )
         await self._commit(force=True)
 
     def device_initialized(self, device: Device) -> None:
@@ -382,7 +384,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self.enqueue("_save_device_last_seen", device.ieee, last_seen)
 
     async def _save_device_last_seen(self, ieee: t.EUI64, last_seen: datetime) -> None:
-        q = f"""UPDATE devices{DB_V}
+        q = f"""UPDATE zigbee_devices{DB_V}
                     SET last_seen=:ts
                     WHERE ieee=:ieee AND :ts - last_seen > :min_update_delta"""
         await self.execute(
@@ -491,6 +493,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         self.enqueue("_remove_device", device)
 
+    async def _save_device_ieee(self, ieee: t.EUI64) -> None:
+        # `INSERT OR REPLACE` would delete the existing row and cascade
+        await self.execute(
+            f"INSERT INTO devices{DB_V} (ieee) VALUES (?) ON CONFLICT (ieee) DO NOTHING",
+            (ieee,),
+        )
+
     async def _remove_device(
         self, device: Device, *, force_commit: bool = True
     ) -> None:
@@ -521,7 +530,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         if device.original_signature is not None:
             raise ValueError("A device with quirks cannot be saved to the database")
 
-        q = f"""INSERT INTO devices{DB_V} (ieee, nwk, status, last_seen)
+        await self._save_device_ieee(device.ieee)
+
+        q = f"""INSERT INTO zigbee_devices{DB_V} (ieee, nwk, status, last_seen)
                     VALUES (?, ?, ?, ?)
                     ON CONFLICT (ieee)
                     DO UPDATE SET
@@ -904,6 +915,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         }
 
     async def _save_gp_device(self, row: dict[str, Any]) -> None:
+        await self._save_device_ieee(row["ieee"])
+
         columns = ", ".join(row)
         values = ", ".join(f":{column}" for column in row)
         updates = ", ".join(f"{column}=excluded.{column}" for column in row)
@@ -925,7 +938,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._commit()
 
     async def _remove_gp_device(self, ieee: t.EUI64) -> None:
-        await self.execute(f"DELETE FROM gp_devices{DB_V} WHERE ieee=?", (ieee,))
+        await self.execute(f"DELETE FROM devices{DB_V} WHERE ieee=?", (ieee,))
         await self._commit(force=True)
 
     def network_backup_created(self, backup: zigpy.backups.NetworkBackup) -> None:
@@ -1237,7 +1250,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         return cluster._get_effective_manufacturer_code(attr_def)
 
     async def _load_devices(self) -> None:
-        async with self.execute(f"SELECT * FROM devices{DB_V}") as cursor:
+        async with self.execute(f"SELECT * FROM zigbee_devices{DB_V}") as cursor:
             async for ieee, nwk, status, last_seen in cursor:
                 dev = self._application.add_device(ieee, nwk)
                 dev.status = DeviceStatus(status)
@@ -2025,10 +2038,20 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         # gp_devices_v16 is new and starts empty
 
     async def _migrate_to_v17(self) -> None:
-        """Schema v17 adds `extra_commissioning_payload` to the `gp_devices` table."""
+        """Schema v17 adds a `devices` parent table and `extra_commissioning_payload`."""
+        # `devices` now holds every IEEE, Zigbee or GP, and must be filled first
+        await self.execute(
+            """
+            INSERT INTO devices_v17 (ieee)
+                SELECT ieee FROM devices_v16
+                UNION
+                SELECT ieee FROM gp_devices_v16
+            """
+        )
+
         await self._migrate_tables(
             {
-                "devices_v16": "devices_v17",
+                "devices_v16": "zigbee_devices_v17",
                 "endpoints_v16": "endpoints_v17",
                 "neighbors_v16": "neighbors_v17",
                 "routes_v16": "routes_v17",

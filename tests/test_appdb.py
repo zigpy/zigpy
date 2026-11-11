@@ -2752,9 +2752,8 @@ async def test_reinterview_does_not_commit_mid_handler(tmp_path):
 
     async def _two_statement_handler():
         await listener.execute(
-            f"INSERT INTO devices{zigpy.appdb.DB_V} (ieee, nwk, status, last_seen)"
-            " VALUES (?, ?, ?, ?)",
-            (other_ieee, 0x1234, 2, 0),
+            f"INSERT INTO devices{zigpy.appdb.DB_V} (ieee) VALUES (?)",
+            (other_ieee,),
         )
         handler_started.set()
         await handler_may_finish.wait()
