@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+from datetime import timedelta
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -75,6 +76,10 @@ def _link_value(packet: t.ZigbeeGpPacket) -> tuple[int, int]:
     rssi = packet.rssi if packet.rssi is not None else -128
 
     return link_quality, rssi
+
+
+# How long a GPDF waits for its GPD to listen
+GPDF_LIFETIME = timedelta(seconds=20)
 
 
 def commissioning_security(
@@ -295,7 +300,7 @@ class GreenPowerManager(CreateTaskMixin):
         instance, and the sink itself if it received the GPDF directly. Those with
         bidirectional capability and room in their gpTxQueue are preferred, then the
         one with the best GPP-GPD link and, among equals, the lowest short address.
-        The sink is a last resort until it can transmit GPDFs.
+        The sink is a last resort, since not every radio can transmit GPDFs.
         """
         candidates = self._temp_master_candidates.get(
             (generation, packet.src_id, packet.frame_counter)
@@ -316,8 +321,8 @@ class GreenPowerManager(CreateTaskMixin):
 
             return candidate.gpp_short_addr
 
-        # The sink cannot transmit a GPDF from its own radio yet (see
-        # `_send_gp_response`), so prefer any proxy to the direct copy.
+        # Not every radio can transmit a GPDF (see `send_gpdf`), so prefer any proxy to
+        # the direct copy.
         proxies = [
             candidate for candidate in packets if candidate.gpp_short_addr is not None
         ]
@@ -333,7 +338,7 @@ class GreenPowerManager(CreateTaskMixin):
         )
 
         LOGGER.debug(
-            "Elected TempMaster 0x%04X for 0x%08X from %d candidate(s)",
+            "Elected TempMaster 0x%04X for %r from %d candidate(s)",
             address(temp_master),
             packet.src_id,
             len(packets),
@@ -512,13 +517,16 @@ class GreenPowerManager(CreateTaskMixin):
 
         # The GPD listens on the channel of its next attempt, not the operational one
         # (A.3.9.1 7.d.iv)
-        await self._send_gp_response(
-            packet=packet,
-            gpd_id=SrcID(0x000000),
-            gpd_command_id=GPDCommandID.ChannelConfiguration,
-            gpd_command_payload=channel_config.serialize(),
-            tx_channel=request.next_channel + 11,
-        )
+        try:
+            await self.send_gpdf(
+                packet,
+                GPDCommandID.ChannelConfiguration,
+                channel_config.serialize(),
+                maintenance=True,
+                channel=request.next_channel + 11,
+            )
+        except DeliveryError as exc:
+            LOGGER.debug("Channel Configuration to 0x%08X not sent: %s", source_id, exc)
 
     # --- Outgoing GP commands ---
 
@@ -648,50 +656,82 @@ class GreenPowerManager(CreateTaskMixin):
                 )
             )
 
-    # --- GP Response (sink-to-GPD via proxy) ---
+    # --- GPDFs to GPDs ---
 
-    async def _send_gp_response(
+    async def send_gpdf(
         self,
+        trigger: t.ZigbeeGpPacket,
+        command_id: GPDCommandID,
+        payload: bytes,
         *,
-        packet: t.ZigbeeGpPacket,
-        gpd_id: SrcID,
-        gpd_command_id: GPDCommandID,
-        gpd_command_payload: bytes,
-        tx_channel: int,
+        maintenance: bool = False,
+        channel: int | None = None,
+        key: t.KeyData | None = None,
+        lifetime: timedelta = GPDF_LIFETIME,
     ) -> None:
-        """Send a GP Response (0x06) instructing a proxy to transmit a GPDF to a GPD."""
-        # A proxy that heard the GPD transmits in its receive window.
-        # TODO: nothing makes the coordinator's own radio transmit the GPDF, so a GPD
-        # heard only by the coordinator never receives it. EZSP could queue it with
-        # `dGpSend`, which sends on the operational channel only: a Channel
-        # Configuration on another channel also needs `startScan` with the GP channel
-        # delivery scan type (3). deCONZ cannot transmit GPDFs at all.
-        generation = self._window_generation
-        temp_master = await self._elect_temp_master(packet, generation)
+        """Send a GPDF to the GPD of `trigger`, after its next GPDF with RxAfterTx."""
+        if channel is None:
+            channel = self._application.state.network_info.channel
 
-        # The GPD only listens in commissioning mode
-        if not self.is_commissioning or generation != self._window_generation:
+        generation = self._window_generation
+        temp_master = await self._elect_temp_master(trigger, generation)
+
+        # A commissioning GPD only listens in commissioning mode
+        if trigger.command_id in (
+            GPDCommandID.CommissioningRequest,
+            GPDCommandID.ChannelRequest,
+        ) and (not self.is_commissioning or generation != self._window_generation):
             LOGGER.debug(
-                "GP Response for 0x%08X not sent: commissioning window changed",
-                packet.src_id,
+                "GPDF for 0x%08X not sent: commissioning window changed",
+                trigger.src_id,
             )
             return
 
-        await self._broadcast_command(
-            GreenPowerProxy.ClientCommandDefs.response,
-            options=ResponseOptions(
-                application_id=ApplicationID.SrcID,
-                transmit_on_endpoint_match=0,
-                _reserved=0,
-            ),
-            temp_master_short_addr=t.uint16_t(temp_master),
-            temp_master_tx_channel=TempMasterTxChannel(
-                transmit_channel=t.uint4_t(tx_channel - 11), _reserved=0
-            ),
-            gpd_id=gpd_id,
-            gpd_command_id=gpd_command_id,
-            gpd_command_payload=t.LVBytes(gpd_command_payload),
-        )
+        # The elected proxy transmits in the GPD's receive window, as a GP Response
+        # (0x06) tells it to. A Maintenance frame is queued for SrcID 0 (A.1.5.2.2).
+        if temp_master != self._application.state.node_info.nwk:
+            assert trigger.src_id is not None
+
+            await self._broadcast_command(
+                GreenPowerProxy.ClientCommandDefs.response,
+                options=ResponseOptions(
+                    application_id=ApplicationID.SrcID,
+                    transmit_on_endpoint_match=0,
+                    _reserved=0,
+                ),
+                temp_master_short_addr=t.uint16_t(temp_master),
+                temp_master_tx_channel=TempMasterTxChannel(
+                    transmit_channel=t.uint4_t(channel - 11), _reserved=0
+                ),
+                gpd_id=SrcID(0x00000000) if maintenance else trigger.src_id,
+                gpd_command_id=command_id,
+                gpd_command_payload=t.LVBytes(payload),
+            )
+            return
+
+        # A GPDF the radio received directly is answered by the radio itself
+        target: SrcID | tuple[t.EUI64, int] | None
+        if maintenance:
+            target = None
+        elif trigger.application_id is ApplicationID.SrcID:
+            assert trigger.src_id is not None
+            target = trigger.src_id
+        else:
+            assert trigger.ieee is not None
+            assert trigger.endpoint is not None
+            target = (trigger.ieee, trigger.endpoint)
+
+        try:
+            await self._application.send_gpdf(
+                target=target,
+                command_id=command_id,
+                payload=payload,
+                channel=channel,
+                key=key,
+                lifetime=lifetime,
+            )
+        except NotImplementedError:
+            LOGGER.debug("Radio cannot send GPDFs, %s not sent", command_id)
 
     async def _send_commissioning_reply(
         self,
@@ -716,15 +756,14 @@ class GreenPowerManager(CreateTaskMixin):
             )
         )
 
-        assert packet.src_id is not None
-
-        await self._send_gp_response(
-            packet=packet,
-            gpd_id=packet.src_id,
-            gpd_command_id=GPDCommandID.CommissioningReply,
-            gpd_command_payload=reply.serialize(),
-            tx_channel=self._application.state.network_info.channel,
-        )
+        # A GPD repeats its Commissioning GPDF until it gets a reply, so a reply that is
+        # never sent is not an error
+        try:
+            await self.send_gpdf(
+                packet, GPDCommandID.CommissioningReply, reply.serialize()
+            )
+        except DeliveryError as exc:
+            LOGGER.debug("Commissioning Reply to %r not sent: %s", packet.src_id, exc)
 
     # --- Helpers ---
 
