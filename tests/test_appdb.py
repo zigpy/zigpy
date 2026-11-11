@@ -50,6 +50,7 @@ from zigpy.zcl import (
     OtaQueryCacheClearedEvent,
     OtaQueryCacheUpdatedEvent,
     UnsupportedAttribute,
+    foundation,
 )
 from zigpy.zcl.clusters.general import Basic, Identify, MultistateInput, OnOff, Ota
 from zigpy.zcl.clusters.homeautomation import ElectricalMeasurement
@@ -63,7 +64,12 @@ from zigpy.zcl.foundation import (
     ZCLAttributeDef,
 )
 from zigpy.zdo import types as zdo_t
-from zigpy.zgp.commands import GPGenericSwitchConfiguration
+from zigpy.zgp.commands import (
+    GPClusterReport,
+    GPGenericSwitchConfiguration,
+    GPManufacturerSpecificAttributeReportingPayload,
+    GPManufacturerSpecificMultiClusterReportingPayload,
+)
 from zigpy.zgp.types import (
     GP_ENDPOINT,
     GP_GROUP_ID,
@@ -2603,6 +2609,76 @@ async def test_gp_device_attribute_round_trip(
     clusters2 = endpoint.in_clusters if is_server else endpoint.out_clusters
 
     assert clusters2[cluster.cluster_id].get_cached_value(attr_def) == value
+
+    await app2.shutdown()
+
+
+GP_VOLTAGE = foundation.Attribute(
+    attrid=ElectricalMeasurement.AttributeDefs.rms_voltage.id,
+    value=foundation.TypeValue(type=DataTypeId.uint16, value=t.uint16_t(230)),
+)
+
+
+@pytest.mark.parametrize(
+    ("command_id", "command"),
+    [
+        (
+            GPDCommandID.ManufacturerSpecificReporting,
+            GPManufacturerSpecificAttributeReportingPayload(
+                manufacturer_code=0x105E,
+                cluster_id=ElectricalMeasurement.cluster_id,
+                attributes=[GP_VOLTAGE],
+            ),
+        ),
+        (
+            GPDCommandID.ManufacturerSpecificMultiClusterReporting,
+            GPManufacturerSpecificMultiClusterReportingPayload(
+                manufacturer_code=0x105E,
+                reports=[
+                    GPClusterReport(
+                        cluster_id=ElectricalMeasurement.cluster_id,
+                        attribute=GP_VOLTAGE,
+                    )
+                ],
+            ),
+        ),
+    ],
+)
+async def test_gp_attribute_report_persists(tmp_path, command_id, command):
+    """A GPD attribute report is cached on its cluster and restored on restart."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
+    )
+    device.server_cluster_ids = [ElectricalMeasurement.cluster_id]
+    device.add_clusters()
+    app.device_initialized(device)
+
+    app.gp_packet_received(
+        t.ZigbeeGpPacket(
+            application_id=ApplicationID.SrcID,
+            src_id=GP_SOURCE_ID,
+            command_id=command_id,
+            payload=t.SerializableBytes(command.serialize()),
+            frame_counter=t.uint32_t(1),
+            security_level=SecurityLevel.NoSecurity,
+            security_key_type=SecurityKeyType.NoKey,
+        )
+    )
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    cluster = (
+        app2.devices[device.ieee]
+        .endpoints[None]
+        .in_clusters[ElectricalMeasurement.cluster_id]
+    )
+
+    assert (
+        cluster.get_cached_value(ElectricalMeasurement.AttributeDefs.rms_voltage) == 230
+    )
 
     await app2.shutdown()
 

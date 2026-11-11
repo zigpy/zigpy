@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import enum
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from zigpy.const import APS_REPLY_TIMEOUT
 import zigpy.exceptions
@@ -14,9 +14,11 @@ from zigpy.zcl.foundation import GENERAL_COMMANDS, GeneralCommand, Status as ZCL
 from zigpy.zdo.types import Status as ZDOStatus
 
 if TYPE_CHECKING:
-    from zigpy.device import ZigbeeDevice
+    from zigpy.device import BaseDevice, GreenPowerDevice, ZigbeeDevice
 
 LOGGER = logging.getLogger(__name__)
+
+DeviceT = TypeVar("DeviceT", bound="BaseDevice")
 
 
 class Status(enum.IntEnum):
@@ -30,61 +32,27 @@ class Status(enum.IntEnum):
     ENDPOINT_INACTIVE = 3
 
 
-class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
-    """An endpoint on a device on the network"""
+class BaseEndpoint(
+    zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin, Generic[DeviceT]
+):
+    """The clusters of a device, under an endpoint ID."""
 
-    def __init__(self, device: ZigbeeDevice, endpoint_id: int) -> None:
-        self._device: ZigbeeDevice = device
-        self._endpoint_id: int = endpoint_id
+    def __init__(self, device: DeviceT, endpoint_id: int | None) -> None:
+        self._device: DeviceT = device
+        self._endpoint_id: int | None = endpoint_id
         self._listeners: dict = {}
 
-        self.status: Status = Status.NEW
-        self.profile_id: int | None = None
-        self.device_type: zigpy.profiles.zha.DeviceType | None = None
         self.in_clusters: dict = {}
         self.out_clusters: dict = {}
         self._cluster_attr: dict = {}
 
-        self._member_of: dict = {}
+    @property
+    def device(self) -> DeviceT:
+        return self._device
 
-        self._manufacturer: str | None = None
-        self._model: str | None = None
-
-    async def initialize(self) -> None:
-        self.info("Discovering endpoint information")
-
-        if self.profile_id is not None or self.status == Status.ENDPOINT_INACTIVE:
-            self.info("Endpoint descriptor already queried")
-        else:
-            status, _, sd = await self._device.zdo.Simple_Desc_req(
-                self._device.nwk, self._endpoint_id
-            )
-
-            if status == ZDOStatus.NOT_ACTIVE:
-                # These endpoints are essentially junk but this lets the device join
-                self.status = Status.ENDPOINT_INACTIVE
-                return
-            elif status != ZDOStatus.SUCCESS:
-                raise zigpy.exceptions.InvalidResponse(
-                    "Failed to retrieve service descriptor: %s", status
-                )
-
-            self.info("Discovered endpoint information: %s", sd)
-            self.profile_id = sd.profile
-            self.device_type = sd.device_type
-
-            if self.profile_id == zigpy.profiles.zha.PROFILE_ID:
-                self.device_type = zigpy.profiles.zha.DeviceType(self.device_type)
-            elif self.profile_id == zigpy.profiles.zll.PROFILE_ID:
-                self.device_type = zigpy.profiles.zll.DeviceType(self.device_type)
-
-            for cluster in sd.input_clusters:
-                self.add_input_cluster(cluster)
-
-            for cluster in sd.output_clusters:
-                self.add_output_cluster(cluster)
-
-        self.status = Status.ZDO_INIT
+    @property
+    def endpoint_id(self) -> int | None:
+        return self._endpoint_id
 
     @property
     def clusters(self) -> list[zigpy.zcl.Cluster]:
@@ -133,6 +101,119 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             self._device.application._dblistener.register_cluster_events(cluster)
 
         return cluster
+
+    async def request(
+        self,
+        cluster: t.ClusterId,
+        sequence: t.uint8_t,
+        data: bytes,
+        command_id: GeneralCommand | t.uint8_t = 0x00,
+        timeout=APS_REPLY_TIMEOUT,
+        expect_reply: bool = True,
+        use_ieee: bool = False,
+        ask_for_ack: bool | None = None,
+        priority: int | None = None,
+        retries: int | None = None,
+        retry_delay: float | None = None,
+        aps_encryption: bool = False,
+    ):
+        raise NotImplementedError
+
+    async def reply(
+        self,
+        cluster: t.ClusterId,
+        sequence: t.uint8_t,
+        data: bytes,
+        command_id: GeneralCommand | t.uint8_t = 0x00,
+        timeout=APS_REPLY_TIMEOUT,
+        expect_reply: bool = False,
+        use_ieee: bool = False,
+        ask_for_ack: bool | None = None,
+        priority: int | None = None,
+        retries: int | None = None,
+        retry_delay: float | None = None,
+        aps_encryption: bool = False,
+    ) -> None:
+        raise NotImplementedError
+
+    def log(self, lvl: int, msg: str, *args: Any, **kwargs: Any) -> None:
+        msg = "[0x%04x:%s] " + msg
+        args = (self._device.nwk, self._endpoint_id, *args)
+        LOGGER.log(lvl, msg, *args, **kwargs)
+
+    def __getattr__(self, name: str) -> zigpy.zcl.Cluster:
+        try:
+            return self._cluster_attr[name]
+        except KeyError as exc:
+            raise AttributeError from exc
+
+
+class GreenPowerEndpoint(BaseEndpoint["GreenPowerDevice"]):
+    """The clusters of a SrcID-addressed Green Power device, which has no endpoint."""
+
+    def __init__(self, device: GreenPowerDevice) -> None:
+        super().__init__(device, None)
+
+    def __repr__(self) -> str:
+        return (
+            f"<{type(self).__name__}"
+            f" in=[{', '.join(f'0x{c:04X}' for c in self.in_clusters)}]"
+            f" out=[{', '.join(f'0x{c:04X}' for c in self.out_clusters)}]"
+            f">"
+        )
+
+
+class Endpoint(BaseEndpoint["ZigbeeDevice"]):
+    """An endpoint on a device on the network"""
+
+    def __init__(self, device: ZigbeeDevice, endpoint_id: int) -> None:
+        super().__init__(device, endpoint_id)
+        self._endpoint_id: int = endpoint_id
+
+        self.status: Status = Status.NEW
+        self.profile_id: int | None = None
+        self.device_type: zigpy.profiles.zha.DeviceType | None = None
+
+        self._member_of: dict = {}
+
+        self._manufacturer: str | None = None
+        self._model: str | None = None
+
+    async def initialize(self) -> None:
+        self.info("Discovering endpoint information")
+
+        if self.profile_id is not None or self.status == Status.ENDPOINT_INACTIVE:
+            self.info("Endpoint descriptor already queried")
+        else:
+            status, _, sd = await self._device.zdo.Simple_Desc_req(
+                self._device.nwk, self._endpoint_id
+            )
+
+            if status == ZDOStatus.NOT_ACTIVE:
+                # These endpoints are essentially junk but this lets the device join
+                self.status = Status.ENDPOINT_INACTIVE
+                return
+            elif status != ZDOStatus.SUCCESS:
+                raise zigpy.exceptions.InvalidResponse(
+                    "Failed to retrieve service descriptor: %s", status
+                )
+
+            self.info("Discovered endpoint information: %s", sd)
+            self.profile_id = sd.profile
+            self.device_type = sd.device_type
+
+            if self.profile_id == zigpy.profiles.zha.PROFILE_ID:
+                self.device_type = zigpy.profiles.zha.DeviceType(self.device_type)
+            elif self.profile_id == zigpy.profiles.zll.PROFILE_ID:
+                self.device_type = zigpy.profiles.zll.DeviceType(self.device_type)
+
+            for cluster in sd.input_clusters:
+                self.add_input_cluster(cluster)
+
+            for cluster in sd.output_clusters:
+                self.add_output_cluster(cluster)
+
+        self.status = Status.ZDO_INIT
 
     async def add_to_group(self, grp_id: int, name: str | None = None) -> ZCLStatus:
         try:
@@ -286,15 +367,6 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             aps_encryption=aps_encryption,
         )
 
-    def log(self, lvl: int, msg: str, *args: Any, **kwargs: Any) -> None:
-        msg = "[0x%04x:%s] " + msg
-        args = (self._device.nwk, self._endpoint_id, *args)
-        LOGGER.log(lvl, msg, *args, **kwargs)
-
-    @property
-    def device(self) -> ZigbeeDevice:
-        return self._device
-
     @property
     def endpoint_id(self) -> int:
         return self._endpoint_id
@@ -339,12 +411,6 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
     @property
     def unique_id(self) -> tuple[t.EUI64, int]:
         return self.device.ieee, self.endpoint_id
-
-    def __getattr__(self, name: str) -> zigpy.zcl.Cluster:
-        try:
-            return self._cluster_attr[name]
-        except KeyError as exc:
-            raise AttributeError from exc
 
     def __repr__(self) -> str:
         def cluster_repr(clusters):

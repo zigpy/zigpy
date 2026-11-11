@@ -36,7 +36,7 @@ from .helpers import (
 )
 
 if TYPE_CHECKING:
-    from zigpy.endpoint import Endpoint
+    from zigpy.endpoint import BaseEndpoint
     from zigpy.ota import OtaImagesResult
     from zigpy.zcl.clusters.general import QueryNextImageCommand
 
@@ -106,7 +106,7 @@ class AttributeReadEvent:
     event_type: Final[str] = "attribute_read"
 
     device_ieee: str
-    endpoint_id: int
+    endpoint_id: int | None
     cluster_type: ClusterType
     cluster_id: int
     attribute_name: str
@@ -123,7 +123,7 @@ class AttributeReportedEvent:
     event_type: Final[str] = "attribute_report"
 
     device_ieee: str
-    endpoint_id: int
+    endpoint_id: int | None
     cluster_type: ClusterType
     cluster_id: int
     attribute_name: str | None
@@ -140,7 +140,7 @@ class AttributeWrittenEvent:
     event_type: Final[str] = "attribute_written"
 
     device_ieee: str
-    endpoint_id: int
+    endpoint_id: int | None
     cluster_type: ClusterType
     cluster_id: int
     attribute_name: str
@@ -157,7 +157,7 @@ class AttributeUpdatedEvent:
     event_type: Final[str] = "attribute_updated"
 
     device_ieee: str
-    endpoint_id: int
+    endpoint_id: int | None
     cluster_type: ClusterType
     cluster_id: int
     attribute_name: str | None
@@ -173,7 +173,7 @@ class AttributeUnsupportedEvent:
     event_type: Final[str] = "attribute_unsupported"
 
     device_ieee: str
-    endpoint_id: int
+    endpoint_id: int | None
     cluster_type: ClusterType
     cluster_id: int
     attribute_name: str
@@ -188,7 +188,7 @@ class AttributeReportingConfiguredEvent:
     event_type: Final[str] = "attribute_reporting_configured"
 
     device_ieee: str
-    endpoint_id: int
+    endpoint_id: int | None
     cluster_type: ClusterType
     cluster_id: int
     attribute_name: str
@@ -206,7 +206,7 @@ class AttributeClearedEvent:
     event_type: Final[str] = "attribute_cleared"
 
     device_ieee: str
-    endpoint_id: int
+    endpoint_id: int | None
     cluster_type: ClusterType
     cluster_id: int
     attribute_name: str
@@ -221,7 +221,7 @@ class OtaQueryCacheUpdatedEvent:
     event_type: Final[str] = "ota_query_cache_updated"
 
     device_ieee: str
-    endpoint_id: int
+    endpoint_id: int | None
     cluster_type: ClusterType
     cluster_id: int
     manufacturer_code: int
@@ -237,7 +237,7 @@ class OtaImageAvailableEvent:
     event_type: Final[str] = "ota_image_available"
 
     device_ieee: str
-    endpoint_id: int
+    endpoint_id: int | None
     cluster_type: ClusterType
     cluster_id: int
     images_result: OtaImagesResult
@@ -251,7 +251,7 @@ class OtaQueryCacheClearedEvent:
     event_type: Final[str] = "ota_query_cache_cleared"
 
     device_ieee: str
-    endpoint_id: int
+    endpoint_id: int | None
 
 
 def convert_list_schema(
@@ -501,9 +501,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         if cls.cluster_id_range is not None:
             cls._registry_range[cls.cluster_id_range] = cls
 
-    def __init__(self, endpoint: Endpoint, is_server: bool = True) -> None:
+    def __init__(self, endpoint: BaseEndpoint, is_server: bool = True) -> None:
         super().__init__()
-        self._endpoint: Endpoint = endpoint
+        self._endpoint: BaseEndpoint = endpoint
         self._type: ClusterType = (
             ClusterType.Server if is_server else ClusterType.Client
         )
@@ -691,7 +691,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
     @classmethod
     def from_id(
-        cls, endpoint: Endpoint, cluster_id: int, is_server: bool = True
+        cls, endpoint: BaseEndpoint, cluster_id: int, is_server: bool = True
     ) -> Cluster:
         cluster_id = t.ClusterId(cluster_id)
 
@@ -1947,7 +1947,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         return self.__class__.__name__
 
     @property
-    def endpoint(self) -> Endpoint:
+    def endpoint(self) -> BaseEndpoint:
         return self._endpoint
 
     @property
