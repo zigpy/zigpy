@@ -76,6 +76,8 @@ CREATE TABLE attributes_cache_v17 (
     -- column to use in the unique index
     manufacturer_code_idx INTEGER NOT NULL GENERATED ALWAYS AS (IFNULL(manufacturer_code, -2)) STORED,
     status INTEGER,
+    -- The ZCL data type of a serialized `value`. Untyped values are stored as-is.
+    data_type INTEGER,
     value BLOB,
     last_updated REAL NOT NULL,
 

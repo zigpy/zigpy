@@ -81,6 +81,11 @@ AFTER_OTA_ATTR_READ_DELAY = 10
 GP_DUPLICATE_TIMEOUT = timedelta(seconds=2)
 
 
+def _decode_legacy_str(value: bytes) -> str:
+    """Old databases store string attributes as raw, possibly NUL-padded, bytes."""
+    return value.split(b"\x00", 1)[0].decode("utf-8")
+
+
 @dataclass(frozen=True, slots=True)
 class ResponseKey:
     """Key for request/response matching."""
@@ -1519,6 +1524,9 @@ class ZigbeeDevice(BaseDevice):
 
     @manufacturer.setter
     def manufacturer(self, value) -> None:
+        if isinstance(value, bytes):
+            value = _decode_legacy_str(value)
+
         if isinstance(value, str):
             self._manufacturer = value
 
@@ -1538,6 +1546,9 @@ class ZigbeeDevice(BaseDevice):
 
     @model.setter
     def model(self, value) -> None:
+        if isinstance(value, bytes):
+            value = _decode_legacy_str(value)
+
         if isinstance(value, str):
             self._model = value
 
