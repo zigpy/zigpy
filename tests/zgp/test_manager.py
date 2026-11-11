@@ -24,6 +24,7 @@ from tests.zgp.conftest import (
     wait_for_gp_processing,
 )
 from zigpy.device import GreenPowerDevice
+from zigpy.exceptions import DeliveryError
 import zigpy.types as t
 from zigpy.zcl import foundation
 from zigpy.zcl.clusters.greenpower import (
@@ -37,11 +38,13 @@ import zigpy.zdo.types as zdo_types
 from zigpy.zgp.commands import (
     GPChannelConfigurationPayload,
     GPChannelRequestPayload,
+    GPCommissioningReplyOptions,
     GPCommissioningReplyPayload,
     GPGenericSwitchConfiguration,
     GPSwitchInformation,
 )
 from zigpy.zgp.crypto import build_gpdf_header, encrypt_payload, encrypt_security_key
+from zigpy.zgp.manager import GPDF_LIFETIME
 from zigpy.zgp.types import (
     GP_ENDPOINT,
     GP_GROUP_ID,
@@ -495,14 +498,6 @@ async def test_recommissioning_keeps_frame_counter(
             SecurityLevel.NoSecurity,
             SecurityKeyType.NoKey,
         ),
-        # Received directly by the coordinator
-        (
-            UNPROTECTED_COMMISSIONING,
-            None,
-            0x0000,
-            SecurityLevel.NoSecurity,
-            SecurityKeyType.NoKey,
-        ),
         (
             commissioning_payload(
                 security_level=SecurityLevel.NoSecurity, rx_on_capability=1
@@ -602,17 +597,18 @@ async def test_bidirectional_commissioning(
 ):
     """A GPD listening for a reply is paired once its Success GPDF arrives (A.3.9.1)."""
     app.subscribe_to_multicast_group = AsyncMock(wraps=app.subscribe_to_multicast_group)
+    app.send_gpdf = AsyncMock()
 
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
 
     await commission(app, 0x11223344, payload, rx_after_tx=True)
 
-    # Only the Commissioning Reply is sent, the GPD is not registered yet
-    [reply] = [c.args[0] for c in app.send_packet.mock_calls]
-    assert sent_command(reply, ResponseSchema).gpd_command_id == (
-        GPDCommandID.CommissioningReply
-    )
+    # Only the Commissioning Reply is sent, by the radio that heard the GPD. The GPD is
+    # not registered yet
+    assert len(app.send_packet.mock_calls) == 0
+    [reply] = app.send_gpdf.mock_calls
+    assert reply.kwargs["command_id"] == GPDCommandID.CommissioningReply
     assert synthetic_ieee(0x11223344) not in app.devices
     assert len(app.device_initialized.mock_calls) == 0
     assert len(app.subscribe_to_multicast_group.mock_calls) == 0
@@ -919,15 +915,13 @@ async def test_ieee_addressing_ignored(app, manager):
 
 
 @pytest.mark.parametrize(
-    ("channel", "next_channel", "gpp_short_addr", "temp_master"),
+    ("channel", "next_channel"),
     [
-        (20, 15, 0x1234, 0x1234),
-        (15, 25, None, 0x0000),
+        (20, 15),
+        (15, 25),
     ],
 )
-async def test_channel_request(
-    app, manager, channel, next_channel, gpp_short_addr, temp_master
-):
+async def test_channel_request(app, manager, channel, next_channel):
     """A Channel Request is answered with the operational channel, on the GPD's."""
     app.state.network_info.channel = channel
     await manager.permit_join(time_s=60)
@@ -940,7 +934,7 @@ async def test_channel_request(
             GPChannelRequestPayload(
                 next_channel=next_channel - 11, second_next_channel=26 - 11
             ).serialize(),
-            gpp_short_addr=gpp_short_addr,
+            gpp_short_addr=0x1234,
         )
     )
     await wait_for_gp_processing()
@@ -948,7 +942,9 @@ async def test_channel_request(
     [packet] = [c.args[0] for c in app.send_packet.mock_calls]
     response = sent_command(packet, ResponseSchema)
 
-    assert response.temp_master_short_addr == temp_master
+    # A Maintenance frame is queued for SrcID 0 (A.1.5.2.2)
+    assert response.gpd_id == 0x00000000
+    assert response.temp_master_short_addr == 0x1234
     assert response.temp_master_tx_channel.transmit_channel == next_channel - 11
     assert response.gpd_command_id == GPDCommandID.ChannelConfiguration
 
@@ -957,6 +953,119 @@ async def test_channel_request(
     )
     assert configuration.operational_channel == channel - 11
     assert configuration.basic
+
+
+async def test_channel_request_direct(app, manager):
+    """A Channel Request heard by the radio is answered by the radio."""
+    app.send_gpdf = AsyncMock()
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
+    app.gp_packet_received(
+        make_gp_packet(
+            0x12345678,
+            GPDCommandID.ChannelRequest,
+            GPChannelRequestPayload(
+                next_channel=25 - 11, second_next_channel=26 - 11
+            ).serialize(),
+        )
+    )
+    await wait_for_gp_processing()
+
+    assert len(app.send_packet.mock_calls) == 0
+    assert app.send_gpdf.mock_calls == [
+        call(
+            target=None,
+            command_id=GPDCommandID.ChannelConfiguration,
+            payload=GPChannelConfigurationPayload(
+                operational_channel=15 - 11, basic=1, _reserved=0
+            ).serialize(),
+            channel=25,
+            key=None,
+            lifetime=GPDF_LIFETIME,
+        )
+    ]
+
+
+async def test_commissioning_reply_direct(app, manager):
+    """A Commissioning GPDF heard by the radio is answered by the radio."""
+    app.send_gpdf = AsyncMock()
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
+    await commission(app, 0x11223344, UNPROTECTED_COMMISSIONING, rx_after_tx=True)
+
+    assert len(app.send_packet.mock_calls) == 0
+    assert app.send_gpdf.mock_calls == [
+        call(
+            target=SrcID(0x11223344),
+            command_id=GPDCommandID.CommissioningReply,
+            payload=GPCommissioningReplyPayload(
+                options=GPCommissioningReplyOptions(
+                    pan_id_present=0,
+                    security_key_present=0,
+                    key_encrypted=0,
+                    security_level=SecurityLevel.NoSecurity,
+                    key_type=SecurityKeyType.NoKey,
+                )
+            ).serialize(),
+            channel=15,
+            key=None,
+            lifetime=GPDF_LIFETIME,
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    "send_gpdf",
+    [
+        # The radio cannot send GPDFs
+        None,
+        AsyncMock(side_effect=DeliveryError("GPDF expired")),
+    ],
+)
+async def test_commissioning_reply_not_sent(app, manager, send_gpdf):
+    """A Commissioning Reply that is not sent does not stop commissioning."""
+    if send_gpdf is not None:
+        app.send_gpdf = send_gpdf
+
+    await manager.permit_join(time_s=60)
+    await commission(app, 0x11223344, UNPROTECTED_COMMISSIONING, rx_after_tx=True)
+
+    # The GPD can still finish commissioning with its Success GPDF
+    app.gp_packet_received(
+        make_gp_packet(0x11223344, GPDCommandID.SuccessReport, frame_counter=2)
+    )
+    await wait_for_gp_processing()
+
+    assert synthetic_ieee(0x11223344) in app.devices
+
+
+async def test_send_gpdf_ieee(app, manager):
+    """A GPD addressed by its IEEE address is targeted with its endpoint."""
+    app.send_gpdf = AsyncMock()
+
+    trigger = t.ZigbeeGpPacket(
+        timestamp=datetime.now(UTC),
+        application_id=ApplicationID.IEEE,
+        ieee=t.EUI64.convert("00:11:22:33:44:55:66:77"),
+        endpoint=t.uint8_t(0x01),
+        command_id=GPDCommandID.ManufacturerSpecificReporting,
+        rx_after_tx=True,
+    )
+
+    await manager.send_gpdf(trigger, GPDCommandID(0xFE), b"\x00", key=t.KeyData(KEY))
+
+    assert app.send_gpdf.mock_calls == [
+        call(
+            target=(t.EUI64.convert("00:11:22:33:44:55:66:77"), 0x01),
+            command_id=GPDCommandID(0xFE),
+            payload=b"\x00",
+            channel=15,
+            key=t.KeyData(KEY),
+            lifetime=GPDF_LIFETIME,
+        )
+    ]
 
 
 async def test_channel_request_window_closed(app, manager):
@@ -1201,6 +1310,7 @@ async def request_channel(app, manager) -> None:
             0x12345678,
             GPDCommandID.ChannelRequest,
             GPChannelRequestPayload(next_channel=0, second_next_channel=0).serialize(),
+            gpp_short_addr=0x1234,
         )
     )
     await wait_for_gp_processing()
