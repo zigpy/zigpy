@@ -22,6 +22,22 @@ from zigpy.zgp.types import (
 # Marks a synthetic EUI64 built from a 32-bit GPD SrcID
 GP_SYNTHETIC_IEEE_MARKER = b"\x00\x00\x00\x00"
 
+# Attribute IDs from this one up are manufacturer-specific in GPD commands (Table 58)
+GP_MANUFACTURER_SPECIFIC_ATTRIBUTE_ID = 0x5000
+MANUFACTURER_SPECIFIC_CLUSTER_ID = 0xFC00
+
+
+def is_gp_manufacturer_specific_attribute(cluster_id: int, attr_id: int) -> bool:
+    """Whether a GPD command attribute is read in its ManufacturerID's context.
+
+    Public attributes of standard clusters are standard ZCL attributes even when the
+    GPD command carries a ManufacturerID (spec A.4.2.3, Table 58).
+    """
+    return (
+        cluster_id >= MANUFACTURER_SPECIFIC_CLUSTER_ID
+        or attr_id >= GP_MANUFACTURER_SPECIFIC_ATTRIBUTE_ID
+    )
+
 
 def synthetic_ieee(src_id: int) -> t.EUI64:
     """Build the synthetic EUI64 under which a SrcID-addressed GPD is registered."""
