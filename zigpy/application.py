@@ -983,14 +983,15 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
     def _handle_blocked_device(self, ieee: t.EUI64, nwk: t.NWK) -> None:
         """Ask a blocked device that was seen on the network to leave."""
 
-        # A device that joined before it was blocked stays in `devices`, removing it is
-        # left to the user: zigpy can't know whether its consumers are listening yet
-        if ieee not in self.devices:
-            self._forget_blocked_device_nwk(ieee)
+        # Remembered for a device that joined before it was blocked too: another device
+        # may still have this address stored, and the device lookup would return it.
+        # Such a device stays in `devices`, removing it is left to the user: zigpy can't
+        # know whether its consumers are listening yet
+        self._forget_blocked_device_nwk(ieee)
 
-            # Never shadow the coordinator's own address, whatever a device claims
-            if nwk != self.state.node_info.nwk:
-                self._blocked_device_nwks[nwk] = (ieee, time.monotonic())
+        # Never shadow the coordinator's own address, whatever a device claims
+        if nwk != self.state.node_info.nwk:
+            self._blocked_device_nwks[nwk] = (ieee, time.monotonic())
 
         if not self._blocked_device_leave_due(ieee):
             LOGGER.debug("Ignoring packet from blocked device 0x%04x (%s)", nwk, ieee)

@@ -2420,7 +2420,37 @@ async def test_blocked_device_already_joined(blocking_app):
     assert listener.handle_message.call_count == 0
     assert dev.packet_received.call_count == 0
     assert len(_leave_requests(blocking_app)) == 1
-    assert blocking_app._blocked_device_nwks == {}
+    assert list(blocking_app._blocked_device_nwks) == [0x1234]
+
+
+async def test_blocked_known_device_takes_stale_address(blocking_app):
+    """An already-known blocked device using an address another device has stored."""
+    stale = blocking_app.add_device(make_ieee(0x40), 0x9999)
+    stale.packet_received = MagicMock()
+    stale.relays = [0x1111]
+    dev = blocking_app.add_device(BLOCKED_IEEE, 0x1234)
+    dev.packet_received = MagicMock()
+    listener = MagicMock()
+    blocking_app.add_listener(listener)
+
+    # Both devices now have the address stored
+    blocking_app.handle_join(nwk=0x9999, ieee=BLOCKED_IEEE, parent_nwk=None)
+    blocking_app.devices[stale.ieee].nwk = 0x9999
+    stale.nwk = 0x9999
+    dev.nwk = 0x9999
+
+    with patch.object(
+        type(stale), "is_initialized", new_callable=PropertyMock, return_value=True
+    ):
+        blocking_app.packet_received(_make_packet(0x9999))
+    blocking_app.handle_relays(nwk=0x9999, relays=[0x5678])
+    await _settle()
+
+    assert list(blocking_app._blocked_device_nwks) == [0x9999]
+    assert stale.packet_received.call_count == 0
+    assert dev.packet_received.call_count == 0
+    assert listener.handle_message.call_count == 0
+    assert stale.relays == [0x1111]
 
 
 async def test_blocked_device_removed_by_user(blocking_app):
