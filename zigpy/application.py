@@ -1839,7 +1839,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         command_id: zigpy.zgp.types.GPDCommandID,
         payload: bytes,
         channel: int,
-        key: t.KeyData | None,
         lifetime: timedelta,
     ) -> None:
         """Send a GPDF from the radio in its GPD's next receive window."""
@@ -1848,7 +1847,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             command_id=command_id,
             payload=payload,
             channel=channel,
-            key=key,
             lifetime=lifetime,
         )
 
@@ -1860,7 +1858,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         command_id: zigpy.zgp.types.GPDCommandID,
         payload: bytes,
         channel: int,
-        key: t.KeyData | None,
         lifetime: timedelta,
     ) -> None:
         """Send a GPDF from the radio once its GPD listens, internal."""

@@ -666,7 +666,6 @@ class GreenPowerManager(CreateTaskMixin):
         *,
         maintenance: bool = False,
         channel: int | None = None,
-        key: t.KeyData | None = None,
         lifetime: timedelta = GPDF_LIFETIME,
     ) -> None:
         """Send a GPDF to the GPD of `trigger`, after its next GPDF with RxAfterTx."""
@@ -727,7 +726,6 @@ class GreenPowerManager(CreateTaskMixin):
                 command_id=command_id,
                 payload=payload,
                 channel=channel,
-                key=key,
                 lifetime=lifetime,
             )
         except NotImplementedError:
