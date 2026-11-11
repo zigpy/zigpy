@@ -464,9 +464,7 @@ class GreenPowerDevice(BaseDevice):
         self, trigger: t.ZigbeeGpPacket, command_id: GPDCommandID, payload: bytes
     ) -> None:
         """Send a GPDF to this GPD, after its next GPDF with RxAfterTx like `trigger`."""
-        await self._application.green_power.send_gpdf(
-            trigger, command_id, payload, key=self.security_key
-        )
+        await self._application.green_power.send_gpdf(trigger, command_id, payload)
 
     def packet_received(self, packet: t.ZigbeeGpPacket) -> None:
         """Process a decoded GPDF, decrypting it if the radio did not."""

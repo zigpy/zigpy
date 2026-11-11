@@ -981,7 +981,6 @@ async def test_channel_request_direct(app, manager):
                 operational_channel=15 - 11, basic=1, _reserved=0
             ).serialize(),
             channel=25,
-            key=None,
             lifetime=GPDF_LIFETIME,
         )
     ]
@@ -1010,7 +1009,6 @@ async def test_commissioning_reply_direct(app, manager):
                 )
             ).serialize(),
             channel=15,
-            key=None,
             lifetime=GPDF_LIFETIME,
         )
     ]
@@ -1054,7 +1052,7 @@ async def test_send_gpdf_ieee(app, manager):
         rx_after_tx=True,
     )
 
-    await manager.send_gpdf(trigger, GPDCommandID(0xFE), b"\x00", key=t.KeyData(KEY))
+    await manager.send_gpdf(trigger, GPDCommandID(0xFE), b"\x00")
 
     assert app.send_gpdf.mock_calls == [
         call(
@@ -1062,7 +1060,6 @@ async def test_send_gpdf_ieee(app, manager):
             command_id=GPDCommandID(0xFE),
             payload=b"\x00",
             channel=15,
-            key=t.KeyData(KEY),
             lifetime=GPDF_LIFETIME,
         )
     ]

@@ -9,7 +9,6 @@ import pytest
 
 from tests.async_mock import AsyncMock
 from tests.zgp.conftest import (
-    KEY,
     STEP_UP,
     TIMESTAMP,
     commission_individual_key,
@@ -380,14 +379,13 @@ def test_unprocessed_frame_without_key(device, events) -> None:
 
 
 async def test_send_gpdf_direct(app) -> None:
-    """A GPDF to a GPD the radio hears directly is sent by the radio, with its key."""
+    """A GPDF to a GPD the radio hears directly is sent by the radio."""
     app.state.network_info.channel = 15
     app.send_gpdf = AsyncMock()
 
     device = GreenPowerDevice(
         app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
     )
-    device.security_key = t.KeyData(KEY)
 
     await device.send_gpdf(make_packet(5), GPDCommandID(0xFE), b"\x00")
 
@@ -397,7 +395,6 @@ async def test_send_gpdf_direct(app) -> None:
             command_id=GPDCommandID(0xFE),
             payload=b"\x00",
             channel=15,
-            key=t.KeyData(KEY),
             lifetime=GPDF_LIFETIME,
         )
     ]
@@ -411,7 +408,6 @@ async def test_send_gpdf_through_proxy(app) -> None:
     device = GreenPowerDevice(
         app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
     )
-    device.security_key = t.KeyData(KEY)
 
     trigger = make_packet(5).replace(gpp_short_addr=t.NWK(0x1234))
     await device.send_gpdf(trigger, GPDCommandID(0xFE), b"\x00")
