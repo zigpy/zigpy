@@ -962,6 +962,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         ieee, last_confirmed = entry
         now = time.monotonic()
 
+        # A device that is still in `devices` never reaches `_handle_blocked_device`
+        # from the packet path, so it is asked to leave again from here
+        if ieee in self.devices:
+            self._ask_blocked_device_to_leave_if_due(ieee, nwk)
+
         if now - last_confirmed >= BLOCKED_DEVICE_LEAVE_INTERVAL:
             self._blocked_device_nwks[nwk] = (ieee, now)
             LOGGER.debug("Checking whether 0x%04x still belongs to %s", nwk, ieee)
@@ -993,6 +998,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         if nwk != self.state.node_info.nwk:
             self._blocked_device_nwks[nwk] = (ieee, time.monotonic())
 
+        self._ask_blocked_device_to_leave_if_due(ieee, nwk)
+
+    def _ask_blocked_device_to_leave_if_due(self, ieee: t.EUI64, nwk: t.NWK) -> None:
+        """Ask a blocked device to leave, at most once per interval."""
         if not self._blocked_device_leave_due(ieee):
             LOGGER.debug("Ignoring packet from blocked device 0x%04x (%s)", nwk, ieee)
             return

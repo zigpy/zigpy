@@ -2453,6 +2453,27 @@ async def test_blocked_known_device_takes_stale_address(blocking_app):
     assert stale.relays == [0x1111]
 
 
+async def test_blocked_known_device_asked_again(blocking_app):
+    """An already-known blocked device is asked to leave again while it keeps talking."""
+    blocking_app.add_device(BLOCKED_IEEE, 0x1234)
+    blocking_app._discover_unknown_device = AsyncMock(
+        spec_set=blocking_app._discover_unknown_device
+    )
+
+    with patch("zigpy.application.time") as mock_time:
+        mock_time.monotonic.return_value = 1000
+        blocking_app.packet_received(_make_packet(0x1234))
+        blocking_app.packet_received(_make_packet(0x1234))
+        await _settle()
+        assert len(_leave_requests(blocking_app)) == 1
+
+        mock_time.monotonic.return_value = 1000 + BLOCKED_DEVICE_LEAVE_INTERVAL
+        blocking_app.packet_received(_make_packet(0x1234))
+        await _settle()
+
+    assert len(_leave_requests(blocking_app)) == 2
+
+
 async def test_blocked_device_removed_by_user(blocking_app):
     """Once removed, a device blocked after it joined is handled like any other."""
     blocking_app.add_device(BLOCKED_IEEE, 0x1234)
