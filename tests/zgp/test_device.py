@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Any
 
 import pytest
 
@@ -14,7 +15,19 @@ from tests.zgp.conftest import (
 )
 from zigpy.device import GreenPowerDevice
 import zigpy.types as t
-from zigpy.zgp.commands import GPGenericSwitchConfiguration
+from zigpy.zcl import AttributeReportedEvent, foundation
+from zigpy.zcl.clusters.general import OnOff
+from zigpy.zcl.clusters.homeautomation import ElectricalMeasurement
+from zigpy.zcl.clusters.smartenergy import Metering
+from zigpy.zcl.foundation import DataTypeId
+from zigpy.zgp.commands import (
+    GPAttributeReportingPayload,
+    GPClusterReport,
+    GPGenericSwitchConfiguration,
+    GPManufacturerSpecificAttributeReportingPayload,
+    GPManufacturerSpecificMultiClusterReportingPayload,
+    GPMultiClusterReportingPayload,
+)
 from zigpy.zgp.types import (
     ApplicationID,
     GPDCommandID,
@@ -372,3 +385,144 @@ def test_unprocessed_frame_without_key(device, events) -> None:
     device.packet_received(encrypted_packet(1000))
 
     assert len(events) == 0
+
+
+def attribute(attr_id: int, data_type: DataTypeId, value: Any) -> foundation.Attribute:
+    return foundation.Attribute(
+        attrid=attr_id, value=foundation.TypeValue(type=data_type, value=value)
+    )
+
+
+VOLTAGE = attribute(
+    ElectricalMeasurement.AttributeDefs.rms_voltage.id,
+    DataTypeId.uint16,
+    t.uint16_t(230),
+)
+ENERGY = attribute(
+    Metering.AttributeDefs.current_summ_delivered.id,
+    DataTypeId.uint48,
+    t.uint48_t(1234),
+)
+VENDOR = attribute(0x5000, DataTypeId.uint16, t.uint16_t(7))
+VENDOR_CLUSTER_ID = 0xFC00
+
+
+@pytest.mark.parametrize(
+    ("command_id", "command", "expected"),
+    [
+        (
+            GPDCommandID.AttributeReporting,
+            GPAttributeReportingPayload(
+                cluster_id=Metering.cluster_id, attributes=[ENERGY]
+            ),
+            [(Metering.cluster_id, ENERGY.attrid, None, 1234)],
+        ),
+        # Public attributes of standard clusters stay standard (Table 58)
+        (
+            GPDCommandID.ManufacturerSpecificReporting,
+            GPManufacturerSpecificAttributeReportingPayload(
+                manufacturer_code=0x105E,
+                cluster_id=ElectricalMeasurement.cluster_id,
+                attributes=[VOLTAGE, VENDOR],
+            ),
+            [
+                (ElectricalMeasurement.cluster_id, VOLTAGE.attrid, None, 230),
+                (ElectricalMeasurement.cluster_id, VENDOR.attrid, 0x105E, 7),
+            ],
+        ),
+        (
+            GPDCommandID.MultiClusterReporting,
+            GPMultiClusterReportingPayload(
+                reports=[
+                    GPClusterReport(cluster_id=Metering.cluster_id, attribute=ENERGY),
+                    GPClusterReport(
+                        cluster_id=ElectricalMeasurement.cluster_id, attribute=VOLTAGE
+                    ),
+                ]
+            ),
+            [
+                (Metering.cluster_id, ENERGY.attrid, None, 1234),
+                (ElectricalMeasurement.cluster_id, VOLTAGE.attrid, None, 230),
+            ],
+        ),
+        # Every attribute of a manufacturer-specific cluster is manufacturer-specific
+        (
+            GPDCommandID.ManufacturerSpecificMultiClusterReporting,
+            GPManufacturerSpecificMultiClusterReportingPayload(
+                manufacturer_code=0x105E,
+                reports=[
+                    GPClusterReport(cluster_id=VENDOR_CLUSTER_ID, attribute=VOLTAGE),
+                    GPClusterReport(cluster_id=Metering.cluster_id, attribute=ENERGY),
+                ],
+            ),
+            [
+                (VENDOR_CLUSTER_ID, VOLTAGE.attrid, 0x105E, 230),
+                (Metering.cluster_id, ENERGY.attrid, None, 1234),
+            ],
+        ),
+        # Manufacturer-specific attributes need a manufacturer code
+        (
+            GPDCommandID.AttributeReporting,
+            GPAttributeReportingPayload(
+                cluster_id=Metering.cluster_id, attributes=[VENDOR]
+            ),
+            [],
+        ),
+        # Clusters the GPD did not list during commissioning are not created
+        (
+            GPDCommandID.AttributeReporting,
+            GPAttributeReportingPayload(
+                cluster_id=OnOff.cluster_id,
+                attributes=[attribute(0x0000, DataTypeId.bool_, t.Bool.true)],
+            ),
+            [],
+        ),
+    ],
+)
+def test_attribute_reports_reach_clusters(app, command_id, command, expected) -> None:
+    """GPD attribute reports are passed to the reported clusters as ZCL reports."""
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+    device.server_cluster_ids = [
+        Metering.cluster_id,
+        ElectricalMeasurement.cluster_id,
+        VENDOR_CLUSTER_ID,
+    ]
+    device.add_clusters()
+
+    reports = []
+
+    for cluster in device.endpoints[None].in_clusters.values():
+        cluster.on_event(AttributeReportedEvent.event_type, reports.append)
+
+    device.packet_received(
+        make_packet(1, command_id=command_id, payload=command.serialize())
+    )
+
+    assert [
+        (r.cluster_id, r.attribute_id, r.manufacturer_code, r.value) for r in reports
+    ] == expected
+    assert all(r.endpoint_id is None for r in reports)
+
+
+def test_endpoint(app) -> None:
+    """A SrcID-addressed GPD's clusters belong to its single endpoint, without ID."""
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+    device.server_cluster_ids = [Metering.cluster_id]
+    device.client_cluster_ids = [OnOff.cluster_id]
+    device.add_clusters()
+
+    (endpoint,) = device.non_zdo_endpoints
+
+    assert endpoint is device.endpoints[None]
+    assert endpoint.device is device
+    assert endpoint.endpoint_id is None
+    assert [cluster.cluster_id for cluster in endpoint.clusters] == [
+        Metering.cluster_id,
+        OnOff.cluster_id,
+    ]
+    assert all(cluster.endpoint is endpoint for cluster in endpoint.clusters)
+    assert repr(endpoint) == "<GreenPowerEndpoint in=[0x0702] out=[0x0006]>"
