@@ -2453,6 +2453,19 @@ async def test_blocked_known_device_takes_stale_address(blocking_app):
     assert stale.relays == [0x1111]
 
 
+async def test_blocked_known_device_route_record_asked_to_leave(blocking_app):
+    """A route record from a known blocked device is dropped and it is asked to leave."""
+    dev = blocking_app.add_device(BLOCKED_IEEE, 0x1234)
+    dev.relays = [0x1111]
+
+    blocking_app.handle_relays(nwk=0x1234, relays=[0x5678])
+    await _settle()
+
+    assert dev.relays == [0x1111]
+    assert len(_leave_requests(blocking_app)) == 1
+    assert list(blocking_app._blocked_device_nwks) == [0x1234]
+
+
 async def test_blocked_known_device_asked_again(blocking_app):
     """An already-known blocked device is asked to leave again while it keeps talking."""
     blocking_app.add_device(BLOCKED_IEEE, 0x1234)

@@ -1081,6 +1081,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
                 f"discover_unknown_device_from_relays-nwk={nwk!r}",
             )
         else:
+            # Not remembered yet (e.g. after a restart): the device was blocked later
+            if self._is_blocked(device.ieee):
+                self._handle_blocked_device(device.ieee, device.nwk)
+                return
+
             device.relays = zigpy.util.filter_relays(relays)
 
     @classmethod
