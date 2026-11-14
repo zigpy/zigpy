@@ -2679,6 +2679,54 @@ async def test_request_retry_delay_releases_concurrency(app) -> None:
             task.cancel()
 
 
+async def test_request_cancelled_while_waiting_is_not_retried(app) -> None:
+    """A request dropped from the queue by `cancel_waiting` must not re-queue itself."""
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+
+    # Occupy the only slot of the `LOW` tier so that requests have to wait
+    async with AsyncExitStack() as stack:
+        await stack.enter_async_context(
+            dev._concurrent_requests_semaphore(priority=t.PacketPriority.LOW)
+        )
+
+        tasks = [
+            asyncio.create_task(
+                dev.request(
+                    profile=0x1234,
+                    cluster=0x0006,
+                    src_ep=1,
+                    dst_ep=1,
+                    sequence=seq,
+                    data=b"",
+                    expect_reply=False,
+                    priority=t.PacketPriority.LOW,
+                    retry_delay=0,
+                )
+            )
+            for seq in range(5)
+        ]
+
+        async with asyncio.timeout(1):
+            while dev._concurrent_requests_semaphore.waiting_requests < len(tasks):
+                await asyncio.sleep(0)
+
+        dev._concurrent_requests_semaphore.cancel_waiting(
+            zigpy.exceptions.DeliveryError("Device has re-joined the network")
+        )
+
+        results = await asyncio.wait_for(
+            asyncio.gather(*tasks, return_exceptions=True), timeout=1
+        )
+
+        # Let any (unwanted) retry enqueue itself
+        await asyncio.sleep(0.01)
+
+        assert all(isinstance(r, zigpy.exceptions.DeliveryError) for r in results)
+        assert dev._concurrent_requests_semaphore.waiting_requests == 0
+
+    assert app.send_packet.mock_calls == []
+
+
 async def test_radio_details_deprecated(dev) -> None:
     with pytest.deprecated_call():
         dev.radio_details(lqi=120, rssi=-45)

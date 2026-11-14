@@ -661,6 +661,20 @@ class ZigbeeDevice(BaseDevice):
     def is_initialized(self) -> bool:
         return self.node_desc is not None and self.all_endpoints_init
 
+    @property
+    def reply_retries(self) -> int | None:
+        """Retries for unsolicited replies: none if the device may be asleep."""
+        # A retry reaches a sleepy device after it has gone back to sleep. Routers and
+        # always-listening end devices keep the default, a retry also forces route
+        # discovery.
+        if self.node_desc is None:
+            return 0
+
+        if self.node_desc.is_end_device and not self.node_desc.is_receiver_on_when_idle:
+            return 0
+
+        return None
+
     def schedule_group_membership_scan(self) -> asyncio.Task:
         """Rescan device group's membership."""
         if self._group_scan_task and not self._group_scan_task.done():
@@ -1104,8 +1118,12 @@ class ZigbeeDevice(BaseDevice):
         )
 
         for attempt in range(max_attempts):
+            slot_acquired = False
+
             try:
                 async with self._limit_concurrency(priority=priority):
+                    slot_acquired = True
+
                     if not expect_reply:
                         await send_request(attempt=attempt)
                         return None
@@ -1128,6 +1146,11 @@ class ZigbeeDevice(BaseDevice):
             except zigpy.exceptions.ParsingError:
                 raise
             except Exception:
+                if not slot_acquired:
+                    # Failed while waiting in the queue, e.g. `cancel_waiting()` when
+                    # the device left or re-joined. Retrying would only re-queue it.
+                    raise
+
                 LOGGER.debug(
                     "Failed to send request, attempt %d of %d",
                     attempt + 1,

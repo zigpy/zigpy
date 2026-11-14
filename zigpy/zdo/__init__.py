@@ -162,6 +162,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
                     [],
                     tsn=hdr.tsn,
                     priority=t.PacketPriority.LOW,
+                    retries=self._device.reply_retries,
                 )
             )
 
@@ -191,6 +192,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
                     [],
                     tsn=hdr.tsn,
                     priority=t.PacketPriority.LOW,
+                    retries=self._device.reply_retries,
                 )
             )
 

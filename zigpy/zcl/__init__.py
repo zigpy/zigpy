@@ -1954,6 +1954,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 status,
                 tsn=hdr.tsn,
                 priority=t.PacketPriority.LOW,
+                retries=self.endpoint.device.reply_retries,
             )
         )
 
