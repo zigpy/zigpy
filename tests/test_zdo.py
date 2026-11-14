@@ -2,6 +2,7 @@ import asyncio
 
 import pytest
 
+from tests.conftest import make_node_desc
 from zigpy import zdo
 import zigpy.device
 import zigpy.types as t
@@ -144,6 +145,38 @@ async def test_handle_ieee_addr(zdo_f):
     hdr.command_id = zdo_types.ZDOCmd.IEEE_addr_req
     zdo_f.handle_message(5, 0x0001, hdr, [nwk, 0x00])
     assert zdo_f.reply.call_count == 1
+
+
+@pytest.mark.parametrize(
+    ("logical_type", "rx_on_when_idle", "expected_retries"),
+    [
+        (zdo_types.LogicalType.EndDevice, False, 0),
+        (zdo_types.LogicalType.EndDevice, True, None),
+        (zdo_types.LogicalType.Router, False, None),
+    ],
+)
+async def test_address_replies_retries(
+    zdo_f, logical_type, rx_on_when_idle, expected_retries
+):
+    """Address replies are not retried for devices that may be asleep."""
+    zdo_f._device.node_desc = make_node_desc(logical_type=logical_type)
+    if rx_on_when_idle:
+        node_desc = zdo_f._device.node_desc
+        zdo_f._device.node_desc = node_desc.replace(
+            mac_capability_flags=node_desc.mac_capability_flags
+            | zdo_types.NodeDescriptor.MACCapabilityFlags.RxOnWhenIdle
+        )
+    node_info = zdo_f._device.application.state.node_info
+    hdr = MagicMock()
+
+    zdo_f.handle_nwk_addr_req(hdr, node_info.ieee, 0x00)
+    zdo_f.handle_ieee_addr_req(hdr, node_info.nwk, 0x00)
+    await asyncio.sleep(0)
+
+    assert zdo_f._device.request.await_count == 2
+
+    for request_call in zdo_f._device.request.await_args_list:
+        assert request_call.kwargs["retries"] == expected_retries
 
 
 def test_handle_announce(zdo_f):
