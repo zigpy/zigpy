@@ -36,8 +36,9 @@ FINAL_BLOCK_TIMEOUT = 60
 def _image_block_size_for_manufacturer(
     manufacturer_code: int, requested_size: int
 ) -> int:
-    if manufacturer_code in (4474, 4405):
-        # Insta (4474) and Dresden Elektronik (4405) have issues above 40 bytes
+    if manufacturer_code in (4474, 4405, 4489):
+        # Insta (4474), Dresden Elektronik (4405) and LEDVANCE (4489) have issues
+        # above 40 bytes
         base_size = 40
     elif manufacturer_code == 4129:
         # Legrand (4129) is not capped
