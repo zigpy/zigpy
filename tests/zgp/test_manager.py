@@ -447,7 +447,7 @@ async def test_recommissioning_replaces_device(app, manager):
 @pytest.mark.parametrize(
     ("security_level", "key", "outgoing_counter", "frame_counter"),
     [
-        # A replayed Commissioning GPDF with an older counter keeps the newer one
+        # A replayed Commissioning GPDF with an older counter is ignored
         (SecurityLevel.Encrypted, KEY, 50, 100),
         (SecurityLevel.Encrypted, KEY, 200, 200),
         (SecurityLevel.FullFrameCounterAndMIC, KEY, 50, 100),
@@ -1387,4 +1387,48 @@ async def test_temp_master_election_window_closed(app, manager):
     app.send_packet.reset_mock()
     await wait_for_gp_processing()
 
+    assert len(app.send_packet.mock_calls) == 0
+
+
+async def test_stale_commissioning_after_success(app, manager):
+    """A Commissioning GPDF tunneled after the Success GPDF does not restart it.
+
+    A proxy with a poor link forwards the GPD's last Commissioning GPDF after the
+    TempMaster's Commissioning Reply was answered with Success. Commissioning the GPD
+    again from it would divert its GPDFs to a pending device until the window closes.
+    """
+    await manager.permit_join(time_s=60)
+    app.packet_received(
+        commissioning_notification(
+            0x11223344,
+            1,
+            ENCRYPTED_COMMISSIONING,
+            gpp_short_addr=0x1234,
+            bidirectional_cap=True,
+        )
+    )
+    await wait_for_gp_processing()
+    app.packet_received(tunneled_success_packet(0x11223344, 8, SecurityLevel.Encrypted))
+    await wait_for_gp_processing()
+
+    ieee = synthetic_ieee(0x11223344)
+    device = app.devices[ieee]
+    assert device.frame_counter == 8
+    app.send_packet.reset_mock()
+
+    # The GPD's next Commissioning GPDF, with the outgoing counter 7 it carried
+    app.packet_received(
+        commissioning_notification(
+            0x11223344,
+            2,
+            ENCRYPTED_COMMISSIONING,
+            gpp_short_addr=0x5678,
+            bidirectional_cap=False,
+            link_quality=GPLinkQuality.Poor,
+        )
+    )
+    await wait_for_gp_processing()
+
+    assert manager.get_pending_device(ieee) is None
+    assert app.devices[ieee] is device
     assert len(app.send_packet.mock_calls) == 0

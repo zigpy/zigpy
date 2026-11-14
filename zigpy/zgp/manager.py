@@ -379,9 +379,19 @@ class GreenPowerManager(CreateTaskMixin):
                 assert registered.frame_counter is not None
                 assert device.frame_counter is not None
 
-                device.frame_counter = max(
-                    registered.frame_counter, device.frame_counter
-                )
+                # A Commissioning GPDF older than the last GPDF accepted from the GPD
+                # is a replay, or one a slow proxy tunnels after the Success GPDF of
+                # bidirectional commissioning. Commissioning the GPD again from it
+                # would divert its GPDFs to a pending device until the window closes.
+                if device.frame_counter < registered.frame_counter:
+                    LOGGER.debug(
+                        "GP Commissioning from 0x%08X ignored: outgoing counter %d"
+                        " is older than %d",
+                        source_id,
+                        device.frame_counter,
+                        registered.frame_counter,
+                    )
+                    return
 
         # The triggering GPDF's RxAfterTx, not RxOnCapability, says whether the GPD
         # listens for a Commissioning Reply (A.3.9.1 13.j). Bidirectional commissioning
