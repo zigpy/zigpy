@@ -2639,6 +2639,215 @@ async def test_request_retry_reply_timeout(app) -> None:
     assert len(app.send_packet.mock_calls) == 3
 
 
+def _basic_default_response_packet(dev, tsn: int) -> t.ZigbeePacket:
+    return t.ZigbeePacket(
+        profile_id=260,
+        cluster_id=Basic.cluster_id,
+        src_ep=1,
+        dst_ep=1,
+        data=t.SerializableBytes(
+            foundation.ZCLHeader(
+                frame_control=foundation.FrameControl(
+                    frame_type=foundation.FrameType.GLOBAL_COMMAND,
+                    is_manufacturer_specific=False,
+                    direction=foundation.Direction.Server_to_Client,
+                    disable_default_response=True,
+                    reserved=0,
+                ),
+                tsn=tsn,
+                command_id=foundation.GeneralCommand.Default_Response,
+                manufacturer=None,
+            ).serialize()
+            + (
+                foundation.GENERAL_COMMANDS[foundation.GeneralCommand.Default_Response]
+                .schema(
+                    command_id=Basic.ServerCommandDefs.reset_fact_default.id,
+                    status=foundation.Status.SUCCESS,
+                )
+                .serialize()
+            )
+        ),
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+    )
+
+
+async def test_request_reply_kept_on_late_delivery_error(app) -> None:
+    """A reply received before the radio reports a delivery failure completes the request."""
+    tsn = 0x12
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+    ep.add_input_cluster(Basic.cluster_id)
+
+    def send_packet(*args, **kwargs) -> None:
+        # The device answers, and only then does the radio report a failed delivery
+        dev.packet_received(_basic_default_response_packet(dev, tsn))
+        raise zigpy.exceptions.DeliveryError("Failed to send request: MAC_NO_ACK")
+
+    app.send_packet.side_effect = send_packet
+    dev.get_sequence = MagicMock(return_value=tsn)
+
+    rsp = await dev.endpoints[1].basic.reset_fact_default(retry_delay=0)
+    assert rsp == foundation.DefaultResponse(
+        command_id=Basic.ServerCommandDefs.reset_fact_default.id,
+        status=foundation.Status.SUCCESS,
+    )
+
+    # No retry is necessary, the reply proves the frame was delivered
+    assert len(app.send_packet.mock_calls) == 1
+    assert not dev._requests
+
+
+async def test_request_reply_to_retry_not_filtered_as_duplicate(app) -> None:
+    """A reply that completes a pending request is not dropped as a duplicate."""
+    tsn = 0x12
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+    ep.add_input_cluster(Basic.cluster_id)
+
+    # An earlier attempt's reply arrived after that attempt was given up on
+    dev.packet_received(_basic_default_response_packet(dev, tsn))
+
+    def send_packet(*args, **kwargs) -> None:
+        # The retry's reply is byte-identical to the earlier one
+        asyncio.get_running_loop().call_soon(
+            dev.packet_received, _basic_default_response_packet(dev, tsn)
+        )
+
+    app.send_packet.side_effect = send_packet
+    dev.get_sequence = MagicMock(return_value=tsn)
+
+    rsp = await dev.endpoints[1].basic.reset_fact_default(timeout=1, retry_delay=0)
+    assert rsp == foundation.DefaultResponse(
+        command_id=Basic.ServerCommandDefs.reset_fact_default.id,
+        status=foundation.Status.SUCCESS,
+    )
+    assert len(app.send_packet.mock_calls) == 1
+
+
+async def test_duplicate_packet_still_filtered_without_request(app) -> None:
+    """Duplicates are still dropped when no request is waiting for them."""
+    tsn = 0x12
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+    ep.add_input_cluster(Basic.cluster_id)
+
+    with patch.object(dev, "_maybe_match_response", return_value=False) as match:
+        dev.packet_received(_basic_default_response_packet(dev, tsn))
+        dev.packet_received(_basic_default_response_packet(dev, tsn))
+
+    assert len(match.mock_calls) == 1
+
+
+async def test_duplicate_report_not_processed_during_pending_request(app) -> None:
+    """A duplicate attribute report is dropped even if its key matches a pending request."""
+    tsn = 0x12
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+    basic = ep.add_input_cluster(Basic.cluster_id)
+    basic.handle_message = MagicMock()
+
+    report = _basic_default_response_packet(dev, tsn)
+    report = report.replace(
+        data=t.SerializableBytes(
+            foundation.ZCLHeader(
+                frame_control=foundation.FrameControl(
+                    frame_type=foundation.FrameType.GLOBAL_COMMAND,
+                    is_manufacturer_specific=False,
+                    direction=foundation.Direction.Server_to_Client,
+                    disable_default_response=True,
+                    reserved=0,
+                ),
+                tsn=tsn,
+                command_id=foundation.GeneralCommand.Report_Attributes,
+                manufacturer=None,
+            ).serialize()
+            + foundation.GENERAL_COMMANDS[foundation.GeneralCommand.Report_Attributes]
+            .schema(
+                attribute_reports=[
+                    foundation.Attribute(
+                        attrid=0x0004,
+                        value=foundation.TypeValue(
+                            type=foundation.DataTypeId.string,
+                            value=t.LVBytes(b"x"),
+                        ),
+                    )
+                ]
+            )
+            .serialize()
+        )
+    )
+
+    # A pending request whose key collides with the report's
+    dev._requests[
+        zigpy.device.ResponseKey(
+            endpoint_id=1,
+            cluster_id=Basic.cluster_id,
+            direction=foundation.Direction.Server_to_Client,
+            tsn=tsn,
+        )
+    ] = asyncio.get_running_loop().create_future()
+
+    dev.packet_received(report)
+    dev.packet_received(report)
+
+    assert basic.handle_message.call_count == 1
+
+
+async def test_malformed_duplicate_does_not_fail_pending_request(app) -> None:
+    """A duplicate that cannot be parsed is dropped instead of failing a pending request."""
+    tsn = 0x12
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+    ep.add_input_cluster(Basic.cluster_id)
+
+    packet = _basic_default_response_packet(dev, tsn).replace(
+        # Default Response with a truncated payload
+        data=t.SerializableBytes(b"\x18\x12\x0b\x00")
+    )
+    dev.packet_received(packet)
+
+    future = asyncio.get_running_loop().create_future()
+    dev._requests[
+        zigpy.device.ResponseKey(
+            endpoint_id=1,
+            cluster_id=Basic.cluster_id,
+            direction=foundation.Direction.Server_to_Client,
+            tsn=tsn,
+        )
+    ] = future
+
+    dev.packet_received(packet)
+    assert not future.done()
+
+    # Even a header that cannot be parsed is dropped
+    short = packet.replace(data=t.SerializableBytes(b"\x18"))
+    with pytest.raises(Exception):  # noqa: B017, PT011
+        dev.packet_received(short)
+
+    dev.packet_received(short)
+
+
 async def test_request_retry_delay_releases_concurrency(app) -> None:
     """A request awaiting its post-retry delay must not hold a concurrency slot."""
     dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
