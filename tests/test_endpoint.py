@@ -37,11 +37,12 @@ async def _test_initialize(ep, profile):
     assert 6 in ep.out_clusters
 
 
-async def test_inactive_initialize(ep):
+@pytest.mark.parametrize("status", [types.Status.NOT_ACTIVE, types.Status.INVALID_EP])
+async def test_inactive_initialize(ep, status):
     async def mockrequest(*args, **kwargs):
         sd = types.SimpleDescriptor()
         sd.endpoint = 2
-        return [131, None, sd]
+        return [status, None, sd]
 
     ep._device.zdo.Simple_Desc_req = mockrequest
     await ep.initialize()
