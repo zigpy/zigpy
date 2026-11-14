@@ -1118,7 +1118,23 @@ class ZigbeeDevice(BaseDevice):
                     self._requests[rsp_key] = future
 
                     try:
-                        await send_request(attempt=attempt)
+                        try:
+                            await send_request(attempt=attempt)
+                        except Exception as exc:  # noqa: BLE001
+                            # The radio can report a delivery failure (e.g. a missing
+                            # MAC ACK) for a frame that was delivered after all. A
+                            # reply that already arrived proves delivery, so use it
+                            # instead of retrying.
+                            if not future.done() or future.cancelled():
+                                raise
+
+                            self.debug(
+                                "Ignoring delivery error for 0x%02x, reply already"
+                                " received: %r",
+                                sequence,
+                                exc,
+                            )
+
                         async with asyncio_timeout(timeout):
                             return await future
                     finally:
@@ -1342,13 +1358,25 @@ class ZigbeeDevice(BaseDevice):
         if packet.rssi is not None:
             self.rssi = packet.rssi
 
-        # Filter duplicate packets
-        if self._should_filter_packet(packet):
+        # Duplicates are only dropped after response matching: a retried request reuses
+        # its TSN so the reply to it can be identical to an earlier one
+        is_duplicate = self._should_filter_packet(packet)
+
+        # Parse packet header and create response key
+        try:
+            hdr, rsp_key = self._parse_packet_header(packet)
+        except Exception:
+            # A malformed duplicate was already dealt with when it first arrived
+            if is_duplicate:
+                self.debug("Filtering duplicate packet")
+                return
+
+            raise
+
+        if is_duplicate and (rsp_key is None or rsp_key not in self._requests):
             self.debug("Filtering duplicate packet")
             return
 
-        # Parse packet header and create response key
-        hdr, rsp_key = self._parse_packet_header(packet)
         if hdr is None:
             self.custom_profile_packet_received(packet)
             return
@@ -1362,6 +1390,11 @@ class ZigbeeDevice(BaseDevice):
         try:
             cmd = self._parse_packet_command(packet, endpoint, zcl_cluster)
         except Exception as exc:  # noqa: BLE001
+            # A duplicate that fails to parse must not fail a pending request
+            if is_duplicate:
+                self.debug("Filtering duplicate packet")
+                return
+
             cmd = None
             error = zigpy.exceptions.ParsingError()
             error.__cause__ = exc
@@ -1371,6 +1404,10 @@ class ZigbeeDevice(BaseDevice):
 
         # Handle response matching for pending requests
         if self._maybe_match_response(rsp_key, cmd, error):
+            return
+
+        if is_duplicate:
+            self.debug("Filtering duplicate packet")
             return
 
         # Skip further processing if there was a parsing error
