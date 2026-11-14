@@ -483,6 +483,22 @@ async def test_recommissioning_keeps_frame_counter(
     assert app.devices[synthetic_ieee(0x11223344)].frame_counter == frame_counter
 
 
+async def test_recommissioning_equal_counter_is_accepted(app, manager):
+    """A retry with an unchanged outgoing counter can re-commission the GPD."""
+    await manager.permit_join(time_s=60)
+    payload = commissioning_payload(
+        security_level=SecurityLevel.Encrypted, key=KEY, outgoing_counter=100
+    )
+    await commission(app, 0x11223344, payload)
+    ieee = synthetic_ieee(0x11223344)
+    original = app.devices[ieee]
+
+    await commission(app, 0x11223344, payload, frame_counter=2)
+
+    assert app.devices[ieee] is not original
+    assert app.devices[ieee].frame_counter == 100
+
+
 @pytest.mark.parametrize(
     ("payload", "gpp_short_addr", "temp_master", "security_level", "security_key_type"),
     [
@@ -1138,6 +1154,23 @@ async def test_shutdown(app, manager):
     assert synthetic_ieee(0x11223344) not in app.devices
 
 
+async def test_shutdown_cancels_unstarted_temp_master_election(app, manager):
+    """A cancelled election does not leave candidates behind."""
+    await manager.permit_join(time_s=60)
+    app.gp_packet_received(
+        make_gp_packet(
+            0x11223344,
+            GPDCommandID.CommissioningRequest,
+            UNPROTECTED_COMMISSIONING,
+            rx_after_tx=True,
+        )
+    )
+
+    await manager.shutdown()
+
+    assert not manager._temp_master_candidates
+
+
 @pytest.mark.parametrize(
     ("security_level", "mac_seq_num_capability", "frame_counter"),
     [
@@ -1368,6 +1401,71 @@ async def test_temp_master_election_tx_queue_full(app, manager):
     assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x2222
 
 
+async def test_temp_master_election_prefers_proxy_over_direct_sink(app, manager):
+    """A proxy is preferred to the sink, which cannot transmit GPDFs."""
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+    app.gp_packet_received(
+        make_gp_packet(
+            0x11223344,
+            GPDCommandID.CommissioningRequest,
+            ENCRYPTED_COMMISSIONING,
+            rx_after_tx=True,
+        ).replace(lqi=t.uint8_t(255), rssi=t.int8s(-20))
+    )
+    app.packet_received(
+        commissioning_notification(
+            0x11223344,
+            1,
+            ENCRYPTED_COMMISSIONING,
+            gpp_short_addr=0x2222,
+            bidirectional_cap=False,
+            link_quality=GPLinkQuality.Poor,
+        )
+    )
+    await wait_for_gp_processing()
+
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x2222
+
+
+@pytest.mark.parametrize(
+    ("delay", "temp_master"),
+    [(0.05, 0x2222), (0.15, 0x1111)],
+)
+async def test_temp_master_election_deadline(app, manager, delay, temp_master):
+    """A delayed election task cannot admit candidates received after Dmax."""
+    with freezegun.freeze_time() as frozen:
+        await manager.permit_join(time_s=60)
+        app.send_packet.reset_mock()
+        app.packet_received(
+            commissioning_notification(
+                0x11223344,
+                1,
+                ENCRYPTED_COMMISSIONING,
+                gpp_short_addr=0x1111,
+                bidirectional_cap=True,
+                link_quality=GPLinkQuality.Poor,
+            )
+        )
+        frozen.tick(delay)
+        app.packet_received(
+            commissioning_notification(
+                0x11223344,
+                1,
+                ENCRYPTED_COMMISSIONING,
+                gpp_short_addr=0x2222,
+                bidirectional_cap=True,
+                link_quality=GPLinkQuality.Excellent,
+            )
+        )
+        frozen.tick(1)
+        await wait_for_gp_processing()
+
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == temp_master
+
+
 async def test_temp_master_election_window_closed(app, manager):
     """No GP Response is sent if the window closes during the election."""
     await manager.permit_join(time_s=60)
@@ -1388,6 +1486,111 @@ async def test_temp_master_election_window_closed(app, manager):
     await wait_for_gp_processing()
 
     assert len(app.send_packet.mock_calls) == 0
+
+
+@pytest.mark.parametrize("started", [False, True])
+async def test_temp_master_election_window_reopened(app, manager, started):
+    """Reopening the window cannot revive a GPDF from the previous window."""
+    await manager.permit_join(time_s=60)
+    manager._send_proxy_commissioning_mode = AsyncMock()
+    app.packet_received(
+        commissioning_notification(
+            0x11223344,
+            1,
+            ENCRYPTED_COMMISSIONING,
+            gpp_short_addr=0x1111,
+            bidirectional_cap=True,
+        )
+    )
+    if started:
+        await asyncio.sleep(0)
+
+    await manager.permit_join(time_s=0)
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+    await wait_for_gp_processing()
+
+    assert not app.send_packet.mock_calls
+    assert manager.get_pending_device(synthetic_ieee(0x11223344)) is None
+
+
+async def test_channel_election_window_reopened(app, manager):
+    """A Channel Configuration is not sent for an earlier window."""
+    await manager.permit_join(time_s=60)
+    app.gp_packet_received(
+        make_gp_packet(
+            0x12345678,
+            GPDCommandID.ChannelRequest,
+            GPChannelRequestPayload(next_channel=4, second_next_channel=15).serialize(),
+            gpp_short_addr=0x1111,
+            rx_after_tx=True,
+        )
+    )
+    await asyncio.sleep(0)
+    await manager.permit_join(time_s=0)
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+    await wait_for_gp_processing()
+
+    assert not app.send_packet.mock_calls
+
+
+async def test_temp_master_election_window_extended(app, manager):
+    """Extending an open window keeps an election in progress."""
+    await manager.permit_join(time_s=60)
+    app.packet_received(
+        commissioning_notification(
+            0x11223344,
+            1,
+            ENCRYPTED_COMMISSIONING,
+            gpp_short_addr=0x1111,
+            bidirectional_cap=True,
+        )
+    )
+    await asyncio.sleep(0)
+    await manager.permit_join(time_s=120)
+    app.send_packet.reset_mock()
+    await wait_for_gp_processing()
+
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x1111
+    assert manager.get_pending_device(synthetic_ieee(0x11223344)) is not None
+
+
+async def test_temp_master_election_retry_after_window_reopened(app, manager):
+    """The same GPDF can start a fresh election in a new window."""
+    await manager.permit_join(time_s=60)
+    app.packet_received(
+        commissioning_notification(
+            0x11223344,
+            1,
+            ENCRYPTED_COMMISSIONING,
+            gpp_short_addr=0x1111,
+            bidirectional_cap=True,
+        )
+    )
+    await asyncio.sleep(0)
+    await manager.permit_join(time_s=0)
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+    app.packet_received(
+        commissioning_notification(
+            0x11223344,
+            1,
+            ENCRYPTED_COMMISSIONING,
+            gpp_short_addr=0x2222,
+            bidirectional_cap=True,
+        )
+    )
+    await wait_for_gp_processing()
+
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x2222
+    assert manager.get_pending_device(synthetic_ieee(0x11223344)) is not None
+
+    app.gp_packet_received(encrypted_success_packet(0x11223344, 8))
+    await wait_for_gp_processing()
+    assert synthetic_ieee(0x11223344) in app.devices
 
 
 async def test_stale_commissioning_after_success(app, manager):
