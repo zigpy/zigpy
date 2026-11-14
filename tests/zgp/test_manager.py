@@ -829,7 +829,8 @@ async def test_bidirectional_commissioning_window_changes(
     app, manager, change_window, commissioned
 ):
     """Commissioning in progress follows the window until its Success GPDF."""
-    with freezegun.freeze_time() as frozen:
+    # The clock keeps ticking for the TempMaster election (Dmax)
+    with freezegun.freeze_time(tick=True) as frozen:
         await manager.permit_join(time_s=60)
         await commission(app, 0x11223344, ENCRYPTED_COMMISSIONING, rx_after_tx=True)
 
@@ -1244,3 +1245,146 @@ async def test_commands_sent_server_to_client(app, manager, send, command):
     assert hdr.tsn == packet.tsn
 
     sent_command(packet, command.schema)
+
+
+def commissioning_notification(
+    src_id: int,
+    frame_counter: int,
+    payload: bytes,
+    *,
+    gpp_short_addr: int,
+    bidirectional_cap: bool,
+    link_quality: GPLinkQuality = GPLinkQuality.High,
+    rssi: int = 20,
+) -> t.ZigbeePacket:
+    """A Commissioning GPDF with RxAfterTx, tunneled by a proxy."""
+    command = CommissioningNotificationSchema(
+        options=make_commissioning_options(
+            rx_after_tx=1, bidirectional_cap=int(bidirectional_cap)
+        ),
+        gpd_id=src_id,
+        frame_counter=frame_counter,
+        command_id=GPDCommandID.CommissioningRequest,
+        payload=GPDCommandPayload(payload),
+        gpp_short_addr=gpp_short_addr,
+        gpp_gpd_link=GPPGPDLink(rssi=rssi, link_quality=link_quality),
+    )
+
+    return make_tunnel_packet(
+        COMMISSIONING_NOTIFICATION_ID,
+        command.serialize(),
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=gpp_short_addr),
+        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+    )
+
+
+@pytest.mark.parametrize(
+    ("forwarders", "temp_master"),
+    [
+        # The first proxy to forward cannot transmit to the GPD
+        (
+            [(0x1111, False, GPLinkQuality.Excellent, 30), (0x2222, True, 0, 0)],
+            0x2222,
+        ),
+        # The best link among bidirectional proxies, in any order of arrival
+        (
+            [(0x1111, True, GPLinkQuality.Poor, 30), (0x2222, True, 2, 0)],
+            0x2222,
+        ),
+        # Equal Link quality: the higher RSSI
+        ([(0x1111, True, 2, 10), (0x2222, True, 2, 11)], 0x2222),
+        # Equal link: the lower short address
+        ([(0x2222, True, 2, 10), (0x1111, True, 2, 10)], 0x1111),
+        # No bidirectional proxy: the best link of all
+        ([(0x1111, False, 1, 10), (0x2222, False, 2, 10)], 0x2222),
+        # The coordinator received the GPDF directly, but cannot transmit to the GPD
+        ([None, (0x2222, True, 0, 0)], 0x2222),
+    ],
+)
+async def test_temp_master_election(app, manager, forwarders, temp_master):
+    """The sink elects the TempMaster from the instances within Dmax (A.3.6.2.3)."""
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
+    for forwarder in forwarders:
+        if forwarder is None:
+            app.gp_packet_received(
+                make_gp_packet(
+                    0x11223344,
+                    GPDCommandID.CommissioningRequest,
+                    ENCRYPTED_COMMISSIONING,
+                    rx_after_tx=True,
+                )
+            )
+            continue
+
+        gpp_short_addr, bidirectional_cap, link_quality, rssi = forwarder
+        app.packet_received(
+            commissioning_notification(
+                0x11223344,
+                1,
+                ENCRYPTED_COMMISSIONING,
+                gpp_short_addr=gpp_short_addr,
+                bidirectional_cap=bidirectional_cap,
+                link_quality=GPLinkQuality(link_quality),
+                rssi=rssi,
+            )
+        )
+
+    await wait_for_gp_processing()
+
+    # One GP Response for the GPDF, however many proxies forwarded it
+    [reply] = [c.args[0] for c in app.send_packet.mock_calls]
+    response = sent_command(reply, ResponseSchema)
+    assert response.temp_master_short_addr == temp_master
+    assert response.gpd_command_id == GPDCommandID.CommissioningReply
+
+
+async def test_temp_master_election_tx_queue_full(app, manager):
+    """A bidirectional proxy with a full gpTxQueue is not a candidate (A.3.6.2.3)."""
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
+    for gpp_short_addr, tx_queue_full, lqi in ((0x1111, True, 255), (0x2222, False, 0)):
+        app.gp_packet_received(
+            make_gp_packet(
+                0x12345678,
+                GPDCommandID.ChannelRequest,
+                GPChannelRequestPayload(
+                    next_channel=15 - 11, second_next_channel=26 - 11
+                ).serialize(),
+                gpp_short_addr=gpp_short_addr,
+                rx_after_tx=True,
+            ).replace(
+                lqi=t.uint8_t(lqi),
+                gpp_bidirectional_cap=True,
+                gpp_tx_queue_full=tx_queue_full,
+            )
+        )
+
+    await wait_for_gp_processing()
+
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x2222
+
+
+async def test_temp_master_election_window_closed(app, manager):
+    """No GP Response is sent if the window closes during the election."""
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
+    app.packet_received(
+        commissioning_notification(
+            0x11223344,
+            1,
+            ENCRYPTED_COMMISSIONING,
+            gpp_short_addr=0x1111,
+            bidirectional_cap=True,
+        )
+    )
+    await asyncio.sleep(0)
+    await manager.permit_join(time_s=0)
+    app.send_packet.reset_mock()
+    await wait_for_gp_processing()
+
+    assert len(app.send_packet.mock_calls) == 0
