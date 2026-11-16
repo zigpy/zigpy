@@ -146,6 +146,8 @@ class BaseDevice(
 ):
     """Base class shared by all device types, keyed on `ieee` and `nwk` addresses."""
 
+    _store: DeviceStore | None = None
+
     def __init__(
         self, application: ControllerApplication, ieee: t.EUI64, nwk: t.NWK
     ) -> None:
@@ -163,6 +165,21 @@ class BaseDevice(
 
         self._on_remove_callbacks: list[typing.Callable[[], None]] = []
         self._tasks: set[asyncio.Future[Any]] = set()
+
+    @property
+    def store(self) -> DeviceStore:
+        """Persistent key/value store for device state that is not a ZCL attribute.
+
+        The store belongs to the application and is keyed by IEEE, so it is shared by
+        every object that represents this device (the raw device, a quirk replacement,
+        a re-interview shadow) and outlives each of them. A device object keeps the
+        store it got first, so once the device is removed, it keeps a closed store
+        even if a device with the same IEEE is added again.
+        """
+        if self._store is None:
+            self._store = self._application.device_stores[self.ieee]
+
+        return self._store
 
     def on_remove(self) -> None:
         """Call on remove callbacks."""
@@ -754,11 +771,6 @@ class ZigbeeDevice(BaseDevice):
     """A conventional Zigbee device on the network."""
 
     manufacturer_id_override = None
-
-    @property
-    def store(self) -> DeviceStore:
-        """Persistent key/value store for device state that is not a ZCL attribute."""
-        return self._application.device_stores[self.ieee]
 
     def __init__(self, application: ControllerApplication, ieee: t.EUI64, nwk: t.NWK):
         super().__init__(application, ieee, nwk)

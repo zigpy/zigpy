@@ -640,12 +640,17 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         assert isinstance(ieee, t.EUI64)
         # TODO: Shut down existing device
 
+        self.device_stores.reopen(ieee)
         dev = ZigbeeDevice(self, ieee, nwk)
         self.devices[ieee] = dev
         return dev
 
     def _finalize_device(self, device: BaseDevice) -> BaseDevice:
         """Resolve a device, persist to DB, and register the device."""
+        if device.ieee not in self.devices:
+            # A Green Power device is not created through `add_device`
+            self.device_stores.reopen(device.ieee)
+
         self.listener_event("raw_device_initialized", device)
 
         # Ensure we propagate the original device signature
@@ -790,11 +795,16 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         if isinstance(dev, GreenPowerDevice):
             LOGGER.info("Removing device 0x%04x (%s)", dev.nwk, ieee)
             self.devices.pop(ieee, None)
+            self.device_stores.pop(ieee)
             self.listener_event("device_removed", dev)
             await self.green_power.unpair(dev)
             return
 
         dev.cancel_initialization()
+
+        # The device stays known until its leave request completes, but its store rows
+        # are deleted now, so nothing written in between may recreate them
+        self.device_stores.close(ieee)
 
         LOGGER.info("Removing device 0x%04x (%s)", dev.nwk, ieee)
         self.create_task(
@@ -845,7 +855,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             LOGGER.debug("Sending 'zdo_leave_req' failed: %s", ex)
 
         self.devices.pop(device.ieee, None)
-        self.device_stores.pop(device.ieee)
+
+        # The device may have joined again while the leave request was pending
+        if (store := self.device_stores.get(device.ieee)) is not None and store.closed:
+            self.device_stores.pop(device.ieee)
 
     def deserialize(
         self,
