@@ -562,6 +562,10 @@ class GreenPowerManager(CreateTaskMixin):
             self._application.gp_device_recommissioned(device)
             new_device = False
         else:
+            # The device object was created before it was known to be new, so it may
+            # hold the closed store of a GPD removed earlier under the same IEEE
+            self._application.device_stores.reopen(device.ieee)
+            device._store = self._application.device_stores[device.ieee]
             self._application.listener_event("device_joined", device)
             self._application.device_initialized(device)
             new_device = True

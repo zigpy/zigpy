@@ -648,8 +648,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
     def _finalize_device(self, device: BaseDevice) -> BaseDevice:
         """Resolve a device, persist to DB, and register the device."""
         if device.ieee not in self.devices:
-            # A Green Power device is not created through `add_device`
+            # A device not created through `add_device` (Green Power devices are not)
+            # may hold the closed store of a device removed under the same IEEE
             self.device_stores.reopen(device.ieee)
+            device._store = self.device_stores[device.ieee]
 
         self.listener_event("raw_device_initialized", device)
 
@@ -855,10 +857,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             LOGGER.debug("Sending 'zdo_leave_req' failed: %s", ex)
 
         self.devices.pop(device.ieee, None)
-
-        # The device may have joined again while the leave request was pending
-        if (store := self.device_stores.get(device.ieee)) is not None and store.closed:
-            self.device_stores.pop(device.ieee)
+        self.device_stores.pop(device.ieee)
 
     def deserialize(
         self,
