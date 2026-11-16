@@ -287,3 +287,19 @@ CREATE TABLE device_store_v17 (
 
 CREATE UNIQUE INDEX device_store_idx_v17
     ON device_store_v17(ieee, namespace, key);
+
+
+-- Network store: key/value state that belongs to the network rather than to one
+-- device, such as group ID allocation. Values are opaque JSON and stay until they are
+-- deleted, whatever happens to devices.
+DROP TABLE IF EXISTS network_store_v17;
+CREATE TABLE network_store_v17 (
+    namespace TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    last_updated REAL NOT NULL
+);
+
+CREATE UNIQUE INDEX network_store_idx_v17
+    ON network_store_v17(namespace, key);
