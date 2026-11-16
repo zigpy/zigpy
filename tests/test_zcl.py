@@ -40,7 +40,7 @@ DEFAULT_TSN = 123
 
 
 @pytest.mark.parametrize("start_task", [False, True])
-async def test_cluster_task_cancelled_on_device_removal(app_mock, start_task):
+async def test_cluster_task_cancelled_on_device_teardown(app_mock, start_task, caplog):
     """Cluster work must not outlive its owning device."""
     device = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
     cluster = device.endpoints[1].add_input_cluster(Basic.cluster_id)
@@ -58,6 +58,8 @@ async def test_cluster_task_cancelled_on_device_removal(app_mock, start_task):
     await asyncio.gather(*tasks, return_exceptions=True)
     await asyncio.sleep(0)
     assert not device._tasks
+    assert all(task.cancelled() for task in tasks)
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
     assert inspect.getcoroutinestate(target) == inspect.CORO_CLOSED
 
 
@@ -84,6 +86,44 @@ async def test_cluster_task_device_ownership_is_independent(app_mock):
     await asyncio.gather(*second_tasks)
     await asyncio.sleep(0)
     assert not second._tasks
+
+
+async def test_cluster_task_accepts_future(app_mock, caplog):
+    """Future targets complete without coroutine-only cleanup errors."""
+    device = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = device.endpoints[1].add_input_cluster(Basic.cluster_id)
+    target = asyncio.get_running_loop().create_future()
+    cluster.create_catching_task(target)
+    tasks = set(device._tasks)
+    target.set_result(True)
+    assert await asyncio.gather(*tasks) == [True]
+    await asyncio.sleep(0)
+    assert not device._tasks
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
+
+
+@pytest.mark.parametrize("start_task", [False, True])
+async def test_group_cluster_task_cancelled_on_controller_shutdown(
+    app_mock, start_task
+):
+    """Virtual group cluster work belongs to the controller."""
+    group = app_mock.groups.add_group(0x1234, "test group")
+    cluster = group.endpoint[OnOff.cluster_id]
+    target = asyncio.Event().wait()
+    global_tasks_before = set(zigpy.util.CatchingTaskMixin._tasks)
+    cluster.create_catching_task(target)
+    tasks = set(app_mock._tasks)
+    assert len(tasks) == 1
+    assert zigpy.util.CatchingTaskMixin._tasks == global_tasks_before
+    if start_task:
+        await asyncio.sleep(0)
+
+    await app_mock.shutdown()
+    await asyncio.gather(*tasks, return_exceptions=True)
+    await asyncio.sleep(0)
+    assert all(task.cancelled() for task in tasks)
+    assert not app_mock._tasks
+    assert inspect.getcoroutinestate(target) == inspect.CORO_CLOSED
 
 
 @pytest.fixture

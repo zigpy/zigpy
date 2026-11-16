@@ -3,12 +3,13 @@ from __future__ import annotations
 import asyncio
 import collections
 from collections import defaultdict
-from collections.abc import Callable, Coroutine, Generator, Iterable, Sequence
+from collections.abc import Awaitable, Callable, Generator, Iterable, Sequence
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import enum
 import functools
+import inspect
 import itertools
 import logging
 import types
@@ -540,21 +541,20 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
     def create_catching_task(
         self,
-        target: Coroutine,
+        target: Awaitable,
         exceptions: type[Exception] | tuple | None = None,
         name: str | None = None,
     ) -> None:
-        """Create background work owned by this cluster's device."""
-        task = asyncio.get_running_loop().create_task(
-            self.catching_coro(target, exceptions), name=name
-        )
-        tasks = self._endpoint.device._tasks
-        tasks.add(task)
+        """Create background work owned by the device or group controller."""
+        create_task = getattr(self._endpoint.device, "create_task", None)
+        if create_task is None:
+            create_task = self._endpoint.device.application.create_task
+        task = create_task(self.catching_coro(target, exceptions), name=name)
 
         def task_done(task: asyncio.Task) -> None:
-            tasks.discard(task)
             # Removal can cancel the wrapper before it starts awaiting the target.
-            target.close()
+            if inspect.iscoroutine(target):
+                target.close()
 
         task.add_done_callback(task_done)
 
