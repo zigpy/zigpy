@@ -4396,3 +4396,304 @@ async def test_flush_after_shutdown(tmp_path):
 
     with pytest.raises(zigpy.exceptions.DatabaseFlushError):
         await app.flush_database()
+
+
+MIGRATED_VALUE = StoredValue(namespace="quirk:test", key="migrated", type=int)
+OTHER_MIGRATED_VALUE = StoredValue(namespace="quirk:test", key="other", type=int)
+MIGRATING_IEEE = t.EUI64.convert("aa:bb:cc:dd:11:22:33:44")
+
+
+class MigratingBasic(Basic):
+    """A quirk's Basic cluster that moved attributes 0x7777 and 0x7776 to the store."""
+
+    _skip_registry = True
+
+    def migrate_attribute_cache_row(self, row, value) -> bool:
+        if row.attr_id == 0x7777:
+            self.endpoint.device.store[MIGRATED_VALUE] = value
+        elif row.attr_id == 0x7776:
+            self.endpoint.device.store[OTHER_MIGRATED_VALUE] = value
+        else:
+            return False
+
+        return True
+
+
+class ManufacturerSpecificBasic(MigratingBasic):
+    """Defines 0x7777, but as a manufacturer-specific attribute."""
+
+    class AttributeDefs(Basic.AttributeDefs):
+        custom = ZCLAttributeDef(id=0x7777, type=t.uint16_t, manufacturer_code=0x1234)
+
+
+class ClosingMigrationBasic(Basic):
+    """A migration whose store is closed, so its write is ignored."""
+
+    _skip_registry = True
+
+    def migrate_attribute_cache_row(self, row, value) -> bool:
+        self.endpoint.device.store.close()
+        self.endpoint.device.store[MIGRATED_VALUE] = value
+        return True
+
+
+class FailingMigrationBasic(Basic):
+    _skip_registry = True
+
+    def migrate_attribute_cache_row(self, row, value) -> bool:
+        raise RuntimeError("Broken migration")
+
+
+def _quirk_resolver(cluster_cls):
+    def resolver(device):
+        if device.ieee != MIGRATING_IEEE:
+            return device
+
+        new = device.clone()
+        ep = new.endpoints[1]
+        ep.add_input_cluster(Basic.cluster_id, cluster_cls(ep, is_server=True))
+        return new
+
+    return resolver
+
+
+def _insert_attr_row(
+    db, attr_id, value, data_type=None, *, manufacturer_code=None, status=0
+) -> None:
+    with contextlib.closing(sqlite3.connect(db)) as conn, conn:
+        conn.execute(
+            f"INSERT INTO attributes_cache{zigpy.appdb.DB_V}"
+            " (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code,"
+            " status, value, data_type, last_updated)"
+            " VALUES (?, 1, 0, ?, ?, ?, ?, ?, ?, 0)",
+            (
+                str(MIGRATING_IEEE),
+                Basic.cluster_id,
+                attr_id,
+                manufacturer_code,
+                status,
+                value,
+                data_type,
+            ),
+        )
+
+
+@pytest.mark.parametrize(
+    ("value", "data_type", "manufacturer_code"),
+    [
+        (b"\x05\x00", DataTypeId.uint16, None),
+        # Rows from before data types were stored
+        (5, None, None),
+        # Rows from before manufacturer codes were stored
+        (5, None, zigpy.zcl.helpers.UNMIGRATED_MANUFACTURER_CODE),
+    ],
+)
+async def test_attribute_row_migrated(
+    tmp_path, value, data_type, manufacturer_code
+) -> None:
+    """A quirk cluster moves the row of an attribute it no longer defines."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+    await app.shutdown()
+
+    _insert_attr_row(db, 0x7777, value, data_type, manufacturer_code=manufacturer_code)
+
+    app2 = await make_app_with_db(db, device_resolver=_quirk_resolver(MigratingBasic))
+    dev2 = app2.get_device(dev.ieee)
+
+    assert dev2.store[MIGRATED_VALUE] == 5
+    assert dev2.endpoints[1].basic._attr_cache.get(0x7777) is None
+
+    # The load commits the store row and the deletion together
+    assert _count_store_rows(db, dev.ieee) == 1
+    assert _read_attr_row(db, Basic.cluster_id, 0x7777) is None
+
+    await app2.shutdown()
+
+    # Loading without the quirk, as after a downgrade, does not bring the row back
+    app3 = await make_app_with_db(db)
+    dev3 = app3.get_device(dev.ieee)
+
+    assert dev3.endpoints[1].basic._attr_cache.get(0x7777) is None
+    assert dev3.store[MIGRATED_VALUE] == 5
+
+    await app3.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("resolver", "migrated"),
+    [
+        (None, False),
+        # A resolver that keeps the device applied no quirk
+        (lambda device: device, False),
+        (_quirk_resolver(Basic), True),
+    ],
+)
+async def test_attribute_row_migration_only_for_quirked_devices(
+    tmp_path, resolver, migrated
+) -> None:
+    """Only quirk-replaced devices migrate, once, and only rows with values."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+    await app.shutdown()
+
+    # Defined attribute
+    _insert_attr_row(db, Basic.AttributeDefs.zcl_version.id, 3)
+    # Undefined attributes, the first with a value
+    _insert_attr_row(db, 0x7777, b"\x05\x00", DataTypeId.uint16)
+    _insert_attr_row(db, 0x7778, None, status=ZCLStatus.UNSUPPORTED_ATTRIBUTE)
+    _insert_attr_row(db, 0x7779, b"\x05", DataTypeId.unk)
+
+    with patch.object(
+        zigpy.zcl.Cluster,
+        "migrate_attribute_cache_row",
+        autospec=True,
+        return_value=False,
+    ) as migrate:
+        app2 = await make_app_with_db(db, device_resolver=resolver)
+
+    basic2 = app2.get_device(dev.ieee).endpoints[1].basic
+
+    if migrated:
+        # Called on the quirked device's cluster in the second pass only
+        migrate.assert_called_once()
+        cluster, row, value = migrate.mock_calls[0].args
+        assert cluster is basic2
+        assert row.attr_id == 0x7777
+        assert value == 5
+    else:
+        migrate.assert_not_called()
+
+    # Rows that are not migrated load as before
+    assert basic2.get(Basic.AttributeDefs.zcl_version.name) == 3
+    assert basic2._attr_cache.get(0x7777) == 5
+
+    await app2.shutdown()
+
+    assert _read_attr_row(db, Basic.cluster_id, 0x7777) == (
+        b"\x05\x00",
+        DataTypeId.uint16,
+    )
+
+
+async def test_attribute_row_migration_error(tmp_path, caplog) -> None:
+    """A failing migration is logged and keeps the row."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+    await app.shutdown()
+
+    _insert_attr_row(db, Basic.AttributeDefs.zcl_version.id, 3)
+    _insert_attr_row(db, 0x7777, 5)
+
+    with caplog.at_level(logging.WARNING):
+        app2 = await make_app_with_db(
+            db, device_resolver=_quirk_resolver(FailingMigrationBasic)
+        )
+
+    assert "Failed to migrate attribute 0x7777" in caplog.text
+    assert "Broken migration" in caplog.text
+
+    basic2 = app2.get_device(dev.ieee).endpoints[1].basic
+    assert basic2.get(Basic.AttributeDefs.zcl_version.name) == 3
+    assert basic2._attr_cache.get(0x7777) == 5
+
+    await app2.shutdown()
+
+    assert _read_attr_row(db, Basic.cluster_id, 0x7777) == (5, None)
+
+
+@pytest.mark.parametrize("commit_interval", [None, 0])
+async def test_attribute_row_migration_in_load_transaction(
+    tmp_path, commit_interval
+) -> None:
+    """Migrated values are written by the load itself, not queued for the worker."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+    await app.shutdown()
+
+    _insert_attr_row(db, 0x7777, 5)
+    _insert_attr_row(db, 0x7776, 6)
+
+    enqueued = []
+    enqueue = zigpy.appdb.PersistingListener.enqueue
+
+    def spy(listener, cb_name, *args):
+        enqueued.append(cb_name)
+        enqueue(listener, cb_name, *args)
+
+    with patch.object(zigpy.appdb.PersistingListener, "enqueue", spy):
+        app2 = await make_app_with_db(
+            db,
+            device_resolver=_quirk_resolver(MigratingBasic),
+            commit_interval=commit_interval,
+        )
+
+    assert "_save_store_value" not in enqueued
+    assert _count_store_rows(db, dev.ieee) == 2
+    assert _read_attr_row(db, Basic.cluster_id, 0x7777) is None
+    assert _read_attr_row(db, Basic.cluster_id, 0x7776) is None
+
+    # The store writes the load made are not reported as lost
+    await app2.flush_database()
+
+    # Writes after the load reach the database through the worker again
+    app2.get_device(dev.ieee).store[MIGRATED_VALUE] = 7
+    await app2.flush_database()
+    await app2.shutdown()
+
+    app3 = await make_app_with_db(db)
+    dev3 = app3.get_device(dev.ieee)
+    assert dev3.store[MIGRATED_VALUE] == 7
+    assert dev3.store[OTHER_MIGRATED_VALUE] == 6
+    await app3.shutdown()
+
+
+async def test_attribute_row_not_offered_if_defined_under_other_code(
+    tmp_path,
+) -> None:
+    """An attribute ID the cluster still defines is not migrated, whatever the code."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+    await app.shutdown()
+
+    _insert_attr_row(db, 0x7777, 5)
+
+    app2 = await make_app_with_db(
+        db, device_resolver=_quirk_resolver(ManufacturerSpecificBasic)
+    )
+    assert MIGRATED_VALUE not in app2.get_device(dev.ieee).store
+    await app2.shutdown()
+
+    assert _read_attr_row(db, Basic.cluster_id, 0x7777) == (5, None)
+
+
+@pytest.mark.parametrize("failure", ["write", "closed"])
+async def test_attribute_row_kept_if_value_not_saved(tmp_path, caplog, failure) -> None:
+    """Rows are kept, to be migrated again, if their value does not reach the database."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+    await app.shutdown()
+
+    _insert_attr_row(db, 0x7777, 5)
+
+    if failure == "write":
+        resolver = _quirk_resolver(MigratingBasic)
+        save = patch.object(
+            zigpy.appdb.PersistingListener,
+            "_save_store_value",
+            side_effect=sqlite3.OperationalError("Broken"),
+        )
+        message = "Failed to write quirk:test/migrated"
+    else:
+        resolver = _quirk_resolver(ClosingMigrationBasic)
+        save = contextlib.nullcontext()
+        message = "its store is closed"
+
+    with save, caplog.at_level(logging.WARNING):
+        app2 = await make_app_with_db(db, device_resolver=resolver)
+
+    assert message in caplog.text
+    assert _read_attr_row(db, Basic.cluster_id, 0x7777) == (5, None)
+    assert _count_store_rows(db, dev.ieee) == 0
+
+    await app2.shutdown()

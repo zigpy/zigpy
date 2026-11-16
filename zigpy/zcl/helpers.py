@@ -25,7 +25,11 @@ UNMIGRATED_MANUFACTURER_CODE = -1
 
 
 class AttributeCacheRow(NamedTuple):
-    """A row from the attribute cache table. This format is internal and will change."""
+    """A row from the attribute cache table.
+
+    Quirks receive rows in `Cluster.migrate_attribute_cache_row` and may read their
+    fields. Fields may be added, and the format of `value` follows the database schema.
+    """
 
     ieee: t.EUI64
     endpoint_id: int
@@ -67,6 +71,9 @@ class AttributeCacheLoadResult:
     untyped: list[tuple[AttributeCacheRow, ZCLAttributeDef]] = field(
         default_factory=list
     )
+
+    # Rows of undefined attributes that a cluster migrated, deleted through `changes`
+    migrated: list[AttributeCacheRow] = field(default_factory=list)
 
 
 def _convert_attribute_value(attr_def: ZCLAttributeDef, type_value: TypeValue) -> Any:
