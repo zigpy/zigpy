@@ -9,6 +9,7 @@ store never interprets them. A `StoredValue` declaration gives a key its type, t
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
+import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
@@ -210,6 +211,9 @@ class DeviceStore:
     `device.store[DECL]` reads, `device.store[DECL] = value` writes and
     `del device.store[DECL]` deletes. `namespace()` exposes the untyped map for keys
     that are only known at runtime.
+
+    Reads return the stored JSON object itself: changing a list or dict in place
+    neither emits an event nor persists it, so set the changed value again instead.
     """
 
     def __init__(self, stores: DeviceStores, ieee: t.EUI64) -> None:
@@ -217,6 +221,10 @@ class DeviceStore:
         self.ieee = ieee
         self._namespaces: dict[str, StoreNamespace] = {}
         self._closed = False
+        self._change_callbacks: dict[
+            tuple[str, str],
+            list[Callable[[StoreValueUpdatedEvent | StoreValueDeletedEvent], None]],
+        ] = {}
 
     @property
     def closed(self) -> bool:
@@ -238,6 +246,20 @@ class DeviceStore:
     def _emit(self, event: StoreValueUpdatedEvent | StoreValueDeletedEvent) -> None:
         self._stores.emit(event.event_type, event)
 
+        for callback in list(
+            self._change_callbacks.get((event.namespace, event.key), ())
+        ):
+            try:
+                callback(event)
+            except Exception:  # noqa: BLE001
+                LOGGER.exception(
+                    "[%s] Error calling store change callback %r for %s/%s",
+                    self.ieee,
+                    callback,
+                    event.namespace,
+                    event.key,
+                )
+
     def _current_item(self, decl: StoredValue[T]) -> StoreItem:
         """Return the row for `decl` at its declared version, migrating a stale row."""
         namespace = self.namespace(decl.namespace)
@@ -245,6 +267,19 @@ class DeviceStore:
 
         if item.version == decl.version:
             return item
+
+        if item.version > decl.version:
+            # Written by newer code, e.g. before a downgrade. It reads as absent and is
+            # kept, so upgrading again finds it unchanged.
+            LOGGER.debug(
+                "[%s] Ignoring %s/%s store value from a newer version (%d > %d)",
+                self.ieee,
+                decl.namespace,
+                decl.key,
+                item.version,
+                decl.version,
+            )
+            raise KeyError(decl.key)
 
         if decl.migrate is None:
             LOGGER.warning(
@@ -286,9 +321,23 @@ class DeviceStore:
     def get(self, decl: StoredValue[T], default: D) -> T | D: ...
 
     def get(self, decl: StoredValue[T], default: Any = None) -> Any:
+        """Return the value, or `default` if it is absent or cannot be decoded.
+
+        A value that cannot be decoded (a removed enum member, an unexpected type) is
+        logged and kept, so that a single bad value cannot stop a device from loading.
+        """
         try:
             return self[decl]
         except KeyError:
+            return default
+        except (TypeError, ValueError):
+            LOGGER.warning(
+                "[%s] Failed to decode %s/%s store value",
+                self.ieee,
+                decl.namespace,
+                decl.key,
+                exc_info=True,
+            )
             return default
 
     def __setitem__(self, decl: StoredValue[T], value: T) -> None:
@@ -318,25 +367,17 @@ class DeviceStore:
         decl: StoredValue[Any],
         callback: Callable[[StoreValueUpdatedEvent | StoreValueDeletedEvent], None],
     ) -> Callable[[], None]:
-        """Call `callback` whenever the value for `decl` is set or deleted."""
-        ieee = str(self.ieee)
+        """Call `callback` whenever the value for `decl` is set or deleted.
 
-        def filtered(event: StoreValueUpdatedEvent | StoreValueDeletedEvent) -> None:
-            if (
-                event.device_ieee == ieee
-                and event.namespace == decl.namespace
-                and event.key == decl.key
-            ):
-                callback(event)
-
-        unsubscribes = [
-            self._stores.on_event(StoreValueUpdatedEvent.event_type, filtered),
-            self._stores.on_event(StoreValueDeletedEvent.event_type, filtered),
-        ]
+        Callbacks are held by this store, so they only fire for this device and stop
+        with it: a device added again under the same IEEE gets a new store.
+        """
+        callbacks = self._change_callbacks.setdefault((decl.namespace, decl.key), [])
+        callbacks.append(callback)
 
         def unsubscribe() -> None:
-            for unsub in unsubscribes:
-                unsub()
+            with contextlib.suppress(ValueError):
+                callbacks.remove(callback)
 
         return unsubscribe
 

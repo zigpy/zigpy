@@ -200,7 +200,7 @@ def test_version_mismatch_without_migrate(
 ) -> None:
     ieee = make_ieee(1)
     store = stores[ieee]
-    store.namespace("quirk:test").set("mode", 1, version=99)
+    store.namespace("quirk:test").set("mode", 1, version=0)
     listener.reset_mock()
 
     with caplog.at_level(logging.WARNING):
@@ -220,7 +220,7 @@ def test_version_mismatch_without_migrate(
 @pytest.mark.parametrize(
     ("migrate", "expected"),
     [
-        (lambda old_version, value: value * old_version, 40),
+        (lambda old_version, value: value * (old_version + 9), 40),
         (lambda old_version, value: None, None),
     ],
 )
@@ -230,7 +230,7 @@ def test_version_mismatch_with_migrate(stores: DeviceStores, migrate, expected) 
     )
     store = stores[make_ieee(1)]
     ns = store.namespace("quirk:test")
-    ns.set("count", 4, version=10)
+    ns.set("count", 4, version=1)
 
     assert store.get(decl) == expected
 
@@ -397,3 +397,72 @@ def test_reopen(stores: DeviceStores) -> None:
     stores.reopen(ieee)
     assert stores[ieee] is not store
     assert not stores[ieee].closed
+
+
+def test_newer_version_kept(stores: DeviceStores, listener: MagicMock) -> None:
+    """A value written by newer code reads as absent and is not deleted."""
+    store = stores[make_ieee(1)]
+    ns = store.namespace("quirk:test")
+    ns.set("mode", 1, version=2)
+    listener.reset_mock()
+
+    migrate = MagicMock()
+    decl = StoredValue(namespace="quirk:test", key="mode", type=Mode, migrate=migrate)
+
+    assert decl not in store
+    assert store.get(decl) is None
+
+    with pytest.raises(KeyError):
+        store[decl]
+
+    assert ns.item("mode").version == 2
+    assert migrate.mock_calls == []
+    assert listener.mock_calls == []
+
+
+@pytest.mark.parametrize("value", [None, "x", [1]])
+def test_get_undecodable(
+    stores: DeviceStores, caplog: pytest.LogCaptureFixture, value
+) -> None:
+    """A value that cannot be decoded is logged and kept, `get` returns the default."""
+    store = stores[make_ieee(1)]
+    store.namespace("quirk:test")["count"] = value
+
+    with caplog.at_level(logging.WARNING):
+        assert store.get(COUNT, 5) == 5
+
+    assert "Failed to decode quirk:test/count store value" in caplog.text
+    assert store.namespace("quirk:test")["count"] == value
+
+    with pytest.raises((TypeError, ValueError)):
+        store[COUNT]
+
+
+def test_on_change_callback_error(
+    stores: DeviceStores, listener: MagicMock, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A failing change callback does not stop other callbacks or persistence."""
+    store = stores[make_ieee(1)]
+    failing = MagicMock(side_effect=RuntimeError)
+    callback = MagicMock()
+    store.on_change(COUNT, failing)
+    store.on_change(COUNT, callback)
+
+    store[COUNT] = 1
+
+    assert "Error calling store change callback" in caplog.text
+    assert len(callback.mock_calls) == 1
+    assert len(listener.mock_calls) == 1
+
+
+def test_on_change_not_inherited(stores: DeviceStores) -> None:
+    """Callbacks stay with the removed device's store."""
+    ieee = make_ieee(1)
+    callback = MagicMock()
+    stores[ieee].on_change(COUNT, callback)
+
+    stores.pop(ieee)
+    stores.reopen(ieee)
+    stores[ieee][COUNT] = 1
+
+    assert callback.mock_calls == []
