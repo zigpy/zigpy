@@ -3704,3 +3704,29 @@ async def test_device_store_not_saved_for_removed_device(tmp_path):
     assert _count_store_rows(db, dev.ieee) == 0
 
     await app.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_undecodable_row_skipped(tmp_path, caplog):
+    """A row that is not valid JSON is skipped instead of failing the whole load."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    dev, _, _ = _add_joined_device(app)
+    dev.store[STORE_COUNT] = 1
+    dev.store.namespace("quirk:test")["other"] = 2
+    await app.shutdown()
+
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            f"UPDATE device_store{zigpy.appdb.DB_V} SET value = '{{' WHERE key = 'other'"
+        )
+
+    with caplog.at_level(logging.WARNING):
+        app2 = await make_app_with_db(db)
+
+    assert "Skipping undecodable store value quirk:test/other" in caplog.text
+    dev2 = app2.get_device(dev.ieee)
+    assert dev2.store[STORE_COUNT] == 1
+    assert "other" not in dev2.store.namespace("quirk:test")
+
+    await app2.shutdown()

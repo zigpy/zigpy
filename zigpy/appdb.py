@@ -1341,9 +1341,21 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _load_device_store(self) -> None:
         async with self.execute(f"SELECT * FROM device_store{DB_V}") as cursor:
             async for ieee, namespace, key, value, version, last_updated in cursor:
+                try:
+                    decoded = json.loads(value)
+                except ValueError:
+                    LOGGER.warning(
+                        "Skipping undecodable store value %s/%s of %s: %r",
+                        namespace,
+                        key,
+                        ieee,
+                        value,
+                    )
+                    continue
+
                 self._application.device_stores[ieee].namespace(namespace).restore(
                     key,
-                    json.loads(value),
+                    decoded,
                     version=version,
                     last_updated=datetime.fromtimestamp(last_updated, UTC),
                 )
