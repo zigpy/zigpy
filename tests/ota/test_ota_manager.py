@@ -1,3 +1,4 @@
+import asyncio
 import itertools
 import time
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -919,6 +920,72 @@ async def test_ota_manager_deferred_download_failure():
     mock_fetch = AsyncMock(side_effect=aiohttp.ClientError("Download failed"))
     with (
         patch.object(OtaImageWithMetadata, "fetch", mock_fetch),
-        pytest.raises(aiohttp.ClientError, match="Download failed"),
+        pytest.raises(
+            zigpy.exceptions.OtaImageDownloadError,
+            match="^Failed to download the firmware image: Download failed$",
+        ) as exc_info,
+    ):
+        await update_firmware(MagicMock(), deferred_image)
+
+    assert isinstance(exc_info.value.__cause__, aiohttp.ClientError)
+
+
+async def test_ota_manager_deferred_download_failure_empty_message():
+    """Test that a fetch failure without a message names the exception type."""
+
+    deferred_image = zigpy.ota.OtaImageWithMetadata(
+        metadata=FW_IMAGE.metadata.replace(trusted=True),
+        firmware=None,
+    )
+
+    mock_fetch = AsyncMock(side_effect=ValueError())
+    with (
+        patch.object(OtaImageWithMetadata, "fetch", mock_fetch),
+        pytest.raises(
+            zigpy.exceptions.OtaImageDownloadError,
+            match=r"^Failed to download the firmware image: ValueError\(\)$",
+        ),
+    ):
+        await update_firmware(MagicMock(), deferred_image)
+
+
+async def test_ota_manager_deferred_download_timeout():
+    """Test that a download timeout is not reported as a bare `TimeoutError`."""
+
+    deferred_image = zigpy.ota.OtaImageWithMetadata(
+        metadata=FW_IMAGE.metadata.replace(trusted=True),
+        firmware=None,
+    )
+
+    async def slow_fetch(*args, **kwargs):
+        await asyncio.sleep(10)
+
+    with (
+        patch.object(zigpy.ota, "OTA_FETCH_TIMEOUT", 0.01),
+        patch.object(OtaImageWithMetadata, "fetch", slow_fetch),
+        pytest.raises(
+            zigpy.exceptions.OtaImageDownloadError,
+            match="^Timed out downloading the firmware image$",
+        ) as exc_info,
+    ):
+        await update_firmware(MagicMock(), deferred_image)
+
+    assert isinstance(exc_info.value.__cause__, TimeoutError)
+    # Callers telling an unresponsive device apart from a failed download rely on this
+    assert not isinstance(exc_info.value, TimeoutError)
+
+
+async def test_ota_manager_deferred_download_cancelled():
+    """Test that cancelling the update during the download is not wrapped."""
+
+    deferred_image = zigpy.ota.OtaImageWithMetadata(
+        metadata=FW_IMAGE.metadata.replace(trusted=True),
+        firmware=None,
+    )
+
+    mock_fetch = AsyncMock(side_effect=asyncio.CancelledError())
+    with (
+        patch.object(OtaImageWithMetadata, "fetch", mock_fetch),
+        pytest.raises(asyncio.CancelledError),
     ):
         await update_firmware(MagicMock(), deferred_image)
