@@ -32,7 +32,7 @@ import zigpy.listeners
 import zigpy.ota
 import zigpy.profiles
 import zigpy.state
-from zigpy.store import DeviceStores
+from zigpy.store import DeviceStores, NetworkStore
 import zigpy.topology
 import zigpy.types as t
 import zigpy.util
@@ -84,6 +84,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
     def __init__(self, config: dict) -> None:
         self.devices: dict[t.EUI64, BaseDevice] = {}
         self.device_stores = DeviceStores()
+        self.network_store = NetworkStore()
         self.state: zigpy.state.State = zigpy.state.State()
         self._listeners = {}
         self._config = self.SCHEMA(config)
@@ -183,6 +184,19 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         self._dblistener = await zigpy.appdb.PersistingListener.new(database_file, self)
         await self._dblistener.load()
         self._add_db_listeners()
+
+    async def flush_database(self) -> None:
+        """Wait until all changes made so far are committed to the database.
+
+        Raises `zigpy.exceptions.DatabaseFlushError` if the commit fails, if a store
+        write failed or was rolled back since the previous flush, or if the database has
+        been shut down. Only this method reports such failures: `shutdown()` logs them.
+        Does nothing without a database.
+        """
+        if self._dblistener is None:
+            return
+
+        await self._dblistener.flush()
 
     def _add_db_listeners(self):
         if self._dblistener is None:
