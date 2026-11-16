@@ -266,3 +266,24 @@ CREATE TABLE gp_devices_v17 (
 
 CREATE UNIQUE INDEX gp_devices_idx_v17
     ON gp_devices_v17(ieee);
+
+
+-- Device store: per-device key/value state that is not a ZCL attribute, such as Tuya
+-- datapoint values or quirk settings. Values are opaque JSON. Zigbee and Green Power
+-- devices both have one.
+DROP TABLE IF EXISTS device_store_v17;
+CREATE TABLE device_store_v17 (
+    ieee ieee NOT NULL,
+    namespace TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    last_updated REAL NOT NULL,
+
+    FOREIGN KEY(ieee)
+        REFERENCES devices_v17(ieee)
+        ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX device_store_idx_v17
+    ON device_store_v17(ieee, namespace, key);

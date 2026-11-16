@@ -44,6 +44,7 @@ from zigpy.device import Device, GreenPowerDevice, Status
 import zigpy.endpoint
 import zigpy.group
 import zigpy.ota
+from zigpy.store import StoredValue
 import zigpy.types as t
 import zigpy.zcl
 from zigpy.zcl import (
@@ -3385,5 +3386,412 @@ async def test_load_with_green_power_device(tmp_path):
     await app._load_db()
 
     assert app.devices[gpd.ieee] is gpd
+
+    await app.shutdown()
+
+
+STORE_COUNT = StoredValue(namespace="quirk:test", key="count", type=int)
+
+
+def _count_store_rows(db, ieee=None) -> int:
+    with sqlite3.connect(db) as conn:
+        if ieee is None:
+            cur = conn.execute(f"SELECT COUNT(*) FROM device_store{zigpy.appdb.DB_V}")
+        else:
+            cur = conn.execute(
+                f"SELECT COUNT(*) FROM device_store{zigpy.appdb.DB_V} WHERE ieee = ?",
+                (str(ieee),),
+            )
+        return cur.fetchone()[0]
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_round_trip(tmp_path):
+    """Store values set before and after initialization survive a reload."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ep.add_input_cluster(0)
+
+    # Set before the device is initialized, persisted by the full save
+    dev.store.namespace("tuya").set("1", {"a": [1, 2.5, None, "x"]}, version=3)
+    app.device_initialized(dev)
+
+    # Set after, persisted by the event
+    dev.store[STORE_COUNT] = 42
+    tuya_item = dev.store.namespace("tuya").item("1")
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(ieee)
+
+    assert dev2.store[STORE_COUNT] == 42
+    assert dev2.store.last_updated(STORE_COUNT).timestamp() == pytest.approx(
+        dev.store.last_updated(STORE_COUNT).timestamp()
+    )
+
+    item = dev2.store.namespace("tuya").item("1")
+    assert item.value == {"a": [1, 2.5, None, "x"]}
+    assert item.version == 3
+    assert item.last_updated.timestamp() == pytest.approx(
+        tuya_item.last_updated.timestamp()
+    )
+
+    # Update and delete persist as well
+    dev2.store[STORE_COUNT] = 43
+    del dev2.store.namespace("tuya")["1"]
+    await app2.shutdown()
+
+    app3 = await make_app_with_db(db)
+    dev3 = app3.get_device(ieee)
+
+    assert dev3.store[STORE_COUNT] == 43
+    assert "1" not in dev3.store.namespace("tuya")
+    assert _count_store_rows(db) == 1
+
+    await app3.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_removed_with_device(tmp_path):
+    """Removing a device drops its store rows and in-memory store."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev, _, _ = _add_joined_device(app)
+    dev.store[STORE_COUNT] = 1
+    await app._dblistener._callback_handlers.join()
+
+    assert _count_store_rows(db, dev.ieee) == 1
+
+    app._dblistener.device_removed(dev)
+    await app._dblistener._callback_handlers.join()
+
+    assert _count_store_rows(db, dev.ieee) == 0
+
+    await app.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_visible_to_resolver(tmp_path):
+    """Quirks resolving a device at load time can read its store."""
+    seen = []
+
+    def resolver(device):
+        seen.append(device.store.get(STORE_COUNT))
+        return device
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    dev, _, _ = _add_joined_device(app)
+    dev.store[STORE_COUNT] = 7
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db, device_resolver=resolver)
+
+    assert seen == [7]
+
+    await app2.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_set_before_device_saved(tmp_path, caplog):
+    """A value set before the device row exists is skipped quietly, then saved."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+    dev = app.get_device(ieee)
+
+    caplog.clear()
+
+    with caplog.at_level(logging.DEBUG, logger="zigpy.appdb"):
+        dev.store[STORE_COUNT] = 5
+        await app._dblistener._callback_handlers.join()
+
+    # SQL errors from the worker are only logged at debug level
+    assert not [r for r in caplog.records if r.name == "zigpy.appdb" and r.exc_info]
+    assert _count_store_rows(db, ieee) == 0
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ep.add_input_cluster(0)
+    app.device_initialized(dev)
+    await app.shutdown()
+
+    assert _count_store_rows(db, ieee) == 1
+
+    app2 = await make_app_with_db(db)
+    assert app2.get_device(ieee).store[STORE_COUNT] == 5
+    await app2.shutdown()
+
+
+async def test_device_store_survives_reinterview(tmp_path) -> None:
+    """A re-interview deletes the old device row, but its store is written back."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    ieee = t.EUI64.convert("aa:bb:cc:dd:11:22:33:44")
+    nwk = t.NWK(0x1234)
+    dev = app.add_device(nwk=nwk, ieee=ieee)
+    dev.node_desc = make_node_desc()
+    ep1 = dev.add_endpoint(1)
+    ep1.status = zigpy.endpoint.Status.ZDO_INIT
+    ep1.profile_id = 260
+    ep1.device_type = profiles.zha.DeviceType.PUMP
+    ep1.add_input_cluster(Basic.cluster_id)
+    app.device_initialized(dev)
+    dev.store[STORE_COUNT] = 3
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    old_dev = app2.get_device(ieee)
+    assert old_dev.store[STORE_COUNT] == 3
+
+    shadow = Device(app2, ieee, nwk)
+    shadow.node_desc = make_node_desc()
+    shadow.status = Status.ENDPOINTS_INIT
+    ep2 = shadow.add_endpoint(2)
+    ep2.status = zigpy.endpoint.Status.ZDO_INIT
+    ep2.profile_id = 260
+    ep2.device_type = profiles.zha.DeviceType.PUMP
+    ep2.add_input_cluster(Basic.cluster_id)
+
+    await app2._device_reinterviewed(old_dev, shadow)
+    new_dev = app2.get_device(ieee)
+    assert new_dev is not old_dev
+    assert new_dev.store is old_dev.store
+    await app2.shutdown()
+
+    assert _count_store_rows(db, ieee) == 1
+
+    app3 = await make_app_with_db(db)
+    assert app3.get_device(ieee).store[STORE_COUNT] == 3
+    await app3.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_closed_on_remove(tmp_path):
+    """Removing a device deletes its rows, and later writes do not recreate them."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev, _, _ = _add_joined_device(app)
+    dev.store[STORE_COUNT] = 1
+    old_store = dev.store
+    await app._dblistener._callback_handlers.join()
+    assert _count_store_rows(db, dev.ieee) == 1
+
+    dev.zdo.leave = AsyncMock()
+    await app.remove(dev.ieee)
+
+    # Written while the leave request is still pending
+    dev.store[STORE_COUNT] = 2
+    assert dev.store[STORE_COUNT] == 1
+
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    assert dev.ieee not in app.devices
+    assert dev.ieee not in app.device_stores
+
+    # Written through a reference that outlived the device
+    old_store[STORE_COUNT] = 3
+    assert old_store.closed
+    assert STORE_COUNT not in old_store
+
+    await app.shutdown()
+    assert _count_store_rows(db, dev.ieee) == 0
+
+
+async def test_gp_device_store_round_trip(tmp_path):
+    """Green Power devices have a store, saved with the device and removed with it."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    # Set before commissioning saves the device row
+    gp_ieee = synthetic_ieee(GP_SOURCE_ID)
+    app.device_stores[gp_ieee][STORE_COUNT] = 1
+    await commission_with_key(app, KEY, frame_counter=1)
+    device = app.devices[gp_ieee]
+    assert device.store[STORE_COUNT] == 1
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    restored = app2.devices[gp_ieee]
+    assert isinstance(restored, GreenPowerDevice)
+    assert restored.store[STORE_COUNT] == 1
+
+    restored.store[STORE_COUNT] = 2
+    await app2._dblistener._callback_handlers.join()
+    await app2.shutdown()
+
+    app3 = await make_app_with_db(db)
+    assert app3.devices[gp_ieee].store[STORE_COUNT] == 2
+
+    app3.green_power.unpair = AsyncMock()
+    await app3.remove(gp_ieee)
+    assert gp_ieee not in app3.devices
+    assert app3.device_stores[gp_ieee].closed
+    await app3._dblistener._callback_handlers.join()
+    assert _count_store_rows(db, gp_ieee) == 0
+
+    # Commissioned again, the GPD gets a new, empty store, also in join listeners
+    joined_stores = []
+    listener = MagicMock()
+    listener.device_joined = lambda device: joined_stores.append(device.store)
+    app3.add_listener(listener)
+
+    await commission_with_key(app3, KEY, frame_counter=20)
+    recommissioned = app3.devices[gp_ieee]
+    assert joined_stores == [recommissioned.store]
+    assert not recommissioned.store.closed
+    assert STORE_COUNT not in recommissioned.store
+
+    recommissioned.store[STORE_COUNT] = 3
+    await app3.shutdown()
+
+    app4 = await make_app_with_db(db)
+    assert app4.devices[gp_ieee].store[STORE_COUNT] == 3
+    await app4.shutdown()
+
+
+@pytest.mark.parametrize("used_before_removal", [True, False])
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_not_inherited_after_rejoin(tmp_path, used_before_removal):
+    """Writes through a removed device never reach a device re-added with its IEEE."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev, _, _ = _add_joined_device(app)
+
+    if used_before_removal:
+        dev.store[STORE_COUNT] = 1
+
+    dev.zdo.leave = AsyncMock()
+    await app.remove(dev.ieee)
+
+    # The first write may only happen while the leave request is pending
+    dev.store[STORE_COUNT] = 2
+
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    assert dev.ieee not in app.devices
+
+    # A device object that never used its store before removal
+    stale = Device(app, dev.ieee, dev.nwk)
+    dev.store[STORE_COUNT] = 3
+    stale.store[STORE_COUNT] = 4
+    assert dev.store.closed
+    assert stale.store is dev.store
+    assert STORE_COUNT not in stale.store
+
+    # The same device joins again and gets an empty store
+    app.handle_join(dev.nwk, dev.ieee, 0)
+    new_dev = app.get_device(dev.ieee)
+    assert new_dev is not dev
+    assert not new_dev.store.closed
+    assert STORE_COUNT not in new_dev.store
+
+    # Old references still cannot write
+    dev.store[STORE_COUNT] = 5
+    stale.store[STORE_COUNT] = 6
+    assert STORE_COUNT not in new_dev.store
+
+    ep = new_dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ep.add_input_cluster(0)
+    app.device_initialized(new_dev)
+    new_dev.store[STORE_COUNT] = 7
+    await app.shutdown()
+
+    with sqlite3.connect(db) as conn:
+        rows = conn.execute(
+            f"SELECT namespace, key, value FROM device_store{zigpy.appdb.DB_V}"
+            " WHERE ieee = ?",
+            (str(dev.ieee),),
+        ).fetchall()
+
+    assert rows == [("quirk:test", "count", "7")]
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_not_saved_for_removed_device(tmp_path):
+    """A device save queued after removal started does not write the closed store."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev, _, _ = _add_joined_device(app)
+    dev.store[STORE_COUNT] = 1
+    await app._dblistener._callback_handlers.join()
+
+    app.device_stores.close(dev.ieee)
+    app._dblistener.device_removed(dev)
+    app._dblistener.raw_device_initialized(dev)
+    await app._dblistener._callback_handlers.join()
+
+    assert _count_store_rows(db, dev.ieee) == 0
+
+    await app.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_undecodable_row_skipped(tmp_path, caplog):
+    """A row that is not valid JSON is skipped instead of failing the whole load."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    dev, _, _ = _add_joined_device(app)
+    dev.store[STORE_COUNT] = 1
+    dev.store.namespace("quirk:test")["other"] = 2
+    await app.shutdown()
+
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            f"UPDATE device_store{zigpy.appdb.DB_V} SET value = '{{' WHERE key = 'other'"
+        )
+
+    with caplog.at_level(logging.WARNING):
+        app2 = await make_app_with_db(db)
+
+    assert "Skipping undecodable store value quirk:test/other" in caplog.text
+    dev2 = app2.get_device(dev.ieee)
+    assert dev2.store[STORE_COUNT] == 1
+    assert "other" not in dev2.store.namespace("quirk:test")
+
+    await app2.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_bound_at_construction(tmp_path):
+    """A device object that never used its store keeps the one it was created with."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev, _, _ = _add_joined_device(app)
+    untouched = Device(app, dev.ieee, dev.nwk)
+
+    dev.zdo.leave = AsyncMock()
+    await app.remove(dev.ieee)
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    app.handle_join(dev.nwk, dev.ieee, 0)
+    new_dev = app.get_device(dev.ieee)
+
+    # First access only after the device was added again
+    untouched.store[STORE_COUNT] = 1
+
+    assert untouched.store.closed
+    assert STORE_COUNT not in new_dev.store
 
     await app.shutdown()
