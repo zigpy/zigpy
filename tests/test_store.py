@@ -304,3 +304,96 @@ def test_stores_registry(stores: DeviceStores) -> None:
 
     assert ieee not in stores
     assert stores[ieee] is not store
+
+
+def test_closed_store_ignores_writes(stores: DeviceStores, listener: MagicMock) -> None:
+    ieee = make_ieee(1)
+    store = stores[ieee]
+    store[COUNT] = 1
+    listener.reset_mock()
+
+    stores.close(ieee)
+    assert store.closed
+    assert stores[ieee] is store
+
+    store[COUNT] = 2
+    del store[COUNT]
+    store.namespace("other")["k"] = 1
+
+    assert store[COUNT] == 1
+    assert "k" not in store.namespace("other")
+    assert listener.mock_calls == []
+
+    # Values that cannot be stored are still rejected
+    with pytest.raises(TypeError):
+        store[COUNT] = object()
+
+
+def test_pop_closes_store(stores: DeviceStores) -> None:
+    ieee = make_ieee(1)
+    store = stores[ieee]
+
+    assert stores.get(ieee) is store
+    assert stores.get(make_ieee(2)) is None
+    assert make_ieee(2) not in stores
+
+    stores.pop(ieee)
+
+    assert store.closed
+    assert stores.get(ieee) is None
+    assert stores[ieee] is store
+
+
+def test_closed_store_migrates_without_writing(stores: DeviceStores) -> None:
+    ieee = make_ieee(1)
+    store = stores[ieee]
+    store.namespace("quirk:test").restore(
+        "count", {"old": 5}, version=1, last_updated=datetime.now(UTC)
+    )
+    decl = StoredValue(
+        namespace="quirk:test",
+        key="count",
+        type=int,
+        version=2,
+        migrate=lambda version, value: value["old"],
+    )
+    stores.close(ieee)
+
+    assert store[decl] == 5
+    assert decl in store
+    assert store.namespace("quirk:test").item("count").version == 1
+
+
+def test_closed_store_delete_missing_key(stores: DeviceStores) -> None:
+    ieee = make_ieee(1)
+    stores.close(ieee)
+    stores[ieee]  # created open, then closed below
+    stores.close(ieee)
+
+    with pytest.raises(KeyError):
+        del stores[ieee].namespace("ns")["missing"]
+
+
+def test_reopen(stores: DeviceStores) -> None:
+    ieee = make_ieee(1)
+    store = stores[ieee]
+
+    # An open store is kept
+    stores.reopen(ieee)
+    assert stores[ieee] is store
+
+    # A store closed for a pending removal is replaced
+    stores.close(ieee)
+    stores.reopen(ieee)
+    assert stores[ieee] is not store
+    assert not stores[ieee].closed
+
+    # A removed store stays reachable, closed, until the IEEE is added again
+    store = stores[ieee]
+    stores.pop(ieee)
+    assert stores[ieee] is store
+    assert store.closed
+
+    stores.reopen(ieee)
+    assert stores[ieee] is not store
+    assert not stores[ieee].closed

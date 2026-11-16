@@ -269,8 +269,8 @@ CREATE UNIQUE INDEX gp_devices_idx_v17
 
 
 -- Device store: per-device key/value state that is not a ZCL attribute, such as Tuya
--- datapoint values or quirk settings. Values are opaque JSON. Only Zigbee devices have
--- a store, Green Power devices do not.
+-- datapoint values or quirk settings. Values are opaque JSON. Zigbee and Green Power
+-- devices both have one.
 DROP TABLE IF EXISTS device_store_v17;
 CREATE TABLE device_store_v17 (
     ieee ieee NOT NULL,

@@ -570,7 +570,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             await self._save_attribute_cache(ep)
             await self._save_unsupported_attributes(ep)
         await self._save_ota_query_cache(device)
-        await self._save_device_store(device)
+        await self._save_device_store(device.ieee)
         await self._commit(force=True)
 
     async def _save_endpoints(self, device: Device) -> None:
@@ -903,17 +903,25 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         )
         await self._commit()
 
-    async def _save_device_store(self, device: Device) -> None:
+    async def _save_device_store(self, ieee: t.EUI64) -> None:
+        # Writes are skipped until the device row exists (see `_save_store_value`), so
+        # saving the device writes its whole store. This also restores the rows that a
+        # re-interview deleted along with the old device row.
+        store = self._application.device_stores.get(ieee)
+
+        if store is None or store.closed:
+            return
+
         rows = [
             (
-                device.ieee,
+                ieee,
                 namespace.name,
                 key,
                 json.dumps(item.value),
                 item.version,
                 item.last_updated.timestamp(),
             )
-            for namespace in device.store.namespaces()
+            for namespace in store.namespaces()
             for key, item in namespace.items()
         ]
 
@@ -933,10 +941,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self.enqueue("_save_store_value", event)
 
     async def _save_store_value(self, event: StoreValueUpdatedEvent) -> None:
-        await self.execute(
+        # A value can be set before its device is saved (during joining, by a quirk, or
+        # for a device that never finishes initializing). There is no row to reference
+        # yet, so the value is written by the device save instead.
+        cursor = await self.execute(
             f"""INSERT INTO device_store{DB_V}
                     (ieee, namespace, key, value, version, last_updated)
-                VALUES (?, ?, ?, ?, ?, ?)
+                SELECT ?, ?, ?, ?, ?, ?
+                WHERE EXISTS (SELECT 1 FROM devices{DB_V} WHERE ieee = ?)
                 ON CONFLICT (ieee, namespace, key) DO UPDATE SET
                     value=excluded.value,
                     version=excluded.version,
@@ -948,8 +960,18 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 json.dumps(event.value),
                 event.version,
                 event.last_updated.timestamp(),
+                event.device_ieee,
             ),
         )
+
+        if cursor.rowcount == 0:
+            LOGGER.debug(
+                "Not saving %s/%s for %s yet, the device is not saved",
+                event.namespace,
+                event.key,
+                event.device_ieee,
+            )
+
         await self._commit()
 
     def on_store_value_deleted(self, event: StoreValueDeletedEvent) -> None:
@@ -1017,6 +1039,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             f" ON CONFLICT (ieee) DO UPDATE SET {updates}",
             row,
         )
+        await self._save_device_store(row["ieee"])
         await self._commit(force=True)
 
     async def _save_gp_frame_counter(

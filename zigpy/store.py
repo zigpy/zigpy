@@ -125,9 +125,24 @@ class StoreNamespace:
         *,
         version: int = DEFAULT_VERSION,
     ) -> None:
-        """Store a JSON value and emit `StoreValueUpdatedEvent`."""
+        """Store a JSON value and emit `StoreValueUpdatedEvent`.
+
+        A closed store (its device was removed) ignores the write, so code still holding
+        a reference to a removed device cannot write rows for it.
+        """
+        value = normalize_json(value)
+
+        if self._store.closed:
+            LOGGER.debug(
+                "[%s] Ignoring write of %s/%s to a removed device's store",
+                self._store.ieee,
+                self.name,
+                key,
+            )
+            return
+
         item = StoreItem(
-            value=normalize_json(value),
+            value=value,
             version=version,
             last_updated=datetime.now(UTC),
         )
@@ -147,6 +162,18 @@ class StoreNamespace:
         self.set(key, value)
 
     def __delitem__(self, key: str) -> None:
+        if key not in self._items:
+            raise KeyError(key)
+
+        if self._store.closed:
+            LOGGER.debug(
+                "[%s] Ignoring delete of %s/%s from a removed device's store",
+                self._store.ieee,
+                self.name,
+                key,
+            )
+            return
+
         del self._items[key]
         self._store._emit(
             StoreValueDeletedEvent(
@@ -189,6 +216,15 @@ class DeviceStore:
         self._stores = stores
         self.ieee = ieee
         self._namespaces: dict[str, StoreNamespace] = {}
+        self._closed = False
+
+    @property
+    def closed(self) -> bool:
+        """Whether the device was removed. A closed store ignores writes and deletes."""
+        return self._closed
+
+    def close(self) -> None:
+        self._closed = True
 
     def namespace(self, name: str) -> StoreNamespace:
         if name not in self._namespaces:
@@ -228,6 +264,14 @@ class DeviceStore:
         if migrated is None:
             del namespace[decl.key]
             raise KeyError(decl.key)
+
+        if self.closed:
+            # Nothing can be written back, but the caller still gets the current layout
+            return StoreItem(
+                value=normalize_json(migrated),
+                version=decl.version,
+                last_updated=item.last_updated,
+            )
 
         namespace.set(decl.key, migrated, version=decl.version)
         return namespace.item(decl.key)
@@ -301,23 +345,47 @@ class DeviceStores(EventBase):
     """All device stores of an application, keyed by IEEE address.
 
     Owned by the application rather than the device so the store survives a device
-    object being replaced by a quirk. Only Zigbee devices have a store. Store events
-    are emitted here.
+    object being replaced by a quirk. Store events are emitted here.
     """
 
     def __init__(self) -> None:
         super().__init__()
         self._stores: dict[t.EUI64, DeviceStore] = {}
+        # Closed stores of removed devices, until a device with that IEEE is added
+        self._removed: dict[t.EUI64, DeviceStore] = {}
 
     def __getitem__(self, ieee: t.EUI64) -> DeviceStore:
+        # Code still holding a removed device must not create an open store that a
+        # device added again under the same IEEE would then inherit
+        if ieee in self._removed:
+            return self._removed[ieee]
+
         if ieee not in self._stores:
             self._stores[ieee] = DeviceStore(self, ieee)
 
         return self._stores[ieee]
 
+    def get(self, ieee: t.EUI64) -> DeviceStore | None:
+        """Return the store of `ieee` if it exists, without creating one."""
+        return self._stores.get(ieee)
+
+    def close(self, ieee: t.EUI64) -> None:
+        """Stop accepting writes for a device that is being removed."""
+        if ieee in self._stores:
+            self._stores[ieee].close()
+
     def pop(self, ieee: t.EUI64) -> None:
-        """Forget a removed device's store."""
-        self._stores.pop(ieee, None)
+        """Forget a removed device's store. References still held to it stay closed."""
+        store = self._stores.pop(ieee, None) or DeviceStore(self, ieee)
+        store.close()
+        self._removed[ieee] = store
+
+    def reopen(self, ieee: t.EUI64) -> None:
+        """Give a device added under `ieee` a new store if the last one was closed."""
+        self._removed.pop(ieee, None)
+
+        if ieee in self._stores and self._stores[ieee].closed:
+            del self._stores[ieee]
 
     def __contains__(self, ieee: object) -> bool:
         return ieee in self._stores
