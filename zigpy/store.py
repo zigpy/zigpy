@@ -234,6 +234,15 @@ class DeviceStore:
     def close(self) -> None:
         self._closed = True
 
+    def clear(self) -> None:
+        """Drop all values and change callbacks from memory, without emitting events."""
+        # Namespaces handed out earlier must not keep reading the values either
+        for namespace in self._namespaces.values():
+            namespace._items.clear()
+
+        self._namespaces.clear()
+        self._change_callbacks.clear()
+
     def namespace(self, name: str) -> StoreNamespace:
         if name not in self._namespaces:
             self._namespaces[name] = StoreNamespace(self, name)
@@ -372,12 +381,16 @@ class DeviceStore:
         Callbacks are held by this store, so they only fire for this device and stop
         with it: a device added again under the same IEEE gets a new store.
         """
-        callbacks = self._change_callbacks.setdefault((decl.namespace, decl.key), [])
+        key = (decl.namespace, decl.key)
+        callbacks = self._change_callbacks.setdefault(key, [])
         callbacks.append(callback)
 
         def unsubscribe() -> None:
             with contextlib.suppress(ValueError):
                 callbacks.remove(callback)
+
+            if not callbacks and self._change_callbacks.get(key) is callbacks:
+                del self._change_callbacks[key]
 
         return unsubscribe
 
@@ -411,14 +424,18 @@ class DeviceStores(EventBase):
         return self._stores.get(ieee)
 
     def close(self, ieee: t.EUI64) -> None:
-        """Stop accepting writes for a device that is being removed."""
-        if ieee in self._stores:
-            self._stores[ieee].close()
+        """Stop accepting writes for a device that is being removed.
+
+        A store is created if the device never used one, so that a first write while
+        the removal is pending cannot create an open one.
+        """
+        self[ieee].close()
 
     def pop(self, ieee: t.EUI64) -> None:
         """Forget a removed device's store. References still held to it stay closed."""
         store = self._stores.pop(ieee, None) or DeviceStore(self, ieee)
         store.close()
+        store.clear()
         self._removed[ieee] = store
 
     def reopen(self, ieee: t.EUI64) -> None:

@@ -367,8 +367,7 @@ def test_closed_store_migrates_without_writing(stores: DeviceStores) -> None:
 def test_closed_store_delete_missing_key(stores: DeviceStores) -> None:
     ieee = make_ieee(1)
     stores.close(ieee)
-    stores[ieee]  # created open, then closed below
-    stores.close(ieee)
+    assert stores[ieee].closed
 
     with pytest.raises(KeyError):
         del stores[ieee].namespace("ns")["missing"]
@@ -388,11 +387,18 @@ def test_reopen(stores: DeviceStores) -> None:
     assert stores[ieee] is not store
     assert not stores[ieee].closed
 
-    # A removed store stays reachable, closed, until the IEEE is added again
+    # A removed store stays reachable, closed and empty, until the IEEE is added again
     store = stores[ieee]
+    store[COUNT] = 1
+    namespace = store.namespace(COUNT.namespace)
+    callback = MagicMock()
+    store.on_change(COUNT, callback)
     stores.pop(ieee)
     assert stores[ieee] is store
     assert store.closed
+    assert COUNT not in store
+    assert COUNT.key not in namespace
+    assert store._change_callbacks == {}
 
     stores.reopen(ieee)
     assert stores[ieee] is not store
@@ -466,3 +472,15 @@ def test_on_change_not_inherited(stores: DeviceStores) -> None:
     stores[ieee][COUNT] = 1
 
     assert callback.mock_calls == []
+
+
+def test_on_change_unsubscribe_cleans_up(stores: DeviceStores) -> None:
+    store = stores[make_ieee(1)]
+    unsub1 = store.on_change(COUNT, MagicMock())
+    unsub2 = store.on_change(COUNT, MagicMock())
+
+    unsub1()
+    assert store._change_callbacks
+    unsub2()
+    unsub2()
+    assert store._change_callbacks == {}

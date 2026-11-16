@@ -3605,7 +3605,8 @@ async def test_device_store_closed_on_remove(tmp_path):
 
     # Written through a reference that outlived the device
     old_store[STORE_COUNT] = 3
-    assert old_store[STORE_COUNT] == 1
+    assert old_store.closed
+    assert STORE_COUNT not in old_store
 
     await app.shutdown()
     assert _count_store_rows(db, dev.ieee) == 0
@@ -3638,34 +3639,60 @@ async def test_gp_device_store_round_trip(tmp_path):
 
     app3.green_power.unpair = AsyncMock()
     await app3.remove(gp_ieee)
-    assert gp_ieee not in app3.device_stores
-    await app3.shutdown()
-
+    assert gp_ieee not in app3.devices
+    assert app3.device_stores[gp_ieee].closed
+    await app3._dblistener._callback_handlers.join()
     assert _count_store_rows(db, gp_ieee) == 0
 
+    # Commissioned again, the GPD gets a new, empty store, also in join listeners
+    joined_stores = []
+    listener = MagicMock()
+    listener.device_joined = lambda device: joined_stores.append(device.store)
+    app3.add_listener(listener)
 
+    await commission_with_key(app3, KEY, frame_counter=20)
+    recommissioned = app3.devices[gp_ieee]
+    assert joined_stores == [recommissioned.store]
+    assert not recommissioned.store.closed
+    assert STORE_COUNT not in recommissioned.store
+
+    recommissioned.store[STORE_COUNT] = 3
+    await app3.shutdown()
+
+    app4 = await make_app_with_db(db)
+    assert app4.devices[gp_ieee].store[STORE_COUNT] == 3
+    await app4.shutdown()
+
+
+@pytest.mark.parametrize("used_before_removal", [True, False])
 @patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
-async def test_device_store_not_inherited_after_rejoin(tmp_path):
+async def test_device_store_not_inherited_after_rejoin(tmp_path, used_before_removal):
     """Writes through a removed device never reach a device re-added with its IEEE."""
     db = tmp_path / "test.db"
     app = await make_app_with_db(db)
 
     dev, _, _ = _add_joined_device(app)
-    dev.store[STORE_COUNT] = 1
+
+    if used_before_removal:
+        dev.store[STORE_COUNT] = 1
+
     dev.zdo.leave = AsyncMock()
     await app.remove(dev.ieee)
+
+    # The first write may only happen while the leave request is pending
+    dev.store[STORE_COUNT] = 2
+
     await asyncio.sleep(0)
     await asyncio.sleep(0)
     assert dev.ieee not in app.devices
 
     # A device object that never used its store before removal
     stale = Device(app, dev.ieee, dev.nwk)
-
-    dev.store[STORE_COUNT] = 2
-    stale.store[STORE_COUNT] = 3
+    dev.store[STORE_COUNT] = 3
+    stale.store[STORE_COUNT] = 4
     assert dev.store.closed
     assert stale.store is dev.store
-    assert stale.store[STORE_COUNT] == 1
+    assert STORE_COUNT not in stale.store
 
     # The same device joins again and gets an empty store
     app.handle_join(dev.nwk, dev.ieee, 0)
@@ -3675,15 +3702,27 @@ async def test_device_store_not_inherited_after_rejoin(tmp_path):
     assert STORE_COUNT not in new_dev.store
 
     # Old references still cannot write
-    dev.store[STORE_COUNT] = 4
-    stale.store[STORE_COUNT] = 5
+    dev.store[STORE_COUNT] = 5
+    stale.store[STORE_COUNT] = 6
     assert STORE_COUNT not in new_dev.store
 
-    new_dev.store[STORE_COUNT] = 6
-    await app._dblistener._callback_handlers.join()
+    ep = new_dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ep.add_input_cluster(0)
+    app.device_initialized(new_dev)
+    new_dev.store[STORE_COUNT] = 7
     await app.shutdown()
 
-    assert _count_store_rows(db, dev.ieee) == 0
+    with sqlite3.connect(db) as conn:
+        rows = conn.execute(
+            f"SELECT namespace, key, value FROM device_store{zigpy.appdb.DB_V}"
+            " WHERE ieee = ?",
+            (str(dev.ieee),),
+        ).fetchall()
+
+    assert rows == [("quirk:test", "count", "7")]
 
 
 @patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
@@ -3730,3 +3769,29 @@ async def test_device_store_undecodable_row_skipped(tmp_path, caplog):
     assert "other" not in dev2.store.namespace("quirk:test")
 
     await app2.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_bound_at_construction(tmp_path):
+    """A device object that never used its store keeps the one it was created with."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev, _, _ = _add_joined_device(app)
+    untouched = Device(app, dev.ieee, dev.nwk)
+
+    dev.zdo.leave = AsyncMock()
+    await app.remove(dev.ieee)
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    app.handle_join(dev.nwk, dev.ieee, 0)
+    new_dev = app.get_device(dev.ieee)
+
+    # First access only after the device was added again
+    untouched.store[STORE_COUNT] = 1
+
+    assert untouched.store.closed
+    assert STORE_COUNT not in new_dev.store
+
+    await app.shutdown()
