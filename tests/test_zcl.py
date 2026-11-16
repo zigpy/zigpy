@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from typing import Any
 from unittest import mock
@@ -36,6 +37,53 @@ from zigpy.zcl.clusters.smartenergy import Metering
 from zigpy.zcl.helpers import ReportingConfig
 
 DEFAULT_TSN = 123
+
+
+@pytest.mark.parametrize("start_task", [False, True])
+async def test_cluster_task_cancelled_on_device_removal(app_mock, start_task):
+    """Cluster work must not outlive its owning device."""
+    device = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = device.endpoints[1].add_input_cluster(Basic.cluster_id)
+    target = asyncio.Event().wait()
+    global_tasks_before = set(zigpy.util.CatchingTaskMixin._tasks)
+
+    cluster.create_catching_task(target, name="pending cluster work")
+    tasks = set(device._tasks)
+    assert len(tasks) == 1
+    assert zigpy.util.CatchingTaskMixin._tasks == global_tasks_before
+    if start_task:
+        await asyncio.sleep(0)
+
+    device.on_remove()
+    await asyncio.gather(*tasks, return_exceptions=True)
+    await asyncio.sleep(0)
+    assert not device._tasks
+    assert inspect.getcoroutinestate(target) == inspect.CORO_CLOSED
+
+
+async def test_cluster_task_device_ownership_is_independent(app_mock):
+    """Removing one device must not cancel another device's background work."""
+    first = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    second = add_initialized_device(app_mock, nwk=0x5678, ieee=make_ieee(2))
+    first_cluster = first.endpoints[1].add_input_cluster(Basic.cluster_id)
+    second_cluster = second.endpoints[1].add_input_cluster(Basic.cluster_id)
+    release = asyncio.Event()
+    first_cluster.create_catching_task(asyncio.Event().wait())
+    second_cluster.create_catching_task(release.wait())
+    first_tasks = set(first._tasks)
+    second_tasks = set(second._tasks)
+    assert len(first_tasks) == 1
+    assert len(second_tasks) == 1
+    await asyncio.sleep(0)
+
+    first.on_remove()
+    await asyncio.gather(*first_tasks, return_exceptions=True)
+    assert all(not task.done() for task in second_tasks)
+
+    release.set()
+    await asyncio.gather(*second_tasks)
+    await asyncio.sleep(0)
+    assert not second._tasks
 
 
 @pytest.fixture
