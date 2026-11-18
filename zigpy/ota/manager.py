@@ -190,6 +190,11 @@ class OTAManager:
         req_counter = self._image_block_req_counter
 
         async with self._image_block_lock:
+            # A repeat queued while the previous block was delivered is only skipped
+            # if the device's request for the next block arrived before that send
+            # returned. Otherwise the repeat is the newest request and the device gets
+            # the same block twice, which it ignores before asking again. Skipping by
+            # offset instead would stall the transfer when a block is lost in transit.
             if req_counter != self._image_block_req_counter:
                 self.device.debug(
                     "Skipping superseded OTA image block request for offset %d",

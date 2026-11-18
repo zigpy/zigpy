@@ -390,7 +390,8 @@ async def test_ota_manager_slow_device_skips_superseded_block_requests() -> None
 
     Sleepy end devices re-ask for the same block every few seconds while the previous
     answer is still waiting to be delivered. Only the newest request must be answered,
-    otherwise the device receives blocks for offsets it already has and aborts.
+    otherwise the device receives blocks for offsets it already has, ignores them and
+    eventually aborts.
     """
 
     app = make_app({})
@@ -413,8 +414,8 @@ async def test_ota_manager_slow_device_skips_superseded_block_requests() -> None
     image_data = FW_IMAGE.firmware.serialize()
     header = FW_IMAGE.firmware.header
 
-    delivery_time = 0.01
-    repeat_interval = delivery_time / 5
+    # Repeats of the current request that arrive while its answer is being delivered
+    repeats_per_delivery = 3
 
     expected_offset: int | None = None
     stale_offsets: list[int] = []
@@ -449,14 +450,6 @@ async def test_ota_manager_slow_device_skips_superseded_block_requests() -> None
             )
         )
 
-    async def repeat_requests() -> None:
-        # The device re-asks for the block it waits for, faster than answers arrive
-        while True:
-            await asyncio.sleep(repeat_interval)
-
-            if expected_offset is not None:
-                request_block(expected_offset)
-
     async def send_packet(packet: t.ZigbeePacket) -> None:
         nonlocal expected_offset
 
@@ -482,11 +475,17 @@ async def test_ota_manager_slow_device_skips_superseded_block_requests() -> None
             expected_offset = 0
             request_block(expected_offset)
         elif isinstance(cmd, Ota.ClientCommandDefs.image_block_response.schema):
-            # Delivery to a sleepy end device holds the request slot for a while
-            await asyncio.sleep(delivery_time)
+            # Delivery to a sleepy end device is slow: the device re-asks for the
+            # block it waits for before this answer reaches it. Yield once so those
+            # requests are queued before the send returns.
+            assert expected_offset is not None
+            for _ in range(repeats_per_delivery):
+                request_block(expected_offset)
+
+            await asyncio.sleep(0)
 
             if cmd.file_offset != expected_offset:
-                # A real device rejects stale blocks and eventually aborts
+                # A real device ignores a stale block and eventually aborts
                 stale_offsets.append(cmd.file_offset)
                 expected_offset = None
                 end_upgrade(foundation.Status.ABORT)
@@ -503,13 +502,8 @@ async def test_ota_manager_slow_device_skips_superseded_block_requests() -> None
 
     dev.application.send_packet = AsyncMock(side_effect=send_packet)
 
-    repeat_task = asyncio.create_task(repeat_requests())
-
-    try:
-        async with asyncio_timeout(10):
-            result = await update_firmware(dev, FW_IMAGE)
-    finally:
-        repeat_task.cancel()
+    async with asyncio_timeout(10):
+        result = await update_firmware(dev, FW_IMAGE)
 
     assert stale_offsets == []
     assert result == foundation.Status.SUCCESS
