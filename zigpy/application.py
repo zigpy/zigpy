@@ -1172,7 +1172,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             )
             dst = t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=device.nwk)
 
-        if self.config[conf.CONF_SOURCE_ROUTING]:
+        if self.config[conf.CONF_EXPERIMENTAL][conf.CONF_ROUTING][
+            conf.CONF_MANUAL_SOURCE_ROUTING
+        ]:
             source_route = self.build_source_route_to(dest=device)
         else:
             source_route = None

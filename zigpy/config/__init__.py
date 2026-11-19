@@ -9,6 +9,7 @@ from zigpy.config.defaults import (
     CONF_DB_COMMIT_INTERVAL_DEFAULT,
     CONF_DEVICE_BAUDRATE_DEFAULT,
     CONF_DEVICE_FLOW_CONTROL_DEFAULT,
+    CONF_MANUAL_SOURCE_ROUTING_DEFAULT,
     CONF_MAX_CONCURRENT_REQUESTS_DEFAULT,
     CONF_NWK_BACKUP_ENABLED_DEFAULT,
     CONF_NWK_BACKUP_PERIOD_DEFAULT,
@@ -103,6 +104,8 @@ CONF_TOPO_SKIP_COORDINATOR = "topology_scan_skip_coordinator"
 CONF_WATCHDOG_ENABLED = "watchdog_enabled"
 CONF_EXPERIMENTAL = "experimental"
 CONF_CONCURRENCY = "concurrency"
+CONF_ROUTING = "routing"
+CONF_MANUAL_SOURCE_ROUTING = "manual_source_routing"
 
 CONF_OTA_ALLOW_ADVANCED_DIR_STRING = (
     "I understand I can *destroy* my devices by enabling OTA updates from files."
@@ -413,6 +416,16 @@ SCHEMA_EXPERIMENTAL = vol.Schema(
             ),
             # Coerce the key types
             lambda d: {t.PacketPriority[k.upper()]: v for k, v in d.items()},
+        ),
+        vol.Optional(CONF_ROUTING, default={}): vol.Schema(
+            {
+                # zigpy picks the relays of every unicast from the stored route
+                # records, instead of the radio's own source route table
+                vol.Optional(
+                    CONF_MANUAL_SOURCE_ROUTING,
+                    default=CONF_MANUAL_SOURCE_ROUTING_DEFAULT,
+                ): cv_boolean,
+            }
         ),
     }
 )
