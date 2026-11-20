@@ -240,7 +240,9 @@ class GreenPowerManager(CreateTaskMixin):
             return
 
         try:
-            comm, _ = GPCommissioningPayload.deserialize(packet.payload.serialize())
+            comm, extra_commissioning_payload = GPCommissioningPayload.deserialize(
+                packet.payload.serialize()
+            )
         except (ValueError, IndexError):
             LOGGER.warning(
                 "Failed to parse GP Commissioning payload from 0x%08X",
@@ -261,6 +263,7 @@ class GreenPowerManager(CreateTaskMixin):
             security_level=security_level,
             security_key_type=security_key_type,
             security_key=security_key,
+            extra_commissioning_payload=extra_commissioning_payload,
         )
 
         # Commissioning GPDFs are unprotected, so one can be replayed with an older

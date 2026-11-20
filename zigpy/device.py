@@ -275,6 +275,9 @@ class GreenPowerDevice(BaseDevice):
         self.security_level: SecurityLevel | None = None
         self.frame_counter: t.uint32_t | None = None
 
+        # Opaque data trailing the `GPCommissioningPayload`
+        self.extra_commissioning_payload: bytes | None = None
+
     @classmethod
     def from_commissioning(
         cls,
@@ -285,6 +288,7 @@ class GreenPowerDevice(BaseDevice):
         security_level: SecurityLevel,
         security_key_type: SecurityKeyType,
         security_key: t.KeyData | None,
+        extra_commissioning_payload: bytes | None = None,
     ) -> Self:
         """Create a GPD from its Commissioning GPDF (0xE0)."""
         assert packet.src_id is not None
@@ -312,6 +316,7 @@ class GreenPowerDevice(BaseDevice):
         device.security_key = security_key
         device.security_key_type = security_key_type
         device.security_level = security_level
+        device.extra_commissioning_payload = extra_commissioning_payload
         # An unprotected GPD has no security frame counter, the GPDF carries its MAC
         # sequence number instead. An outgoing counter it still sends is ignored
         # (A.4.2.1.1.3).
@@ -357,6 +362,7 @@ class GreenPowerDevice(BaseDevice):
             "client_cluster_ids": list(self.client_cluster_ids),
             "switch_configuration": self.switch_configuration,
             "mac_seq_num_capability": self.mac_seq_num_capability,
+            "extra_commissioning_payload": self.extra_commissioning_payload,
         }
 
     @property

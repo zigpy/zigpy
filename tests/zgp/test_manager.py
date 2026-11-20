@@ -132,6 +132,16 @@ async def test_commissioning_window_closed(app, manager):
                 "security_key_type": SecurityKeyType.NoKey,
                 "security_key": None,
                 "frame_counter": 5,
+                "extra_commissioning_payload": b"",
+            },
+        ),
+        # Data trailing the payload is kept, Moes GPDs append their Tuya product ID
+        (
+            UNPROTECTED_COMMISSIONING + b"qerh7pox@GP0001\xcb",
+            1,
+            {
+                "device_id": DeviceID.OnOffSwitch,
+                "extra_commissioning_payload": b"qerh7pox@GP0001\xcb",
             },
         ),
         # Key in the clear

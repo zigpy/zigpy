@@ -121,6 +121,7 @@ def test_device_properties(device) -> None:
         "client_cluster_ids": [],
         "switch_configuration": GPGenericSwitchConfiguration(0x22),
         "mac_seq_num_capability": True,
+        "extra_commissioning_payload": None,
     }
 
 
