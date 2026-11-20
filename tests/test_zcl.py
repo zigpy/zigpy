@@ -12,6 +12,7 @@ from tests.conftest import (
     add_initialized_device,
     make_app,
     make_ieee,
+    make_node_desc,
     mock_attribute_reads,
     mock_attribute_report,
     mock_attribute_writes,
@@ -34,6 +35,7 @@ from zigpy.zcl.clusters.general import Basic, OnOff, Ota
 from zigpy.zcl.clusters.measurement import OccupancySensing
 from zigpy.zcl.clusters.smartenergy import Metering
 from zigpy.zcl.helpers import ReportingConfig
+from zigpy.zdo import types as zdo_t
 
 DEFAULT_TSN = 123
 
@@ -929,8 +931,42 @@ async def test_handle_cluster_general_request_not_attr_report(cluster):
                 foundation.Status.SUCCESS,
                 tsn=mock.ANY,
                 priority=t.PacketPriority.LOW,
+                retries=cluster.endpoint.device.reply_retries,
             )
         ]
+
+
+@pytest.mark.parametrize(
+    ("logical_type", "rx_on_when_idle", "expected_retries"),
+    [
+        (zdo_t.LogicalType.EndDevice, False, 0),
+        (zdo_t.LogicalType.EndDevice, True, None),
+        (zdo_t.LogicalType.Router, False, None),
+    ],
+)
+async def test_send_default_rsp_retries(
+    logical_type, rx_on_when_idle, expected_retries
+) -> None:
+    """Default responses are not retried for devices that may be asleep."""
+    app = make_app({})
+    dev = add_initialized_device(
+        app, nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77")
+    )
+    dev.node_desc = make_node_desc(logical_type=logical_type)
+    if rx_on_when_idle:
+        node_desc = dev.node_desc
+        dev.node_desc = node_desc.replace(
+            mac_capability_flags=node_desc.mac_capability_flags
+            | zdo_t.NodeDescriptor.MACCapabilityFlags.RxOnWhenIdle
+        )
+    cluster = dev.endpoints[1].add_input_cluster(Basic.cluster_id)
+    hdr = foundation.ZCLHeader.general(1, foundation.GeneralCommand.Report_Attributes)
+
+    with patch.object(cluster, "general_command") as general_cmd_mock:
+        cluster.send_default_rsp(hdr)
+        await asyncio.sleep(0)
+
+    assert general_cmd_mock.mock_calls[0].kwargs["retries"] == expected_retries
 
 
 async def test_configure_reporting_multiple(cluster):
