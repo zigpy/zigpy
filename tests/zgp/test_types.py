@@ -74,6 +74,8 @@ GP_PACKET_VALUES = {
     "rssi": t.int8s(-1),
     "gpp_distance": t.uint8_t(1),
     "gpp_short_addr": t.NWK(0x1234),
+    "gpp_bidirectional_cap": True,
+    "gpp_tx_queue_full": True,
 }
 
 
