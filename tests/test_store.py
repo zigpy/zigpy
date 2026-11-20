@@ -185,6 +185,37 @@ def test_typed_access(stores: DeviceStores) -> None:
     assert MODE not in store
 
 
+def test_typed_methods(stores: DeviceStores, listener: MagicMock) -> None:
+    """`set` and `delete` behave like item assignment and `del`."""
+    store = stores[make_ieee(1)]
+
+    store.set(MODE, Mode.Heat)
+
+    assert store.namespace("quirk:test")["mode"] == 1
+    assert store.get(MODE) == Mode.Heat
+    assert [type(c.args[0]) for c in listener.call_args_list] == [
+        StoreValueUpdatedEvent
+    ]
+
+    store.delete(MODE)
+
+    assert MODE not in store
+    assert type(listener.call_args.args[0]) is StoreValueDeletedEvent
+
+    with pytest.raises(KeyError):
+        store.delete(MODE)
+
+    ns = store.namespace("quirk:test")
+    ns.set("raw", 1)
+    ns.delete("raw")
+
+    assert "raw" not in ns
+    assert type(listener.call_args.args[0]) is StoreValueDeletedEvent
+
+    with pytest.raises(KeyError):
+        ns.delete("raw")
+
+
 def test_typed_encode(stores: DeviceStores) -> None:
     store = stores[make_ieee(1)]
     timestamp = datetime(2026, 3, 4, 5, 6, 7, tzinfo=UTC)

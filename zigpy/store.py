@@ -163,6 +163,10 @@ class StoreNamespace:
         self.set(key, value)
 
     def __delitem__(self, key: str) -> None:
+        self.delete(key)
+
+    def delete(self, key: str) -> None:
+        """Delete a key. Raises `KeyError` if there is none."""
         if key not in self._items:
             raise KeyError(key)
 
@@ -208,9 +212,10 @@ class StoreNamespace:
 class DeviceStore:
     """The store of one device, addressed by `StoredValue` declarations.
 
-    `device.store[DECL]` reads, `device.store[DECL] = value` writes and
-    `del device.store[DECL]` deletes. `namespace()` exposes the untyped map for keys
-    that are only known at runtime.
+    `device.store.get(DECL)` (or `device.store[DECL]`) reads, `device.store.set(DECL,
+    value)` (or `device.store[DECL] = value`) writes and `device.store.delete(DECL)`
+    (or `del device.store[DECL]`) deletes. `namespace()` exposes the untyped map for
+    keys that are only known at runtime.
 
     Reads return the stored JSON object itself: changing a list or dict in place
     neither emits an event nor persists it, so set the changed value again instead.
@@ -349,13 +354,27 @@ class DeviceStore:
             )
             return default
 
-    def __setitem__(self, decl: StoredValue[T], value: T) -> None:
+    def set(self, decl: StoredValue[T], value: T) -> None:
+        """Encode and store the value, emitting a change event and persisting it.
+
+        Ignored once the device is removed.
+        """
         self.namespace(decl.namespace).set(
             decl.key, decl.encode(value), version=decl.version
         )
 
-    def __delitem__(self, decl: StoredValue[Any]) -> None:
+    def delete(self, decl: StoredValue[Any]) -> None:
+        """Delete the value. Raises `KeyError` if there is none.
+
+        Ignored once the device is removed.
+        """
         del self.namespace(decl.namespace)[decl.key]
+
+    def __setitem__(self, decl: StoredValue[T], value: T) -> None:
+        self.set(decl, value)
+
+    def __delitem__(self, decl: StoredValue[Any]) -> None:
+        self.delete(decl)
 
     def __contains__(self, decl: object) -> bool:
         if not isinstance(decl, StoredValue):
@@ -379,7 +398,14 @@ class DeviceStore:
         """Call `callback` whenever the value for `decl` is set or deleted.
 
         Callbacks are held by this store, so they only fire for this device and stop
-        with it: a device added again under the same IEEE gets a new store.
+        with it: a device added again under the same IEEE gets a new store. The store
+        outlives the device object, which is replaced on every re-interview and quirk
+        change, so a subscriber tied to a device object (a cluster, an entity) must
+        call the returned function when that object goes away.
+
+        Values loaded from the database emit no event: a subscriber reads the current
+        value itself after subscribing. An update event carries the stored JSON;
+        use `get(decl)` for the decoded value.
         """
         key = (decl.namespace, decl.key)
         callbacks = self._change_callbacks.setdefault(key, [])
