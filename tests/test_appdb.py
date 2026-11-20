@@ -1981,6 +1981,17 @@ def _read_attr_row(db, cluster_id, attr_id):
         ).fetchone()
 
 
+def _insert_typed_attr_row(db, ieee, cluster_id, attr_id, data_type, data) -> None:
+    with contextlib.closing(sqlite3.connect(db)) as conn, conn:
+        conn.execute(
+            f"INSERT INTO attributes_cache{zigpy.appdb.DB_V}"
+            " (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code,"
+            " status, value, data_type, last_updated)"
+            " VALUES (?, 1, 0, ?, ?, NULL, 0, ?, ?, 0)",
+            (str(ieee), cluster_id, attr_id, data, data_type),
+        )
+
+
 async def _update_attribute(cluster, attr_id, value) -> None:
     cluster.update_attribute(attr_id, value)
 
@@ -2170,14 +2181,9 @@ async def test_typed_attribute_value_type_mismatch(tmp_path, attr_id) -> None:
     app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
     await app.shutdown()
 
-    with contextlib.closing(sqlite3.connect(db)) as conn, conn:
-        conn.execute(
-            f"INSERT INTO attributes_cache{zigpy.appdb.DB_V}"
-            " (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code,"
-            " status, value, data_type, last_updated)"
-            " VALUES (?, 1, 0, ?, ?, NULL, 0, ?, ?, 0)",
-            (str(dev.ieee), Basic.cluster_id, attr_id, b"\x05\x00", DataTypeId.uint16),
-        )
+    _insert_typed_attr_row(
+        db, dev.ieee, Basic.cluster_id, attr_id, DataTypeId.uint16, b"\x05\x00"
+    )
 
     app2 = await make_app_with_db(db)
     basic2 = app2.get_device(dev.ieee).endpoints[1].basic
@@ -2186,6 +2192,66 @@ async def test_typed_attribute_value_type_mismatch(tmp_path, attr_id) -> None:
     assert basic2._attr_cache.get(attr_id) == 5
 
     await app2.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("data_type", "data"),
+    [
+        # Out of range for `uint8`
+        (DataTypeId.uint16, b"\x2c\x01"),
+        (DataTypeId.string, b"\x03abc"),
+        # Too long for `uint8`
+        (DataTypeId.data16, b"\x01\x02"),
+    ],
+)
+async def test_typed_attribute_value_no_longer_fits(tmp_path, data_type, data) -> None:
+    """A stored value that does not fit the attribute definition is deleted."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+    await app.shutdown()
+
+    attr_def = Basic.AttributeDefs.zcl_version
+    _insert_typed_attr_row(db, dev.ieee, Basic.cluster_id, attr_def.id, data_type, data)
+
+    app2 = await make_app_with_db(db)
+    assert app2.get_device(dev.ieee).endpoints[1].basic.get(attr_def.name) is None
+    await app2.shutdown()
+
+    assert _read_attr_row(db, Basic.cluster_id, attr_def.id) is None
+
+
+async def test_typed_attribute_value_fits_quirk_definition(tmp_path) -> None:
+    """A stored value that only fits a quirk's definition is loaded and kept."""
+
+    class WideBasicCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            zcl_version = ZCLAttributeDef(id=0x0000, type=t.uint16_t)
+
+    def replace_basic(device):
+        ep = device.endpoints[1]
+        ep.add_input_cluster(Basic.cluster_id, WideBasicCluster(ep))
+        return device
+
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+    await app.shutdown()
+
+    attr_id = Basic.AttributeDefs.zcl_version.id
+    _insert_typed_attr_row(
+        db, dev.ieee, Basic.cluster_id, attr_id, DataTypeId.uint16, b"\x2c\x01"
+    )
+
+    # The bare cluster cannot convert the value but the quirk's cluster can
+    app2 = await make_app_with_db(db, device_resolver=replace_basic)
+    assert app2.get_device(dev.ieee).endpoints[1].basic.get("zcl_version") == 300
+    await app2.shutdown()
+
+    assert _read_attr_row(db, Basic.cluster_id, attr_id) == (
+        b"\x2c\x01",
+        DataTypeId.uint16,
+    )
 
 
 @pytest.mark.parametrize(
