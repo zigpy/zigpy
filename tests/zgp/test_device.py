@@ -332,6 +332,15 @@ def test_ieee_frame_endpoint_passthrough() -> None:
     assert events[0].endpoint_id == 5
 
 
+@pytest.mark.parametrize("rx_after_tx", [True, False])
+def test_rx_after_tx_passthrough(device, events, rx_after_tx) -> None:
+    """The event says whether the GPD listens after the GPDF."""
+    device.packet_received(make_packet(1000).replace(rx_after_tx=rx_after_tx))
+
+    assert len(events) == 1
+    assert events[0].rx_after_tx is rx_after_tx
+
+
 def encrypted_packet(frame_counter: int) -> t.ZigbeeGpPacket:
     """Encrypt a Step Up command as a GPD would, with an individual key."""
     return encrypted_gp_packet(

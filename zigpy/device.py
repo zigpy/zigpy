@@ -101,6 +101,7 @@ class GreenPowerCommandReceived:
     endpoint_id: int | None
     command_id: int
     command: t.Struct | None
+    rx_after_tx: bool | None
 
 
 class Status(enum.IntEnum):
@@ -547,6 +548,7 @@ class GreenPowerDevice(BaseDevice):
                 endpoint_id=packet.endpoint,
                 command_id=packet.command_id,
                 command=command,
+                rx_after_tx=packet.rx_after_tx,
             ),
         )
 
