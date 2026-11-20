@@ -101,7 +101,7 @@ class GreenPowerCommandReceived:
     endpoint_id: int | None
     command_id: int
     command: t.Struct | None
-    rx_after_tx: bool | None
+    rx_after_tx: bool | None = None
 
 
 class Status(enum.IntEnum):
