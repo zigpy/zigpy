@@ -420,6 +420,12 @@ async def test_send_gpdf_direct(gp_app) -> None:
         gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
     )
 
+    async def send_gpdf(**kwargs) -> None:
+        # The radio waits for the GPD to listen, so proxies are told first
+        assert len(gp_app.send_packet.mock_calls) == 1
+
+    gp_app.send_gpdf.side_effect = send_gpdf
+
     gp_app.gp_packet_received(rx_after_tx_packet())
     await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
 

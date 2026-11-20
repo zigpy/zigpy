@@ -754,6 +754,34 @@ class GreenPowerManager(CreateTaskMixin):
         if channel is None:
             channel = self._application.state.network_info.channel
 
+        # TODO: `ResponseSchema` cannot carry an IEEE address
+        if temp_master.application_id is ApplicationID.IEEE:
+            if temp_master.gpp_short_addr is not None:
+                raise DeliveryError("Proxies cannot be sent GPDFs for IEEE GPDs yet")
+        else:
+            assert temp_master.src_id is not None
+
+            # The elected proxy queues the GPDF, and the others drop theirs. The sink
+            # announces itself the same way when elected (A.3.6.2.3), before its radio
+            # waits for the GPD to listen.
+            await self._broadcast_command(
+                GreenPowerProxy.ClientCommandDefs.response,
+                options=ResponseOptions(
+                    application_id=ApplicationID.SrcID,
+                    transmit_on_endpoint_match=0,
+                    _reserved=0,
+                ),
+                temp_master_short_addr=t.uint16_t(
+                    self._temp_master_address(temp_master)
+                ),
+                temp_master_tx_channel=TempMasterTxChannel(
+                    transmit_channel=t.uint4_t(channel - 11), _reserved=0
+                ),
+                gpd_id=SrcID(0x00000000) if maintenance else temp_master.src_id,
+                gpd_command_id=command_id,
+                gpd_command_payload=t.LVBytes(payload),
+            )
+
         if temp_master.gpp_short_addr is None:
             target: SrcID | tuple[t.EUI64, int] | None
             if maintenance:
@@ -773,32 +801,6 @@ class GreenPowerManager(CreateTaskMixin):
                 channel=channel,
                 lifetime=GPDF_LIFETIME,
             )
-
-            # TODO: `ResponseSchema` cannot carry an IEEE address
-            if temp_master.application_id is ApplicationID.IEEE:
-                return
-
-        # TODO: `ResponseSchema` cannot carry an IEEE address
-        if temp_master.src_id is None:
-            raise DeliveryError("Proxies cannot be sent GPDFs for IEEE GPDs yet")
-
-        # The elected proxy queues the GPDF, and the others drop theirs. The sink
-        # announces itself the same way when elected (A.3.6.2.3).
-        await self._broadcast_command(
-            GreenPowerProxy.ClientCommandDefs.response,
-            options=ResponseOptions(
-                application_id=ApplicationID.SrcID,
-                transmit_on_endpoint_match=0,
-                _reserved=0,
-            ),
-            temp_master_short_addr=t.uint16_t(self._temp_master_address(temp_master)),
-            temp_master_tx_channel=TempMasterTxChannel(
-                transmit_channel=t.uint4_t(channel - 11), _reserved=0
-            ),
-            gpd_id=SrcID(0x00000000) if maintenance else temp_master.src_id,
-            gpd_command_id=command_id,
-            gpd_command_payload=t.LVBytes(payload),
-        )
 
     async def _send_commissioning_reply(
         self,
