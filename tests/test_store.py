@@ -618,3 +618,31 @@ def test_network_store_never_closed() -> None:
     assert not network_store.closed
     assert not hasattr(network_store, "close")
     assert not hasattr(network_store, "clear")
+
+
+def test_set_with_last_updated(store: Store[Any]) -> None:
+    """A value carried over from elsewhere can keep its update time."""
+    when = datetime(2026, 1, 2, tzinfo=UTC)
+
+    store.set(COUNT, 3, last_updated=when)
+    assert store[COUNT] == 3
+    assert store.last_updated(COUNT) == when
+
+    store.namespace("other").set("key", 1, last_updated=when)
+    assert store.namespace("other").item("key").last_updated == when
+
+    store.set(COUNT, 4)
+    assert store.last_updated(COUNT) > when
+
+    with pytest.raises(ValueError, match="timezone-aware"):
+        store.set(COUNT, 5, last_updated=datetime(2026, 1, 2))
+
+    assert store[COUNT] == 4
+
+
+def test_set_with_last_updated_event(stores: DeviceStores, listener: MagicMock) -> None:
+    when = datetime(2026, 1, 2, tzinfo=UTC)
+    stores[make_ieee(1)].set(COUNT, 3, last_updated=when)
+
+    (event,) = [c.args[0] for c in listener.mock_calls]
+    assert event.last_updated == when
