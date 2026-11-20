@@ -1172,11 +1172,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             )
             dst = t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=device.nwk)
 
-        if self.config[conf.CONF_SOURCE_ROUTING]:
-            source_route = self.build_source_route_to(dest=device)
-        else:
-            source_route = None
-
         tx_options = t.TransmitOptions.NONE
 
         if ask_for_ack is not None:
@@ -1203,7 +1198,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
                 cluster_id=cluster,
                 data=t.SerializableBytes(data),
                 extended_timeout=extended_timeout,
-                source_route=source_route,
                 tx_options=tx_options,
                 priority=priority,
             )
