@@ -1,9 +1,10 @@
-"""Tests for the per-device key/value store."""
+"""Tests for the device and network key/value stores."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 import logging
+from typing import Any
 from unittest.mock import MagicMock, call
 
 import pytest
@@ -12,6 +13,10 @@ from tests.conftest import make_ieee
 from zigpy.store import (
     DEFAULT_VERSION,
     DeviceStores,
+    NetworkStore,
+    NetworkStoreValueDeletedEvent,
+    NetworkStoreValueUpdatedEvent,
+    Store,
     StoredValue,
     StoreValueDeletedEvent,
     StoreValueUpdatedEvent,
@@ -38,6 +43,15 @@ TIMESTAMP = StoredValue(
 @pytest.fixture
 def stores() -> DeviceStores:
     return DeviceStores()
+
+
+@pytest.fixture(params=["device", "network"])
+def store(request: pytest.FixtureRequest, stores: DeviceStores) -> Store[Any]:
+    """A store of either scope, for behaviour both share."""
+    if request.param == "device":
+        return stores[make_ieee(1)]
+
+    return NetworkStore()
 
 
 @pytest.fixture
@@ -154,9 +168,7 @@ def test_restore_emits_nothing(stores: DeviceStores, listener: MagicMock) -> Non
     assert ns.item("k").last_updated == timestamp
 
 
-def test_typed_access(stores: DeviceStores) -> None:
-    store = stores[make_ieee(1)]
-
+def test_typed_access(store: Store[Any]) -> None:
     assert MODE not in store
     assert "not a declaration" not in store
     assert store.get(MODE) is None
@@ -185,8 +197,7 @@ def test_typed_access(stores: DeviceStores) -> None:
     assert MODE not in store
 
 
-def test_typed_encode(stores: DeviceStores) -> None:
-    store = stores[make_ieee(1)]
+def test_typed_encode(store: Store[Any]) -> None:
     timestamp = datetime(2026, 3, 4, 5, 6, 7, tzinfo=UTC)
 
     store[TIMESTAMP] = timestamp
@@ -224,11 +235,10 @@ def test_version_mismatch_without_migrate(
         (lambda old_version, value: None, None),
     ],
 )
-def test_version_mismatch_with_migrate(stores: DeviceStores, migrate, expected) -> None:
+def test_version_mismatch_with_migrate(store: Store[Any], migrate, expected) -> None:
     decl = StoredValue(
         namespace="quirk:test", key="count", type=int, version=2, migrate=migrate
     )
-    store = stores[make_ieee(1)]
     ns = store.namespace("quirk:test")
     ns.set("count", 4, version=1)
 
@@ -428,10 +438,9 @@ def test_newer_version_kept(stores: DeviceStores, listener: MagicMock) -> None:
 
 @pytest.mark.parametrize("value", [None, "x", [1]])
 def test_get_undecodable(
-    stores: DeviceStores, caplog: pytest.LogCaptureFixture, value
+    store: Store[Any], caplog: pytest.LogCaptureFixture, value
 ) -> None:
     """A value that cannot be decoded is logged and kept, `get` returns the default."""
-    store = stores[make_ieee(1)]
     store.namespace("quirk:test")["count"] = value
 
     with caplog.at_level(logging.WARNING):
@@ -474,8 +483,7 @@ def test_on_change_not_inherited(stores: DeviceStores) -> None:
     assert callback.mock_calls == []
 
 
-def test_on_change_unsubscribe_cleans_up(stores: DeviceStores) -> None:
-    store = stores[make_ieee(1)]
+def test_on_change_unsubscribe_cleans_up(store: Store[Any]) -> None:
     unsub1 = store.on_change(COUNT, MagicMock())
     unsub2 = store.on_change(COUNT, MagicMock())
 
@@ -484,3 +492,129 @@ def test_on_change_unsubscribe_cleans_up(stores: DeviceStores) -> None:
     unsub2()
     unsub2()
     assert store._change_callbacks == {}
+
+
+@pytest.fixture
+def network_listener() -> tuple[NetworkStore, MagicMock]:
+    network_store = NetworkStore()
+    mock = MagicMock()
+    network_store.on_event(NetworkStoreValueUpdatedEvent.event_type, mock)
+    network_store.on_event(NetworkStoreValueDeletedEvent.event_type, mock)
+    return network_store, mock
+
+
+def test_network_store_events(
+    stores: DeviceStores,
+    listener: MagicMock,
+    network_listener: tuple[NetworkStore, MagicMock],
+) -> None:
+    """Network values emit their own events on the network store only."""
+    network_store, network_mock = network_listener
+    ns = network_store.namespace("zigpy.groups")
+
+    ns.set("next_id", 5, version=2)
+
+    assert network_mock.mock_calls == [
+        call(
+            NetworkStoreValueUpdatedEvent(
+                namespace="zigpy.groups",
+                key="next_id",
+                value=5,
+                version=2,
+                last_updated=ns.item("next_id").last_updated,
+            )
+        )
+    ]
+
+    network_mock.reset_mock()
+    network_store[COUNT] = 1
+    del network_store[COUNT]
+
+    assert network_mock.mock_calls[1:] == [
+        call(NetworkStoreValueDeletedEvent(namespace="quirk:test", key="count"))
+    ]
+
+    # Device store listeners see nothing of the network scope, and the reverse
+    network_mock.reset_mock()
+    stores[make_ieee(1)][COUNT] = 1
+
+    assert listener.mock_calls[0].args[0].event_type == "store_value_updated"
+    assert len(listener.mock_calls) == 1
+    assert network_mock.mock_calls == []
+    assert NetworkStoreValueUpdatedEvent.event_type != StoreValueUpdatedEvent.event_type
+    assert NetworkStoreValueDeletedEvent.event_type != StoreValueDeletedEvent.event_type
+
+
+def test_network_store_restore_emits_nothing(
+    network_listener: tuple[NetworkStore, MagicMock],
+) -> None:
+    network_store, network_mock = network_listener
+    timestamp = datetime(2026, 1, 2, tzinfo=UTC)
+
+    network_store.namespace("ns").restore("k", [1], version=3, last_updated=timestamp)
+
+    assert network_mock.mock_calls == []
+    assert network_store.namespace("ns").item("k").version == 3
+
+
+def test_network_store_version_rules(
+    network_listener: tuple[NetworkStore, MagicMock],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Stale values are dropped with an event, newer ones are kept and read as absent."""
+    network_store, network_mock = network_listener
+    ns = network_store.namespace("quirk:test")
+    ns.set("mode", 1, version=0)
+    ns.set("count", 1, version=2)
+    network_mock.reset_mock()
+
+    with caplog.at_level(logging.WARNING):
+        assert network_store.get(MODE) is None
+        assert network_store.get(COUNT) is None
+
+    assert "[network] Dropping stale quirk:test/mode store value" in caplog.text
+    assert "mode" not in ns
+    assert ns.item("count").version == 2
+    assert COUNT not in network_store
+    assert network_mock.mock_calls == [
+        call(NetworkStoreValueDeletedEvent(namespace="quirk:test", key="mode"))
+    ]
+
+
+def test_network_store_on_change(stores: DeviceStores) -> None:
+    network_store = NetworkStore()
+    callback = MagicMock()
+    unsubscribe = network_store.on_change(MODE, callback)
+
+    # The same declaration in a device store is a different value
+    stores[make_ieee(1)][MODE] = Mode.Heat
+    network_store[COUNT] = 1
+
+    assert callback.mock_calls == []
+
+    network_store[MODE] = Mode.Heat
+
+    assert callback.mock_calls == [
+        call(
+            NetworkStoreValueUpdatedEvent(
+                namespace="quirk:test",
+                key="mode",
+                value=1,
+                version=DEFAULT_VERSION,
+                last_updated=network_store.last_updated(MODE),
+            )
+        )
+    ]
+
+    unsubscribe()
+    del network_store[MODE]
+
+    assert len(callback.mock_calls) == 1
+
+
+def test_network_store_never_closed() -> None:
+    network_store = NetworkStore()
+
+    assert not network_store.closed
+    assert not hasattr(network_store, "close")
+    assert not hasattr(network_store, "clear")
