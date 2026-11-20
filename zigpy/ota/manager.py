@@ -9,6 +9,7 @@ import contextlib
 from typing import TYPE_CHECKING
 
 import zigpy.datastructures
+import zigpy.exceptions
 import zigpy.ota
 import zigpy.types as t
 from zigpy.zcl import ClusterType, foundation
@@ -336,8 +337,17 @@ async def update_firmware(
     """Update the firmware on a Zigbee device."""
     # Fetch firmware if not already downloaded (deferred download for trusted providers)
     if image.firmware is None:
-        async with asyncio_timeout(zigpy.ota.OTA_FETCH_TIMEOUT):
-            image = await image.fetch()
+        try:
+            async with asyncio_timeout(zigpy.ota.OTA_FETCH_TIMEOUT):
+                image = await image.fetch()
+        except TimeoutError as exc:
+            raise zigpy.exceptions.OtaImageDownloadError(
+                "Timed out downloading the firmware image"
+            ) from exc
+        except Exception as exc:
+            raise zigpy.exceptions.OtaImageDownloadError(
+                f"Failed to download the firmware image: {str(exc) or repr(exc)}"
+            ) from exc
 
     if force:
         # Force it to send the image even if it's the same version
