@@ -2174,6 +2174,8 @@ async def test_local_data_cluster_reads_stored_untyped(tmp_path, value) -> None:
             "aa:bb:cc:dd:11:22:33:44",
             t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"),
         ),
+        # A string that is not an address was set by a quirk and is kept
+        (IasZone, IasZone.AttributeDefs.cie_addr, "unknown", "unknown"),
         (
             TemperatureMeasurement,
             TemperatureMeasurement.AttributeDefs.measured_value,
@@ -2239,29 +2241,41 @@ async def test_typed_attribute_value_type_mismatch(tmp_path, attr_id) -> None:
 
 
 @pytest.mark.parametrize(
-    ("data_type", "data"),
+    ("attr_id", "data_type", "data"),
     [
         # Out of range for `uint8`
-        (DataTypeId.uint16, b"\x2c\x01"),
-        (DataTypeId.string, b"\x03abc"),
+        (Basic.AttributeDefs.zcl_version.id, DataTypeId.uint16, b"\x2c\x01"),
+        (Basic.AttributeDefs.zcl_version.id, DataTypeId.string, b"\x03abc"),
         # Too long for `uint8`
-        (DataTypeId.data16, b"\x01\x02"),
+        (Basic.AttributeDefs.zcl_version.id, DataTypeId.data16, b"\x01\x02"),
+        # Not a member of `t.Bool` or of an enum
+        (Basic.AttributeDefs.device_enabled.id, DataTypeId.string, b"\x03abc"),
+        (Basic.AttributeDefs.power_source.id, DataTypeId.string, b"\x03abc"),
+        # Written for a definition without a ZCL data type
+        (Basic.AttributeDefs.zcl_version.id, DataTypeId.unk, b"\x01\x02"),
+        (0x7777, DataTypeId.unk, b"\x01\x02"),
     ],
 )
-async def test_typed_attribute_value_no_longer_fits(tmp_path, data_type, data) -> None:
-    """A stored value that does not fit the attribute definition is deleted."""
+async def test_typed_attribute_value_cannot_be_loaded(
+    tmp_path, attr_id, data_type, data
+) -> None:
+    """A stored value that cannot be loaded is deleted, the rest still load."""
     db = tmp_path / "test.db"
     app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+    dev.endpoints[1].basic.update_attribute(Basic.AttributeDefs.model, "Model")
     await app.shutdown()
 
-    attr_def = Basic.AttributeDefs.zcl_version
-    _insert_typed_attr_row(db, dev.ieee, Basic.cluster_id, attr_def.id, data_type, data)
+    _insert_typed_attr_row(db, dev.ieee, Basic.cluster_id, attr_id, data_type, data)
 
     app2 = await make_app_with_db(db)
-    assert app2.get_device(dev.ieee).endpoints[1].basic.get(attr_def.name) is None
+    basic2 = app2.get_device(dev.ieee).endpoints[1].basic
+
+    # Attributes without a definition are only reachable through the legacy cache
+    assert basic2._attr_cache.get(attr_id) is None
+    assert basic2.get(Basic.AttributeDefs.model.name) == "Model"
     await app2.shutdown()
 
-    assert _read_attr_row(db, Basic.cluster_id, attr_def.id) is None
+    assert _read_attr_row(db, Basic.cluster_id, attr_id) is None
 
 
 async def test_typed_attribute_value_fits_quirk_definition(tmp_path) -> None:
