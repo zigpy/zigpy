@@ -1720,6 +1720,8 @@ async def test_reinterview_changed_signature_round_trip(tmp_path) -> None:
     ep3.device_type = profiles.zha.DeviceType.PUMP
     ep3.add_input_cluster(Basic.cluster_id)
 
+    app2.devices[ieee] = shadow
+
     await app2._device_reinterviewed(old_dev, shadow)
     await app2.shutdown()
 
@@ -2771,6 +2773,8 @@ async def test_reinterview_does_not_commit_mid_handler(tmp_path):
     ep.profile_id = 260
     ep.device_type = profiles.zha.DeviceType.PUMP
     ep.add_input_cluster(Basic.cluster_id)
+
+    app.devices[old_dev.ieee] = shadow
 
     async with asyncio.timeout(5):
         await app._device_reinterviewed(old_dev, shadow)
