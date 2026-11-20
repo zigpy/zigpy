@@ -28,6 +28,7 @@ from zigpy.zcl.clusters.general import (
     PartitionFragmentationOptions,
     PowerProfile,
     RSSILocation,
+    Scenes,
     Time,
 )
 from zigpy.zcl.clusters.protocol import BacnetProtocolTunnel
@@ -186,6 +187,148 @@ async def test_keepalive_cluster() -> None:
             type=foundation.DataTypeId.uint16,
             value=300,
         ),
+    )
+
+
+@pytest.mark.parametrize(
+    "command",
+    [Scenes.ServerCommandDefs.add, Scenes.ServerCommandDefs.enhanced_add],
+)
+def test_scenes_add_extension_field_sets(command: foundation.ZCLCommandDef) -> None:
+    """Add Scene and Enhanced Add Scene carry trailing extension field sets."""
+    header = (
+        b"\x34\x12"  # Group ID
+        b"\x05"  # Scene ID
+        b"\x0a\x00"  # Transition time
+        b"\x02ab"  # Scene name
+    )
+    field_sets = (
+        b"\x06\x00\x01\x01"  # On/Off: on_off=1
+        b"\x08\x00\x01\x80"  # Level control: current_level=0x80
+        b"\x00\x03\x00"  # Color control: empty field set
+    )
+
+    cmd, rest = command.schema.deserialize(header + field_sets)
+    assert rest == b""
+    assert cmd.group_id == 0x1234
+    assert cmd.scene_id == 5
+    assert cmd.transition_time == 10
+    assert cmd.scene_name == "ab"
+    assert cmd.extension_field_sets == [
+        Scenes.ExtensionFieldSet(cluster_id=0x0006, extension=b"\x01"),
+        Scenes.ExtensionFieldSet(cluster_id=0x0008, extension=b"\x80"),
+        Scenes.ExtensionFieldSet(cluster_id=0x0300, extension=b""),
+    ]
+    assert cmd.serialize() == header + field_sets
+
+    # Extension field sets may be omitted entirely
+    cmd, rest = command.schema.deserialize(header)
+    assert rest == b""
+    assert cmd.extension_field_sets is None
+
+    kwargs = {
+        "group_id": 0x1234,
+        "scene_id": 5,
+        "transition_time": 10,
+        "scene_name": "ab",
+    }
+    assert command.schema(**kwargs).serialize() == header
+
+    # An empty list of field sets adds no bytes
+    assert command.schema(**kwargs, extension_field_sets=[]).serialize() == header
+
+    # A truncated field set is rejected
+    with pytest.raises(ValueError):
+        command.schema.deserialize(header + b"\x06\x00\x02\x01")
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        Scenes.ClientCommandDefs.view_response,
+        Scenes.ClientCommandDefs.enhanced_view_response,
+    ],
+)
+def test_scenes_view_response_extension_field_sets(
+    command: foundation.ZCLCommandDef,
+) -> None:
+    """View Scene responses carry extension field sets on success only."""
+    header = b"\x34\x12" + b"\x05"  # Group ID, Scene ID
+    success = (
+        b"\x00"  # Status
+        + header
+        + b"\x0a\x00"  # Transition time
+        + b"\x02ab"  # Scene name
+    )
+    field_sets = b"\x06\x00\x01\x01" + b"\x02\x01\x02\xff\x00"
+
+    cmd, rest = command.schema.deserialize(success + field_sets)
+    assert rest == b""
+    assert cmd.status == foundation.Status.SUCCESS
+    assert cmd.transition_time == 10
+    assert cmd.scene_name == "ab"
+    assert cmd.extension_field_sets == [
+        Scenes.ExtensionFieldSet(cluster_id=0x0006, extension=b"\x01"),
+        Scenes.ExtensionFieldSet(cluster_id=0x0102, extension=b"\xff\x00"),
+    ]
+    assert cmd.serialize() == success + field_sets
+
+    # A successful response with a scene that has no field sets
+    cmd, rest = command.schema.deserialize(success)
+    assert rest == b""
+    assert cmd.extension_field_sets is None
+    assert cmd.serialize() == success
+
+    # Any other status omits all trailing fields
+    failure = b"\x8b" + header
+    cmd, rest = command.schema.deserialize(failure)
+    assert rest == b""
+    assert cmd.status == foundation.Status.NOT_FOUND
+    assert cmd.transition_time is None
+    assert cmd.scene_name is None
+    assert cmd.extension_field_sets is None
+    assert cmd.serialize() == failure
+
+
+@pytest.mark.parametrize(
+    ("raw_mode", "mode"),
+    [
+        (0x00, Scenes.CopyMode(0)),
+        (0x01, Scenes.CopyMode.Copy_All_Scenes),
+        # Reserved bits are kept
+        (0x81, Scenes.CopyMode.Copy_All_Scenes | Scenes.CopyMode(0x80)),
+    ],
+)
+def test_scenes_copy_mode(raw_mode: int, mode: Scenes.CopyMode) -> None:
+    """The Copy Scene mode field is a map8 with a Copy All Scenes bit."""
+    data = (
+        bytes([raw_mode])
+        + b"\x34\x12"  # Group identifier from
+        + b"\x05"  # Scene identifier from
+        + b"\x78\x56"  # Group identifier to
+        + b"\x06"  # Scene identifier to
+    )
+    schema = Scenes.ServerCommandDefs.copy.schema
+
+    cmd, rest = schema.deserialize(data)
+    assert rest == b""
+    assert type(cmd.mode) is Scenes.CopyMode
+    assert cmd.mode == mode
+    assert cmd.group_id_from == 0x1234
+    assert cmd.scene_id_from == 5
+    assert cmd.group_id_to == 0x5678
+    assert cmd.scene_id_to == 6
+
+    # Plain integers keep working
+    assert (
+        schema(
+            mode=raw_mode,
+            group_id_from=0x1234,
+            scene_id_from=5,
+            group_id_to=0x5678,
+            scene_id_to=6,
+        ).serialize()
+        == data
     )
 
 
