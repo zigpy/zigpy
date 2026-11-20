@@ -1491,16 +1491,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             and packet.security_level is zigpy.zgp.types.SecurityLevel.Encrypted
         )
 
-        # The GPD listens after a GPDF with RxAfterTx, and after a Channel Request: a
-        # Maintenance frame, which has no RxAfterTx (A.3.9.1 step 6.b)
-        listening = packet.rx_after_tx or (
-            not encrypted
-            and packet.command_id == zigpy.zgp.types.GPDCommandID.ChannelRequest
-        )
-
-        if listening and self.green_power.add_temp_master_candidate(ieee, packet):
-            return
-
         # Commissioning GPDFs come from GPDs that are not registered yet, or replace a
         # registered one. Decommissioning and Success are not handled by the manager:
         # they come from a known GPD, which checks their freshness and security

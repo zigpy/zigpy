@@ -333,8 +333,14 @@ def test_ieee_frame_endpoint_passthrough() -> None:
 
 
 @pytest.mark.parametrize("rx_after_tx", [True, False])
-def test_rx_after_tx_passthrough(device, events, rx_after_tx) -> None:
+async def test_rx_after_tx_passthrough(app, rx_after_tx) -> None:
     """The event says whether the GPD listens after the GPDF."""
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+    events = []
+    device.on_event("gp_command_received", events.append)
+
     device.packet_received(make_packet(1000).replace(rx_after_tx=rx_after_tx))
 
     assert len(events) == 1
@@ -407,6 +413,13 @@ def rx_after_tx_packet(
     )
 
 
+def register_device(app, **kwargs) -> GreenPowerDevice:
+    device = GreenPowerDevice(app, **kwargs)
+    app.devices[device.ieee] = device
+
+    return device
+
+
 @pytest.fixture
 def gp_app(app):
     app.state.network_info.channel = 15
@@ -416,7 +429,7 @@ def gp_app(app):
 
 async def test_send_gpdf_direct(gp_app) -> None:
     """A GPDF to a GPD the radio hears directly is sent by the radio."""
-    device = GreenPowerDevice(
+    device = register_device(
         gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
     )
 
@@ -448,7 +461,7 @@ async def test_send_gpdf_direct(gp_app) -> None:
 
 async def test_send_gpdf_through_proxy(gp_app) -> None:
     """A GPDF to a GPD heard through a proxy is sent by that proxy."""
-    device = GreenPowerDevice(
+    device = register_device(
         gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
     )
 
@@ -468,7 +481,7 @@ async def test_send_gpdf_through_proxy(gp_app) -> None:
 
 async def test_send_gpdf_ieee(gp_app) -> None:
     """A GPD addressed by its IEEE address is targeted with its endpoint."""
-    device = GreenPowerDevice(gp_app, application_id=ApplicationID.IEEE, ieee=IEEE)
+    device = register_device(gp_app, application_id=ApplicationID.IEEE, ieee=IEEE)
 
     gp_app.gp_packet_received(
         make_packet(5, application_id=ApplicationID.IEEE, endpoint=1).replace(
@@ -491,7 +504,7 @@ async def test_send_gpdf_ieee(gp_app) -> None:
 
 async def test_send_gpdf_ieee_through_proxy(gp_app) -> None:
     """A GP Response cannot carry the IEEE address of a GPD yet."""
-    device = GreenPowerDevice(gp_app, application_id=ApplicationID.IEEE, ieee=IEEE)
+    device = register_device(gp_app, application_id=ApplicationID.IEEE, ieee=IEEE)
 
     gp_app.gp_packet_received(
         make_packet(5, application_id=ApplicationID.IEEE, endpoint=1).replace(
@@ -511,10 +524,9 @@ async def test_send_gpdf_ieee_through_proxy(gp_app) -> None:
 
 async def test_send_gpdf_elects_from_all_instances(gp_app) -> None:
     """Every instance of a GPDF is a candidate, but the GPD processes it once."""
-    device = GreenPowerDevice(
+    device = register_device(
         gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
     )
-    gp_app.devices[device.ieee] = device
     events = []
     device.on_event("gp_command_received", events.append)
 
@@ -542,7 +554,7 @@ async def test_send_gpdf_elects_from_all_instances(gp_app) -> None:
 )
 async def test_send_gpdf_no_temp_master(gp_app, packets) -> None:
     """A GPDF without a node to transmit it is not sent."""
-    device = GreenPowerDevice(
+    device = register_device(
         gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
     )
 
@@ -559,7 +571,7 @@ async def test_send_gpdf_no_temp_master(gp_app, packets) -> None:
 async def test_send_gpdf_radio_cannot_send() -> None:
     """A GPD heard only by a radio that cannot transmit GPDFs is not sent one."""
     app = make_app({}, app_base=FeaturelessApp)
-    device = GreenPowerDevice(
+    device = register_device(
         app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
     )
 
@@ -573,7 +585,7 @@ async def test_send_gpdf_radio_cannot_send() -> None:
 
 async def test_send_gpdf_expired(gp_app) -> None:
     """A GPDF with RxAfterTx is only replied to within gpDuplicateTimeout."""
-    device = GreenPowerDevice(
+    device = register_device(
         gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
     )
 
@@ -589,3 +601,46 @@ async def test_send_gpdf_expired(gp_app) -> None:
             await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
 
     assert len(gp_app.send_packet.mock_calls) == 0
+
+
+async def test_forged_gpdf_does_not_suppress_genuine(gp_app) -> None:
+    """An instance that fails security does not start an election for its counter."""
+    device = register_device(
+        gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+    commission_individual_key(device)
+    events = []
+    device.on_event("gp_command_received", events.append)
+
+    plaintext = bytes([GPDCommandID.StepUp]) + STEP_UP.serialize()
+
+    gp_app.gp_packet_received(
+        encrypted_gp_packet(0x12345678, 1000, plaintext, rx_after_tx=True)
+    )
+    gp_app.gp_packet_received(
+        encrypted_gp_packet(
+            0x12345678, 1001, plaintext, key=bytes(16), rx_after_tx=True
+        )
+    )
+    gp_app.gp_packet_received(
+        encrypted_gp_packet(0x12345678, 1001, plaintext, rx_after_tx=True)
+    )
+
+    assert len(events) == 2
+    assert device.frame_counter == 1001
+
+
+async def test_send_gpdf_ignores_replayed_instances(gp_app) -> None:
+    """An older GPDF forwarded again is not a candidate for the latest one."""
+    device = register_device(
+        gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+
+    gp_app.gp_packet_received(rx_after_tx_packet(0x1111, lqi=100))
+    gp_app.gp_packet_received(
+        rx_after_tx_packet(0x2222, lqi=255).replace(frame_counter=t.uint32_t(4))
+    )
+    await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
+
+    [packet] = [c.args[0] for c in gp_app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x1111

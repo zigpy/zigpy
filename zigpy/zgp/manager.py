@@ -68,6 +68,7 @@ class _TempMasterCandidates:
 
     generation: int
     frame_counter: int | None
+    security_level: SecurityLevel | None
     started: float
     packets: list[t.ZigbeeGpPacket]
     expiry: asyncio.TimerHandle
@@ -253,51 +254,52 @@ class GreenPowerManager(CreateTaskMixin):
             LOGGER.debug("Ignoring GP packet with unsupported addressing: %r", packet)
             return
 
+        assert packet.src_id is not None
+
         generation = self._window_generation
         key = (generation, packet.src_id, packet.frame_counter)
+        ieee = synthetic_ieee(packet.src_id)
+
+        # The GPD listens after a GPDF with RxAfterTx, and after a Channel Request: a
+        # Maintenance frame, which has no RxAfterTx (A.3.9.1 step 6.b)
+        listening = (
+            packet.rx_after_tx or packet.command_id == GPDCommandID.ChannelRequest
+        )
 
         if self._dedup_debouncer.filter(key, GP_DUPLICATE_TIMEOUT.total_seconds()):
             LOGGER.debug("Dropping duplicate GP packet: %r", packet)
+
+            if listening:
+                self.add_temp_master_candidate(ieee, packet)
+
             return
 
         if packet.command_id != GPDCommandID.CommissioningRequest:
             assert packet.command_id == GPDCommandID.ChannelRequest
+
+        if listening:
+            self.start_temp_master_election(ieee, packet)
 
         self.create_task(
             self._process_packet(packet, generation),
             f"gp_process_command-0x{packet.command_id:02x}",
         )
 
-    def add_temp_master_candidate(
+    def start_temp_master_election(
         self, ieee: t.EUI64, packet: t.ZigbeeGpPacket
-    ) -> bool:
-        """Collect an instance of a GPDF the GPD listens after, True if a later one.
-
-        Later instances of a GPDF are only TempMaster candidates for it, and are not
-        processed any further (A.3.6.1.2).
-        """
+    ) -> None:
+        """Collect TempMaster candidates for an accepted GPDF the GPD listens after."""
         loop = asyncio.get_running_loop()
 
+        # A gpTxQueue holds a single GPDF per GPD (A.1.5.2.1.1), so a newer GPDF
+        # replaces the election of the previous one
         if ieee in self._temp_master_candidates:
-            candidates = self._temp_master_candidates[ieee]
-
-            if (
-                candidates.generation == self._window_generation
-                and candidates.frame_counter == packet.frame_counter
-            ):
-                if loop.time() - candidates.started <= TEMP_MASTER_ELECTION_TIME:
-                    LOGGER.debug("TempMaster candidate for a GP packet: %r", packet)
-                    candidates.packets.append(packet)
-                else:
-                    LOGGER.debug("Dropping late TempMaster candidate: %r", packet)
-
-                return True
-
-            candidates.expiry.cancel()
+            self._temp_master_candidates[ieee].expiry.cancel()
 
         self._temp_master_candidates[ieee] = _TempMasterCandidates(
             generation=self._window_generation,
             frame_counter=packet.frame_counter,
+            security_level=packet.security_level,
             started=loop.time(),
             packets=[packet],
             expiry=loop.call_later(
@@ -307,7 +309,36 @@ class GreenPowerManager(CreateTaskMixin):
             ),
         )
 
-        return False
+    def add_temp_master_candidate(
+        self, ieee: t.EUI64, packet: t.ZigbeeGpPacket
+    ) -> None:
+        """Add a later instance of an accepted GPDF as a TempMaster candidate.
+
+        The sink processes each later instance of a GPDF with RxAfterTx only as a
+        candidate for its election, within Dmax of the first one (A.3.6.1.2).
+        """
+        if ieee not in self._temp_master_candidates:
+            LOGGER.debug("No election for TempMaster candidate: %r", packet)
+            return
+
+        candidates = self._temp_master_candidates[ieee]
+
+        if (
+            candidates.generation != self._window_generation
+            or candidates.frame_counter != packet.frame_counter
+            or candidates.security_level != packet.security_level
+        ):
+            LOGGER.debug("TempMaster candidate for another GPDF: %r", packet)
+            return
+
+        elapsed = asyncio.get_running_loop().time() - candidates.started
+
+        if elapsed > TEMP_MASTER_ELECTION_TIME:
+            LOGGER.debug("Dropping late TempMaster candidate: %r", packet)
+            return
+
+        LOGGER.debug("TempMaster candidate for a GP packet: %r", packet)
+        candidates.packets.append(packet)
 
     async def _process_packet(self, packet: t.ZigbeeGpPacket, generation: int) -> None:
         """Process a GPDF only in the commissioning window in which it arrived."""

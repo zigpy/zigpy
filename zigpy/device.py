@@ -505,6 +505,14 @@ class GreenPowerDevice(BaseDevice):
         # metrics, or the duplicate window itself
         if self._is_packet_duplicate(packet):
             self.debug("Filtering duplicate packet")
+
+            # Another instance of the last GPDF is a TempMaster candidate for it, but a
+            # replay of an older one is not (A.3.6.1.2)
+            if packet.rx_after_tx and packet.frame_counter == self.frame_counter:
+                self._application.green_power.add_temp_master_candidate(
+                    self.ieee, packet
+                )
+
             return
 
         self.last_seen = packet.timestamp
@@ -517,6 +525,11 @@ class GreenPowerDevice(BaseDevice):
 
         if packet.frame_counter is not None:
             self.frame_counter = packet.frame_counter
+
+        # Only a GPDF that passed the security and freshness checks above elects the
+        # node to reply to the GPD
+        if packet.rx_after_tx:
+            self._application.green_power.start_temp_master_election(self.ieee, packet)
 
         # A Decommissioning command is only acted upon once it passes the freshness and
         # security checks above (spec A.3.5.2.4)
