@@ -113,6 +113,7 @@ class AttributeReadEvent:
     attribute_id: int
     manufacturer_code: int | None
     raw_value: Any | None
+    data_type: foundation.DataTypeId
     value: Any | None
 
 
@@ -130,6 +131,7 @@ class AttributeReportedEvent:
     attribute_id: int
     manufacturer_code: int | None
     raw_value: Any | None
+    data_type: foundation.DataTypeId
     value: Any
 
 
@@ -146,6 +148,8 @@ class AttributeWrittenEvent:
     attribute_name: str
     attribute_id: int
     manufacturer_code: int | None
+    raw_value: Any
+    data_type: foundation.DataTypeId
     value: Any | None
     status: foundation.Status
 
@@ -1013,6 +1017,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                             attribute_id=attr.attrid,
                             manufacturer_code=hdr.manufacturer,
                             raw_value=attr.value.value,
+                            data_type=attr.value.type,
                             value=value,
                         ),
                     )
@@ -1054,6 +1059,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                             attribute_id=attr.attrid,
                             manufacturer_code=hdr.manufacturer,
                             raw_value=attr.value.value,
+                            data_type=attr.value.type,
                             value=value,
                         ),
                     )
@@ -1461,6 +1467,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                             attribute_id=attr_def.id,
                             manufacturer_code=manufacturer_code,
                             raw_value=record.value.value,
+                            data_type=record.value.type,
                             value=value,
                         ),
                     )
@@ -1624,6 +1631,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             zcl_attrs: list[foundation.Attribute] = []
             attr_defs: dict[int, foundation.ZCLAttributeDef] = {}
             attribute_values: dict[int, Any] = {}
+            type_values: dict[int, foundation.TypeValue] = {}
 
             for attr_def, value in attribute_list:
                 attr_defs[attr_def.id] = attr_def
@@ -1633,6 +1641,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 zcl_attr.value.type = attr_def.zcl_type
                 zcl_attr.value.value = attr_def.type(value)
                 zcl_attrs.append(zcl_attr)
+                type_values[attr_def.id] = zcl_attr.value
 
             records_group: list[foundation.WriteAttributesStatusRecord] = []
 
@@ -1721,6 +1730,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                         attribute_name=attr_def.name,
                         attribute_id=attr_def.id,
                         manufacturer_code=manufacturer_code,
+                        raw_value=type_values[record.attrid].value,
+                        data_type=type_values[record.attrid].type,
                         value=attribute_values[record.attrid],
                         status=record.status,
                     ),
