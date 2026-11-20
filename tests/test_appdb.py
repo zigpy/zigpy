@@ -42,6 +42,7 @@ from zigpy.const import (
 )
 from zigpy.device import Device, GreenPowerDevice, Status
 import zigpy.endpoint
+import zigpy.exceptions
 import zigpy.group
 import zigpy.ota
 from zigpy.store import StoredValue
@@ -3795,3 +3796,704 @@ async def test_device_store_bound_at_construction(tmp_path):
     assert STORE_COUNT not in new_dev.store
 
     await app.shutdown()
+
+
+GROUP_STATE = StoredValue(namespace="zigpy.groups", key="allocation", type=dict)
+
+
+def _network_store_rows(db) -> list[tuple]:
+    """Read the committed network store rows through a separate connection."""
+    with contextlib.closing(sqlite3.connect(db)) as conn:
+        return list(
+            conn.execute(
+                f"SELECT namespace, key, value, version FROM network_store{zigpy.appdb.DB_V}"
+                " ORDER BY namespace, key"
+            )
+        )
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_network_store_round_trip(tmp_path):
+    """Network values survive a restart and are loaded before devices are resolved."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    dev, _, _ = _add_joined_device(app)
+
+    app.network_store[GROUP_STATE] = {"next": 5}
+    app.network_store.namespace("other").set("k", [1, None], version=3)
+    app.network_store.namespace("other")["gone"] = 1
+    del app.network_store.namespace("other")["gone"]
+    last_updated = app.network_store.last_updated(GROUP_STATE)
+
+    # Network values do not follow devices
+    app._dblistener.device_removed(dev)
+    await app.shutdown()
+
+    seen = []
+
+    def resolver(device):
+        seen.append(device.application.network_store.get(GROUP_STATE))
+        return device
+
+    app2 = await make_app_with_db(db, device_resolver=resolver)
+
+    # The device row was removed, so add one to see what its resolution can read
+    assert seen == []
+    assert app2.network_store[GROUP_STATE] == {"next": 5}
+    assert app2.network_store.last_updated(GROUP_STATE).timestamp() == pytest.approx(
+        last_updated.timestamp()
+    )
+
+    item = app2.network_store.namespace("other").item("k")
+    assert item.value == [1, None]
+    assert item.version == 3
+    assert "gone" not in app2.network_store.namespace("other")
+
+    _add_joined_device(app2)
+    app2.network_store[GROUP_STATE] = {"next": 6}
+    await app2.shutdown()
+
+    seen.clear()
+    app3 = await make_app_with_db(db, device_resolver=resolver)
+
+    assert seen == [{"next": 6}]
+    assert app3.network_store[GROUP_STATE] == {"next": 6}
+    assert _network_store_rows(db) == [
+        ("other", "k", "[1, null]", 3),
+        ("zigpy.groups", "allocation", '{"next": 6}', 1),
+    ]
+
+    await app3.shutdown()
+
+
+async def test_network_store_version_rules_persisted(tmp_path):
+    """A newer row is kept on disk, a stale one is dropped from it."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    ns = app.network_store.namespace("zigpy.groups")
+    ns.set("allocation", {"next": 1}, version=2)
+    ns.set("stale", 1, version=0)
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    stale = StoredValue(namespace="zigpy.groups", key="stale", type=int)
+
+    assert GROUP_STATE not in app2.network_store
+    assert app2.network_store.get(stale) is None
+    await app2.flush_database()
+
+    assert _network_store_rows(db) == [
+        ("zigpy.groups", "allocation", '{"next": 1}', 2),
+    ]
+
+    await app2.shutdown()
+
+
+async def test_network_store_skips_undecodable_row(tmp_path, caplog):
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    app.network_store[GROUP_STATE] = {"next": 1}
+    await app.shutdown()
+
+    with contextlib.closing(sqlite3.connect(db)) as conn:
+        conn.execute(
+            f"INSERT INTO network_store{zigpy.appdb.DB_V} VALUES (?, ?, ?, ?, ?)",
+            ("zigpy.groups", "broken", "{", 1, 0.0),
+        )
+        conn.commit()
+
+    with caplog.at_level(logging.WARNING):
+        app2 = await make_app_with_db(db)
+
+    assert "Skipping undecodable store value zigpy.groups/broken of network" in (
+        caplog.text
+    )
+    assert app2.network_store[GROUP_STATE] == {"next": 1}
+    assert "broken" not in app2.network_store.namespace("zigpy.groups")
+
+    await app2.shutdown()
+
+
+async def test_network_store_without_database():
+    """Without a database the network store is in memory and flushing does nothing."""
+    app = make_app({})
+    await app._load_db()
+
+    assert app._dblistener is None
+
+    app.network_store[GROUP_STATE] = {"next": 1}
+
+    assert app.network_store[GROUP_STATE] == {"next": 1}
+
+    await app.flush_database()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_flush_commits_queued_writes(tmp_path):
+    """Values set just before a flush are committed when it returns."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=3600)
+    dev, _, _ = _add_joined_device(app)
+    await app._dblistener._callback_handlers.join()
+
+    dev.store[STORE_COUNT] = 3
+    app.network_store[GROUP_STATE] = {"next": 2}
+    await app._dblistener._callback_handlers.join()
+
+    # Written, but the commit is deferred
+    assert _network_store_rows(db) == []
+    assert _count_store_rows(db, dev.ieee) == 0
+
+    dev.store[STORE_COUNT] = 4
+    app.network_store[GROUP_STATE] = {"next": 3}
+    await app.flush_database()
+
+    assert _network_store_rows(db) == [
+        ("zigpy.groups", "allocation", '{"next": 3}', 1),
+    ]
+
+    with contextlib.closing(sqlite3.connect(db)) as conn:
+        assert list(
+            conn.execute(f"SELECT key, value FROM device_store{zigpy.appdb.DB_V}")
+        ) == [("count", "4")]
+
+    await app.shutdown()
+
+
+@pytest.mark.parametrize("table", ["network_store", "device_store"])
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_flush_reports_failed_store_write(tmp_path, table):
+    """A failed store write makes the next flush raise, and only that one."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=3600)
+    dev, _, _ = _add_joined_device(app)
+    await app.flush_database()
+
+    listener = app._dblistener
+    await listener.execute(
+        f"""CREATE TRIGGER fail_store_write BEFORE INSERT ON {table}{zigpy.appdb.DB_V}
+            BEGIN SELECT RAISE(ABORT, 'store write failed'); END"""
+    )
+
+    app.network_store[GROUP_STATE] = {"next": 1}
+    dev.store[STORE_COUNT] = 1
+
+    with pytest.raises(zigpy.exceptions.DatabaseFlushError) as exc_info:
+        await app.flush_database()
+
+    assert isinstance(exc_info.value.__cause__, sqlite3.IntegrityError)
+    assert "store write failed" in str(exc_info.value)
+
+    # The failure was reported once
+    await app.flush_database()
+
+    await listener.execute("DROP TRIGGER fail_store_write")
+    app.network_store[GROUP_STATE] = {"next": 2}
+    dev.store[STORE_COUNT] = 2
+    await app.flush_database()
+
+    assert _network_store_rows(db) == [
+        ("zigpy.groups", "allocation", '{"next": 2}', 1),
+    ]
+    assert _count_store_rows(db, dev.ieee) == 1
+
+    await app.shutdown()
+
+
+async def test_flush_reports_failed_commit(tmp_path):
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=3600)
+    listener = app._dblistener
+    app.network_store[GROUP_STATE] = {"next": 1}
+
+    with patch.object(
+        listener._db, "commit", side_effect=sqlite3.OperationalError("disk is busy")
+    ):
+        with pytest.raises(zigpy.exceptions.DatabaseFlushError) as exc_info:
+            await app.flush_database()
+
+    assert isinstance(exc_info.value.__cause__, sqlite3.OperationalError)
+
+    # The transaction was kept, so the next flush commits it
+    await app.flush_database()
+
+    assert _network_store_rows(db) == [
+        ("zigpy.groups", "allocation", '{"next": 1}', 1),
+    ]
+
+    await app.shutdown()
+
+
+async def test_flush_reports_store_writes_lost_to_deferred_commit(tmp_path):
+    """A deferred commit that rolls back store writes makes the next flush raise."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=3600)
+    listener = app._dblistener
+    real_rollback = listener._db.rollback
+
+    async def failing_commit():
+        # What SQLite does for errors such as a full disk
+        await real_rollback()
+        raise sqlite3.OperationalError("database or disk is full")
+
+    app.network_store[GROUP_STATE] = {"next": 1}
+
+    with patch.object(listener._db, "commit", side_effect=failing_commit):
+        listener.enqueue("_flush_commit")
+        await listener._callback_handlers.join()
+
+    with pytest.raises(zigpy.exceptions.DatabaseFlushError) as exc_info:
+        await app.flush_database()
+
+    assert "database or disk is full" in str(exc_info.value)
+    assert _network_store_rows(db) == []
+
+    await app.flush_database()
+    await app.shutdown()
+
+
+async def test_flush_after_retried_deferred_commit(tmp_path):
+    """A deferred commit that fails but keeps the transaction is not a lost write."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=3600)
+    listener = app._dblistener
+    app.network_store[GROUP_STATE] = {"next": 1}
+
+    with patch.object(
+        listener._db,
+        "commit",
+        side_effect=sqlite3.OperationalError("database is locked"),
+    ):
+        listener.enqueue("_flush_commit")
+        await listener._callback_handlers.join()
+
+    await app.flush_database()
+
+    assert _network_store_rows(db) == [
+        ("zigpy.groups", "allocation", '{"next": 1}', 1),
+    ]
+
+    await app.shutdown()
+
+
+async def test_flush_reports_rollback_by_other_handler(tmp_path):
+    """A statement of another handler that rolls back loses earlier store writes."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=3600)
+    listener = app._dblistener
+    await listener.execute(
+        f"""CREATE TRIGGER rollback_backup BEFORE INSERT ON network_backups{zigpy.appdb.DB_V}
+            BEGIN SELECT RAISE(ROLLBACK, 'rolled back'); END"""
+    )
+    await app.flush_database()
+
+    app.network_store[GROUP_STATE] = {"next": 1}
+
+    async def _other_write(catch: bool) -> None:
+        try:
+            await listener.execute(
+                f"INSERT INTO network_backups{zigpy.appdb.DB_V} VALUES (?, ?)",
+                (1, "{}"),
+            )
+        except sqlite3.Error:
+            if not catch:
+                raise
+
+    listener._other_write = _other_write
+
+    # The failing handler raises, and the worker notices the rollback before a later
+    # write opens a new transaction
+    listener.enqueue("_other_write", False)
+    app.network_store.namespace("zigpy.groups")["other"] = 1
+
+    with pytest.raises(zigpy.exceptions.DatabaseFlushError, match="rolled back"):
+        await app.flush_database()
+
+    assert _network_store_rows(db) == [("zigpy.groups", "other", "1", 1)]
+
+    # The failing handler swallows the error, and the flush notices the rollback
+    app.network_store[GROUP_STATE] = {"next": 2}
+    listener.enqueue("_other_write", True)
+
+    with pytest.raises(zigpy.exceptions.DatabaseFlushError, match="rolled back"):
+        await app.flush_database()
+
+    assert _network_store_rows(db) == [("zigpy.groups", "other", "1", 1)]
+    await app.flush_database()
+
+    del listener._other_write
+    await app.shutdown()
+
+
+async def test_flush_reports_store_writes_lost_to_full_disk(tmp_path):
+    """A full disk while another handler writes rolls back pending store writes."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=3600)
+    listener = app._dblistener
+    await app.flush_database()
+
+    async with listener.execute("PRAGMA page_count") as cursor:
+        (page_count,) = await cursor.fetchone()
+
+    app.network_store[GROUP_STATE] = {"next": 1}
+    await listener._callback_handlers.join()
+    await listener.execute(f"PRAGMA max_page_count = {page_count + 2}")
+
+    async def _large_write() -> None:
+        for i in range(100):
+            await listener.execute(
+                f"INSERT INTO network_backups{zigpy.appdb.DB_V} VALUES (?, ?)",
+                (i, "x" * 5000),
+            )
+
+    listener._large_write = _large_write
+    listener.enqueue("_large_write")
+
+    with pytest.raises(zigpy.exceptions.DatabaseFlushError, match="full"):
+        await app.flush_database()
+
+    assert _network_store_rows(db) == []
+
+    del listener._large_write
+    await listener.execute("PRAGMA max_page_count = 1073741823")
+    await app.shutdown()
+
+
+async def test_cancelled_flush_keeps_failure(tmp_path):
+    """A failure is reported by the next flush whose caller is still waiting."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=3600)
+    listener = app._dblistener
+    await listener.execute(
+        f"""CREATE TRIGGER fail_store_write BEFORE INSERT ON network_store{zigpy.appdb.DB_V}
+            BEGIN SELECT RAISE(ABORT, 'store write failed'); END"""
+    )
+    app.network_store[GROUP_STATE] = {"next": 1}
+
+    flush = asyncio.create_task(app.flush_database())
+    await asyncio.sleep(0)
+    flush.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await flush
+
+    await listener._callback_handlers.join()
+    await listener.execute("DROP TRIGGER fail_store_write")
+
+    with pytest.raises(zigpy.exceptions.DatabaseFlushError, match="store write failed"):
+        await app.flush_database()
+
+    await app.flush_database()
+    await app.shutdown()
+
+
+async def test_flush_cancelled_after_publication_keeps_failure(tmp_path):
+    """A caller cancelled after the worker published the failure leaves it reported."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=3600)
+    listener = app._dblistener
+    await listener.execute(
+        f"""CREATE TRIGGER fail_store_write BEFORE INSERT ON network_store{zigpy.appdb.DB_V}
+            BEGIN SELECT RAISE(ABORT, 'store write failed'); END"""
+    )
+    app.network_store[GROUP_STATE] = {"next": 1}
+
+    real_flush = listener._flush
+    flush_task = None
+
+    async def flush_then_cancel(result):
+        await real_flush(result)
+        assert result.done()
+        # The outcome is published, but the caller has not run yet
+        flush_task.cancel()
+
+    with patch.object(listener, "_flush", side_effect=flush_then_cancel):
+        flush_task = asyncio.create_task(app.flush_database())
+
+        with pytest.raises(asyncio.CancelledError):
+            await flush_task
+
+    await listener.execute("DROP TRIGGER fail_store_write")
+
+    with pytest.raises(zigpy.exceptions.DatabaseFlushError, match="store write failed"):
+        await app.flush_database()
+
+    await app.flush_database()
+    await app.shutdown()
+
+
+async def test_flush_commit_error_keeps_store_failure(tmp_path):
+    """A commit that keeps its transaction does not hide an earlier store failure."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=3600)
+    listener = app._dblistener
+    await listener.execute(
+        f"""CREATE TRIGGER fail_store_write BEFORE INSERT ON network_store{zigpy.appdb.DB_V}
+            BEGIN SELECT RAISE(ABORT, 'store write failed'); END"""
+    )
+    app.network_store[GROUP_STATE] = {"next": 1}
+
+    with patch.object(
+        listener._db,
+        "commit",
+        side_effect=sqlite3.OperationalError("database is locked"),
+    ):
+        with pytest.raises(zigpy.exceptions.DatabaseFlushError, match="locked"):
+            await app.flush_database()
+
+    with pytest.raises(zigpy.exceptions.DatabaseFlushError, match="store write failed"):
+        await app.flush_database()
+
+    await app.flush_database()
+
+    assert _network_store_rows(db) == []
+
+    await app.shutdown()
+
+
+async def test_flush_keeps_failure_recorded_after_publication(tmp_path):
+    """A store failure recorded after a flush published its outcome stays recorded."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=3600)
+    listener = app._dblistener
+    await listener.execute(
+        f"""CREATE TRIGGER fail_store_write BEFORE INSERT ON network_store{zigpy.appdb.DB_V}
+            BEGIN SELECT RAISE(ABORT, 'store write failed'); END"""
+    )
+    app.network_store[GROUP_STATE] = {"next": 1}
+
+    real_flush = listener._flush
+
+    async def flush_then_fail(result):
+        await real_flush(result)
+        # Fails on the worker before the caller of the first flush resumes
+        listener._record_store_write_error(sqlite3.OperationalError("later failure"))
+
+    with patch.object(listener, "_flush", side_effect=flush_then_fail):
+        with pytest.raises(zigpy.exceptions.DatabaseFlushError, match="store write"):
+            await app.flush_database()
+
+    await listener.execute("DROP TRIGGER fail_store_write")
+
+    with pytest.raises(zigpy.exceptions.DatabaseFlushError, match="later failure"):
+        await app.flush_database()
+
+    await app.flush_database()
+    await app.shutdown()
+
+
+async def test_flush_keeps_first_and_latest_of_many_failures(tmp_path):
+    """Of many store failures, the first is raised and the latest outlives the flush."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=3600)
+    listener = app._dblistener
+    await listener.execute(
+        f"""CREATE TRIGGER fail_first_write BEFORE INSERT ON network_store{zigpy.appdb.DB_V}
+            WHEN NEW.key = 'first'
+            BEGIN SELECT RAISE(ABORT, 'first write failed'); END"""
+    )
+    await listener.execute(
+        f"""CREATE TRIGGER fail_second_write BEFORE INSERT ON network_store{zigpy.appdb.DB_V}
+            WHEN NEW.key = 'second'
+            BEGIN SELECT RAISE(ABORT, 'second write failed'); END"""
+    )
+    await listener.execute(
+        f"""CREATE TRIGGER fail_third_write BEFORE INSERT ON network_store{zigpy.appdb.DB_V}
+            WHEN NEW.key = 'third'
+            BEGIN SELECT RAISE(ABORT, 'third write failed'); END"""
+    )
+
+    for key in ("first", "second", "third"):
+        app.network_store[StoredValue(namespace="test", key=key, type=int)] = 1
+
+    await listener._callback_handlers.join()
+
+    # Only the first and the latest failure are held: the third replaced the second
+    assert [str(exc) for exc in listener._store_write_errors] == [
+        "first write failed",
+        "third write failed",
+    ]
+
+    real_flush = listener._flush
+
+    async def flush_then_fail(result):
+        await real_flush(result)
+        # Fails on the worker before the caller of the first flush resumes, while
+        # the failures that flush reports are still recorded
+        listener._record_store_write_error(sqlite3.OperationalError("later failure"))
+
+    with patch.object(listener, "_flush", side_effect=flush_then_fail):
+        with pytest.raises(
+            zigpy.exceptions.DatabaseFlushError, match="first write failed"
+        ):
+            await app.flush_database()
+
+    # Only the failure recorded after publication is left, not the earlier ones
+    with pytest.raises(zigpy.exceptions.DatabaseFlushError, match="later failure"):
+        await app.flush_database()
+
+    await app.flush_database()
+
+    assert _network_store_rows(db) == []
+
+    await app.shutdown()
+
+
+async def test_flush_cancelled_during_commit(tmp_path, caplog):
+    """A caller cancelled during the commit gets nothing, and the failure stays."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=3600)
+    listener = app._dblistener
+    await listener.execute(
+        f"""CREATE TRIGGER fail_store_write BEFORE INSERT ON network_store{zigpy.appdb.DB_V}
+            WHEN NEW.key = 'failing'
+            BEGIN SELECT RAISE(ABORT, 'store write failed'); END"""
+    )
+    app.network_store[StoredValue(namespace="test", key="failing", type=int)] = 1
+    app.network_store[GROUP_STATE] = {"next": 1}
+
+    real_commit = listener._db.commit
+    flush_task = None
+
+    async def cancel_then_commit():
+        flush_task.cancel()
+        await real_commit()
+
+    with patch.object(listener._db, "commit", side_effect=cancel_then_commit):
+        flush_task = asyncio.create_task(app.flush_database())
+
+        with pytest.raises(asyncio.CancelledError):
+            await flush_task
+
+        await listener._callback_handlers.join()
+
+    # The commit itself went through
+    assert _network_store_rows(db) == [
+        ("zigpy.groups", "allocation", '{"next": 1}', 1),
+    ]
+    # Without the worker's check for a result cancelled during the commit, setting
+    # the result fails and the worker logs this
+    assert "Unexpected error" not in caplog.text
+
+    # The failure was not published to the cancelled caller, so the next flush has it
+    with pytest.raises(zigpy.exceptions.DatabaseFlushError, match="store write failed"):
+        await app.flush_database()
+
+    await app.flush_database()
+    await app.shutdown()
+
+
+async def test_flush_reports_own_rollback_once(tmp_path):
+    """A rollback by the flush's own commit is reported by that flush only."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=3600)
+    listener = app._dblistener
+    real_rollback = listener._db.rollback
+
+    async def failing_commit():
+        await real_rollback()
+        raise sqlite3.OperationalError("database or disk is full")
+
+    app.network_store[GROUP_STATE] = {"next": 1}
+
+    with patch.object(listener._db, "commit", side_effect=failing_commit):
+        with pytest.raises(zigpy.exceptions.DatabaseFlushError, match="disk is full"):
+            await app.flush_database()
+
+    await app.flush_database()
+    await app.shutdown()
+
+
+async def test_flush_without_commit_interval(tmp_path):
+    """Without deferred commits, a commit that keeps the transaction is retried."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=0)
+    listener = app._dblistener
+
+    with patch.object(
+        listener._db,
+        "commit",
+        side_effect=sqlite3.OperationalError("database is locked"),
+    ):
+        app.network_store[GROUP_STATE] = {"next": 1}
+        await listener._callback_handlers.join()
+
+    assert _network_store_rows(db) == []
+
+    await app.flush_database()
+
+    assert _network_store_rows(db) == [
+        ("zigpy.groups", "allocation", '{"next": 1}', 1),
+    ]
+
+    await app.shutdown()
+
+
+def _drain_queue(listener) -> None:
+    """Mark events a stopped worker will never finish as done, so shutdown can run."""
+    queue = listener._callback_handlers
+
+    while not queue.empty():
+        queue.get_nowait()
+
+    # Including the event the worker was handling when it stopped
+    while queue._unfinished_tasks:
+        queue.task_done()
+
+
+async def test_flush_with_stopped_worker(tmp_path):
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    listener = app._dblistener
+
+    listener._worker_task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await listener._worker_task
+
+    async with asyncio.timeout(1):
+        with pytest.raises(zigpy.exceptions.DatabaseFlushError, match="not running"):
+            await app.flush_database()
+
+    _drain_queue(listener)
+    await app.shutdown()
+
+
+async def test_flush_worker_stops_while_waiting(tmp_path):
+    """A flush waiting behind other events raises if the worker stops first."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    listener = app._dblistener
+    handler_started = asyncio.Event()
+
+    async def _blocking_handler():
+        handler_started.set()
+        await asyncio.Event().wait()
+
+    listener._blocking_handler = _blocking_handler
+    listener.enqueue("_blocking_handler")
+    await handler_started.wait()
+
+    flush = asyncio.create_task(app.flush_database())
+    await asyncio.sleep(0)
+
+    assert not flush.done()
+
+    listener._worker_task.cancel()
+
+    async with asyncio.timeout(1):
+        with pytest.raises(zigpy.exceptions.DatabaseFlushError, match="stopped"):
+            await flush
+
+    del listener._blocking_handler
+    _drain_queue(listener)
+    await app.shutdown()
+
+
+async def test_flush_after_shutdown(tmp_path):
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    await app.shutdown()
+
+    with pytest.raises(zigpy.exceptions.DatabaseFlushError):
+        await app.flush_database()

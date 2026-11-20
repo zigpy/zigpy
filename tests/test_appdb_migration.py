@@ -830,7 +830,7 @@ async def test_migration_v16_to_v17_green_power(tmp_path, open_twice):
 
 
 async def test_migration_v16_to_v17(tmp_path):
-    """v17 adds the empty device_store table and carries the other tables over."""
+    """v17 adds the empty store tables and carries the other tables over."""
     db_path = str(tmp_path / "test.db")
     ieee = "00:11:22:33:44:55:66:77"
 
@@ -849,15 +849,28 @@ async def test_migration_v16_to_v17(tmp_path):
     assert dev.last_seen == 1700000000.0
 
     dev.store.namespace("ns")["k"] = [1, 2]
+    app.network_store.namespace("net")["k"] = {"a": 1}
     await app.shutdown()
+
+    # The migrated database reads the network value back
+    app2 = await make_app_with_db(db_path)
+    assert app2.network_store.namespace("net")["k"] == {"a": 1}
+    await app2.shutdown()
 
     user_version, sql = dump_db(db_path)
 
     assert user_version == 17
     assert "CREATE TABLE device_store_v17" in sql
+    assert "CREATE TABLE network_store_v17" in sql
 
     with sqlite3.connect(db_path) as conn:
         rows = list(conn.execute("SELECT * FROM device_store_v17"))
 
     assert len(rows) == 1
     assert rows[0][:5] == (ieee, "ns", "k", "[1, 2]", 1)
+
+    with sqlite3.connect(db_path) as conn:
+        rows = list(conn.execute("SELECT * FROM network_store_v17"))
+
+    assert len(rows) == 1
+    assert rows[0][:4] == ("net", "k", '{"a": 1}', 1)

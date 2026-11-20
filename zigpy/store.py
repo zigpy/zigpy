@@ -1,9 +1,14 @@
-"""Per-device key/value store for state that is not a ZCL attribute.
+"""Key/value stores for state that is not a ZCL attribute.
 
 Quirks and applications keep device state here that has no ZCL attribute to live in,
 such as Tuya datapoint values or locally stored settings. Values are plain JSON and the
 store never interprets them. A `StoredValue` declaration gives a key its type, the way a
 `ZCLAttributeDef` does for an attribute, and is the intended way to read and write.
+
+There are two scopes with the same API: a `DeviceStore` per device, whose values follow
+the device and are deleted when it is removed, and the application's `NetworkStore`, for
+state that belongs to the network rather than to one device. Each scope has its own
+events, emitted by `DeviceStores` and by the `NetworkStore` itself.
 """
 
 from __future__ import annotations
@@ -27,6 +32,7 @@ JSONValue: TypeAlias = (
 
 T = TypeVar("T")
 D = TypeVar("D")
+E = TypeVar("E")
 
 DEFAULT_VERSION: Final = 1
 
@@ -54,6 +60,35 @@ class StoreValueDeletedEvent:
     device_ieee: str
     namespace: str
     key: str
+
+
+@dataclass(kw_only=True, frozen=True)
+class NetworkStoreValueUpdatedEvent:
+    """Event generated when a network store value is set."""
+
+    event_type: Final[str] = "network_store_value_updated"
+
+    namespace: str
+    key: str
+    value: JSONValue
+    version: int
+    last_updated: datetime
+
+
+@dataclass(kw_only=True, frozen=True)
+class NetworkStoreValueDeletedEvent:
+    """Event generated when a network store value is deleted."""
+
+    event_type: Final[str] = "network_store_value_deleted"
+
+    namespace: str
+    key: str
+
+
+DeviceStoreEvent: TypeAlias = StoreValueUpdatedEvent | StoreValueDeletedEvent
+NetworkStoreEvent: TypeAlias = (
+    NetworkStoreValueUpdatedEvent | NetworkStoreValueDeletedEvent
+)
 
 
 @dataclass(kw_only=True, frozen=True)
@@ -100,9 +135,9 @@ class StoredValue(Generic[T]):
 
 
 class StoreNamespace:
-    """Untyped key/value map within a device's store."""
+    """Untyped key/value map within a store."""
 
-    def __init__(self, store: DeviceStore, name: str) -> None:
+    def __init__(self, store: Store[Any], name: str) -> None:
         self._store = store
         self.name = name
         self._items: dict[str, StoreItem] = {}
@@ -128,15 +163,15 @@ class StoreNamespace:
     ) -> None:
         """Store a JSON value and emit `StoreValueUpdatedEvent`.
 
-        A closed store (its device was removed) ignores the write, so code still holding
-        a reference to a removed device cannot write rows for it.
+        A closed store (only a removed device's is) ignores the write, so code still
+        holding a reference to a removed device cannot write rows for it.
         """
         value = normalize_json(value)
 
         if self._store.closed:
             LOGGER.debug(
-                "[%s] Ignoring write of %s/%s to a removed device's store",
-                self._store.ieee,
+                "[%s] Ignoring write of %s/%s to a closed store",
+                self._store.log_name,
                 self.name,
                 key,
             )
@@ -149,14 +184,7 @@ class StoreNamespace:
         )
         self._items[key] = item
         self._store._emit(
-            StoreValueUpdatedEvent(
-                device_ieee=str(self._store.ieee),
-                namespace=self.name,
-                key=key,
-                value=item.value,
-                version=item.version,
-                last_updated=item.last_updated,
-            )
+            self.name, key, self._store._updated_event(self.name, key, item)
         )
 
     def __setitem__(self, key: str, value: Any) -> None:
@@ -168,21 +196,15 @@ class StoreNamespace:
 
         if self._store.closed:
             LOGGER.debug(
-                "[%s] Ignoring delete of %s/%s from a removed device's store",
-                self._store.ieee,
+                "[%s] Ignoring delete of %s/%s from a closed store",
+                self._store.log_name,
                 self.name,
                 key,
             )
             return
 
         del self._items[key]
-        self._store._emit(
-            StoreValueDeletedEvent(
-                device_ieee=str(self._store.ieee),
-                namespace=self.name,
-                key=key,
-            )
-        )
+        self._store._emit(self.name, key, self._store._deleted_event(self.name, key))
 
     def restore(
         self, key: str, value: JSONValue, *, version: int, last_updated: datetime
@@ -205,43 +227,40 @@ class StoreNamespace:
         return iter(self._items.items())
 
 
-class DeviceStore:
-    """The store of one device, addressed by `StoredValue` declarations.
+class Store(Generic[E]):
+    """Values of one scope, addressed by `StoredValue` declarations.
 
-    `device.store[DECL]` reads, `device.store[DECL] = value` writes and
-    `del device.store[DECL]` deletes. `namespace()` exposes the untyped map for keys
-    that are only known at runtime.
+    `store[DECL]` reads, `store[DECL] = value` writes and `del store[DECL]` deletes.
+    `namespace()` exposes the untyped map for keys that are only known at runtime.
 
     Reads return the stored JSON object itself: changing a list or dict in place
     neither emits an event nor persists it, so set the changed value again instead.
+
+    Subclasses define the scope: the name used in log messages, the events emitted
+    for a change, and where they are emitted.
     """
 
-    def __init__(self, stores: DeviceStores, ieee: t.EUI64) -> None:
-        self._stores = stores
-        self.ieee = ieee
+    log_name: str
+
+    def __init__(self) -> None:
+        super().__init__()
         self._namespaces: dict[str, StoreNamespace] = {}
         self._closed = False
-        self._change_callbacks: dict[
-            tuple[str, str],
-            list[Callable[[StoreValueUpdatedEvent | StoreValueDeletedEvent], None]],
-        ] = {}
+        self._change_callbacks: dict[tuple[str, str], list[Callable[[E], None]]] = {}
 
     @property
     def closed(self) -> bool:
-        """Whether the device was removed. A closed store ignores writes and deletes."""
+        """Whether the store ignores writes and deletes. Only a removed device's is."""
         return self._closed
 
-    def close(self) -> None:
-        self._closed = True
+    def _updated_event(self, namespace: str, key: str, item: StoreItem) -> E:
+        raise NotImplementedError
 
-    def clear(self) -> None:
-        """Drop all values and change callbacks from memory, without emitting events."""
-        # Namespaces handed out earlier must not keep reading the values either
-        for namespace in self._namespaces.values():
-            namespace._items.clear()
+    def _deleted_event(self, namespace: str, key: str) -> E:
+        raise NotImplementedError
 
-        self._namespaces.clear()
-        self._change_callbacks.clear()
+    def _emit_event(self, event: E) -> None:
+        raise NotImplementedError
 
     def namespace(self, name: str) -> StoreNamespace:
         if name not in self._namespaces:
@@ -252,21 +271,19 @@ class DeviceStore:
     def namespaces(self) -> Iterator[StoreNamespace]:
         return iter(self._namespaces.values())
 
-    def _emit(self, event: StoreValueUpdatedEvent | StoreValueDeletedEvent) -> None:
-        self._stores.emit(event.event_type, event)
+    def _emit(self, namespace: str, key: str, event: E) -> None:
+        self._emit_event(event)
 
-        for callback in list(
-            self._change_callbacks.get((event.namespace, event.key), ())
-        ):
+        for callback in list(self._change_callbacks.get((namespace, key), ())):
             try:
                 callback(event)
             except Exception:  # noqa: BLE001
                 LOGGER.exception(
                     "[%s] Error calling store change callback %r for %s/%s",
-                    self.ieee,
+                    self.log_name,
                     callback,
-                    event.namespace,
-                    event.key,
+                    namespace,
+                    key,
                 )
 
     def _current_item(self, decl: StoredValue[T]) -> StoreItem:
@@ -282,7 +299,7 @@ class DeviceStore:
             # kept, so upgrading again finds it unchanged.
             LOGGER.debug(
                 "[%s] Ignoring %s/%s store value from a newer version (%d > %d)",
-                self.ieee,
+                self.log_name,
                 decl.namespace,
                 decl.key,
                 item.version,
@@ -293,7 +310,7 @@ class DeviceStore:
         if decl.migrate is None:
             LOGGER.warning(
                 "[%s] Dropping stale %s/%s store value (version %d, expected %d): %r",
-                self.ieee,
+                self.log_name,
                 decl.namespace,
                 decl.key,
                 item.version,
@@ -342,7 +359,7 @@ class DeviceStore:
         except (TypeError, ValueError):
             LOGGER.warning(
                 "[%s] Failed to decode %s/%s store value",
-                self.ieee,
+                self.log_name,
                 decl.namespace,
                 decl.key,
                 exc_info=True,
@@ -372,14 +389,13 @@ class DeviceStore:
         return self._current_item(decl).last_updated
 
     def on_change(
-        self,
-        decl: StoredValue[Any],
-        callback: Callable[[StoreValueUpdatedEvent | StoreValueDeletedEvent], None],
+        self, decl: StoredValue[Any], callback: Callable[[E], None]
     ) -> Callable[[], None]:
         """Call `callback` whenever the value for `decl` is set or deleted.
 
-        Callbacks are held by this store, so they only fire for this device and stop
-        with it: a device added again under the same IEEE gets a new store.
+        Callbacks are held by this store. For a device store, they only fire for this
+        device and stop with it: a device added again under the same IEEE gets a new
+        store.
         """
         key = (decl.namespace, decl.key)
         callbacks = self._change_callbacks.setdefault(key, [])
@@ -393,6 +409,94 @@ class DeviceStore:
                 del self._change_callbacks[key]
 
         return unsubscribe
+
+
+class DeviceStore(Store[DeviceStoreEvent]):
+    """The store of one device.
+
+    `device.store[DECL]` reads, `device.store[DECL] = value` writes and
+    `del device.store[DECL]` deletes. Values follow the device: they survive a
+    re-interview and quirk replacement, and are deleted when the device is removed.
+    """
+
+    def __init__(self, stores: DeviceStores, ieee: t.EUI64) -> None:
+        super().__init__()
+        self._stores = stores
+        self.ieee = ieee
+        self.log_name = str(ieee)
+
+    def close(self) -> None:
+        """Stop accepting writes and deletes, for a device that is being removed."""
+        self._closed = True
+
+    def clear(self) -> None:
+        """Drop all values and change callbacks from memory, without emitting events.
+
+        Used once a removed device's rows are deleted. The network store has no
+        equivalent: its values are only removed by deleting them.
+        """
+        # Namespaces handed out earlier must not keep reading the values either
+        for namespace in self._namespaces.values():
+            namespace._items.clear()
+
+        self._namespaces.clear()
+        self._change_callbacks.clear()
+
+    def _updated_event(
+        self, namespace: str, key: str, item: StoreItem
+    ) -> StoreValueUpdatedEvent:
+        return StoreValueUpdatedEvent(
+            device_ieee=str(self.ieee),
+            namespace=namespace,
+            key=key,
+            value=item.value,
+            version=item.version,
+            last_updated=item.last_updated,
+        )
+
+    def _deleted_event(self, namespace: str, key: str) -> StoreValueDeletedEvent:
+        return StoreValueDeletedEvent(
+            device_ieee=str(self.ieee), namespace=namespace, key=key
+        )
+
+    def _emit_event(self, event: DeviceStoreEvent) -> None:
+        self._stores.emit(event.event_type, event)
+
+
+class NetworkStore(Store[NetworkStoreEvent], EventBase):
+    """The application's store for state that belongs to the network.
+
+    `app.network_store[DECL]` reads and writes like a device store. Values have no
+    lifecycle of their own: they stay until they are deleted, whatever happens to the
+    devices. A value about one device keeps that device's IEEE in its key.
+
+    Changes emit `NetworkStoreValueUpdatedEvent` and `NetworkStoreValueDeletedEvent` on
+    this object, never on `DeviceStores`, so a device store listener sees no network
+    values and the network events need no device field.
+
+    The database subscribes to these events when it is loaded, at application start-up.
+    A value set before that is not persisted, and is replaced by a persisted value of
+    the same key.
+    """
+
+    log_name = "network"
+
+    def _updated_event(
+        self, namespace: str, key: str, item: StoreItem
+    ) -> NetworkStoreValueUpdatedEvent:
+        return NetworkStoreValueUpdatedEvent(
+            namespace=namespace,
+            key=key,
+            value=item.value,
+            version=item.version,
+            last_updated=item.last_updated,
+        )
+
+    def _deleted_event(self, namespace: str, key: str) -> NetworkStoreValueDeletedEvent:
+        return NetworkStoreValueDeletedEvent(namespace=namespace, key=key)
+
+    def _emit_event(self, event: NetworkStoreEvent) -> None:
+        self.emit(event.event_type, event)
 
 
 class DeviceStores(EventBase):
