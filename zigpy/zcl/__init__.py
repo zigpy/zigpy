@@ -1240,7 +1240,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             return new_row, None
 
         if type_value is not None:
-            value = _convert_attribute_value(attr_def, type_value)
+            try:
+                value = _convert_attribute_value(attr_def, type_value)
+            except (TypeError, ValueError) as exc:
+                # The definition changed, e.g. by a quirk or a zigpy update
+                self.debug(
+                    "Stored value %r does not fit attribute %s, deleting it: %r",
+                    type_value,
+                    attr_def.name,
+                    exc,
+                )
+                return None, None
         elif isinstance(row.value, str) and issubclass(attr_def.type, t.EUI64):
             # The old SQLite adapter stored EUI64 values as strings
             value = attr_def.type.convert(row.value)

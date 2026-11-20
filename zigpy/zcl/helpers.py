@@ -81,7 +81,9 @@ def _convert_attribute_value(attr_def: ZCLAttributeDef, type_value: TypeValue) -
         ),
     ):
         value, rest = attr_def.type.deserialize(type_value.value.serialize())
-        assert not rest
+
+        if rest:
+            raise ValueError(f"{type_value!r} does not fit {attr_def.type!r}")
 
         return value
 
