@@ -2309,6 +2309,7 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
             attribute_id=DoublingCluster.AttributeDefs.passthrough_attr.id,
             manufacturer_code=None,
             raw_value=99,
+            data_type=foundation.DataTypeId.uint8,
             value=99,
         ),
         # No AttributeUpdatedEvent for passthrough_attr since value wasn't transformed
@@ -2333,6 +2334,7 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
             attribute_id=MOTION_ATTRIBUTE,
             manufacturer_code=None,
             raw_value=1,
+            data_type=foundation.DataTypeId.uint8,
             value=1,
         ),
     ]
@@ -2402,6 +2404,7 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
             attribute_id=DoublingCluster.AttributeDefs.passthrough_attr.id,
             manufacturer_code=None,
             raw_value=77,
+            data_type=foundation.DataTypeId.uint8,
             value=77,
         ),
         # No AttributeUpdatedEvent for passthrough_attr since value wasn't transformed
@@ -2949,6 +2952,7 @@ async def test_read_attributes_insufficient_space_retry_success(app_mock) -> Non
             attribute_id=TestCluster.AttributeDefs.attr_0.id,
             manufacturer_code=None,
             raw_value=10,
+            data_type=foundation.DataTypeId.uint8,
             value=10,
         ),
         AttributeReadEvent(
@@ -2960,6 +2964,7 @@ async def test_read_attributes_insufficient_space_retry_success(app_mock) -> Non
             attribute_id=TestCluster.AttributeDefs.attr_2.id,
             manufacturer_code=None,
             raw_value=30,
+            data_type=foundation.DataTypeId.uint8,
             value=30,
         ),
         # No event for attr_1's INSUFFICIENT_SPACE record; the solo re-read then emits
@@ -2974,6 +2979,7 @@ async def test_read_attributes_insufficient_space_retry_success(app_mock) -> Non
             attribute_id=TestCluster.AttributeDefs.attr_1.id,
             manufacturer_code=None,
             raw_value=20,
+            data_type=foundation.DataTypeId.uint8,
             value=20,
         ),
     ]
@@ -3483,6 +3489,7 @@ async def test_quirk_manufacturer_code_context_isolation(app_mock) -> None:
         attribute_id=TestCluster.AttributeDefs.manuf_attr.id,
         manufacturer_code=0x1234,
         raw_value=42,
+        data_type=foundation.DataTypeId.uint8,
         value=42,
     )
 

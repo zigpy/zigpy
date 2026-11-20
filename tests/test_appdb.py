@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 from datetime import UTC, datetime, timedelta
 import logging
 import pathlib
@@ -49,9 +50,12 @@ from zigpy.zcl import (
     OtaQueryCacheClearedEvent,
     OtaQueryCacheUpdatedEvent,
     UnsupportedAttribute,
+    foundation,
 )
 from zigpy.zcl.clusters.general import Basic, Identify, MultistateInput, OnOff, Ota
-from zigpy.zcl.foundation import Status as ZCLStatus, ZCLAttributeDef
+from zigpy.zcl.clusters.measurement import TemperatureMeasurement
+from zigpy.zcl.clusters.security import IasZone
+from zigpy.zcl.foundation import Array, DataTypeId, Status as ZCLStatus, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
 from zigpy.zgp.commands import GPGenericSwitchConfiguration
 from zigpy.zgp.types import (
@@ -1397,14 +1401,18 @@ async def test_unstorable_attribute_values_not_persisted(tmp_path, caplog) -> No
     dev.model = "some model"
     dev.manufacturer = "some manufacturer"
 
-    # The device save stores the attribute cache in bulk
+    # The device save stores the attribute cache in bulk. A list is stored typed but
+    # one that does not fit its attribute's type cannot be stored at all.
     multistate = dev.endpoints[1].multistate_input
     multistate.update_attribute(MultistateInput.AttributeDefs.present_value, 2)
     multistate.update_attribute(
         MultistateInput.AttributeDefs.state_text,
-        t.LVList[t.CharacterString, t.uint16_t](["a", "b"]),
+        Array(
+            type=DataTypeId.string,
+            value=t.LVList[t.CharacterString, t.uint16_t](["a", "b"]),
+        ),
     )
-    multistate.update_attribute(MultistateInput.AttributeDefs.number_of_states, 2)
+    multistate.update_attribute(MultistateInput.AttributeDefs.number_of_states, ["x"])
     dev.endpoints[1].on_off.update_attribute(OnOff.AttributeDefs.on_off, 1)
     dev.endpoints[2].on_off.update_attribute(OnOff.AttributeDefs.on_off, 0)
 
@@ -1419,7 +1427,10 @@ async def test_unstorable_attribute_values_not_persisted(tmp_path, caplog) -> No
         with mock_attribute_reads(
             multistate,
             {
-                MultistateInput.AttributeDefs.state_text: ["c", "d"],
+                MultistateInput.AttributeDefs.state_text: Array(
+                    type=DataTypeId.string,
+                    value=t.LVList[t.CharacterString, t.uint16_t](["c", "d"]),
+                ),
                 MultistateInput.AttributeDefs.description: "some description",
             },
         ):
@@ -1430,10 +1441,11 @@ async def test_unstorable_attribute_values_not_persisted(tmp_path, caplog) -> No
                 ]
             )
 
+        multistate.update_attribute(MultistateInput.AttributeDefs.present_value, ["y"])
         await app._dblistener._callback_handlers.join()
 
     assert (
-        "[aa:bb:cc:dd:11:22:33:44:1:0x0012] Not persisting attribute 0x000e"
+        "[aa:bb:cc:dd:11:22:33:44:1:0x0012] Not persisting attribute 0x004a"
         in caplog.text
     )
     assert "Not persisting attribute event" in caplog.text
@@ -1447,16 +1459,19 @@ async def test_unstorable_attribute_values_not_persisted(tmp_path, caplog) -> No
     app2 = await make_app_with_db(db)
     dev2 = app2.get_device(ieee=dev.ieee)
 
-    # Everything but the unstorable value is persisted, including the second endpoint
+    # Everything but the unstorable values is persisted, including the second endpoint
     multistate2 = dev2.endpoints[1].multistate_input
     assert multistate2.get_cached_value("present_value") == 2
-    assert multistate2.get_cached_value("number_of_states") == 2
+    assert multistate2.get_cached_value("state_text") == Array(
+        type=DataTypeId.string,
+        value=t.LVList[t.CharacterString, t.uint16_t](["c", "d"]),
+    )
     assert multistate2.get_cached_value("description") == "some description"
     assert dev2.endpoints[1].on_off.get_cached_value("on_off") == 1
     assert dev2.endpoints[2].on_off.get_cached_value("on_off") == 0
 
     with pytest.raises(KeyError):
-        multistate2.get_cached_value("state_text")
+        multistate2.get_cached_value("number_of_states")
 
     await app2.shutdown()
 
@@ -1929,11 +1944,399 @@ async def test_attribute_cache_null_manufacturer_code_uniqueness(tmp_path):
 
         # And the value is the latest one
         cursor = await conn.execute(
-            f"SELECT value FROM attributes_cache{zigpy.appdb.DB_V} WHERE attr_id = :attr_id AND manufacturer_code IS NULL",
+            f"SELECT value, data_type FROM attributes_cache{zigpy.appdb.DB_V} WHERE attr_id = :attr_id AND manufacturer_code IS NULL",
             {"attr_id": Basic.AttributeDefs.model.id},
         )
         row = await cursor.fetchone()
-        assert row[0] == "Model 2"
+
+        # Values set by `update_attribute` have no wire representation
+        assert row == ("Model 2", None)
+
+
+async def _make_app_with_clusters(db, cluster_ids):
+    """Create an app with a single persisted device with input clusters on endpoint 1."""
+    app = await make_app_with_db(db)
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+
+    for cluster_id in cluster_ids:
+        ep.add_input_cluster(cluster_id)
+
+    app.device_initialized(dev)
+
+    return app, dev
+
+
+def _read_attr_row(db, cluster_id, attr_id):
+    with contextlib.closing(sqlite3.connect(db)) as conn:
+        return conn.execute(
+            f"SELECT value, data_type FROM attributes_cache{zigpy.appdb.DB_V}"
+            " WHERE cluster_id = ? AND attr_id = ?",
+            (cluster_id, attr_id),
+        ).fetchone()
+
+
+def _insert_typed_attr_row(db, ieee, cluster_id, attr_id, data_type, data) -> None:
+    with contextlib.closing(sqlite3.connect(db)) as conn, conn:
+        conn.execute(
+            f"INSERT INTO attributes_cache{zigpy.appdb.DB_V}"
+            " (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code,"
+            " status, value, data_type, last_updated)"
+            " VALUES (?, 1, 0, ?, ?, NULL, 0, ?, ?, 0)",
+            (str(ieee), cluster_id, attr_id, data, data_type),
+        )
+
+
+async def _update_attribute(cluster, attr_id, value) -> None:
+    cluster.update_attribute(attr_id, value)
+
+
+async def _read_attribute(cluster, attr_def, value) -> None:
+    with mock_attribute_reads(cluster, {attr_def: value}):
+        await cluster.read_attributes([attr_def])
+
+
+async def _report_attribute(cluster, attr_def, value) -> None:
+    await mock_attribute_report(cluster, {attr_def: value})
+
+
+async def _write_attribute(cluster, attr_def, value) -> None:
+    with mock_attribute_writes(cluster, {attr_def: ZCLStatus.SUCCESS}):
+        await cluster.write_attributes({attr_def: value})
+
+
+TYPED_ATTRIBUTE_VALUES = [
+    (OnOff, OnOff.AttributeDefs.start_up_on_off, OnOff.StartUpOnOff.Toggle),
+    (Basic, Basic.AttributeDefs.model, Basic.AttributeDefs.model.type("Model")),
+    (
+        IasZone,
+        IasZone.AttributeDefs.cie_addr,
+        t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"),
+    ),
+    (
+        MultistateInput,
+        MultistateInput.AttributeDefs.state_text,
+        Array(
+            type=DataTypeId.string,
+            value=t.LVList[t.CharacterString, t.uint16_t](["a", "b"]),
+        ),
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "receive", [_read_attribute, _report_attribute, _write_attribute]
+)
+@pytest.mark.parametrize(("cluster", "attr_def", "value"), TYPED_ATTRIBUTE_VALUES)
+async def test_attribute_values_stored_typed(
+    tmp_path, receive, cluster, attr_def, value
+) -> None:
+    """Values that went over the wire are stored as their ZCL data type."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [cluster.cluster_id])
+
+    await receive(dev.endpoints[1].in_clusters[cluster.cluster_id], attr_def, value)
+    await app.shutdown()
+
+    assert _read_attr_row(db, cluster.cluster_id, attr_def.id) == (
+        value.serialize(),
+        attr_def.zcl_type,
+    )
+
+    app2 = await make_app_with_db(db)
+    cluster2 = app2.get_device(dev.ieee).endpoints[1].in_clusters[cluster.cluster_id]
+    loaded = cluster2.get_cached_value(attr_def)
+
+    assert loaded == value
+    assert type(loaded) is type(value)
+
+    await app2.shutdown()
+
+
+@pytest.mark.parametrize(("cluster", "attr_def", "value"), TYPED_ATTRIBUTE_VALUES)
+async def test_attribute_values_stored_typed_on_device_save(
+    tmp_path, cluster, attr_def, value
+) -> None:
+    """The attribute cache is stored typed when a new device is saved in bulk."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ep.add_input_cluster(cluster.cluster_id)
+
+    # The device is not in the database yet, only the device save can store it
+    await _read_attribute(ep.in_clusters[cluster.cluster_id], attr_def, value)
+    app.device_initialized(dev)
+    await app.shutdown()
+
+    assert _read_attr_row(db, cluster.cluster_id, attr_def.id) == (
+        value.serialize(),
+        attr_def.zcl_type,
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        2150,
+        # A quirk-scaled value does not fit the attribute's type
+        21.5,
+    ],
+)
+async def test_updated_attribute_values_stored_untyped(tmp_path, value) -> None:
+    """Values set by quirks have no wire representation and are stored as-is."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [TemperatureMeasurement.cluster_id])
+
+    attr_def = TemperatureMeasurement.AttributeDefs.measured_value
+    dev.endpoints[1].temperature.update_attribute(attr_def, value)
+    await app.shutdown()
+
+    assert _read_attr_row(db, TemperatureMeasurement.cluster_id, attr_def.id) == (
+        value,
+        None,
+    )
+
+    app2 = await make_app_with_db(db)
+    loaded = (
+        app2.get_device(dev.ieee).endpoints[1].temperature.get_cached_value(attr_def)
+    )
+    assert loaded == value
+    assert type(loaded) is type(value)
+
+    await app2.shutdown()
+
+
+class LocalDataBasicCluster(Basic):
+    """Answers reads from its own cache, like zha-quirks' `LocalDataCluster`."""
+
+    _skip_registry = True
+
+    async def read_attributes_raw(self, attributes, manufacturer=None, **kwargs):
+        records = [
+            foundation.ReadAttributeRecord(
+                attr, ZCLStatus.SUCCESS, foundation.TypeValue()
+            )
+            for attr in attributes
+        ]
+
+        for record in records:
+            record.value.value = self._attr_cache.get(record.attrid)
+
+        return (records,)
+
+
+@pytest.mark.parametrize("value", [5, t.uint8_t(5)], ids=["int", "uint8_t"])
+async def test_local_data_cluster_reads_stored_untyped(tmp_path, value) -> None:
+    """Reads answered by a quirk without a data type are not wire data."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+
+    ep = dev.endpoints[1]
+    cluster = ep.add_input_cluster(Basic.cluster_id, LocalDataBasicCluster(ep))
+    attr_def = Basic.AttributeDefs.app_version
+    cluster._update_attribute(attr_def.id, value)
+
+    # The first read caches the converted value, the second one reads that back
+    for _ in range(2):
+        await cluster.read_attributes([attr_def], allow_cache=False)
+
+    await app.shutdown()
+
+    assert _read_attr_row(db, Basic.cluster_id, attr_def.id) == (5, None)
+
+    app2 = await make_app_with_db(db)
+    assert app2.get_device(dev.ieee).endpoints[1].basic.get(attr_def.name) == 5
+    await app2.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("cluster", "attr_def", "legacy_value", "loaded_value"),
+    [
+        (OnOff, OnOff.AttributeDefs.start_up_on_off, 2, 2),
+        (Basic, Basic.AttributeDefs.model, "Model", "Model"),
+        # The old SQLite adapter stored EUI64 values as strings
+        (
+            IasZone,
+            IasZone.AttributeDefs.cie_addr,
+            "aa:bb:cc:dd:11:22:33:44",
+            t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"),
+        ),
+        # A string that is not an address was set by a quirk and is kept
+        (IasZone, IasZone.AttributeDefs.cie_addr, "unknown", "unknown"),
+        (
+            TemperatureMeasurement,
+            TemperatureMeasurement.AttributeDefs.measured_value,
+            21.5,
+            21.5,
+        ),
+    ],
+)
+async def test_legacy_attribute_values_loaded_untyped(
+    tmp_path, cluster, attr_def, legacy_value, loaded_value
+) -> None:
+    """Untyped rows from older databases load as-is and are not rewritten."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [cluster.cluster_id])
+    await app.shutdown()
+
+    with contextlib.closing(sqlite3.connect(db)) as conn, conn:
+        conn.execute(
+            f"INSERT INTO attributes_cache{zigpy.appdb.DB_V}"
+            " (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code,"
+            " status, value, last_updated) VALUES (?, 1, 0, ?, ?, NULL, 0, ?, 0)",
+            (str(dev.ieee), cluster.cluster_id, attr_def.id, legacy_value),
+        )
+
+    app2 = await make_app_with_db(db)
+    cluster2 = app2.get_device(dev.ieee).endpoints[1].in_clusters[cluster.cluster_id]
+    loaded = cluster2.get_cached_value(attr_def)
+
+    assert loaded == loaded_value
+    assert type(loaded) is type(loaded_value)
+
+    await app2.shutdown()
+
+    assert _read_attr_row(db, cluster.cluster_id, attr_def.id) == (legacy_value, None)
+
+
+@pytest.mark.parametrize(
+    "attr_id",
+    [
+        # A definition whose type changed, e.g. by a quirk, converts the stored value
+        Basic.AttributeDefs.zcl_version.id,
+        # An attribute without a definition is decoded with its stored type
+        0x7777,
+    ],
+)
+async def test_typed_attribute_value_type_mismatch(tmp_path, attr_id) -> None:
+    """Typed rows that do not match the current attribute definition still load."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+    await app.shutdown()
+
+    _insert_typed_attr_row(
+        db, dev.ieee, Basic.cluster_id, attr_id, DataTypeId.uint16, b"\x05\x00"
+    )
+
+    app2 = await make_app_with_db(db)
+    basic2 = app2.get_device(dev.ieee).endpoints[1].basic
+
+    # Attributes without a definition are only reachable through the legacy cache
+    assert basic2._attr_cache.get(attr_id) == 5
+
+    await app2.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("attr_id", "data_type", "data"),
+    [
+        # Out of range for `uint8`
+        (Basic.AttributeDefs.zcl_version.id, DataTypeId.uint16, b"\x2c\x01"),
+        (Basic.AttributeDefs.zcl_version.id, DataTypeId.string, b"\x03abc"),
+        # Too long for `uint8`
+        (Basic.AttributeDefs.zcl_version.id, DataTypeId.data16, b"\x01\x02"),
+        # Not a member of `t.Bool` or of an enum
+        (Basic.AttributeDefs.device_enabled.id, DataTypeId.string, b"\x03abc"),
+        (Basic.AttributeDefs.power_source.id, DataTypeId.string, b"\x03abc"),
+        # Written for a definition without a ZCL data type
+        (Basic.AttributeDefs.zcl_version.id, DataTypeId.unk, b"\x01\x02"),
+        (0x7777, DataTypeId.unk, b"\x01\x02"),
+    ],
+)
+async def test_typed_attribute_value_cannot_be_loaded(
+    tmp_path, attr_id, data_type, data
+) -> None:
+    """A stored value that cannot be loaded is deleted, the rest still load."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+    dev.endpoints[1].basic.update_attribute(Basic.AttributeDefs.model, "Model")
+    await app.shutdown()
+
+    _insert_typed_attr_row(db, dev.ieee, Basic.cluster_id, attr_id, data_type, data)
+
+    app2 = await make_app_with_db(db)
+    basic2 = app2.get_device(dev.ieee).endpoints[1].basic
+
+    # Attributes without a definition are only reachable through the legacy cache
+    assert basic2._attr_cache.get(attr_id) is None
+    assert basic2.get(Basic.AttributeDefs.model.name) == "Model"
+    await app2.shutdown()
+
+    assert _read_attr_row(db, Basic.cluster_id, attr_id) is None
+
+
+async def test_typed_attribute_value_fits_quirk_definition(tmp_path) -> None:
+    """A stored value that only fits a quirk's definition is loaded and kept."""
+
+    class WideBasicCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            zcl_version = ZCLAttributeDef(id=0x0000, type=t.uint16_t)
+
+    def replace_basic(device):
+        ep = device.endpoints[1]
+        ep.add_input_cluster(Basic.cluster_id, WideBasicCluster(ep))
+        return device
+
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+    await app.shutdown()
+
+    attr_id = Basic.AttributeDefs.zcl_version.id
+    _insert_typed_attr_row(
+        db, dev.ieee, Basic.cluster_id, attr_id, DataTypeId.uint16, b"\x2c\x01"
+    )
+
+    # The bare cluster cannot convert the value but the quirk's cluster can
+    app2 = await make_app_with_db(db, device_resolver=replace_basic)
+    assert app2.get_device(dev.ieee).endpoints[1].basic.get("zcl_version") == 300
+    await app2.shutdown()
+
+    assert _read_attr_row(db, Basic.cluster_id, attr_id) == (
+        b"\x2c\x01",
+        DataTypeId.uint16,
+    )
+
+
+@pytest.mark.parametrize(
+    ("receive", "row"),
+    [
+        (
+            lambda basic: mock_attribute_report(basic, {0x7777: t.uint16_t(5)}),
+            (b"\x05\x00", DataTypeId.uint16),
+        ),
+        (lambda basic: _update_attribute(basic, 0x7777, 5), (5, None)),
+    ],
+)
+async def test_unknown_attribute_stored(tmp_path, receive, row) -> None:
+    """An unknown attribute is stored with its wire type, if it has one."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+
+    await receive(dev.endpoints[1].basic)
+    await app.shutdown()
+
+    assert _read_attr_row(db, Basic.cluster_id, 0x7777) == row
+
+    app2 = await make_app_with_db(db)
+    basic2 = app2.get_device(dev.ieee).endpoints[1].basic
+    assert basic2._attr_cache.get(0x7777) == 5
+
+    await app2.shutdown()
 
 
 async def test_device_signature_ignores_quirks(tmp_path) -> None:
@@ -2752,9 +3155,8 @@ async def test_reinterview_does_not_commit_mid_handler(tmp_path):
 
     async def _two_statement_handler():
         await listener.execute(
-            f"INSERT INTO devices{zigpy.appdb.DB_V} (ieee, nwk, status, last_seen)"
-            " VALUES (?, ?, ?, ?)",
-            (other_ieee, 0x1234, 2, 0),
+            f"INSERT INTO devices{zigpy.appdb.DB_V} (ieee) VALUES (?)",
+            (other_ieee,),
         )
         handler_started.set()
         await handler_may_finish.wait()

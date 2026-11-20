@@ -42,7 +42,8 @@ import zigpy.types as t
 import zigpy.util
 from zigpy.util import CreateTaskMixin
 from zigpy.zcl import Cluster, ClusterType, OtaQueryCacheClearedEvent, foundation
-from zigpy.zcl.clusters.general import Ota, PollControl, QueryNextImageCommand
+from zigpy.zcl.clusters.general import Basic, Ota, PollControl, QueryNextImageCommand
+from zigpy.zcl.helpers import AttributeCacheLoadResult, AttributeCacheRow
 import zigpy.zdo.types as zdo_t
 from zigpy.zgp.commands import (
     GPD_COMMAND_SCHEMAS,
@@ -79,6 +80,11 @@ AFTER_OTA_ATTR_READ_DELAY = 10
 # zgpDuplicateTimeout: unprotected GPDFs repeating the last MAC sequence number
 # within this many seconds are duplicates
 GP_DUPLICATE_TIMEOUT = timedelta(seconds=2)
+
+
+def _decode_legacy_str(value: bytes) -> str:
+    """Old databases store string attributes as raw, possibly NUL-padded, bytes."""
+    return value.split(b"\x00", 1)[0].decode("utf-8")
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,6 +222,12 @@ class BaseDevice(
         raise NotImplementedError
 
     async def reinterview(self) -> None:
+        raise NotImplementedError
+
+    def load_attribute_cache(
+        self, rows: list[AttributeCacheRow]
+    ) -> AttributeCacheLoadResult:
+        """Populate cluster attribute caches from the device's database rows."""
         raise NotImplementedError
 
 
@@ -716,6 +728,49 @@ class ZigbeeDevice(BaseDevice):
         self._initialize_task = self.create_task(self.initialize(), name="initialize")
 
         return self._initialize_task
+
+    def load_attribute_cache(
+        self, rows: list[AttributeCacheRow]
+    ) -> AttributeCacheLoadResult:
+        """Populate cluster attribute caches from the device's database rows."""
+        result = AttributeCacheLoadResult()
+        existing_keys = {row.key for row in rows}
+
+        for row in rows:
+            self.debug("Loading attribute cache row %s", row)
+
+            if row.endpoint_id not in self.endpoints:
+                continue
+
+            ep = self.endpoints[row.endpoint_id]
+            clusters = (
+                ep.in_clusters
+                if row.cluster_type == ClusterType.Server
+                else ep.out_clusters
+            )
+
+            if row.cluster_id not in clusters:
+                self.debug("Unknown cluster 0x%04X, skipping", row.cluster_id)
+                continue
+
+            loaded = clusters[row.cluster_id]._load_attribute_cache_row(
+                row, existing_keys=existing_keys, result=result
+            )
+
+            if loaded is None:
+                continue
+
+            attr_def, value = loaded
+
+            if row.cluster_id != Basic.cluster_id:
+                continue
+
+            if attr_def == Basic.AttributeDefs.manufacturer:
+                self.manufacturer = value
+            elif attr_def == Basic.AttributeDefs.model:
+                self.model = value
+
+        return result
 
     async def reinterview(self) -> None:
         """Re-interview this device using a shadow device for safety.
@@ -1519,6 +1574,9 @@ class ZigbeeDevice(BaseDevice):
 
     @manufacturer.setter
     def manufacturer(self, value) -> None:
+        if isinstance(value, bytes):
+            value = _decode_legacy_str(value)
+
         if isinstance(value, str):
             self._manufacturer = value
 
@@ -1538,6 +1596,9 @@ class ZigbeeDevice(BaseDevice):
 
     @model.setter
     def model(self, value) -> None:
+        if isinstance(value, bytes):
+            value = _decode_legacy_str(value)
+
         if isinstance(value, str):
             self._model = value
 

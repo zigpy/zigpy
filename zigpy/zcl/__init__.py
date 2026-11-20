@@ -22,7 +22,16 @@ from zigpy.typing import UNDEFINED, UndefinedType
 from zigpy.zcl import foundation
 from zigpy.zcl.foundation import BaseAttributeDefs, BaseCommandDefs, CommandSchema
 
-from .helpers import AttributeCache, ReportingConfig, UnsupportedAttribute
+from .helpers import (
+    UNMIGRATED_MANUFACTURER_CODE,
+    AttributeCache,
+    AttributeCacheLoadResult,
+    AttributeCacheRow,
+    AttributeCacheRowChange,
+    ReportingConfig,
+    UnsupportedAttribute,
+    _convert_attribute_value,
+)
 
 if TYPE_CHECKING:
     from zigpy.endpoint import Endpoint
@@ -44,33 +53,6 @@ MAX_ATTRIBUTE_RECORDS_BYTES = 50
 MAX_READ_ATTRIBUTES_PER_REQ = 5
 
 _RecordT = TypeVar("_RecordT")
-
-
-def _convert_attribute_value(
-    attr_def: foundation.ZCLAttributeDef, type_value: foundation.TypeValue
-) -> Any:
-    """Convert a received attribute value into the attribute's declared type."""
-
-    # `dataN` values are untyped bytes, so they are re-read with the declared type
-    if isinstance(
-        type_value.value,
-        (
-            t.data8,
-            t.data16,
-            t.data24,
-            t.data32,
-            t.data40,
-            t.data48,
-            t.data56,
-            t.data64,
-        ),
-    ):
-        value, rest = attr_def.type.deserialize(type_value.value.serialize())
-        assert not rest
-
-        return value
-
-    return attr_def.type(type_value.value)
 
 
 def _chunk_records_by_size(
@@ -128,7 +110,9 @@ class AttributeReadEvent:
     attribute_name: str
     attribute_id: int
     manufacturer_code: int | None
-    raw_value: Any | None
+    raw_value: Any
+    # Reads answered by quirks from their own cache have no data type
+    data_type: foundation.DataTypeId | None
     value: Any | None
 
 
@@ -145,7 +129,8 @@ class AttributeReportedEvent:
     attribute_name: str | None
     attribute_id: int
     manufacturer_code: int | None
-    raw_value: Any | None
+    raw_value: Any
+    data_type: foundation.DataTypeId
     value: Any
 
 
@@ -162,6 +147,8 @@ class AttributeWrittenEvent:
     attribute_name: str
     attribute_id: int
     manufacturer_code: int | None
+    raw_value: Any
+    data_type: foundation.DataTypeId
     value: Any | None
     status: foundation.Status
 
@@ -584,7 +571,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 self._quirk_attribute_updates[attrid] = previous
 
     def _legacy_apply_quirk_attribute_update(
-        self, attr_def: foundation.ZCLAttributeDef, value: Any
+        self,
+        attr_def: foundation.ZCLAttributeDef,
+        value: Any,
+        type_value: foundation.TypeValue,
     ) -> Any | None:
         """Update an attribute and return the cached value (possibly transformed).
 
@@ -596,10 +586,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             self._update_attribute(attr_def.id, value)
 
         try:
-            return self._attr_cache.get_value(attr_def)
+            cached_value = self._attr_cache.get_value(attr_def)
         except KeyError:
             # Quirk swallowed the attribute
             return None
+
+        # Only a value that the quirk did not transform is cached as it was received.
+        # Reads answered by quirks from their own cache were never on the wire.
+        if type_value.type is not None and cached_value == value:
+            self._attr_cache.set_value(attr_def, value, type_value=type_value)
+
+        return cached_value
 
     @classmethod
     def find_attributes(
@@ -1029,6 +1026,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                             attribute_id=attr.attrid,
                             manufacturer_code=hdr.manufacturer,
                             raw_value=attr.value.value,
+                            data_type=attr.value.type,
                             value=value,
                         ),
                     )
@@ -1036,7 +1034,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
                 value = _convert_attribute_value(attr_def, attr.value)
                 cached_value = self._legacy_apply_quirk_attribute_update(
-                    attr_def, value
+                    attr_def, value, attr.value
                 )
 
                 if cached_value is None:
@@ -1070,6 +1068,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                             attribute_id=attr.attrid,
                             manufacturer_code=hdr.manufacturer,
                             raw_value=attr.value.value,
+                            data_type=attr.value.type,
                             value=value,
                         ),
                     )
@@ -1123,6 +1122,158 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             )
 
         return None
+
+    def _resolve_unmigrated_manufacturer_code(
+        self, attr_id: int
+    ) -> int | None | UndefinedType:
+        """Try to resolve the manufacturer code of an unmigrated attribute.
+
+        When multiple attribute definitions share an ID, the manufacturer-specific one
+        is preferred if there are exactly two candidates (one standard, one
+        manufacturer-specific). Otherwise the attribute is considered ambiguous and
+        skipped (left unmigrated).
+        """
+        try:
+            attr_defs = self.find_attributes(attr_id)
+        except KeyError:
+            self.debug("No attribute %r to migrate, skipping", attr_id)
+            return UNDEFINED
+
+        manuf_attrs = [
+            a for a in attr_defs if self._get_effective_manufacturer_code(a) is not None
+        ]
+
+        if len(attr_defs) == 1:
+            attr_def = attr_defs[0]
+        elif len(attr_defs) == 2 and len(manuf_attrs) == 1:
+            # One standard + one manufacturer-specific: prefer manufacturer-specific
+            attr_def = manuf_attrs[0]
+        else:
+            self.debug(
+                "No unique attribute %r to migrate, skipping (candidates: %r)",
+                attr_id,
+                attr_defs,
+            )
+            return UNDEFINED
+
+        return self._get_effective_manufacturer_code(attr_def)
+
+    def _load_attribute_cache_row(
+        self,
+        row: AttributeCacheRow,
+        *,
+        existing_keys: set[tuple],
+        result: AttributeCacheLoadResult,
+    ) -> tuple[foundation.ZCLAttributeDef, Any] | None:
+        """Populate the attribute cache from a database row.
+
+        Returns the attribute definition and value, if the row is a known attribute.
+        """
+        new_row, loaded = self._read_attribute_cache_row(row, existing_keys)
+
+        if new_row != row:
+            result.changes.append(AttributeCacheRowChange(old=row, new=new_row))
+
+        return loaded
+
+    def _read_attribute_cache_row(
+        self,
+        row: AttributeCacheRow,
+        existing_keys: set[tuple],
+    ) -> tuple[AttributeCacheRow | None, tuple[foundation.ZCLAttributeDef, Any] | None]:
+        manufacturer_code = row.manufacturer_code
+
+        if manufacturer_code == UNMIGRATED_MANUFACTURER_CODE:
+            resolved_manufacturer_code = self._resolve_unmigrated_manufacturer_code(
+                row.attr_id
+            )
+
+            if resolved_manufacturer_code is not UNDEFINED:
+                # A row with the resolved code already exists, it populates the cache
+                if (
+                    row._replace(manufacturer_code=resolved_manufacturer_code).key
+                    in existing_keys
+                ):
+                    return None, None
+
+                manufacturer_code = resolved_manufacturer_code
+
+        new_row = row._replace(manufacturer_code=manufacturer_code)
+        last_updated = datetime.fromtimestamp(row.last_updated, UTC)
+
+        try:
+            attr_def = self.find_attribute(
+                row.attr_id,
+                manufacturer_code=(
+                    UNDEFINED
+                    if manufacturer_code == UNMIGRATED_MANUFACTURER_CODE
+                    else manufacturer_code
+                ),
+            )
+        except KeyError:
+            self.debug("Unknown attribute %r", row.attr_id)
+            attr_def = None
+
+        if row.status != foundation.Status.SUCCESS:
+            # Unsupported unknown attributes are dropped
+            if attr_def is not None:
+                self._attr_cache.mark_unsupported(attr_def)
+
+            return new_row, None
+
+        # A single row that cannot be loaded must not stop the rest from loading
+        try:
+            value, type_value = self._decode_attribute_cache_value(row, attr_def)
+        except Exception as exc:  # noqa: BLE001
+            # The definition changed, e.g. by a quirk or a zigpy update
+            self.debug(
+                "Stored value %r of attribute 0x%04X cannot be loaded, deleting it: %r",
+                row.value,
+                row.attr_id,
+                exc,
+            )
+            return None, None
+
+        if attr_def is None:
+            self._attr_cache.set_legacy_value(
+                row.attr_id, value, last_updated=last_updated
+            )
+            return new_row, None
+
+        self._attr_cache.set_value(
+            attr_def, value, type_value=type_value, last_updated=last_updated
+        )
+        return new_row, (attr_def, value)
+
+    @staticmethod
+    def _decode_attribute_cache_value(
+        row: AttributeCacheRow, attr_def: foundation.ZCLAttributeDef | None
+    ) -> tuple[Any, foundation.TypeValue | None]:
+        """Decode a stored value, along with its wire representation if it has one."""
+        if row.data_type is None:
+            # Untyped values come from quirks and are loaded as-is, except for EUI64
+            # values that the old SQLite adapter stored as strings
+            if (
+                attr_def is not None
+                and isinstance(row.value, str)
+                and issubclass(attr_def.type, t.EUI64)
+            ):
+                with contextlib.suppress(ValueError):
+                    return attr_def.type.convert(row.value), None
+
+            return row.value, None
+
+        type_value, rest = foundation.TypeValue.deserialize(
+            bytes([row.data_type]) + row.value
+        )
+
+        if rest:
+            raise ValueError(f"Stored value has trailing data: {rest!r}")
+
+        if attr_def is None:
+            return type_value.value, type_value
+
+        return _convert_attribute_value(attr_def, type_value), type_value
 
     async def read_attributes(
         self,
@@ -1304,7 +1455,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 success[attribute_map[attr_def]] = value
 
                 cached_value = self._legacy_apply_quirk_attribute_update(
-                    attr_def, value
+                    attr_def, value, record.value
                 )
 
                 if cached_value is None:
@@ -1338,6 +1489,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                             attribute_id=attr_def.id,
                             manufacturer_code=manufacturer_code,
                             raw_value=record.value.value,
+                            data_type=record.value.type,
                             value=value,
                         ),
                     )
@@ -1501,6 +1653,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             zcl_attrs: list[foundation.Attribute] = []
             attr_defs: dict[int, foundation.ZCLAttributeDef] = {}
             attribute_values: dict[int, Any] = {}
+            type_values: dict[int, foundation.TypeValue] = {}
 
             for attr_def, value in attribute_list:
                 attr_defs[attr_def.id] = attr_def
@@ -1510,6 +1663,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 zcl_attr.value.type = attr_def.zcl_type
                 zcl_attr.value.value = attr_def.type(value)
                 zcl_attrs.append(zcl_attr)
+                type_values[attr_def.id] = zcl_attr.value
 
             records_group: list[foundation.WriteAttributesStatusRecord] = []
 
@@ -1572,7 +1726,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
                 if record.status == foundation.Status.SUCCESS:
                     self._attr_cache.set_value(
-                        attr_def, attribute_values[record.attrid]
+                        attr_def,
+                        attribute_values[record.attrid],
+                        type_value=type_values[record.attrid],
                     )
                 elif record.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
                     self.emit(
@@ -1598,6 +1754,8 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                         attribute_name=attr_def.name,
                         attribute_id=attr_def.id,
                         manufacturer_code=manufacturer_code,
+                        raw_value=type_values[record.attrid].value,
+                        data_type=type_values[record.attrid].type,
                         value=attribute_values[record.attrid],
                         status=record.status,
                     ),
