@@ -778,7 +778,9 @@ class GreenPowerManager(CreateTaskMixin):
             if temp_master.application_id is ApplicationID.IEEE:
                 return
 
-        assert temp_master.src_id is not None
+        # TODO: `ResponseSchema` cannot carry an IEEE address
+        if temp_master.src_id is None:
+            raise DeliveryError("Proxies cannot be sent GPDFs for IEEE GPDs yet")
 
         # The elected proxy queues the GPDF, and the others drop theirs. The sink
         # announces itself the same way when elected (A.3.6.2.3).

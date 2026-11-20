@@ -483,6 +483,26 @@ async def test_send_gpdf_ieee(gp_app) -> None:
     assert len(gp_app.send_packet.mock_calls) == 0
 
 
+async def test_send_gpdf_ieee_through_proxy(gp_app) -> None:
+    """A GP Response cannot carry the IEEE address of a GPD yet."""
+    device = GreenPowerDevice(gp_app, application_id=ApplicationID.IEEE, ieee=IEEE)
+
+    gp_app.gp_packet_received(
+        make_packet(5, application_id=ApplicationID.IEEE, endpoint=1).replace(
+            rx_after_tx=True,
+            gpp_short_addr=t.NWK(0x1234),
+            gpp_bidirectional_cap=True,
+            gpp_tx_queue_full=False,
+        )
+    )
+
+    with pytest.raises(DeliveryError):
+        await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
+
+    assert len(gp_app.send_gpdf.mock_calls) == 0
+    assert len(gp_app.send_packet.mock_calls) == 0
+
+
 async def test_send_gpdf_elects_from_all_instances(gp_app) -> None:
     """Every instance of a GPDF is a candidate, but the GPD processes it once."""
     device = GreenPowerDevice(
