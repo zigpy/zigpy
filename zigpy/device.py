@@ -462,7 +462,12 @@ class GreenPowerDevice(BaseDevice):
         )
 
     async def send_gpdf(self, command_id: GPDCommandID, payload: bytes) -> None:
-        """Send a GPDF to this GPD, after its next GPDF with RxAfterTx."""
+        """Send a GPDF to this GPD, after its next GPDF with RxAfterTx.
+
+        Raises `DeliveryError` unless the GPD sent a GPDF with RxAfterTx within
+        `GP_DUPLICATE_TIMEOUT`. A radio sending the GPDF itself can wait up to
+        `GPDF_LIFETIME` for the GPD to listen.
+        """
         await self._application.green_power.send_gpdf(self, command_id, payload)
 
     def packet_received(self, packet: t.ZigbeeGpPacket) -> None:
