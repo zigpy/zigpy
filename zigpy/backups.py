@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
 import copy
 import dataclasses
 from datetime import UTC, datetime
@@ -242,6 +243,9 @@ class BackupManager(ListenableMixin):
 
     def __getitem__(self, key) -> NetworkBackup:
         return self.backups[key]
+
+    def __iter__(self) -> Iterator[NetworkBackup]:
+        return iter(self.backups)
 
 
 def _network_backup_to_open_coordinator_backup(backup: NetworkBackup) -> dict[str, Any]:

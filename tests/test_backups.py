@@ -1,3 +1,4 @@
+import collections.abc
 from datetime import UTC, datetime, timedelta
 import json
 import logging
@@ -376,3 +377,14 @@ async def test_restore_backup_create_new(app, backup):
     await backups.restore_backup(backup, create_new=False)
     app.write_network_info.assert_called_once()
     backups.create_backup.assert_not_called()  # Won't be called
+
+
+def test_backup_manager_iteration(backup_factory) -> None:
+    backups = zigpy.backups.BackupManager(None)
+    assert isinstance(backups, collections.abc.Iterable)
+    assert list(backups) == []
+
+    backup1 = backup_factory()
+    backups.add_backup(backup1)
+    assert list(backups) == backups.backups == [backup1]
+    assert backups[0] is backup1
