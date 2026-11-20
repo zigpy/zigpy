@@ -374,20 +374,36 @@ class GreenPowerManager(CreateTaskMixin):
         elapsed = asyncio.get_running_loop().time() - candidates.started
         await asyncio.sleep(max(0.0, TEMP_MASTER_ELECTION_TIME - elapsed))
 
+        # Radio libraries that can transmit GPDFs implement `_send_gpdf`
+        radio_sends_gpdfs = (
+            type(self._application)._send_gpdf
+            is not zigpy.application.ControllerApplication._send_gpdf
+        )
+        operational_channel = self._application.state.network_info.channel
+
+        if (
+            radio_sends_gpdfs
+            and channel != operational_channel
+            and any(c.gpp_short_addr is None for c in candidates.packets)
+        ):
+            LOGGER.debug(
+                "Sink cannot transmit to %s on channel %d, only on the operational"
+                " channel %d",
+                ieee,
+                channel,
+                operational_channel,
+            )
+
         eligible = [
             candidate
             for candidate in candidates.packets
             if (
                 (
                     candidate.gpp_short_addr is None
-                    # Radio libraries that can transmit GPDFs implement `_send_gpdf`
-                    and (
-                        type(self._application)._send_gpdf
-                        is not zigpy.application.ControllerApplication._send_gpdf
-                    )
+                    and radio_sends_gpdfs
                     # TODO: a sink electing itself to transmit on another channel
                     # switches to it (A.3.9.1 step 7.d.iii), which no radio does yet
-                    and channel == self._application.state.network_info.channel
+                    and channel == operational_channel
                 )
                 or (
                     candidate.gpp_short_addr is not None

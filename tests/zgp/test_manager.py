@@ -1017,8 +1017,9 @@ async def test_channel_request_direct(app, manager):
         (True, 0x1234),
     ],
 )
-async def test_channel_request_other_channel(app, manager, proxy, temp_master):
+async def test_channel_request_other_channel(app, manager, caplog, proxy, temp_master):
     """The sink cannot transmit a Channel Configuration off the operational channel."""
+    caplog.set_level(logging.DEBUG)
     app.send_gpdf = AsyncMock()
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
@@ -1046,6 +1047,10 @@ async def test_channel_request_other_channel(app, manager, proxy, temp_master):
     await wait_for_gp_processing()
 
     assert len(app.send_gpdf.mock_calls) == 0
+    assert (
+        "Sink cannot transmit to 00:00:00:00:12:34:56:78 on channel 25, only on the"
+        " operational channel 15"
+    ) in caplog.text
 
     responses = [
         sent_command(c.args[0], ResponseSchema).temp_master_short_addr
