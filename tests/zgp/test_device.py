@@ -2,19 +2,28 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
+from unittest.mock import call
 
+import freezegun
 import pytest
 
+from tests.async_mock import AsyncMock
+from tests.conftest import FeaturelessApp, make_app
 from tests.zgp.conftest import (
     STEP_UP,
     TIMESTAMP,
     commission_individual_key,
     encrypted_gp_packet,
+    sent_command,
 )
-from zigpy.device import GreenPowerDevice
+from zigpy.device import GP_DUPLICATE_TIMEOUT, GreenPowerDevice
+from zigpy.exceptions import DeliveryError
 import zigpy.types as t
+from zigpy.zcl.clusters.greenpower import ResponseSchema
 from zigpy.zgp.commands import GPGenericSwitchConfiguration
+from zigpy.zgp.manager import GPDF_LIFETIME
 from zigpy.zgp.types import (
     ApplicationID,
     GPDCommandID,
@@ -323,6 +332,21 @@ def test_ieee_frame_endpoint_passthrough() -> None:
     assert events[0].endpoint_id == 5
 
 
+@pytest.mark.parametrize("rx_after_tx", [True, False])
+async def test_rx_after_tx_passthrough(app, rx_after_tx) -> None:
+    """The event says whether the GPD listens after the GPDF."""
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+    events = []
+    device.on_event("gp_command_received", events.append)
+
+    device.packet_received(make_packet(1000).replace(rx_after_tx=rx_after_tx))
+
+    assert len(events) == 1
+    assert events[0].rx_after_tx is rx_after_tx
+
+
 def encrypted_packet(frame_counter: int) -> t.ZigbeeGpPacket:
     """Encrypt a Step Up command as a GPD would, with an individual key."""
     return encrypted_gp_packet(
@@ -371,3 +395,252 @@ def test_unprocessed_frame_without_key(device, events) -> None:
     device.packet_received(encrypted_packet(1000))
 
     assert len(events) == 0
+
+
+def rx_after_tx_packet(
+    gpp_short_addr: int | None = None,
+    *,
+    lqi: int = 200,
+    bidirectional_cap: bool = True,
+    tx_queue_full: bool = False,
+) -> t.ZigbeeGpPacket:
+    """A GPDF after which the GPD listens, received directly or through a proxy."""
+    return make_packet(5, lqi=lqi).replace(
+        rx_after_tx=True,
+        gpp_short_addr=None if gpp_short_addr is None else t.NWK(gpp_short_addr),
+        gpp_bidirectional_cap=None if gpp_short_addr is None else bidirectional_cap,
+        gpp_tx_queue_full=None if gpp_short_addr is None else tx_queue_full,
+    )
+
+
+def register_device(app, **kwargs) -> GreenPowerDevice:
+    device = GreenPowerDevice(app, **kwargs)
+    app.devices[device.ieee] = device
+
+    return device
+
+
+@pytest.fixture
+def gp_app(app):
+    app.state.network_info.channel = 15
+    app.send_gpdf = AsyncMock()
+    return app
+
+
+async def test_send_gpdf_direct(gp_app) -> None:
+    """A GPDF to a GPD the radio hears directly is sent by the radio."""
+    device = register_device(
+        gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+
+    async def send_gpdf(**kwargs) -> None:
+        # The radio waits for the GPD to listen, so proxies are told first
+        assert len(gp_app.send_packet.mock_calls) == 1
+
+    gp_app.send_gpdf.side_effect = send_gpdf
+
+    gp_app.gp_packet_received(rx_after_tx_packet())
+    await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
+
+    assert gp_app.send_gpdf.mock_calls == [
+        call(
+            target=SrcID(0x12345678),
+            command_id=GPDCommandID(0xFE),
+            payload=b"\x00",
+            channel=15,
+            lifetime=GPDF_LIFETIME,
+        )
+    ]
+
+    # Proxies are told the sink was elected, to drop their queued GPDFs (A.3.6.2.3)
+    [packet] = [c.args[0] for c in gp_app.send_packet.mock_calls]
+    response = sent_command(packet, ResponseSchema)
+    assert response.temp_master_short_addr == 0x0000
+    assert response.gpd_id == 0x12345678
+
+
+async def test_send_gpdf_through_proxy(gp_app) -> None:
+    """A GPDF to a GPD heard through a proxy is sent by that proxy."""
+    device = register_device(
+        gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+
+    gp_app.gp_packet_received(rx_after_tx_packet(0x1234))
+    await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
+
+    assert len(gp_app.send_gpdf.mock_calls) == 0
+
+    [packet] = [c.args[0] for c in gp_app.send_packet.mock_calls]
+    response = sent_command(packet, ResponseSchema)
+    assert response.temp_master_short_addr == 0x1234
+    assert response.temp_master_tx_channel.transmit_channel == 15 - 11
+    assert response.gpd_id == 0x12345678
+    assert response.gpd_command_id == GPDCommandID(0xFE)
+    assert response.gpd_command_payload == b"\x00"
+
+
+async def test_send_gpdf_ieee(gp_app) -> None:
+    """A GPD addressed by its IEEE address is targeted with its endpoint."""
+    device = register_device(gp_app, application_id=ApplicationID.IEEE, ieee=IEEE)
+
+    gp_app.gp_packet_received(
+        make_packet(5, application_id=ApplicationID.IEEE, endpoint=1).replace(
+            rx_after_tx=True
+        )
+    )
+    await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
+
+    assert gp_app.send_gpdf.mock_calls == [
+        call(
+            target=(IEEE, 1),
+            command_id=GPDCommandID(0xFE),
+            payload=b"\x00",
+            channel=15,
+            lifetime=GPDF_LIFETIME,
+        )
+    ]
+    assert len(gp_app.send_packet.mock_calls) == 0
+
+
+async def test_send_gpdf_ieee_through_proxy(gp_app) -> None:
+    """A GP Response cannot carry the IEEE address of a GPD yet."""
+    device = register_device(gp_app, application_id=ApplicationID.IEEE, ieee=IEEE)
+
+    gp_app.gp_packet_received(
+        make_packet(5, application_id=ApplicationID.IEEE, endpoint=1).replace(
+            rx_after_tx=True,
+            gpp_short_addr=t.NWK(0x1234),
+            gpp_bidirectional_cap=True,
+            gpp_tx_queue_full=False,
+        )
+    )
+
+    with pytest.raises(DeliveryError):
+        await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
+
+    assert len(gp_app.send_gpdf.mock_calls) == 0
+    assert len(gp_app.send_packet.mock_calls) == 0
+
+
+async def test_send_gpdf_elects_from_all_instances(gp_app) -> None:
+    """Every instance of a GPDF is a candidate, but the GPD processes it once."""
+    device = register_device(
+        gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+    events = []
+    device.on_event("gp_command_received", events.append)
+
+    gp_app.gp_packet_received(rx_after_tx_packet(lqi=100))
+    gp_app.gp_packet_received(rx_after_tx_packet(0x1234, lqi=255))
+    await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
+
+    assert len(events) == 1
+    assert len(gp_app.send_gpdf.mock_calls) == 0
+
+    [packet] = [c.args[0] for c in gp_app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x1234
+
+
+@pytest.mark.parametrize(
+    "packets",
+    [
+        [],
+        [make_packet(5).replace(rx_after_tx=False)],
+        # In operational mode, only proxies capable of bidirectional communication with
+        # room in their gpTxQueue transmit (A.3.6.2.3)
+        [rx_after_tx_packet(0x1234, bidirectional_cap=False)],
+        [rx_after_tx_packet(0x1234, tx_queue_full=True)],
+    ],
+)
+async def test_send_gpdf_no_temp_master(gp_app, packets) -> None:
+    """A GPDF without a node to transmit it is not sent."""
+    device = register_device(
+        gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+
+    for packet in packets:
+        gp_app.gp_packet_received(packet)
+
+    with pytest.raises(DeliveryError):
+        await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
+
+    assert len(gp_app.send_gpdf.mock_calls) == 0
+    assert len(gp_app.send_packet.mock_calls) == 0
+
+
+async def test_send_gpdf_radio_cannot_send() -> None:
+    """A GPD heard only by a radio that cannot transmit GPDFs is not sent one."""
+    app = make_app({}, app_base=FeaturelessApp)
+    device = register_device(
+        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+
+    app.gp_packet_received(rx_after_tx_packet())
+
+    with pytest.raises(DeliveryError):
+        await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
+
+    assert len(app.send_packet.mock_calls) == 0
+
+
+async def test_send_gpdf_expired(gp_app) -> None:
+    """A GPDF with RxAfterTx is only replied to within gpDuplicateTimeout."""
+    device = register_device(
+        gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+
+    with freezegun.freeze_time() as frozen:
+        gp_app.gp_packet_received(rx_after_tx_packet(0x1234))
+        frozen.tick(GP_DUPLICATE_TIMEOUT.total_seconds() + 1)
+
+        # The loop runs due timers after the callbacks already scheduled
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+        with pytest.raises(DeliveryError):
+            await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
+
+    assert len(gp_app.send_packet.mock_calls) == 0
+
+
+async def test_forged_gpdf_does_not_suppress_genuine(gp_app) -> None:
+    """An instance that fails security does not start an election for its counter."""
+    device = register_device(
+        gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+    commission_individual_key(device)
+    events = []
+    device.on_event("gp_command_received", events.append)
+
+    plaintext = bytes([GPDCommandID.StepUp]) + STEP_UP.serialize()
+
+    gp_app.gp_packet_received(
+        encrypted_gp_packet(0x12345678, 1000, plaintext, rx_after_tx=True)
+    )
+    gp_app.gp_packet_received(
+        encrypted_gp_packet(
+            0x12345678, 1001, plaintext, key=bytes(16), rx_after_tx=True
+        )
+    )
+    gp_app.gp_packet_received(
+        encrypted_gp_packet(0x12345678, 1001, plaintext, rx_after_tx=True)
+    )
+
+    assert len(events) == 2
+    assert device.frame_counter == 1001
+
+
+async def test_send_gpdf_ignores_replayed_instances(gp_app) -> None:
+    """An older GPDF forwarded again is not a candidate for the latest one."""
+    device = register_device(
+        gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+
+    gp_app.gp_packet_received(rx_after_tx_packet(0x1111, lqi=100))
+    gp_app.gp_packet_received(
+        rx_after_tx_packet(0x2222, lqi=255).replace(frame_counter=t.uint32_t(4))
+    )
+    await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
+
+    [packet] = [c.args[0] for c in gp_app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x1111
