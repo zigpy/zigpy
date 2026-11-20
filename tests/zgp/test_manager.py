@@ -985,7 +985,7 @@ async def test_channel_request_direct(app, manager):
             0x12345678,
             GPDCommandID.ChannelRequest,
             GPChannelRequestPayload(
-                next_channel=25 - 11, second_next_channel=26 - 11
+                next_channel=15 - 11, second_next_channel=26 - 11
             ).serialize(),
         )
     )
@@ -1002,10 +1002,56 @@ async def test_channel_request_direct(app, manager):
             payload=GPChannelConfigurationPayload(
                 operational_channel=15 - 11, basic=1, _reserved=0
             ).serialize(),
-            channel=25,
+            channel=15,
             lifetime=GPDF_LIFETIME,
         )
     ]
+
+
+@pytest.mark.parametrize(
+    ("proxy", "temp_master"),
+    [
+        # No node can transmit on the GPD's next channel
+        (False, None),
+        # A proxy with a worse link than the sink
+        (True, 0x1234),
+    ],
+)
+async def test_channel_request_other_channel(app, manager, proxy, temp_master):
+    """The sink cannot transmit a Channel Configuration off the operational channel."""
+    app.send_gpdf = AsyncMock()
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
+    request = make_gp_packet(
+        0x12345678,
+        GPDCommandID.ChannelRequest,
+        GPChannelRequestPayload(
+            next_channel=25 - 11, second_next_channel=26 - 11
+        ).serialize(),
+    )
+    app.gp_packet_received(request.replace(lqi=t.uint8_t(255), rssi=t.int8s(-20)))
+
+    if proxy:
+        app.gp_packet_received(
+            request.replace(
+                gpp_short_addr=t.NWK(0x1234),
+                gpp_bidirectional_cap=True,
+                gpp_tx_queue_full=False,
+                lqi=t.uint8_t(0),
+                rssi=t.int8s(-90),
+            )
+        )
+
+    await wait_for_gp_processing()
+
+    assert len(app.send_gpdf.mock_calls) == 0
+
+    responses = [
+        sent_command(c.args[0], ResponseSchema).temp_master_short_addr
+        for c in app.send_packet.mock_calls
+    ]
+    assert responses == ([] if temp_master is None else [temp_master])
 
 
 async def test_commissioning_reply_direct(app, manager):

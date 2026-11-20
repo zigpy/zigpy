@@ -358,14 +358,14 @@ class GreenPowerManager(CreateTaskMixin):
 
         return temp_master.gpp_short_addr
 
-    async def _elect_temp_master(self, ieee: t.EUI64) -> t.ZigbeeGpPacket:
-        """Elect the node to transmit a GPDF to a GPD (A.3.6.2.3).
+    async def _elect_temp_master(self, ieee: t.EUI64, channel: int) -> t.ZigbeeGpPacket:
+        """Elect the node to transmit a GPDF to a GPD on `channel` (A.3.6.2.3).
 
         Candidates are the instances of the GPD's latest GPDF with RxAfterTx received
         within Dmax of the first one: from proxies with bidirectional capability and
         room in their gpTxQueue, and from the sink itself if its radio can transmit
-        GPDFs. The best GPP-GPD link wins and, among equals, the lowest short address.
-        Returns the instance received by the elected node.
+        the GPDF. The best GPP-GPD link wins and, among equals, the lowest short
+        address. Returns the instance received by the elected node.
         """
         if ieee not in self._temp_master_candidates:
             raise DeliveryError(f"No recent GPDF with RxAfterTx from {ieee}")
@@ -385,6 +385,9 @@ class GreenPowerManager(CreateTaskMixin):
                         type(self._application)._send_gpdf
                         is not zigpy.application.ControllerApplication._send_gpdf
                     )
+                    # TODO: a sink electing itself to transmit on another channel
+                    # switches to it (A.3.9.1 step 7.d.iii), which no radio does yet
+                    and channel == self._application.state.network_info.channel
                 )
                 or (
                     candidate.gpp_short_addr is not None
@@ -739,8 +742,9 @@ class GreenPowerManager(CreateTaskMixin):
         self, device: GreenPowerDevice, command_id: GPDCommandID, payload: bytes
     ) -> None:
         """Send a GPDF to a GPD, after its next GPDF with RxAfterTx."""
-        temp_master = await self._elect_temp_master(device.ieee)
-        await self._send_gpdf(temp_master, command_id, payload)
+        channel = self._application.state.network_info.channel
+        temp_master = await self._elect_temp_master(device.ieee, channel)
+        await self._send_gpdf(temp_master, command_id, payload, channel=channel)
 
     async def _send_commissioning_gpdf(
         self,
@@ -754,8 +758,13 @@ class GreenPowerManager(CreateTaskMixin):
         """Send a GPDF to a commissioning GPD, after its next GPDF like `packet`."""
         assert packet.src_id is not None
 
+        if channel is None:
+            channel = self._application.state.network_info.channel
+
         generation = self._window_generation
-        temp_master = await self._elect_temp_master(synthetic_ieee(packet.src_id))
+        temp_master = await self._elect_temp_master(
+            synthetic_ieee(packet.src_id), channel
+        )
 
         # The GPD only listens in commissioning mode
         if not self.is_commissioning or generation != self._window_generation:
@@ -775,16 +784,13 @@ class GreenPowerManager(CreateTaskMixin):
         command_id: GPDCommandID,
         payload: bytes,
         *,
+        channel: int,
         maintenance: bool = False,
-        channel: int | None = None,
     ) -> None:
         """Send a GPDF through the node that received the `temp_master` instance.
 
         A Maintenance frame is queued for SrcID 0 (A.1.5.2.2).
         """
-        if channel is None:
-            channel = self._application.state.network_info.channel
-
         # TODO: `ResponseSchema` cannot carry an IEEE address
         if temp_master.application_id is ApplicationID.IEEE:
             if temp_master.gpp_short_addr is not None:
