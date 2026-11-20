@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 import zigpy.types as t
-from zigpy.typing import UNDEFINED, UndefinedType
 
 from .foundation import DataTypeId, TypeValue, ZCLAttributeDef
 
@@ -63,11 +62,6 @@ class AttributeCacheLoadResult:
 
     changes: list[AttributeCacheRowChange] = field(default_factory=list)
 
-    # Rows whose value does not fit their attribute's type
-    untyped: list[tuple[AttributeCacheRow, ZCLAttributeDef]] = field(
-        default_factory=list
-    )
-
 
 def _convert_attribute_value(attr_def: ZCLAttributeDef, type_value: TypeValue) -> Any:
     """Convert a received attribute value into the attribute's declared type."""
@@ -94,46 +88,13 @@ def _convert_attribute_value(attr_def: ZCLAttributeDef, type_value: TypeValue) -
     return attr_def.type(type_value.value)
 
 
-def _encode_attribute_value(
-    attr_def: ZCLAttributeDef, value: Any
-) -> tuple[DataTypeId | None, Any]:
-    """Serialize a value with its attribute's type, or keep it as-is if it does not fit."""
-    try:
-        typed_value = attr_def.type(value)
-    except (TypeError, ValueError):
-        return None, value
-
-    if typed_value != value or not hasattr(typed_value, "serialize"):
-        return None, value
-
-    return attr_def.zcl_type, typed_value.serialize()
-
-
-def _decode_attribute_value(
-    attr_def: ZCLAttributeDef | None, data_type: DataTypeId, data: bytes
-) -> Any | UndefinedType:
-    """Deserialize a value stored by `_encode_attribute_value`."""
-    if attr_def is not None and attr_def.zcl_type == data_type:
-        value, rest = attr_def.type.deserialize(data)
-    elif data_type == DataTypeId.unk:
-        # Only the attribute definition knows how to read a value of an unknown type
-        return UNDEFINED
-    else:
-        type_value, rest = TypeValue.deserialize(bytes([data_type]) + data)
-        value = (
-            type_value.value
-            if attr_def is None
-            else _convert_attribute_value(attr_def, type_value)
-        )
-
-    assert not rest
-    return value
-
-
 @dataclass(kw_only=True, frozen=True)
 class CacheItem:
     value: Any
     last_updated: datetime
+
+    # The value as received on the wire. Values set by quirks have none.
+    type_value: TypeValue | None = None
 
 
 class UnsupportedAttribute(Exception):
@@ -197,12 +158,14 @@ class AttributeCache:
         attr_def: ZCLAttributeDef,
         value: Any,
         *,
+        type_value: TypeValue | None = None,
         last_updated: datetime | None = None,
     ) -> None:
         self.remove_unsupported(attr_def)
         self._cache[self._cache_key(attr_def)] = CacheItem(
             value=value,
             last_updated=datetime.now(UTC) if last_updated is None else last_updated,
+            type_value=type_value,
         )
 
     def set_legacy_value(

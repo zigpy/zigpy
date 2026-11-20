@@ -382,6 +382,20 @@ def verify_cleanup() -> typing.Generator[None, None, None]:
         pytest.fail(f"Lingering thread after test: {thread!r}")
 
 
+def _wire_type_value(
+    attr_def: foundation.ZCLAttributeDef, value: typing.Any
+) -> foundation.TypeValue:
+    """Encode a value the way a device sends it, as its wire data type."""
+    type_value, rest = foundation.TypeValue.deserialize(
+        foundation.TypeValue(
+            type=attr_def.zcl_type, value=attr_def.type(value)
+        ).serialize()
+    )
+    assert not rest
+
+    return type_value
+
+
 @contextmanager
 def mock_attribute_reads(
     cluster: Cluster,
@@ -422,9 +436,7 @@ def mock_attribute_reads(
                     record.status = value
                 else:
                     record.status = foundation.Status.SUCCESS
-                    record.value = foundation.TypeValue(
-                        type=attr_def.zcl_type, value=value
-                    )
+                    record.value = _wire_type_value(attr_def, value)
             else:
                 record.status = foundation.Status.UNSUPPORTED_ATTRIBUTE
 
@@ -523,8 +535,7 @@ async def mock_attribute_report(
 
             reports.append(
                 foundation.Attribute(
-                    attrid=attr_def.id,
-                    value=foundation.TypeValue(type=attr_def.zcl_type, value=value),
+                    attrid=attr_def.id, value=_wire_type_value(attr_def, value)
                 )
             )
 

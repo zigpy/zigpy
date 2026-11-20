@@ -4,7 +4,6 @@ import asyncio
 from collections import defaultdict
 import contextlib
 from datetime import UTC, datetime, timedelta
-import functools
 import json
 import logging
 import re
@@ -44,12 +43,11 @@ from zigpy.zcl import (
     OtaQueryCacheUpdatedEvent,
 )
 from zigpy.zcl.clusters.general import Ota
-from zigpy.zcl.foundation import DataTypeId, Status, ZCLAttributeDef
+from zigpy.zcl.foundation import Status
 from zigpy.zcl.helpers import (
     UNMIGRATED_MANUFACTURER_CODE,
     AttributeCacheRow,
     AttributeCacheRowChange,
-    _encode_attribute_value,
 )
 from zigpy.zdo import types as zdo_t
 from zigpy.zgp.commands import GPGenericSwitchConfiguration
@@ -64,7 +62,6 @@ from zigpy.zgp.types import (
 
 if TYPE_CHECKING:
     from zigpy.application import ControllerApplication
-    from zigpy.zcl import Cluster
 
 
 MIN_SQLITE_VERSION = (3, 24, 0)
@@ -116,22 +113,6 @@ def _is_storable_value(value: Any) -> bool:
         return False
 
     return True
-
-
-def _encode_attribute_value_or_warn(
-    attr_def: ZCLAttributeDef, value: Any
-) -> tuple[DataTypeId | None, Any]:
-    data_type, encoded = _encode_attribute_value(attr_def, value)
-
-    if data_type is None:
-        LOGGER.warning(
-            "Attribute %s value %r does not fit its type %s, storing it untyped",
-            attr_def.name,
-            value,
-            attr_def.type,
-        )
-
-    return data_type, encoded
 
 
 def aiosqlite_connect(
@@ -310,13 +291,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 )
 
     def register_cluster_events(self, cluster) -> None:
-        # The cluster's attribute definitions are needed to serialize values
-        on_attribute_changed = functools.partial(self.on_attribute_changed, cluster)
-
-        cluster.on_event(AttributeReadEvent.event_type, on_attribute_changed)
-        cluster.on_event(AttributeReportedEvent.event_type, on_attribute_changed)
-        cluster.on_event(AttributeUpdatedEvent.event_type, on_attribute_changed)
-        cluster.on_event(AttributeWrittenEvent.event_type, on_attribute_changed)
+        cluster.on_event(AttributeReadEvent.event_type, self.on_attribute_changed)
+        cluster.on_event(AttributeReportedEvent.event_type, self.on_attribute_changed)
+        cluster.on_event(AttributeUpdatedEvent.event_type, self.on_attribute_changed)
+        cluster.on_event(AttributeWrittenEvent.event_type, self.on_attribute_changed)
         cluster.on_event(
             AttributeUnsupportedEvent.event_type, self.on_attribute_unsupported
         )
@@ -622,18 +600,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         clusters = []
 
         for cluster in ep.clusters:
-            attr_defs = {
-                cluster._attr_cache._cache_key(attr_def): attr_def
-                for attr_def in cluster.attributes_by_name.values()
-            }
-
             for (
                 attrid,
                 manufacturer_code,
             ), cache_item in cluster._attr_cache._cache.items():
-                data_type, value = _encode_attribute_value_or_warn(
-                    attr_defs[attrid, manufacturer_code], cache_item.value
-                )
+                # Values set by quirks have no wire representation and are untyped
+                if cache_item.type_value is None:
+                    data_type, value = None, cache_item.value
+                else:
+                    data_type = cache_item.type_value.type
+                    value = cache_item.type_value.value.serialize()
 
                 # A single unbindable value would fail the entire `executemany` below
                 # and abort the rest of the device save
@@ -724,17 +700,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     def on_attribute_changed(
         self,
-        cluster: Cluster,
         event: AttributeReadEvent
         | AttributeReportedEvent
         | AttributeUpdatedEvent
         | AttributeWrittenEvent,
     ) -> None:
-        self.enqueue("_save_attribute", cluster, event)
+        self.enqueue("_save_attribute", event)
 
     async def _save_attribute(
         self,
-        cluster: Cluster,
         event: AttributeReadEvent
         | AttributeReportedEvent
         | AttributeUpdatedEvent
@@ -744,13 +718,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             LOGGER.debug("Ignoring failed attribute write event: %s", event)
             return
 
-        # Unknown attributes have no type to serialize them with
-        if event.attribute_name is None:
+        # Values updated by quirks have no wire representation and are untyped
+        if isinstance(event, AttributeUpdatedEvent):
             data_type, value = None, event.value
         else:
-            data_type, value = _encode_attribute_value_or_warn(
-                cluster.find_attribute(event.attribute_name), event.value
-            )
+            data_type, value = event.data_type, event.raw_value.serialize()
 
         # Logged at debug level only: these values are re-read or re-reported often
         if not _is_storable_value(value):
@@ -1045,16 +1017,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             for result in results:
                 for change in result.changes:
                     await self._replace_attribute_cache_row(change)
-
-        for result in results:
-            for row, attr_def in result.untyped:
-                LOGGER.warning(
-                    "Attribute %s value %r does not fit its type %s, storing it"
-                    " untyped",
-                    attr_def.name,
-                    row.value,
-                    attr_def.type,
-                )
 
         await self._load_groups()
         await self._load_group_members()
