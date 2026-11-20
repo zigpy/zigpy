@@ -50,6 +50,7 @@ from zigpy.zcl import (
     OtaQueryCacheClearedEvent,
     OtaQueryCacheUpdatedEvent,
     UnsupportedAttribute,
+    foundation,
 )
 from zigpy.zcl.clusters.general import Basic, Identify, MultistateInput, OnOff, Ota
 from zigpy.zcl.clusters.measurement import TemperatureMeasurement
@@ -2115,6 +2116,49 @@ async def test_updated_attribute_values_stored_untyped(tmp_path, value) -> None:
     assert loaded == value
     assert type(loaded) is type(value)
 
+    await app2.shutdown()
+
+
+class LocalDataBasicCluster(Basic):
+    """Answers reads from its own cache, like zha-quirks' `LocalDataCluster`."""
+
+    _skip_registry = True
+
+    async def read_attributes_raw(self, attributes, manufacturer=None, **kwargs):
+        records = [
+            foundation.ReadAttributeRecord(
+                attr, ZCLStatus.SUCCESS, foundation.TypeValue()
+            )
+            for attr in attributes
+        ]
+
+        for record in records:
+            record.value.value = self._attr_cache.get(record.attrid)
+
+        return (records,)
+
+
+@pytest.mark.parametrize("value", [5, t.uint8_t(5)], ids=["int", "uint8_t"])
+async def test_local_data_cluster_reads_stored_untyped(tmp_path, value) -> None:
+    """Reads answered by a quirk without a data type are not wire data."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+
+    ep = dev.endpoints[1]
+    cluster = ep.add_input_cluster(Basic.cluster_id, LocalDataBasicCluster(ep))
+    attr_def = Basic.AttributeDefs.app_version
+    cluster._update_attribute(attr_def.id, value)
+
+    # The first read caches the converted value, the second one reads that back
+    for _ in range(2):
+        await cluster.read_attributes([attr_def], allow_cache=False)
+
+    await app.shutdown()
+
+    assert _read_attr_row(db, Basic.cluster_id, attr_def.id) == (5, None)
+
+    app2 = await make_app_with_db(db)
+    assert app2.get_device(dev.ieee).endpoints[1].basic.get(attr_def.name) == 5
     await app2.shutdown()
 
 

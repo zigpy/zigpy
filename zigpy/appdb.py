@@ -718,8 +718,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             LOGGER.debug("Ignoring failed attribute write event: %s", event)
             return
 
-        # Values updated by quirks have no wire representation and are untyped
-        if isinstance(event, AttributeUpdatedEvent):
+        # Values from quirks have no wire representation and are untyped
+        if isinstance(event, AttributeUpdatedEvent) or event.data_type is None:
             data_type, value = None, event.value
         else:
             data_type, value = event.data_type, event.raw_value.serialize()

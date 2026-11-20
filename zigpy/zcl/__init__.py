@@ -111,7 +111,8 @@ class AttributeReadEvent:
     attribute_id: int
     manufacturer_code: int | None
     raw_value: Any
-    data_type: foundation.DataTypeId
+    # Reads answered by quirks from their own cache have no data type
+    data_type: foundation.DataTypeId | None
     value: Any | None
 
 
@@ -590,8 +591,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             # Quirk swallowed the attribute
             return None
 
-        # Only a value that the quirk did not transform is cached as it was received
-        if cached_value == value:
+        # Only a value that the quirk did not transform is cached as it was received.
+        # Reads answered by quirks from their own cache were never on the wire.
+        if type_value.type is not None and cached_value == value:
             self._attr_cache.set_value(attr_def, value, type_value=type_value)
 
         return cached_value
