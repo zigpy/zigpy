@@ -52,6 +52,25 @@ def cv_hex(value: int | str) -> int:
     return value
 
 
+def cv_eui64(value: t.EUI64 | str) -> t.EUI64:
+    """Validate an IEEE address given as a colon-delimited (or plain) hex string."""
+    if isinstance(value, t.EUI64):
+        return value
+
+    message = (
+        f"invalid IEEE address {value!r}, expected a string like"
+        " '00:11:22:33:44:55:66:77' (quote it in YAML)"
+    )
+
+    if not isinstance(value, str):
+        raise vol.Invalid(message)
+
+    try:
+        return t.EUI64.convert(value)
+    except (AssertionError, ValueError) as exc:
+        raise vol.Invalid(message) from exc
+
+
 def cv_key(key: list[int]) -> t.KeyData:
     """Validate a key."""
     if not isinstance(key, list) or not all(isinstance(v, int) for v in key):

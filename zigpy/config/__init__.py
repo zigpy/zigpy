@@ -42,6 +42,7 @@ from zigpy.config.defaults import (
 from zigpy.config.validators import (
     cv_boolean,
     cv_deprecated,
+    cv_eui64,
     cv_folder,
     cv_hex,
     cv_json_file,
@@ -54,6 +55,7 @@ from zigpy.config.validators import (
 import zigpy.types as t
 
 CONF_ADDITIONAL_ENDPOINTS = "additional_endpoints"
+CONF_BLOCKED_DEVICES = "blocked_devices"
 CONF_DATABASE = "database_path"
 CONF_DB_COMMIT_INTERVAL = "database_commit_interval"
 CONF_DEVICE = "device"
@@ -444,6 +446,9 @@ ZIGPY_SCHEMA = vol.Schema(
             CONF_NWK_VALIDATE_SETTINGS, default=CONF_NWK_VALIDATE_SETTINGS_DEFAULT
         ): cv_boolean,
         vol.Optional(CONF_ADDITIONAL_ENDPOINTS, default=[]): [cv_simple_descriptor],
+        vol.Optional(CONF_BLOCKED_DEVICES, default=[]): vol.All(
+            [cv_eui64], vol.Coerce(frozenset)
+        ),
         vol.Optional(
             CONF_MAX_CONCURRENT_REQUESTS, default=CONF_MAX_CONCURRENT_REQUESTS_DEFAULT
         ): vol.All(int, vol.Range(min=0)),
