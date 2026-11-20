@@ -1206,15 +1206,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         new_row = row._replace(manufacturer_code=manufacturer_code)
         last_updated = datetime.fromtimestamp(row.last_updated, UTC)
 
-        # Typed rows hold the value as it was received on the wire
-        type_value: foundation.TypeValue | None = None
-
-        if row.data_type is not None:
-            type_value, rest = foundation.TypeValue.deserialize(
-                bytes([row.data_type]) + row.value
-            )
-            assert not rest
-
         try:
             attr_def = self.find_attribute(
                 row.attr_id,
@@ -1226,43 +1217,68 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             )
         except KeyError:
             self.debug("Unknown attribute %r", row.attr_id)
+            attr_def = None
 
+        if row.status != foundation.Status.SUCCESS:
             # Unsupported unknown attributes are dropped
-            if row.status != foundation.Status.SUCCESS:
-                return new_row, None
+            if attr_def is not None:
+                self._attr_cache.mark_unsupported(attr_def)
 
-            value = row.value if type_value is None else type_value.value
+            return new_row, None
+
+        # A single row that cannot be loaded must not stop the rest from loading
+        try:
+            value, type_value = self._decode_attribute_cache_value(row, attr_def)
+        except Exception as exc:  # noqa: BLE001
+            # The definition changed, e.g. by a quirk or a zigpy update
+            self.debug(
+                "Stored value %r of attribute 0x%04X cannot be loaded, deleting it: %r",
+                row.value,
+                row.attr_id,
+                exc,
+            )
+            return None, None
+
+        if attr_def is None:
             self._attr_cache.set_legacy_value(
                 row.attr_id, value, last_updated=last_updated
             )
             return new_row, None
 
-        if row.status != foundation.Status.SUCCESS:
-            self._attr_cache.mark_unsupported(attr_def)
-            return new_row, None
-
-        if type_value is not None:
-            try:
-                value = _convert_attribute_value(attr_def, type_value)
-            except (TypeError, ValueError) as exc:
-                # The definition changed, e.g. by a quirk or a zigpy update
-                self.debug(
-                    "Stored value %r does not fit attribute %s, deleting it: %r",
-                    type_value,
-                    attr_def.name,
-                    exc,
-                )
-                return None, None
-        elif isinstance(row.value, str) and issubclass(attr_def.type, t.EUI64):
-            # The old SQLite adapter stored EUI64 values as strings
-            value = attr_def.type.convert(row.value)
-        else:
-            value = row.value
-
         self._attr_cache.set_value(
             attr_def, value, type_value=type_value, last_updated=last_updated
         )
         return new_row, (attr_def, value)
+
+    @staticmethod
+    def _decode_attribute_cache_value(
+        row: AttributeCacheRow, attr_def: foundation.ZCLAttributeDef | None
+    ) -> tuple[Any, foundation.TypeValue | None]:
+        """Decode a stored value, along with its wire representation if it has one."""
+        if row.data_type is None:
+            # Untyped values come from quirks and are loaded as-is, except for EUI64
+            # values that the old SQLite adapter stored as strings
+            if (
+                attr_def is not None
+                and isinstance(row.value, str)
+                and issubclass(attr_def.type, t.EUI64)
+            ):
+                with contextlib.suppress(ValueError):
+                    return attr_def.type.convert(row.value), None
+
+            return row.value, None
+
+        type_value, rest = foundation.TypeValue.deserialize(
+            bytes([row.data_type]) + row.value
+        )
+
+        if rest:
+            raise ValueError(f"Stored value has trailing data: {rest!r}")
+
+        if attr_def is None:
+            return type_value.value, type_value
+
+        return _convert_attribute_value(attr_def, type_value), type_value
 
     async def read_attributes(
         self,
