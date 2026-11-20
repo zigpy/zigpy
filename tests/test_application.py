@@ -241,6 +241,101 @@ async def test_remove_without_node_desc(app, ieee):
         assert remove_device.await_count == 1
 
 
+async def test_remove_tears_down_device_after_leave_response(app, ieee):
+    """The leave response of an uninitialized device must not restart initialization."""
+    loop_errors = []
+    asyncio.get_running_loop().set_exception_handler(
+        lambda loop, context: loop_errors.append(context)
+    )
+
+    dev = app.add_device(ieee, 0x9C52)
+    assert not dev.is_initialized
+
+    sent = []
+
+    async def send_packet(packet):
+        sent.append(packet)
+
+    app.send_packet = AsyncMock(side_effect=send_packet)
+
+    await app.remove(ieee)
+    for _i in range(1, 20):
+        await asyncio.sleep(0)
+
+    # The leave request was sent, respond to it like the device would
+    assert [p.cluster_id for p in sent] == [zdo_t.ZDOCmd.Mgmt_Leave_req]
+    tsn = sent[0].tsn
+
+    app.packet_received(
+        t.ZigbeePacket(
+            src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+            src_ep=0,
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+            dst_ep=0,
+            tsn=tsn,
+            profile_id=0,
+            cluster_id=zdo_t.ZDOCmd.Mgmt_Leave_rsp,
+            data=t.SerializableBytes(bytes([tsn, zdo_t.Status.SUCCESS])),
+        )
+    )
+
+    for _i in range(1, 20):
+        await asyncio.sleep(0)
+
+    # The leave response re-scheduled initialization, which sent one request before
+    # the device was torn down together with its tasks
+    assert [p.cluster_id for p in sent] == [
+        zdo_t.ZDOCmd.Mgmt_Leave_req,
+        zdo_t.ZDOCmd.Node_Desc_req,
+    ]
+    assert ieee not in app.devices
+    assert not dev.initializing
+    assert not dev._tasks
+    assert not dev._on_remove_callbacks
+
+    # Nothing else is sent to the departed device afterwards
+    num_sent = len(sent)
+    await asyncio.sleep(0.1)
+    assert len(sent) == num_sent
+
+    # Cancelling the tracked initialize task did not blow up its done callback
+    assert loop_errors == []
+
+
+async def test_remove_tears_down_replacement_device(app, ieee):
+    """A distinct object registered under the same IEEE during removal is removed too."""
+    old_dev = app.add_device(ieee, 0x1234)
+    old_dev.on_remove = MagicMock(wraps=old_dev.on_remove)
+
+    leave_started = asyncio.Event()
+    leave_finished = asyncio.Event()
+
+    async def leave(*args, **kwargs):
+        leave_started.set()
+        await leave_finished.wait()
+        return [zdo_t.Status.SUCCESS]
+
+    old_dev.zdo.leave = AsyncMock(side_effect=leave)
+
+    await app.remove(ieee)
+    await leave_started.wait()
+
+    new_dev = app.add_device(ieee, 0x1234)
+    assert new_dev is not old_dev
+    new_dev.on_remove = MagicMock(wraps=new_dev.on_remove)
+
+    leave_finished.set()
+
+    for _i in range(1, 20):
+        await asyncio.sleep(0)
+
+    assert ieee not in app.devices
+    assert old_dev.on_remove.call_count == 1
+    assert new_dev.on_remove.call_count == 1
+    assert not old_dev._tasks
+    assert not new_dev._on_remove_callbacks
+
+
 def test_add_device(app, ieee):
     app.add_device(ieee, 8)
     app.add_device(ieee, 9)

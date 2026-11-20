@@ -823,7 +823,18 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         except (TimeoutError, zigpy.exceptions.DeliveryError) as ex:
             LOGGER.debug("Sending 'zdo_leave_req' failed: %s", ex)
 
-        self.devices.pop(device.ieee, None)
+        popped = self.devices.pop(device.ieee, None)
+
+        # Tear down the removed device's tasks and callbacks. The leave exchange itself
+        # can re-schedule initialization of a not-yet-initialized device (its ZDO
+        # response arrives before the device is popped), so this must happen after the
+        # leave request completes, not only when removal starts.
+        device.on_remove()
+
+        # A different object may have been registered under the same IEEE while the
+        # leave request was in flight (e.g. a re-interview shadow): tear it down too
+        if popped is not None and popped is not device:
+            popped.on_remove()
 
     def deserialize(
         self,
