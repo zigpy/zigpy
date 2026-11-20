@@ -31,8 +31,6 @@ from .helpers import (
     ReportingConfig,
     UnsupportedAttribute,
     _convert_attribute_value,
-    _decode_attribute_value,
-    _encode_attribute_value,
 )
 
 if TYPE_CHECKING:
@@ -112,7 +110,7 @@ class AttributeReadEvent:
     attribute_name: str
     attribute_id: int
     manufacturer_code: int | None
-    raw_value: Any | None
+    raw_value: Any
     data_type: foundation.DataTypeId
     value: Any | None
 
@@ -130,7 +128,7 @@ class AttributeReportedEvent:
     attribute_name: str | None
     attribute_id: int
     manufacturer_code: int | None
-    raw_value: Any | None
+    raw_value: Any
     data_type: foundation.DataTypeId
     value: Any
 
@@ -572,7 +570,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 self._quirk_attribute_updates[attrid] = previous
 
     def _legacy_apply_quirk_attribute_update(
-        self, attr_def: foundation.ZCLAttributeDef, value: Any
+        self,
+        attr_def: foundation.ZCLAttributeDef,
+        value: Any,
+        type_value: foundation.TypeValue,
     ) -> Any | None:
         """Update an attribute and return the cached value (possibly transformed).
 
@@ -584,10 +585,16 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             self._update_attribute(attr_def.id, value)
 
         try:
-            return self._attr_cache.get_value(attr_def)
+            cached_value = self._attr_cache.get_value(attr_def)
         except KeyError:
             # Quirk swallowed the attribute
             return None
+
+        # Only a value that the quirk did not transform is cached as it was received
+        if cached_value == value:
+            self._attr_cache.set_value(attr_def, value, type_value=type_value)
+
+        return cached_value
 
     @classmethod
     def find_attributes(
@@ -1025,7 +1032,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
                 value = _convert_attribute_value(attr_def, attr.value)
                 cached_value = self._legacy_apply_quirk_attribute_update(
-                    attr_def, value
+                    attr_def, value, attr.value
                 )
 
                 if cached_value is None:
@@ -1165,7 +1172,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         Returns the attribute definition and value, if the row is a known attribute.
         """
-        new_row, loaded = self._read_attribute_cache_row(row, existing_keys, result)
+        new_row, loaded = self._read_attribute_cache_row(row, existing_keys)
 
         if new_row != row:
             result.changes.append(AttributeCacheRowChange(old=row, new=new_row))
@@ -1176,7 +1183,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         self,
         row: AttributeCacheRow,
         existing_keys: set[tuple],
-        result: AttributeCacheLoadResult,
     ) -> tuple[AttributeCacheRow | None, tuple[foundation.ZCLAttributeDef, Any] | None]:
         manufacturer_code = row.manufacturer_code
 
@@ -1198,6 +1204,15 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         new_row = row._replace(manufacturer_code=manufacturer_code)
         last_updated = datetime.fromtimestamp(row.last_updated, UTC)
 
+        # Typed rows hold the value as it was received on the wire
+        type_value: foundation.TypeValue | None = None
+
+        if row.data_type is not None:
+            type_value, rest = foundation.TypeValue.deserialize(
+                bytes([row.data_type]) + row.value
+            )
+            assert not rest
+
         try:
             attr_def = self.find_attribute(
                 row.attr_id,
@@ -1214,15 +1229,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             if row.status != foundation.Status.SUCCESS:
                 return new_row, None
 
-            if row.data_type is None:
-                value = row.value
-            else:
-                value = _decode_attribute_value(None, row.data_type, row.value)
-
-            if value is UNDEFINED:
-                self.debug("Unknown attribute %r has an unknown type", row.attr_id)
-                return new_row, None
-
+            value = row.value if type_value is None else type_value.value
             self._attr_cache.set_legacy_value(
                 row.attr_id, value, last_updated=last_updated
             )
@@ -1232,30 +1239,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             self._attr_cache.mark_unsupported(attr_def)
             return new_row, None
 
-        if row.data_type is not None:
-            value = _decode_attribute_value(attr_def, row.data_type, row.value)
-
-            if value is UNDEFINED:
-                self.debug("Attribute %s type cannot be decoded", attr_def.name)
-                return new_row, None
+        if type_value is not None:
+            value = _convert_attribute_value(attr_def, type_value)
+        elif isinstance(row.value, str) and issubclass(attr_def.type, t.EUI64):
+            # The old SQLite adapter stored EUI64 values as strings
+            value = attr_def.type.convert(row.value)
         else:
-            # Untyped rows are stored typed. The SQLite adapter stored EUI64 values as
-            # strings.
-            if isinstance(row.value, str) and issubclass(attr_def.type, t.EUI64):
-                value = attr_def.type.convert(row.value)
-            else:
-                value = row.value
+            value = row.value
 
-            data_type, data = _encode_attribute_value(attr_def, value)
-
-            if data_type is None:
-                value = row.value
-                result.untyped.append((new_row, attr_def))
-            else:
-                value = _decode_attribute_value(attr_def, data_type, data)
-                new_row = new_row._replace(value=data, data_type=data_type)
-
-        self._attr_cache.set_value(attr_def, value, last_updated=last_updated)
+        self._attr_cache.set_value(
+            attr_def, value, type_value=type_value, last_updated=last_updated
+        )
         return new_row, (attr_def, value)
 
     async def read_attributes(
@@ -1438,7 +1432,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 success[attribute_map[attr_def]] = value
 
                 cached_value = self._legacy_apply_quirk_attribute_update(
-                    attr_def, value
+                    attr_def, value, record.value
                 )
 
                 if cached_value is None:
@@ -1709,7 +1703,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
                 if record.status == foundation.Status.SUCCESS:
                     self._attr_cache.set_value(
-                        attr_def, attribute_values[record.attrid]
+                        attr_def,
+                        attribute_values[record.attrid],
+                        type_value=type_values[record.attrid],
                     )
                 elif record.status == foundation.Status.UNSUPPORTED_ATTRIBUTE:
                     self.emit(
