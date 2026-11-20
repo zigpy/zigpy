@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from cryptography.exceptions import InvalidTag
 
+import zigpy.application
 from zigpy.datastructures import Debouncer
 from zigpy.device import GP_DUPLICATE_TIMEOUT, GreenPowerDevice
 from zigpy.exceptions import DeliveryError
@@ -48,6 +49,7 @@ from zigpy.zgp.types import (
     SecurityLevel,
     SrcID,
 )
+from zigpy.zgp.util import synthetic_ieee
 
 if TYPE_CHECKING:
     from zigpy.application import ControllerApplication
@@ -62,10 +64,13 @@ TEMP_MASTER_ELECTION_TIME = 0.100
 
 @dataclasses.dataclass
 class _TempMasterCandidates:
-    """The instances of a GPDF with RxAfterTx received so far, from all forwarders."""
+    """The instances of a GPD's latest GPDF with RxAfterTx, from all forwarders."""
 
+    generation: int
+    frame_counter: int | None
     started: float
     packets: list[t.ZigbeeGpPacket]
+    expiry: asyncio.TimerHandle
 
 
 def _link_value(packet: t.ZigbeeGpPacket) -> tuple[int, int]:
@@ -166,10 +171,9 @@ class GreenPowerManager(CreateTaskMixin):
         # GPDs in bidirectional commissioning, until their Success GPDF arrives or the
         # window closes
         self._pending_devices: dict[t.EUI64, GreenPowerDevice] = {}
-        # GPDFs with RxAfterTx being processed, by window, SrcID and frame counter
-        self._temp_master_candidates: dict[
-            tuple[int, SrcID | None, int | None], _TempMasterCandidates
-        ] = {}
+        # The latest GPDF with RxAfterTx of each GPD, for gpDuplicateTimeout. A gpTxQueue
+        # holds a single GPDF per GPD (A.1.5.2.1.1), so older ones have no use.
+        self._temp_master_candidates: dict[t.EUI64, _TempMasterCandidates] = {}
 
     def _has_devices(self) -> bool:
         return any(
@@ -187,6 +191,11 @@ class GreenPowerManager(CreateTaskMixin):
     async def shutdown(self) -> None:
         """Cancel commissioning in progress and close the window."""
         self._close_window()
+
+        for candidates in self._temp_master_candidates.values():
+            candidates.expiry.cancel()
+
+        self._temp_master_candidates.clear()
 
         for task in self._tasks:
             task.cancel()
@@ -247,18 +256,6 @@ class GreenPowerManager(CreateTaskMixin):
         generation = self._window_generation
         key = (generation, packet.src_id, packet.frame_counter)
 
-        # Another proxy's instance of a GPDF still being processed is only a candidate
-        # TempMaster for it
-        candidates = self._temp_master_candidates.get(key)
-        if candidates is not None:
-            elapsed = asyncio.get_running_loop().time() - candidates.started
-            if elapsed <= TEMP_MASTER_ELECTION_TIME:
-                LOGGER.debug("TempMaster candidate for a GP packet: %r", packet)
-                candidates.packets.append(packet)
-            else:
-                LOGGER.debug("Dropping late TempMaster candidate: %r", packet)
-            return
-
         if self._dedup_debouncer.filter(key, GP_DUPLICATE_TIMEOUT.total_seconds()):
             LOGGER.debug("Dropping duplicate GP packet: %r", packet)
             return
@@ -266,19 +263,51 @@ class GreenPowerManager(CreateTaskMixin):
         if packet.command_id != GPDCommandID.CommissioningRequest:
             assert packet.command_id == GPDCommandID.ChannelRequest
 
-        if packet.rx_after_tx and self.is_commissioning:
-            self._temp_master_candidates[key] = _TempMasterCandidates(
-                started=asyncio.get_running_loop().time(), packets=[packet]
-            )
-
-        task = self.create_task(
+        self.create_task(
             self._process_packet(packet, generation),
             f"gp_process_command-0x{packet.command_id:02x}",
         )
-        if key in self._temp_master_candidates:
-            task.add_done_callback(
-                lambda _: self._temp_master_candidates.pop(key, None)
-            )
+
+    def add_temp_master_candidate(
+        self, ieee: t.EUI64, packet: t.ZigbeeGpPacket
+    ) -> bool:
+        """Collect an instance of a GPDF the GPD listens after, True if a later one.
+
+        Later instances of a GPDF are only TempMaster candidates for it, and are not
+        processed any further (A.3.6.1.2).
+        """
+        loop = asyncio.get_running_loop()
+
+        if ieee in self._temp_master_candidates:
+            candidates = self._temp_master_candidates[ieee]
+
+            if (
+                candidates.generation == self._window_generation
+                and candidates.frame_counter == packet.frame_counter
+            ):
+                if loop.time() - candidates.started <= TEMP_MASTER_ELECTION_TIME:
+                    LOGGER.debug("TempMaster candidate for a GP packet: %r", packet)
+                    candidates.packets.append(packet)
+                else:
+                    LOGGER.debug("Dropping late TempMaster candidate: %r", packet)
+
+                return True
+
+            candidates.expiry.cancel()
+
+        self._temp_master_candidates[ieee] = _TempMasterCandidates(
+            generation=self._window_generation,
+            frame_counter=packet.frame_counter,
+            started=loop.time(),
+            packets=[packet],
+            expiry=loop.call_later(
+                GP_DUPLICATE_TIMEOUT.total_seconds(),
+                self._temp_master_candidates.pop,
+                ieee,
+            ),
+        )
+
+        return False
 
     async def _process_packet(self, packet: t.ZigbeeGpPacket, generation: int) -> None:
         """Process a GPDF only in the commissioning window in which it arrived."""
@@ -291,60 +320,77 @@ class GreenPowerManager(CreateTaskMixin):
         else:
             await self._process_channel_request(packet)
 
-    async def _elect_temp_master(
-        self, packet: t.ZigbeeGpPacket, generation: int
-    ) -> t.NWK:
-        """Select the node to transmit a GPDF to the GPD after `packet` (A.3.6.2.3).
+    def _temp_master_address(self, temp_master: t.ZigbeeGpPacket) -> t.NWK:
+        """Return the short address of the node that received a GPDF instance."""
+        if temp_master.gpp_short_addr is None:
+            return self._application.state.node_info.nwk
 
-        Candidates are the proxies that forwarded the GPDF within Dmax of its first
-        instance, and the sink itself if it received the GPDF directly. Those with
-        bidirectional capability and room in their gpTxQueue are preferred, then the
-        one with the best GPP-GPD link and, among equals, the lowest short address.
-        The sink is a last resort, since not every radio can transmit GPDFs.
+        return temp_master.gpp_short_addr
+
+    async def _elect_temp_master(self, ieee: t.EUI64) -> t.ZigbeeGpPacket:
+        """Elect the node to transmit a GPDF to a GPD (A.3.6.2.3).
+
+        Candidates are the instances of the GPD's latest GPDF with RxAfterTx received
+        within Dmax of the first one: from proxies with bidirectional capability and
+        room in their gpTxQueue, and from the sink itself if its radio can transmit
+        GPDFs. The best GPP-GPD link wins and, among equals, the lowest short address.
+        Returns the instance received by the elected node.
         """
-        candidates = self._temp_master_candidates.get(
-            (generation, packet.src_id, packet.frame_counter)
-        )
+        if ieee not in self._temp_master_candidates:
+            raise DeliveryError(f"No recent GPDF with RxAfterTx from {ieee}")
 
-        if candidates is None:
-            packets = [packet]
-        else:
-            elapsed = asyncio.get_running_loop().time() - candidates.started
-            await asyncio.sleep(max(0.0, TEMP_MASTER_ELECTION_TIME - elapsed))
-            packets = candidates.packets
+        candidates = self._temp_master_candidates[ieee]
+        elapsed = asyncio.get_running_loop().time() - candidates.started
+        await asyncio.sleep(max(0.0, TEMP_MASTER_ELECTION_TIME - elapsed))
 
-        coordinator = self._application.state.node_info.nwk
-
-        def address(candidate: t.ZigbeeGpPacket) -> t.NWK:
-            if candidate.gpp_short_addr is None:
-                return coordinator
-
-            return candidate.gpp_short_addr
-
-        # Not every radio can transmit a GPDF (see `send_gpdf`), so prefer any proxy to
-        # the direct copy.
-        proxies = [
-            candidate for candidate in packets if candidate.gpp_short_addr is not None
-        ]
-        bidirectional = [
+        eligible = [
             candidate
-            for candidate in proxies
-            if candidate.gpp_bidirectional_cap and not candidate.gpp_tx_queue_full
+            for candidate in candidates.packets
+            if (
+                (
+                    candidate.gpp_short_addr is None
+                    # Radio libraries that can transmit GPDFs implement `_send_gpdf`
+                    and (
+                        type(self._application)._send_gpdf
+                        is not zigpy.application.ControllerApplication._send_gpdf
+                    )
+                )
+                or (
+                    candidate.gpp_short_addr is not None
+                    and candidate.gpp_bidirectional_cap
+                    and not candidate.gpp_tx_queue_full
+                )
+            )
         ]
+
+        # In commissioning mode, proxies without bidirectional capability in operation
+        # transmit as well
+        if not eligible and self.is_commissioning:
+            eligible = [
+                candidate
+                for candidate in candidates.packets
+                if candidate.gpp_short_addr is not None
+            ]
+
+        if not eligible:
+            raise DeliveryError(f"No TempMaster can transmit to {ieee}")
 
         temp_master = max(
-            bidirectional or proxies or packets,
-            key=lambda candidate: (*_link_value(candidate), -address(candidate)),
+            eligible,
+            key=lambda candidate: (
+                *_link_value(candidate),
+                -self._temp_master_address(candidate),
+            ),
         )
 
         LOGGER.debug(
-            "Elected TempMaster 0x%04X for %r from %d candidate(s)",
-            address(temp_master),
-            packet.src_id,
-            len(packets),
+            "Elected TempMaster 0x%04X for %s from %d candidate(s)",
+            self._temp_master_address(temp_master),
+            ieee,
+            len(candidates.packets),
         )
 
-        return address(temp_master)
+        return temp_master
 
     async def _process_commissioning(self, packet: t.ZigbeeGpPacket) -> None:
         """Process a GP Commissioning command (0xE0): create device, reply, pair."""
@@ -518,7 +564,7 @@ class GreenPowerManager(CreateTaskMixin):
         # The GPD listens on the channel of its next attempt, not the operational one
         # (A.3.9.1 7.d.iv)
         try:
-            await self.send_gpdf(
+            await self._send_commissioning_gpdf(
                 packet,
                 GPDCommandID.ChannelConfiguration,
                 channel_config.serialize(),
@@ -659,77 +705,98 @@ class GreenPowerManager(CreateTaskMixin):
     # --- GPDFs to GPDs ---
 
     async def send_gpdf(
+        self, device: GreenPowerDevice, command_id: GPDCommandID, payload: bytes
+    ) -> None:
+        """Send a GPDF to a GPD, after its next GPDF with RxAfterTx."""
+        temp_master = await self._elect_temp_master(device.ieee)
+        await self._send_gpdf(temp_master, command_id, payload)
+
+    async def _send_commissioning_gpdf(
         self,
-        trigger: t.ZigbeeGpPacket,
+        packet: t.ZigbeeGpPacket,
         command_id: GPDCommandID,
         payload: bytes,
         *,
         maintenance: bool = False,
         channel: int | None = None,
-        lifetime: timedelta = GPDF_LIFETIME,
     ) -> None:
-        """Send a GPDF to the GPD of `trigger`, after its next GPDF with RxAfterTx."""
+        """Send a GPDF to a commissioning GPD, after its next GPDF like `packet`."""
+        assert packet.src_id is not None
+
+        generation = self._window_generation
+        temp_master = await self._elect_temp_master(synthetic_ieee(packet.src_id))
+
+        # The GPD only listens in commissioning mode
+        if not self.is_commissioning or generation != self._window_generation:
+            LOGGER.debug(
+                "GPDF for 0x%08X not sent: commissioning window changed",
+                packet.src_id,
+            )
+            return
+
+        await self._send_gpdf(
+            temp_master, command_id, payload, maintenance=maintenance, channel=channel
+        )
+
+    async def _send_gpdf(
+        self,
+        temp_master: t.ZigbeeGpPacket,
+        command_id: GPDCommandID,
+        payload: bytes,
+        *,
+        maintenance: bool = False,
+        channel: int | None = None,
+    ) -> None:
+        """Send a GPDF through the node that received the `temp_master` instance.
+
+        A Maintenance frame is queued for SrcID 0 (A.1.5.2.2).
+        """
         if channel is None:
             channel = self._application.state.network_info.channel
 
-        generation = self._window_generation
-        temp_master = await self._elect_temp_master(trigger, generation)
+        if temp_master.gpp_short_addr is None:
+            target: SrcID | tuple[t.EUI64, int] | None
+            if maintenance:
+                target = None
+            elif temp_master.application_id is ApplicationID.SrcID:
+                assert temp_master.src_id is not None
+                target = temp_master.src_id
+            else:
+                assert temp_master.ieee is not None
+                assert temp_master.endpoint is not None
+                target = (temp_master.ieee, temp_master.endpoint)
 
-        # A commissioning GPD only listens in commissioning mode
-        if trigger.command_id in (
-            GPDCommandID.CommissioningRequest,
-            GPDCommandID.ChannelRequest,
-        ) and (not self.is_commissioning or generation != self._window_generation):
-            LOGGER.debug(
-                "GPDF for 0x%08X not sent: commissioning window changed",
-                trigger.src_id,
-            )
-            return
-
-        # The elected proxy transmits in the GPD's receive window, as a GP Response
-        # (0x06) tells it to. A Maintenance frame is queued for SrcID 0 (A.1.5.2.2).
-        if temp_master != self._application.state.node_info.nwk:
-            assert trigger.src_id is not None
-
-            await self._broadcast_command(
-                GreenPowerProxy.ClientCommandDefs.response,
-                options=ResponseOptions(
-                    application_id=ApplicationID.SrcID,
-                    transmit_on_endpoint_match=0,
-                    _reserved=0,
-                ),
-                temp_master_short_addr=t.uint16_t(temp_master),
-                temp_master_tx_channel=TempMasterTxChannel(
-                    transmit_channel=t.uint4_t(channel - 11), _reserved=0
-                ),
-                gpd_id=SrcID(0x00000000) if maintenance else trigger.src_id,
-                gpd_command_id=command_id,
-                gpd_command_payload=t.LVBytes(payload),
-            )
-            return
-
-        # A GPDF the radio received directly is answered by the radio itself
-        target: SrcID | tuple[t.EUI64, int] | None
-        if maintenance:
-            target = None
-        elif trigger.application_id is ApplicationID.SrcID:
-            assert trigger.src_id is not None
-            target = trigger.src_id
-        else:
-            assert trigger.ieee is not None
-            assert trigger.endpoint is not None
-            target = (trigger.ieee, trigger.endpoint)
-
-        try:
             await self._application.send_gpdf(
                 target=target,
                 command_id=command_id,
                 payload=payload,
                 channel=channel,
-                lifetime=lifetime,
+                lifetime=GPDF_LIFETIME,
             )
-        except NotImplementedError:
-            LOGGER.debug("Radio cannot send GPDFs, %s not sent", command_id)
+
+            # TODO: `ResponseSchema` cannot carry an IEEE address
+            if temp_master.application_id is ApplicationID.IEEE:
+                return
+
+        assert temp_master.src_id is not None
+
+        # The elected proxy queues the GPDF, and the others drop theirs. The sink
+        # announces itself the same way when elected (A.3.6.2.3).
+        await self._broadcast_command(
+            GreenPowerProxy.ClientCommandDefs.response,
+            options=ResponseOptions(
+                application_id=ApplicationID.SrcID,
+                transmit_on_endpoint_match=0,
+                _reserved=0,
+            ),
+            temp_master_short_addr=t.uint16_t(self._temp_master_address(temp_master)),
+            temp_master_tx_channel=TempMasterTxChannel(
+                transmit_channel=t.uint4_t(channel - 11), _reserved=0
+            ),
+            gpd_id=SrcID(0x00000000) if maintenance else temp_master.src_id,
+            gpd_command_id=command_id,
+            gpd_command_payload=t.LVBytes(payload),
+        )
 
     async def _send_commissioning_reply(
         self,
@@ -757,7 +824,7 @@ class GreenPowerManager(CreateTaskMixin):
         # A GPD repeats its Commissioning GPDF until it gets a reply, so a reply that is
         # never sent is not an error
         try:
-            await self.send_gpdf(
+            await self._send_commissioning_gpdf(
                 packet, GPDCommandID.CommissioningReply, reply.serialize()
             )
         except DeliveryError as exc:

@@ -11,6 +11,7 @@ import freezegun
 import pytest
 
 from tests.async_mock import AsyncMock
+from tests.conftest import App, FeaturelessApp, make_app
 from tests.zgp.conftest import (
     COMMISSIONING_NOTIFICATION_ID,
     KEY,
@@ -622,7 +623,8 @@ async def test_bidirectional_commissioning(
 
     # Only the Commissioning Reply is sent, by the radio that heard the GPD. The GPD is
     # not registered yet
-    assert len(app.send_packet.mock_calls) == 0
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x0000
     [reply] = app.send_gpdf.mock_calls
     assert reply.kwargs["command_id"] == GPDCommandID.CommissioningReply
     assert synthetic_ieee(0x11223344) not in app.devices
@@ -989,7 +991,10 @@ async def test_channel_request_direct(app, manager):
     )
     await wait_for_gp_processing()
 
-    assert len(app.send_packet.mock_calls) == 0
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    response = sent_command(packet, ResponseSchema)
+    assert response.temp_master_short_addr == 0x0000
+    assert response.gpd_id == 0x00000000
     assert app.send_gpdf.mock_calls == [
         call(
             target=None,
@@ -1011,7 +1016,8 @@ async def test_commissioning_reply_direct(app, manager):
 
     await commission(app, 0x11223344, UNPROTECTED_COMMISSIONING, rx_after_tx=True)
 
-    assert len(app.send_packet.mock_calls) == 0
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x0000
     assert app.send_gpdf.mock_calls == [
         call(
             target=SrcID(0x11223344),
@@ -1032,15 +1038,18 @@ async def test_commissioning_reply_direct(app, manager):
 
 
 @pytest.mark.parametrize(
-    "send_gpdf",
+    ("app_base", "send_gpdf"),
     [
-        # The radio cannot send GPDFs
-        None,
-        AsyncMock(side_effect=DeliveryError("GPDF expired")),
+        (FeaturelessApp, None),
+        (App, AsyncMock(side_effect=DeliveryError("GPDF expired"))),
     ],
 )
-async def test_commissioning_reply_not_sent(app, manager, send_gpdf):
+async def test_commissioning_reply_not_sent(app_base, send_gpdf):
     """A Commissioning Reply that is not sent does not stop commissioning."""
+    app = make_app({}, app_base=app_base)
+    app.state.network_info.channel = 15
+    manager = app.green_power
+
     if send_gpdf is not None:
         app.send_gpdf = send_gpdf
 
@@ -1054,32 +1063,6 @@ async def test_commissioning_reply_not_sent(app, manager, send_gpdf):
     await wait_for_gp_processing()
 
     assert synthetic_ieee(0x11223344) in app.devices
-
-
-async def test_send_gpdf_ieee(app, manager):
-    """A GPD addressed by its IEEE address is targeted with its endpoint."""
-    app.send_gpdf = AsyncMock()
-
-    trigger = t.ZigbeeGpPacket(
-        timestamp=datetime.now(UTC),
-        application_id=ApplicationID.IEEE,
-        ieee=t.EUI64.convert("00:11:22:33:44:55:66:77"),
-        endpoint=t.uint8_t(0x01),
-        command_id=GPDCommandID.ManufacturerSpecificReporting,
-        rx_after_tx=True,
-    )
-
-    await manager.send_gpdf(trigger, GPDCommandID(0xFE), b"\x00")
-
-    assert app.send_gpdf.mock_calls == [
-        call(
-            target=(t.EUI64.convert("00:11:22:33:44:55:66:77"), 0x01),
-            command_id=GPDCommandID(0xFE),
-            payload=b"\x00",
-            channel=15,
-            lifetime=GPDF_LIFETIME,
-        )
-    ]
 
 
 async def test_channel_request_window_closed(app, manager):
@@ -1437,7 +1420,7 @@ def commissioning_notification(
         ([(0x2222, True, 2, 10), (0x1111, True, 2, 10)], 0x1111),
         # No bidirectional proxy: the best link of all
         ([(0x1111, False, 1, 10), (0x2222, False, 2, 10)], 0x2222),
-        # The coordinator received the GPDF directly, but cannot transmit to the GPD
+        # The coordinator received the GPDF directly, without a link value
         ([None, (0x2222, True, 0, 0)], 0x2222),
     ],
 )
@@ -1508,8 +1491,21 @@ async def test_temp_master_election_tx_queue_full(app, manager):
     assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x2222
 
 
-async def test_temp_master_election_prefers_proxy_over_direct_sink(app, manager):
-    """A proxy is preferred to the sink, which cannot transmit GPDFs."""
+@pytest.mark.parametrize(
+    ("app_base", "temp_master"),
+    [
+        # The sink competes on its link like any proxy
+        (App, 0x0000),
+        # Unless its radio cannot transmit GPDFs
+        (FeaturelessApp, 0x2222),
+    ],
+)
+async def test_temp_master_election_direct_sink(app_base, temp_master):
+    """The sink is a candidate if it received the GPDF and can transmit GPDFs."""
+    app = make_app({}, app_base=app_base)
+    app.state.network_info.channel = 15
+    manager = app.green_power
+
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
     app.gp_packet_received(
@@ -1533,7 +1529,7 @@ async def test_temp_master_election_prefers_proxy_over_direct_sink(app, manager)
     await wait_for_gp_processing()
 
     [packet] = [c.args[0] for c in app.send_packet.mock_calls]
-    assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x2222
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == temp_master
 
 
 @pytest.mark.parametrize(

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 from unittest.mock import call
 
+import freezegun
 import pytest
 
 from tests.async_mock import AsyncMock
+from tests.conftest import FeaturelessApp, make_app
 from tests.zgp.conftest import (
     STEP_UP,
     TIMESTAMP,
@@ -15,7 +18,8 @@ from tests.zgp.conftest import (
     encrypted_gp_packet,
     sent_command,
 )
-from zigpy.device import GreenPowerDevice
+from zigpy.device import GP_DUPLICATE_TIMEOUT, GreenPowerDevice
+from zigpy.exceptions import DeliveryError
 import zigpy.types as t
 from zigpy.zcl.clusters.greenpower import ResponseSchema
 from zigpy.zgp.commands import GPGenericSwitchConfiguration
@@ -378,18 +382,39 @@ def test_unprocessed_frame_without_key(device, events) -> None:
     assert len(events) == 0
 
 
-async def test_send_gpdf_direct(app) -> None:
-    """A GPDF to a GPD the radio hears directly is sent by the radio."""
-    app.state.network_info.channel = 15
-    app.send_gpdf = AsyncMock()
-
-    device = GreenPowerDevice(
-        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+def rx_after_tx_packet(
+    gpp_short_addr: int | None = None,
+    *,
+    lqi: int = 200,
+    bidirectional_cap: bool = True,
+    tx_queue_full: bool = False,
+) -> t.ZigbeeGpPacket:
+    """A GPDF after which the GPD listens, received directly or through a proxy."""
+    return make_packet(5, lqi=lqi).replace(
+        rx_after_tx=True,
+        gpp_short_addr=None if gpp_short_addr is None else t.NWK(gpp_short_addr),
+        gpp_bidirectional_cap=None if gpp_short_addr is None else bidirectional_cap,
+        gpp_tx_queue_full=None if gpp_short_addr is None else tx_queue_full,
     )
 
-    await device.send_gpdf(make_packet(5), GPDCommandID(0xFE), b"\x00")
 
-    assert app.send_gpdf.mock_calls == [
+@pytest.fixture
+def gp_app(app):
+    app.state.network_info.channel = 15
+    app.send_gpdf = AsyncMock()
+    return app
+
+
+async def test_send_gpdf_direct(gp_app) -> None:
+    """A GPDF to a GPD the radio hears directly is sent by the radio."""
+    device = GreenPowerDevice(
+        gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+
+    gp_app.gp_packet_received(rx_after_tx_packet())
+    await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
+
+    assert gp_app.send_gpdf.mock_calls == [
         call(
             target=SrcID(0x12345678),
             command_id=GPDCommandID(0xFE),
@@ -399,25 +424,133 @@ async def test_send_gpdf_direct(app) -> None:
         )
     ]
 
+    # Proxies are told the sink was elected, to drop their queued GPDFs (A.3.6.2.3)
+    [packet] = [c.args[0] for c in gp_app.send_packet.mock_calls]
+    response = sent_command(packet, ResponseSchema)
+    assert response.temp_master_short_addr == 0x0000
+    assert response.gpd_id == 0x12345678
 
-async def test_send_gpdf_through_proxy(app) -> None:
+
+async def test_send_gpdf_through_proxy(gp_app) -> None:
     """A GPDF to a GPD heard through a proxy is sent by that proxy."""
-    app.state.network_info.channel = 15
-    app.send_gpdf = AsyncMock()
-
     device = GreenPowerDevice(
-        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+        gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
     )
 
-    trigger = make_packet(5).replace(gpp_short_addr=t.NWK(0x1234))
-    await device.send_gpdf(trigger, GPDCommandID(0xFE), b"\x00")
+    gp_app.gp_packet_received(rx_after_tx_packet(0x1234))
+    await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
 
-    assert len(app.send_gpdf.mock_calls) == 0
+    assert len(gp_app.send_gpdf.mock_calls) == 0
 
-    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    [packet] = [c.args[0] for c in gp_app.send_packet.mock_calls]
     response = sent_command(packet, ResponseSchema)
     assert response.temp_master_short_addr == 0x1234
     assert response.temp_master_tx_channel.transmit_channel == 15 - 11
     assert response.gpd_id == 0x12345678
     assert response.gpd_command_id == GPDCommandID(0xFE)
     assert response.gpd_command_payload == b"\x00"
+
+
+async def test_send_gpdf_ieee(gp_app) -> None:
+    """A GPD addressed by its IEEE address is targeted with its endpoint."""
+    device = GreenPowerDevice(gp_app, application_id=ApplicationID.IEEE, ieee=IEEE)
+
+    gp_app.gp_packet_received(
+        make_packet(5, application_id=ApplicationID.IEEE, endpoint=1).replace(
+            rx_after_tx=True
+        )
+    )
+    await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
+
+    assert gp_app.send_gpdf.mock_calls == [
+        call(
+            target=(IEEE, 1),
+            command_id=GPDCommandID(0xFE),
+            payload=b"\x00",
+            channel=15,
+            lifetime=GPDF_LIFETIME,
+        )
+    ]
+    assert len(gp_app.send_packet.mock_calls) == 0
+
+
+async def test_send_gpdf_elects_from_all_instances(gp_app) -> None:
+    """Every instance of a GPDF is a candidate, but the GPD processes it once."""
+    device = GreenPowerDevice(
+        gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+    gp_app.devices[device.ieee] = device
+    events = []
+    device.on_event("gp_command_received", events.append)
+
+    gp_app.gp_packet_received(rx_after_tx_packet(lqi=100))
+    gp_app.gp_packet_received(rx_after_tx_packet(0x1234, lqi=255))
+    await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
+
+    assert len(events) == 1
+    assert len(gp_app.send_gpdf.mock_calls) == 0
+
+    [packet] = [c.args[0] for c in gp_app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x1234
+
+
+@pytest.mark.parametrize(
+    "packets",
+    [
+        [],
+        [make_packet(5).replace(rx_after_tx=False)],
+        # In operational mode, only proxies capable of bidirectional communication with
+        # room in their gpTxQueue transmit (A.3.6.2.3)
+        [rx_after_tx_packet(0x1234, bidirectional_cap=False)],
+        [rx_after_tx_packet(0x1234, tx_queue_full=True)],
+    ],
+)
+async def test_send_gpdf_no_temp_master(gp_app, packets) -> None:
+    """A GPDF without a node to transmit it is not sent."""
+    device = GreenPowerDevice(
+        gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+
+    for packet in packets:
+        gp_app.gp_packet_received(packet)
+
+    with pytest.raises(DeliveryError):
+        await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
+
+    assert len(gp_app.send_gpdf.mock_calls) == 0
+    assert len(gp_app.send_packet.mock_calls) == 0
+
+
+async def test_send_gpdf_radio_cannot_send() -> None:
+    """A GPD heard only by a radio that cannot transmit GPDFs is not sent one."""
+    app = make_app({}, app_base=FeaturelessApp)
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+
+    app.gp_packet_received(rx_after_tx_packet())
+
+    with pytest.raises(DeliveryError):
+        await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
+
+    assert len(app.send_packet.mock_calls) == 0
+
+
+async def test_send_gpdf_expired(gp_app) -> None:
+    """A GPDF with RxAfterTx is only replied to within gpDuplicateTimeout."""
+    device = GreenPowerDevice(
+        gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+
+    with freezegun.freeze_time() as frozen:
+        gp_app.gp_packet_received(rx_after_tx_packet(0x1234))
+        frozen.tick(GP_DUPLICATE_TIMEOUT.total_seconds() + 1)
+
+        # The loop runs due timers after the callbacks already scheduled
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+        with pytest.raises(DeliveryError):
+            await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
+
+    assert len(gp_app.send_packet.mock_calls) == 0
