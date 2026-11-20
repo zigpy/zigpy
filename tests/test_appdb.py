@@ -4662,6 +4662,107 @@ async def test_flush_keeps_failure_recorded_after_publication(tmp_path):
     await app.shutdown()
 
 
+async def test_flush_keeps_first_and_latest_of_many_failures(tmp_path):
+    """Of many store failures, the first is raised and the latest outlives the flush."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=3600)
+    listener = app._dblistener
+    await listener.execute(
+        f"""CREATE TRIGGER fail_first_write BEFORE INSERT ON network_store{zigpy.appdb.DB_V}
+            WHEN NEW.key = 'first'
+            BEGIN SELECT RAISE(ABORT, 'first write failed'); END"""
+    )
+    await listener.execute(
+        f"""CREATE TRIGGER fail_second_write BEFORE INSERT ON network_store{zigpy.appdb.DB_V}
+            WHEN NEW.key = 'second'
+            BEGIN SELECT RAISE(ABORT, 'second write failed'); END"""
+    )
+    await listener.execute(
+        f"""CREATE TRIGGER fail_third_write BEFORE INSERT ON network_store{zigpy.appdb.DB_V}
+            WHEN NEW.key = 'third'
+            BEGIN SELECT RAISE(ABORT, 'third write failed'); END"""
+    )
+
+    for key in ("first", "second", "third"):
+        app.network_store[StoredValue(namespace="test", key=key, type=int)] = 1
+
+    await listener._callback_handlers.join()
+
+    # Only the first and the latest failure are held: the third replaced the second
+    assert [str(exc) for exc in listener._store_write_errors] == [
+        "first write failed",
+        "third write failed",
+    ]
+
+    real_flush = listener._flush
+
+    async def flush_then_fail(result):
+        await real_flush(result)
+        # Fails on the worker before the caller of the first flush resumes, while
+        # the failures that flush reports are still recorded
+        listener._record_store_write_error(sqlite3.OperationalError("later failure"))
+
+    with patch.object(listener, "_flush", side_effect=flush_then_fail):
+        with pytest.raises(
+            zigpy.exceptions.DatabaseFlushError, match="first write failed"
+        ):
+            await app.flush_database()
+
+    # Only the failure recorded after publication is left, not the earlier ones
+    with pytest.raises(zigpy.exceptions.DatabaseFlushError, match="later failure"):
+        await app.flush_database()
+
+    await app.flush_database()
+
+    assert _network_store_rows(db) == []
+
+    await app.shutdown()
+
+
+async def test_flush_cancelled_during_commit(tmp_path, caplog):
+    """A caller cancelled during the commit gets nothing, and the failure stays."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=3600)
+    listener = app._dblistener
+    await listener.execute(
+        f"""CREATE TRIGGER fail_store_write BEFORE INSERT ON network_store{zigpy.appdb.DB_V}
+            WHEN NEW.key = 'failing'
+            BEGIN SELECT RAISE(ABORT, 'store write failed'); END"""
+    )
+    app.network_store[StoredValue(namespace="test", key="failing", type=int)] = 1
+    app.network_store[GROUP_STATE] = {"next": 1}
+
+    real_commit = listener._db.commit
+    flush_task = None
+
+    async def cancel_then_commit():
+        flush_task.cancel()
+        await real_commit()
+
+    with patch.object(listener._db, "commit", side_effect=cancel_then_commit):
+        flush_task = asyncio.create_task(app.flush_database())
+
+        with pytest.raises(asyncio.CancelledError):
+            await flush_task
+
+        await listener._callback_handlers.join()
+
+    # The commit itself went through
+    assert _network_store_rows(db) == [
+        ("zigpy.groups", "allocation", '{"next": 1}', 1),
+    ]
+    # Without the worker's check for a result cancelled during the commit, setting
+    # the result fails and the worker logs this
+    assert "Unexpected error" not in caplog.text
+
+    # The failure was not published to the cancelled caller, so the next flush has it
+    with pytest.raises(zigpy.exceptions.DatabaseFlushError, match="store write failed"):
+        await app.flush_database()
+
+    await app.flush_database()
+    await app.shutdown()
+
+
 async def test_flush_reports_own_rollback_once(tmp_path):
     """A rollback by the flush's own commit is reported by that flush only."""
     db = tmp_path / "test.db"
