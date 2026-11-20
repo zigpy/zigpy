@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from asyncio import timeout as asyncio_timeout
-from collections.abc import Callable
+from collections import defaultdict
+from collections.abc import Callable, Sequence
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -47,8 +48,12 @@ from zigpy.zcl.helpers import AttributeCacheLoadResult, AttributeCacheRow
 import zigpy.zdo.types as zdo_t
 from zigpy.zgp.commands import (
     GPD_COMMAND_SCHEMAS,
+    GPAttributeReportingPayload,
     GPCommissioningPayload,
     GPGenericSwitchConfiguration,
+    GPManufacturerSpecificAttributeReportingPayload,
+    GPManufacturerSpecificMultiClusterReportingPayload,
+    GPMultiClusterReportingPayload,
 )
 from zigpy.zgp.crypto import build_gpdf_header, decrypt_payload
 from zigpy.zgp.types import (
@@ -60,7 +65,11 @@ from zigpy.zgp.types import (
     SecurityStatus,
     SrcID,
 )
-from zigpy.zgp.util import derive_alias, synthetic_ieee
+from zigpy.zgp.util import (
+    derive_alias,
+    is_gp_manufacturer_specific_attribute,
+    synthetic_ieee,
+)
 
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
@@ -68,6 +77,16 @@ if typing.TYPE_CHECKING:
 
 
 LOGGER = logging.getLogger(__name__)
+
+# GPD commands carrying ZCL attribute reports
+GPD_REPORTING_COMMANDS: Final = frozenset(
+    {
+        GPDCommandID.AttributeReporting,
+        GPDCommandID.ManufacturerSpecificReporting,
+        GPDCommandID.MultiClusterReporting,
+        GPDCommandID.ManufacturerSpecificMultiClusterReporting,
+    }
+)
 
 PACKET_DEBOUNCE_WINDOW = 10
 MAX_DEVICE_CONCURRENCY = 2
@@ -224,11 +243,49 @@ class BaseDevice(
     async def reinterview(self) -> None:
         raise NotImplementedError
 
+    @property
+    def non_zdo_endpoints(self) -> Sequence[zigpy.endpoint.BaseEndpoint]:
+        raise NotImplementedError
+
     def load_attribute_cache(
         self, rows: list[AttributeCacheRow]
     ) -> AttributeCacheLoadResult:
         """Populate cluster attribute caches from the device's database rows."""
-        raise NotImplementedError
+        result = AttributeCacheLoadResult()
+        existing_keys = {row.key for row in rows}
+        endpoints = {ep.endpoint_id: ep for ep in self.non_zdo_endpoints}
+
+        for row in rows:
+            self.debug("Loading attribute cache row %s", row)
+
+            if row.endpoint_id not in endpoints:
+                continue
+
+            ep = endpoints[row.endpoint_id]
+            clusters = (
+                ep.in_clusters
+                if row.cluster_type == ClusterType.Server
+                else ep.out_clusters
+            )
+
+            if row.cluster_id not in clusters:
+                self.debug("Unknown cluster 0x%04X, skipping", row.cluster_id)
+                continue
+
+            cluster = clusters[row.cluster_id]
+            loaded = cluster._load_attribute_cache_row(
+                row, existing_keys=existing_keys, result=result
+            )
+
+            if loaded is not None:
+                self._attribute_cache_loaded(cluster, *loaded)
+
+        return result
+
+    def _attribute_cache_loaded(
+        self, cluster: Cluster, attr_def: foundation.ZCLAttributeDef, value: Any
+    ) -> None:
+        """Handle an attribute value loaded from the database."""
 
 
 class GreenPowerDevice(BaseDevice):
@@ -290,6 +347,11 @@ class GreenPowerDevice(BaseDevice):
         # Opaque data trailing the `GPCommissioningPayload`
         self.extra_commissioning_payload: bytes | None = None
 
+        # SrcID addressing has no endpoint
+        self.endpoints: dict[None, zigpy.endpoint.GreenPowerEndpoint] = {
+            None: zigpy.endpoint.GreenPowerEndpoint(self)
+        }
+
     @classmethod
     def from_commissioning(
         cls,
@@ -316,6 +378,7 @@ class GreenPowerDevice(BaseDevice):
         ]
         device.server_cluster_ids = list(commissioning.server_clusters or [])
         device.client_cluster_ids = list(commissioning.client_clusters or [])
+        device.add_clusters()
 
         if commissioning.switch_information is not None:
             device.switch_configuration = commissioning.switch_information.configuration
@@ -344,6 +407,20 @@ class GreenPowerDevice(BaseDevice):
         device.rssi = packet.rssi
 
         return device
+
+    @property
+    def non_zdo_endpoints(self) -> list[zigpy.endpoint.GreenPowerEndpoint]:
+        return list(self.endpoints.values())
+
+    def add_clusters(self) -> None:
+        """Create the clusters the GPD listed during commissioning."""
+        endpoint = self.endpoints[None]
+
+        for cluster_id in self.server_cluster_ids:
+            endpoint.add_input_cluster(cluster_id)
+
+        for cluster_id in self.client_cluster_ids:
+            endpoint.add_output_cluster(cluster_id)
 
     @property
     def src_id(self) -> SrcID | None:
@@ -554,6 +631,9 @@ class GreenPowerDevice(BaseDevice):
             )
             command = None
 
+        if command is not None and packet.command_id in GPD_REPORTING_COMMANDS:
+            self._handle_attribute_reports(command)
+
         self.emit(
             GreenPowerCommandReceived.event_type,
             GreenPowerCommandReceived(
@@ -563,6 +643,71 @@ class GreenPowerDevice(BaseDevice):
                 command=command,
             ),
         )
+
+    def _handle_attribute_reports(
+        self,
+        command: GPAttributeReportingPayload
+        | GPManufacturerSpecificAttributeReportingPayload
+        | GPMultiClusterReportingPayload
+        | GPManufacturerSpecificMultiClusterReportingPayload,
+    ) -> None:
+        """Pass GPD attribute reports to the reported clusters as ZCL reports."""
+        if isinstance(
+            command,
+            GPAttributeReportingPayload
+            | GPManufacturerSpecificAttributeReportingPayload,
+        ):
+            reports = [(command.cluster_id, attr) for attr in command.attributes]
+        else:
+            reports = [
+                (report.cluster_id, report.attribute) for report in command.reports
+            ]
+
+        if isinstance(
+            command,
+            GPManufacturerSpecificAttributeReportingPayload
+            | GPManufacturerSpecificMultiClusterReportingPayload,
+        ):
+            manufacturer_code = command.manufacturer_code
+        else:
+            manufacturer_code = None
+
+        # A ZCL report carries a single manufacturer code for all of its attributes
+        grouped: defaultdict[tuple[int, int | None], list[foundation.Attribute]] = (
+            defaultdict(list)
+        )
+
+        for cluster_id, attr in reports:
+            if not is_gp_manufacturer_specific_attribute(cluster_id, attr.attrid):
+                grouped[cluster_id, None].append(attr)
+            elif manufacturer_code is not None:
+                grouped[cluster_id, manufacturer_code].append(attr)
+            else:
+                self.debug(
+                    "Dropping manufacturer-specific attribute 0x%04X of cluster 0x%04X"
+                    " reported without a manufacturer code",
+                    attr.attrid,
+                    cluster_id,
+                )
+
+        clusters = self.endpoints[None].in_clusters
+
+        for (cluster_id, manufacturer), attributes in grouped.items():
+            if cluster_id not in clusters:
+                self.debug("Dropping report for unknown cluster 0x%04X", cluster_id)
+                continue
+
+            clusters[cluster_id].handle_message(
+                foundation.ZCLHeader.general(
+                    tsn=0,
+                    command_id=foundation.GeneralCommand.Report_Attributes,
+                    manufacturer=manufacturer,
+                    direction=foundation.Direction.Server_to_Client,
+                ),
+                foundation.GENERAL_COMMANDS[
+                    foundation.GeneralCommand.Report_Attributes
+                ].schema(attribute_reports=attributes),
+            )
 
 
 class ZigbeeDevice(BaseDevice):
@@ -729,48 +874,16 @@ class ZigbeeDevice(BaseDevice):
 
         return self._initialize_task
 
-    def load_attribute_cache(
-        self, rows: list[AttributeCacheRow]
-    ) -> AttributeCacheLoadResult:
-        """Populate cluster attribute caches from the device's database rows."""
-        result = AttributeCacheLoadResult()
-        existing_keys = {row.key for row in rows}
+    def _attribute_cache_loaded(
+        self, cluster: Cluster, attr_def: foundation.ZCLAttributeDef, value: Any
+    ) -> None:
+        if cluster.cluster_id != Basic.cluster_id:
+            return
 
-        for row in rows:
-            self.debug("Loading attribute cache row %s", row)
-
-            if row.endpoint_id not in self.endpoints:
-                continue
-
-            ep = self.endpoints[row.endpoint_id]
-            clusters = (
-                ep.in_clusters
-                if row.cluster_type == ClusterType.Server
-                else ep.out_clusters
-            )
-
-            if row.cluster_id not in clusters:
-                self.debug("Unknown cluster 0x%04X, skipping", row.cluster_id)
-                continue
-
-            loaded = clusters[row.cluster_id]._load_attribute_cache_row(
-                row, existing_keys=existing_keys, result=result
-            )
-
-            if loaded is None:
-                continue
-
-            attr_def, value = loaded
-
-            if row.cluster_id != Basic.cluster_id:
-                continue
-
-            if attr_def == Basic.AttributeDefs.manufacturer:
-                self.manufacturer = value
-            elif attr_def == Basic.AttributeDefs.model:
-                self.model = value
-
-        return result
+        if attr_def == Basic.AttributeDefs.manufacturer:
+            self.manufacturer = value
+        elif attr_def == Basic.AttributeDefs.model:
+            self.model = value
 
     async def reinterview(self) -> None:
         """Re-interview this device using a shadow device for safety.
