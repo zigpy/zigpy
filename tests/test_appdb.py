@@ -55,6 +55,7 @@ from zigpy.zcl.clusters.general import Basic, Identify, MultistateInput, OnOff, 
 from zigpy.zcl.clusters.measurement import TemperatureMeasurement
 from zigpy.zcl.clusters.security import IasZone
 from zigpy.zcl.foundation import (
+    Array,
     DataTypeId,
     Status as ZCLStatus,
     TypeValue,
@@ -1411,7 +1412,10 @@ async def test_unstorable_attribute_values_not_persisted(tmp_path, caplog) -> No
     multistate.update_attribute(MultistateInput.AttributeDefs.present_value, 2)
     multistate.update_attribute(
         MultistateInput.AttributeDefs.state_text,
-        t.LVList[t.CharacterString, t.uint16_t](["a", "b"]),
+        Array(
+            type=DataTypeId.string,
+            value=t.LVList[t.CharacterString, t.uint16_t](["a", "b"]),
+        ),
     )
     multistate.update_attribute(MultistateInput.AttributeDefs.number_of_states, ["x"])
     dev.endpoints[1].on_off.update_attribute(OnOff.AttributeDefs.on_off, 1)
@@ -1428,7 +1432,10 @@ async def test_unstorable_attribute_values_not_persisted(tmp_path, caplog) -> No
         with mock_attribute_reads(
             multistate,
             {
-                MultistateInput.AttributeDefs.state_text: ["c", "d"],
+                MultistateInput.AttributeDefs.state_text: Array(
+                    type=DataTypeId.string,
+                    value=t.LVList[t.CharacterString, t.uint16_t](["c", "d"]),
+                ),
                 MultistateInput.AttributeDefs.description: "some description",
             },
         ):
@@ -1460,7 +1467,10 @@ async def test_unstorable_attribute_values_not_persisted(tmp_path, caplog) -> No
     # Everything but the unstorable values is persisted, including the second endpoint
     multistate2 = dev2.endpoints[1].multistate_input
     assert multistate2.get_cached_value("present_value") == 2
-    assert multistate2.get_cached_value("state_text") == ["c", "d"]
+    assert multistate2.get_cached_value("state_text") == Array(
+        type=DataTypeId.string,
+        value=t.LVList[t.CharacterString, t.uint16_t](["c", "d"]),
+    )
     assert multistate2.get_cached_value("description") == "some description"
     assert dev2.endpoints[1].on_off.get_cached_value("on_off") == 1
     assert dev2.endpoints[2].on_off.get_cached_value("on_off") == 0
@@ -1988,7 +1998,10 @@ def _read_attr_row(db, cluster_id, attr_id):
         (
             MultistateInput,
             MultistateInput.AttributeDefs.state_text,
-            t.LVList[t.CharacterString, t.uint16_t](["a", "b"]),
+            Array(
+                type=DataTypeId.string,
+                value=t.LVList[t.CharacterString, t.uint16_t](["a", "b"]),
+            ),
         ),
     ],
 )
