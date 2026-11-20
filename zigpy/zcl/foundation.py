@@ -150,6 +150,36 @@ class ZCLStructure(t.LVList, item_type=TypeValue, length_type=t.uint16_t):
     """ZCL Structure data type."""
 
 
+class ZCLArray(t.LVList, length_type=t.uint16_t):
+    """ZCL Array with a fixed element type, e.g. `ZCLArray[t.CharacterString]`.
+
+    Unlike `Array`, which holds a value of any element type received from a device,
+    this is a plain list usable as an attribute type. It maps to the array data type
+    and serializes the element type ID ahead of the element count.
+    """
+
+    _getitem_kwargs = {"item_type": None}
+
+    @classmethod
+    def _element_type_id(cls) -> DataTypeId:
+        return DataType.from_python_type(cls._item_type).type_id
+
+    def serialize(self) -> bytes:
+        return self._element_type_id().serialize() + super().serialize()
+
+    @classmethod
+    def deserialize(cls, data: bytes) -> tuple[Self, bytes]:
+        element_type, data = t.uint8_t.deserialize(data)
+
+        if element_type != cls._element_type_id():
+            raise ValueError(
+                f"Expected array element type {cls._element_type_id()!r},"
+                f" got 0x{element_type:02X}"
+            )
+
+        return super().deserialize(data)
+
+
 class DataTypeId(t.enum8):
     unk = 0xFF
     nodata = 0x00
@@ -615,7 +645,12 @@ class DataType(DataTypeInfo, enum.Enum):
     @classmethod
     @functools.cache
     def _python_type_index(cls: type[Self]) -> dict[type, Self]:
-        return {d.python_type: d for d in cls}
+        index = {d.python_type: d for d in cls}
+
+        # Typed arrays are attribute types, `Array` is what is received
+        index[ZCLArray] = cls.array
+
+        return index
 
     @classmethod
     def from_python_type(cls: type[Self], python_type: type) -> Self:
