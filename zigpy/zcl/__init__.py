@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import collections
 from collections import defaultdict
-from collections.abc import Callable, Generator, Iterable, Sequence
+from collections.abc import Awaitable, Callable, Generator, Iterable, Sequence
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import enum
 import functools
+import inspect
 import itertools
 import logging
 import types
@@ -536,6 +538,25 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         # Attribute IDs (and their manufacturer codes) that are currently being passed
         # through a quirk's `_update_attribute`, see `_quirk_attribute_update`
         self._quirk_attribute_updates: dict[int, int | None] = {}
+
+    def create_catching_task(
+        self,
+        target: Awaitable,
+        exceptions: type[Exception] | tuple | None = None,
+        name: str | None = None,
+    ) -> None:
+        """Create background work owned by the device or group controller."""
+        create_task = getattr(self._endpoint.device, "create_task", None)
+        if create_task is None:
+            create_task = self._endpoint.device.application.create_task
+        task = create_task(self.catching_coro(target, exceptions), name=name)
+
+        def task_done(task: asyncio.Task) -> None:
+            # Removal can cancel the wrapper before it starts awaiting the target.
+            if inspect.iscoroutine(target):
+                target.close()
+
+        task.add_done_callback(task_done)
 
     @property
     def _attr_cache(self) -> AttributeCache:

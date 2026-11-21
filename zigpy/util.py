@@ -316,7 +316,7 @@ class CatchingTaskMixin(LocalLogMixin):
 
     async def catching_coro(
         self,
-        target: typing.Coroutine,
+        target: typing.Awaitable,
         exceptions: type[Exception] | tuple | None = None,
     ) -> typing.Any:
         """Wrap a target coro and catch specified exceptions."""
@@ -327,7 +327,9 @@ class CatchingTaskMixin(LocalLogMixin):
             return await target
         except exceptions:
             pass
-        except (Exception, asyncio.CancelledError):  # noqa: BLE001
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
             # Do not print the wrapper in the traceback
             frames = len(inspect.trace()) - 1
             exc_msg = traceback.format_exc(-frames)
