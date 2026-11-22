@@ -32,6 +32,7 @@ from zigpy.zcl.clusters.general import (
 )
 from zigpy.zcl.clusters.protocol import BacnetProtocolTunnel
 import zigpy.zcl.clusters.security as sec
+from zigpy.zcl.clusters.smartenergy import Metering
 from zigpy.zcl.clusters.wwah import WorksWithAllHubs
 from zigpy.zdo import types as zdo_t
 
@@ -1368,3 +1369,18 @@ def test_rssi_location_type_report() -> None:
         coordinate_system=CoordinateSystem.Rectangular,
         _reserved=0,
     )
+
+
+def test_metering_temperature_unit_of_measure_report() -> None:
+    """Test a TemperatureUnitOfMeasure report is decoded with the temperature units."""
+
+    ep = MagicMock()
+    cluster = Metering(ep)
+
+    # Report_Attributes: attribute 0x030C, enum8, value 0x01 (degrees Celsius)
+    hdr, args = cluster.deserialize(bytes.fromhex("18010a0c033001"))
+    cluster.handle_message(hdr, args)
+
+    value = cluster.get(Metering.AttributeDefs.temperature_unit_of_measure.name)
+    assert value.name == "Celsius_binary"
+    assert value is Metering.TemperatureUnitOfMeasure.Celsius_binary
