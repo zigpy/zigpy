@@ -2176,6 +2176,8 @@ async def test_local_data_cluster_reads_stored_untyped(tmp_path, value) -> None:
         ),
         # A string that is not an address was set by a quirk and is kept
         (IasZone, IasZone.AttributeDefs.cie_addr, "unknown", "unknown"),
+        (IasZone, IasZone.AttributeDefs.cie_addr, "", ""),
+        (IasZone, IasZone.AttributeDefs.cie_addr, "aa:bb", "aa:bb"),
         (
             TemperatureMeasurement,
             TemperatureMeasurement.AttributeDefs.measured_value,
