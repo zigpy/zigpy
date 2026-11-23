@@ -15,7 +15,9 @@ from tests.conftest import App, FeaturelessApp, make_app
 from tests.zgp.conftest import (
     COMMISSIONING_NOTIFICATION_ID,
     KEY,
+    STEP_UP,
     commission,
+    commission_individual_key,
     commissioning_payload,
     encrypted_gp_packet,
     make_commissioning_options,
@@ -1789,3 +1791,46 @@ async def test_stale_commissioning_after_success(app, manager):
     assert manager.get_pending_device(ieee) is None
     assert app.devices[ieee] is device
     assert len(app.send_packet.mock_calls) == 0
+
+
+@pytest.mark.parametrize(
+    ("command_id", "payload"),
+    [
+        (GPDCommandID.CommissioningRequest, UNPROTECTED_COMMISSIONING),
+        (
+            GPDCommandID.ChannelRequest,
+            GPChannelRequestPayload(next_channel=4, second_next_channel=4).serialize(),
+        ),
+    ],
+)
+async def test_window_closed_commissioning_gpdf_keeps_election(
+    app, manager, command_id, payload
+):
+    """An unprotected commissioning GPDF outside of the window elects no TempMaster."""
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+    commission_individual_key(device)
+    app.devices[device.ieee] = device
+
+    app.gp_packet_received(
+        encrypted_gp_packet(
+            0x12345678,
+            1000,
+            bytes([GPDCommandID.StepUp]) + STEP_UP.serialize(),
+            rx_after_tx=True,
+        ).replace(
+            gpp_short_addr=t.NWK(0x1111),
+            gpp_bidirectional_cap=True,
+            gpp_tx_queue_full=False,
+        )
+    )
+    app.gp_packet_received(
+        make_gp_packet(
+            0x12345678, command_id, payload, gpp_short_addr=0x2222, rx_after_tx=True
+        ).replace(gpp_bidirectional_cap=True, gpp_tx_queue_full=False)
+    )
+    await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
+
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x1111

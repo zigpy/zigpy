@@ -261,8 +261,9 @@ class GreenPowerManager(CreateTaskMixin):
         ieee = synthetic_ieee(packet.src_id)
 
         # The GPD listens after a GPDF with RxAfterTx, and after a Channel Request: a
-        # Maintenance frame, which has no RxAfterTx (A.3.9.1 step 6.b)
-        listening = (
+        # Maintenance frame, which has no RxAfterTx (A.3.9.1 step 6.b). Both are only
+        # processed in commissioning mode, so outside of it they elect no TempMaster.
+        listening = self.is_commissioning and (
             packet.rx_after_tx or packet.command_id == GPDCommandID.ChannelRequest
         )
 
