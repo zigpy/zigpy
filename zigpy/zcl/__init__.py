@@ -1835,11 +1835,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             cfg = foundation.AttributeReportingConfig()
             cfg.direction = foundation.ReportingDirection.SendReports
             cfg.attrid = attr_def.id
-            cfg.datatype = (
-                attr_def.zcl_type
-                if attr_def.zcl_type is not None
-                else foundation.DataType.from_python_type(attr_def.type).type_id
-            )
+            cfg.datatype = attr_def.zcl_type
             cfg.min_interval = reporting_config.min_interval
             cfg.max_interval = reporting_config.max_interval
             cfg.reportable_change = reporting_config.reportable_change
