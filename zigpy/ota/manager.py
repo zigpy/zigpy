@@ -9,6 +9,7 @@ import contextlib
 from typing import TYPE_CHECKING
 
 import zigpy.datastructures
+from zigpy.exceptions import SupersededError
 import zigpy.ota
 import zigpy.types as t
 from zigpy.zcl import ClusterType, foundation
@@ -203,6 +204,13 @@ class OTAManager:
                     file_offset=command.file_offset,
                     image_data=block,
                     tsn=hdr.tsn,
+                    # Slow devices re-send block requests while our previous response
+                    # is still queued, only the newest one needs a response
+                    coalesce_key=(
+                        self.ota_cluster.endpoint.endpoint_id,
+                        Ota.cluster_id,
+                        Ota.ClientCommandDefs.image_block_response.id,
+                    ),
                 )
 
             if command.file_offset + len(block) < len(self._image_data):
@@ -219,6 +227,11 @@ class OTAManager:
                 self.progress_callback(
                     command.file_offset + len(block), len(self._image_data)
                 )
+        except SupersededError:
+            self.device.debug(
+                "Skipping superseded OTA image block request for offset %d",
+                command.file_offset,
+            )
         except Exception as ex:  # noqa: BLE001
             self.device.debug("OTA image_block handler exception", exc_info=ex)
 
