@@ -644,3 +644,20 @@ async def test_send_gpdf_ignores_replayed_instances(gp_app) -> None:
 
     [packet] = [c.args[0] for c in gp_app.send_packet.mock_calls]
     assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x1111
+
+
+async def test_send_gpdf_candidate_after_newer_gpdf(gp_app) -> None:
+    """A newer GPDF without RxAfterTx does not end the election of an older one."""
+    device = register_device(
+        gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+
+    gp_app.gp_packet_received(rx_after_tx_packet(lqi=50))
+    gp_app.gp_packet_received(make_packet(6, lqi=50))
+    gp_app.gp_packet_received(rx_after_tx_packet(0x1111, lqi=255))
+    await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
+
+    assert len(gp_app.send_gpdf.mock_calls) == 0
+
+    [packet] = [c.args[0] for c in gp_app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x1111

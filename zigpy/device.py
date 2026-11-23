@@ -506,9 +506,9 @@ class GreenPowerDevice(BaseDevice):
         if self._is_packet_duplicate(packet):
             self.debug("Filtering duplicate packet")
 
-            # Another instance of the last GPDF is a TempMaster candidate for it, but a
-            # replay of an older one is not (A.3.6.1.2)
-            if packet.rx_after_tx and packet.frame_counter == self.frame_counter:
+            # Another instance of a GPDF is a TempMaster candidate for its election, if
+            # that election is still open (A.3.6.1.2)
+            if packet.rx_after_tx:
                 self._application.green_power.add_temp_master_candidate(
                     self.ieee, packet
                 )
