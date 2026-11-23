@@ -101,6 +101,7 @@ class GreenPowerCommandReceived:
     endpoint_id: int | None
     command_id: int
     command: t.Struct | None
+    rx_after_tx: bool | None = None
 
 
 class Status(enum.IntEnum):
@@ -275,6 +276,9 @@ class GreenPowerDevice(BaseDevice):
         self.security_level: SecurityLevel | None = None
         self.frame_counter: t.uint32_t | None = None
 
+        # When each recent MAC sequence number of an unprotected GPD was accepted
+        self._mac_seq_num_timestamps: dict[int, datetime] = {}
+
     @classmethod
     def from_commissioning(
         cls,
@@ -396,12 +400,11 @@ class GreenPowerDevice(BaseDevice):
             return packet.frame_counter <= self.frame_counter
 
         # Unprotected GPDFs carry the 8-bit MAC sequence number instead, which both
-        # wraps and may be random: only an identical value shortly after the last
-        # frame counts as the same GPDF forwarded again
-        return (
-            packet.frame_counter == self.frame_counter
-            and self._last_seen is not None
-            and ((packet.timestamp - self._last_seen) < GP_DUPLICATE_TIMEOUT)
+        # wraps and may be random: each value is remembered for gpDuplicateTimeout,
+        # so a GPDF forwarded again after a newer one is still filtered (A.3.6.1.2)
+        return packet.frame_counter in self._mac_seq_num_timestamps and (
+            packet.timestamp - self._mac_seq_num_timestamps[packet.frame_counter]
+            < GP_DUPLICATE_TIMEOUT
         )
 
     def _process_security(self, packet: t.ZigbeeGpPacket) -> t.ZigbeeGpPacket:
@@ -460,6 +463,15 @@ class GreenPowerDevice(BaseDevice):
             security_status=SecurityStatus.SecuritySuccess,
         )
 
+    async def send_gpdf(self, command_id: GPDCommandID, payload: bytes) -> None:
+        """Send a GPDF to this GPD, after its next GPDF with RxAfterTx.
+
+        Raises `DeliveryError` unless the GPD sent a GPDF with RxAfterTx within
+        `GP_DUPLICATE_TIMEOUT`. A radio sending the GPDF itself can wait up to
+        `GPDF_LIFETIME` for the GPD to listen.
+        """
+        await self._application.green_power.send_gpdf(self, command_id, payload)
+
     def packet_received(self, packet: t.ZigbeeGpPacket) -> None:
         """Process a decoded GPDF, decrypting it if the radio did not."""
 
@@ -495,6 +507,14 @@ class GreenPowerDevice(BaseDevice):
         # metrics, or the duplicate window itself
         if self._is_packet_duplicate(packet):
             self.debug("Filtering duplicate packet")
+
+            # Another instance of a GPDF is a TempMaster candidate for its election, if
+            # that election is still open (A.3.6.1.2)
+            if packet.rx_after_tx:
+                self._application.green_power.add_temp_master_candidate(
+                    self.ieee, packet
+                )
+
             return
 
         self.last_seen = packet.timestamp
@@ -507,6 +527,22 @@ class GreenPowerDevice(BaseDevice):
 
         if packet.frame_counter is not None:
             self.frame_counter = packet.frame_counter
+
+            if packet.security_level not in (
+                SecurityLevel.FullFrameCounterAndMIC,
+                SecurityLevel.Encrypted,
+            ):
+                self._mac_seq_num_timestamps = {
+                    seq_num: timestamp
+                    for seq_num, timestamp in self._mac_seq_num_timestamps.items()
+                    if packet.timestamp - timestamp < GP_DUPLICATE_TIMEOUT
+                }
+                self._mac_seq_num_timestamps[packet.frame_counter] = packet.timestamp
+
+        # Only a GPDF that passed the security and freshness checks above elects the
+        # node to reply to the GPD
+        if packet.rx_after_tx:
+            self._application.green_power.start_temp_master_election(self.ieee, packet)
 
         # A Decommissioning command is only acted upon once it passes the freshness and
         # security checks above (spec A.3.5.2.4)
@@ -543,6 +579,7 @@ class GreenPowerDevice(BaseDevice):
                 endpoint_id=packet.endpoint,
                 command_id=packet.command_id,
                 command=command,
+                rx_after_tx=packet.rx_after_tx,
             ),
         )
 
