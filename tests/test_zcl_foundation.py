@@ -849,15 +849,18 @@ def test_array():
         foundation.ReadAttributeRecord(
             attrid=0x0001,
             status=foundation.Status.SUCCESS,
-            value=foundation.Array(
-                type=foundation.DataTypeId.octstr,
-                value=t.LVList[t.LVBytes, t.uint16_t](
-                    [
-                        b"\x00\r\x01\x06\x00\x02",
-                        b"\x01\r\x02\x06\x00\x02",
-                        b"\x02\r\x03\x06\x00\x02",
-                        b"\x03\r\x04\x06\x00\x02",
-                    ]
+            value=foundation.TypeValue(
+                type=foundation.DataTypeId.array,
+                value=foundation.Array(
+                    type=foundation.DataTypeId.octstr,
+                    value=t.LVList[t.LVBytes, t.uint16_t](
+                        [
+                            b"\x00\r\x01\x06\x00\x02",
+                            b"\x01\r\x02\x06\x00\x02",
+                            b"\x02\r\x03\x06\x00\x02",
+                            b"\x03\r\x04\x06\x00\x02",
+                        ]
+                    ),
                 ),
             ),
         )

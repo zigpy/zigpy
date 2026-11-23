@@ -2162,6 +2162,50 @@ async def test_local_data_cluster_reads_stored_untyped(tmp_path, value) -> None:
     await app2.shutdown()
 
 
+async def test_collection_read_from_wire_stored_typed(tmp_path) -> None:
+    """A collection read from a device is cached and stored as a collection."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [MultistateInput.cluster_id])
+
+    cluster = dev.endpoints[1].multistate_input
+    attr_def = MultistateInput.AttributeDefs.state_text
+    expected = Array(
+        type=DataTypeId.string,
+        value=t.LVList[t.CharacterString, t.uint16_t](["a", "b"]),
+    )
+
+    rsp, rest = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Read_Attributes_rsp
+    ].schema.deserialize(
+        attr_def.id.serialize()
+        + ZCLStatus.SUCCESS.serialize()
+        + DataTypeId.array.serialize()
+        + expected.serialize()
+    )
+    assert rest == b""
+
+    with patch.object(cluster, "read_attributes_raw", AsyncMock(return_value=rsp)):
+        success, failure = await cluster.read_attributes([attr_def])
+
+    assert success == {attr_def: expected}
+    assert failure == {}
+    assert cluster.get(attr_def.name) == expected
+
+    await app.shutdown()
+
+    assert _read_attr_row(db, MultistateInput.cluster_id, attr_def.id) == (
+        expected.serialize(),
+        DataTypeId.array,
+    )
+
+    app2 = await make_app_with_db(db)
+    assert (
+        app2.get_device(dev.ieee).endpoints[1].multistate_input.get(attr_def.name)
+        == expected
+    )
+    await app2.shutdown()
+
+
 @pytest.mark.parametrize(
     ("cluster", "attr_def", "legacy_value", "loaded_value"),
     [
