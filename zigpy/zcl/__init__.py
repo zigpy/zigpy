@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import collections
 from collections import defaultdict
-from collections.abc import Callable, Generator, Iterable, Sequence
+from collections.abc import Callable, Generator, Hashable, Iterable, Sequence
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -825,6 +825,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         timeout=APS_REPLY_TIMEOUT,
         retries: int | None = None,
         retry_delay: float | None = None,
+        coalesce_key: Hashable | None = None,
         **kwargs,
     ):
         if disable_default_response is None:
@@ -863,6 +864,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             retries=retries,
             retry_delay=retry_delay,
             aps_encryption=self.aps_encryption,
+            coalesce_key=coalesce_key,
         )
 
     async def reply(
@@ -881,6 +883,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         priority: int | None = None,
         retries: int | None = None,
         retry_delay: float | None = None,
+        coalesce_key: Hashable | None = None,
         **kwargs,
     ) -> None:
         if disable_default_response is None:
@@ -919,6 +922,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             retries=retries,
             retry_delay=retry_delay,
             aps_encryption=self.aps_encryption,
+            coalesce_key=coalesce_key,
         )
 
     def handle_message(

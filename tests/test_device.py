@@ -2749,6 +2749,152 @@ async def test_request_retry_delay_releases_concurrency(app) -> None:
             task.cancel()
 
 
+@pytest.mark.parametrize(
+    ("keys", "expected_sent", "expected_superseded"),
+    [
+        # Without a key, nothing is coalesced
+        ([None, None, None, None], [0, 1, 2, 3], []),
+        # The request being sent is never superseded, only queued ones are
+        (["key", "key", "key", "key"], [0, 3], [1, 2]),
+        (["key", "key", "other", "key"], [0, 2, 3], [1]),
+        (["key", "other", "other", None], [0, 2, 3], [1]),
+    ],
+)
+async def test_request_coalesce_queued(
+    app,
+    keys: list[str | None],
+    expected_sent: list[int],
+    expected_superseded: list[int],
+) -> None:
+    """Test that a queued request is superseded by a newer one with the same key."""
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+    dev._concurrent_requests_semaphore = RequestLimiter(
+        max_concurrency=1, capacities={t.PacketPriority.LOW: 1}
+    )
+
+    first_sent = asyncio.Event()
+    release_first = asyncio.Event()
+
+    async def send_packet(packet: t.ZigbeePacket) -> None:
+        if packet.data.serialize() == bytes([0]):
+            first_sent.set()
+            await release_first.wait()
+
+    app.send_packet.side_effect = send_packet
+
+    def make_request(index: int, key: str | None):
+        return dev.request(
+            profile=0x0104,
+            cluster=0x0006,
+            src_ep=1,
+            dst_ep=1,
+            sequence=index,
+            data=bytes([index]),
+            expect_reply=False,
+            coalesce_key=key,
+        )
+
+    first = asyncio.create_task(make_request(0, keys[0]))
+    await first_sent.wait()
+
+    # All other requests queue up behind the one being sent
+    rest = [
+        asyncio.create_task(make_request(index, key))
+        for index, key in enumerate(keys[1:], start=1)
+    ]
+    await asyncio.sleep(0)
+    release_first.set()
+
+    results = await asyncio.gather(first, *rest, return_exceptions=True)
+
+    assert [c.args[0].data.serialize()[0] for c in app.send_packet.mock_calls] == (
+        expected_sent
+    )
+
+    assert [i for i, r in enumerate(results) if r is None] == expected_sent
+    assert [
+        i
+        for i, r in enumerate(results)
+        if isinstance(r, zigpy.exceptions.SupersededError)
+    ] == expected_superseded
+
+
+async def test_request_coalesce_retry(app) -> None:
+    """Test that a failed request is not retried once a newer one replaces it."""
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    # The first attempt of the old request fails, the new request succeeds
+    app.send_packet.side_effect = [zigpy.exceptions.DeliveryError("Failure"), None]
+
+    def make_request(index: int):
+        return dev.request(
+            profile=0x0104,
+            cluster=0x0006,
+            src_ep=1,
+            dst_ep=1,
+            sequence=index,
+            data=bytes([index]),
+            expect_reply=False,
+            retries=1,
+            retry_delay=0.01,
+            coalesce_key="key",
+        )
+
+    old = asyncio.create_task(make_request(0))
+    await asyncio.sleep(0)
+    new = asyncio.create_task(make_request(1))
+
+    with pytest.raises(zigpy.exceptions.SupersededError):
+        await old
+
+    await new
+
+    assert [c.args[0].data.serialize() for c in app.send_packet.mock_calls] == [
+        bytes([0]),
+        bytes([1]),
+    ]
+
+
+async def test_request_coalesce_key_passthrough(app) -> None:
+    """Test that cluster and ZDO requests pass the coalesce key to the device."""
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+    ep.add_input_cluster(Basic.cluster_id)
+
+    with patch.object(dev, "request", AsyncMock()) as mock_request:
+        await ep.basic.reset_fact_default(expect_reply=False, coalesce_key="zcl")
+        await ep.basic.general_command(
+            foundation.GeneralCommand.Default_Response,
+            Basic.ServerCommandDefs.reset_fact_default.id,
+            foundation.Status.SUCCESS,
+            tsn=1,
+            coalesce_key="zcl_reply",
+        )
+        await dev.zdo.request(zdo_t.ZDOCmd.Node_Desc_req, dev.nwk, coalesce_key="zdo")
+        await dev.zdo.reply(
+            zdo_t.ZDOCmd.NWK_addr_rsp,
+            0,
+            dev.ieee,
+            dev.nwk,
+            0,
+            0,
+            [],
+            coalesce_key="zdo_reply",
+        )
+
+    assert [c.kwargs["coalesce_key"] for c in mock_request.mock_calls] == [
+        "zcl",
+        "zcl_reply",
+        "zdo",
+        "zdo_reply",
+    ]
+
+
 async def test_radio_details_deprecated(dev) -> None:
     with pytest.deprecated_call():
         dev.radio_details(lqi=120, rssi=-45)

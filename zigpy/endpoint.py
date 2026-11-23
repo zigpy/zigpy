@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Hashable
 import enum
 import logging
 from typing import TYPE_CHECKING, Any
@@ -222,6 +223,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         retries: int | None = None,
         retry_delay: float | None = None,
         aps_encryption: bool = False,
+        coalesce_key: Hashable | None = None,
     ):
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
             cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
@@ -246,6 +248,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             retries=retries,
             retry_delay=retry_delay,
             aps_encryption=aps_encryption,
+            coalesce_key=coalesce_key,
         )
 
     async def reply(
@@ -262,6 +265,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
         retries: int | None = None,
         retry_delay: float | None = None,
         aps_encryption: bool = False,
+        coalesce_key: Hashable | None = None,
     ) -> None:
         if self.profile_id == zigpy.profiles.zll.PROFILE_ID and not (
             cluster == zigpy.zcl.clusters.lightlink.LightLink.cluster_id
@@ -286,6 +290,7 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
             retries=retries,
             retry_delay=retry_delay,
             aps_encryption=aps_encryption,
+            coalesce_key=coalesce_key,
         )
 
     def log(self, lvl: int, msg: str, *args: Any, **kwargs: Any) -> None:

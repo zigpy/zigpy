@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Coroutine
+from collections.abc import Coroutine, Hashable
 import functools
 import logging
 
@@ -62,6 +62,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         retries: int | None = None,
         retry_delay: float | None = None,
         aps_encryption: bool = False,
+        coalesce_key: Hashable | None = None,
         **kwargs,
     ):
         data = self._serialize(command, *args, **kwargs)
@@ -81,6 +82,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
             retries=retries,
             retry_delay=retry_delay,
             aps_encryption=aps_encryption,
+            coalesce_key=coalesce_key,
         )
 
     async def reply(
@@ -96,6 +98,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         retries: int | None = None,
         retry_delay: float | None = None,
         aps_encryption: bool = False,
+        coalesce_key: Hashable | None = None,
         **kwargs,
     ):
         data = self._serialize(command, *args, **kwargs)
@@ -116,6 +119,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
             retries=retries,
             retry_delay=retry_delay,
             aps_encryption=aps_encryption,
+            coalesce_key=coalesce_key,
         )
 
     def handle_message(

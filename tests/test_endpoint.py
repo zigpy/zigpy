@@ -179,6 +179,7 @@ async def test_reply_change_profile_id(ep):
             retries=None,
             retry_delay=None,
             aps_encryption=False,
+            coalesce_key=None,
         )
     ]
 
@@ -200,6 +201,7 @@ async def test_reply_change_profile_id(ep):
             retries=None,
             retry_delay=None,
             aps_encryption=False,
+            coalesce_key=None,
         )
     ]
 
@@ -222,6 +224,7 @@ async def test_reply_change_profile_id(ep):
             retries=None,
             retry_delay=None,
             aps_encryption=False,
+            coalesce_key=None,
         )
     ]
 

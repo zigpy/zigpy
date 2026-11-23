@@ -1807,6 +1807,7 @@ async def test_received_onoff_toggle_generates_default_response():
             retries=None,
             retry_delay=None,
             aps_encryption=False,
+            coalesce_key=None,
         )
     ]
 
