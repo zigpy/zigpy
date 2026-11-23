@@ -661,3 +661,37 @@ async def test_send_gpdf_candidate_after_newer_gpdf(gp_app) -> None:
 
     [packet] = [c.args[0] for c in gp_app.send_packet.mock_calls]
     assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x1111
+
+
+async def test_send_gpdf_newer_gpdf_during_election(gp_app) -> None:
+    """A newer GPDF with RxAfterTx during the election is replied to instead."""
+    device = register_device(
+        gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+
+    gp_app.gp_packet_received(rx_after_tx_packet(0x1111, lqi=255))
+    send = asyncio.create_task(device.send_gpdf(GPDCommandID(0xFE), b"\x00"))
+    await asyncio.sleep(0)
+    gp_app.gp_packet_received(
+        rx_after_tx_packet(0x2222, lqi=100).replace(frame_counter=t.uint32_t(6))
+    )
+    await send
+
+    [packet] = [c.args[0] for c in gp_app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x2222
+
+
+async def test_send_gpdf_commissioning_window_open(gp_app) -> None:
+    """An operational GPDF needs a bidirectional proxy, even in commissioning mode."""
+    device = register_device(
+        gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+    await gp_app.green_power.permit_join(time_s=60)
+    gp_app.send_packet.reset_mock()
+
+    gp_app.gp_packet_received(rx_after_tx_packet(0x1234, bidirectional_cap=False))
+
+    with pytest.raises(DeliveryError):
+        await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
+
+    assert len(gp_app.send_packet.mock_calls) == 0

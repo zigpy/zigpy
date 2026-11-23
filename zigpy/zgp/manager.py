@@ -359,7 +359,9 @@ class GreenPowerManager(CreateTaskMixin):
 
         return temp_master.gpp_short_addr
 
-    async def _elect_temp_master(self, ieee: t.EUI64, channel: int) -> t.ZigbeeGpPacket:
+    async def _elect_temp_master(
+        self, ieee: t.EUI64, channel: int, *, commissioning: bool
+    ) -> t.ZigbeeGpPacket:
         """Elect the node to transmit a GPDF to a GPD on `channel` (A.3.6.2.3).
 
         Candidates are the instances of the GPD's latest GPDF with RxAfterTx received
@@ -368,12 +370,20 @@ class GreenPowerManager(CreateTaskMixin):
         the GPDF. The best GPP-GPD link wins and, among equals, the lowest short
         address. Returns the instance received by the elected node.
         """
-        if ieee not in self._temp_master_candidates:
-            raise DeliveryError(f"No recent GPDF with RxAfterTx from {ieee}")
+        loop = asyncio.get_running_loop()
 
-        candidates = self._temp_master_candidates[ieee]
-        elapsed = asyncio.get_running_loop().time() - candidates.started
-        await asyncio.sleep(max(0.0, TEMP_MASTER_ELECTION_TIME - elapsed))
+        # A newer GPDF with RxAfterTx replaces the election while it waits for Dmax
+        while True:
+            if ieee not in self._temp_master_candidates:
+                raise DeliveryError(f"No recent GPDF with RxAfterTx from {ieee}")
+
+            candidates = self._temp_master_candidates[ieee]
+            elapsed = loop.time() - candidates.started
+
+            if elapsed >= TEMP_MASTER_ELECTION_TIME:
+                break
+
+            await asyncio.sleep(TEMP_MASTER_ELECTION_TIME - elapsed)
 
         # Radio libraries that can transmit GPDFs implement `_send_gpdf`
         radio_sends_gpdfs = (
@@ -416,7 +426,7 @@ class GreenPowerManager(CreateTaskMixin):
 
         # In commissioning mode, proxies without bidirectional capability in operation
         # transmit as well
-        if not eligible and self.is_commissioning:
+        if not eligible and commissioning:
             eligible = [
                 candidate
                 for candidate in candidates.packets
@@ -760,7 +770,9 @@ class GreenPowerManager(CreateTaskMixin):
     ) -> None:
         """Send a GPDF to a GPD, after its next GPDF with RxAfterTx."""
         channel = self._application.state.network_info.channel
-        temp_master = await self._elect_temp_master(device.ieee, channel)
+        temp_master = await self._elect_temp_master(
+            device.ieee, channel, commissioning=False
+        )
         await self._send_gpdf(temp_master, command_id, payload, channel=channel)
 
     async def _send_commissioning_gpdf(
@@ -780,7 +792,7 @@ class GreenPowerManager(CreateTaskMixin):
 
         generation = self._window_generation
         temp_master = await self._elect_temp_master(
-            synthetic_ieee(packet.src_id), channel
+            synthetic_ieee(packet.src_id), channel, commissioning=True
         )
 
         # The GPD only listens in commissioning mode
