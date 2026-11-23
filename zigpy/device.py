@@ -276,6 +276,9 @@ class GreenPowerDevice(BaseDevice):
         self.security_level: SecurityLevel | None = None
         self.frame_counter: t.uint32_t | None = None
 
+        # When each recent MAC sequence number of an unprotected GPD was accepted
+        self._mac_seq_num_timestamps: dict[int, datetime] = {}
+
     @classmethod
     def from_commissioning(
         cls,
@@ -397,12 +400,11 @@ class GreenPowerDevice(BaseDevice):
             return packet.frame_counter <= self.frame_counter
 
         # Unprotected GPDFs carry the 8-bit MAC sequence number instead, which both
-        # wraps and may be random: only an identical value shortly after the last
-        # frame counts as the same GPDF forwarded again
-        return (
-            packet.frame_counter == self.frame_counter
-            and self._last_seen is not None
-            and ((packet.timestamp - self._last_seen) < GP_DUPLICATE_TIMEOUT)
+        # wraps and may be random: each value is remembered for gpDuplicateTimeout,
+        # so a GPDF forwarded again after a newer one is still filtered (A.3.6.1.2)
+        return packet.frame_counter in self._mac_seq_num_timestamps and (
+            packet.timestamp - self._mac_seq_num_timestamps[packet.frame_counter]
+            < GP_DUPLICATE_TIMEOUT
         )
 
     def _process_security(self, packet: t.ZigbeeGpPacket) -> t.ZigbeeGpPacket:
@@ -525,6 +527,17 @@ class GreenPowerDevice(BaseDevice):
 
         if packet.frame_counter is not None:
             self.frame_counter = packet.frame_counter
+
+            if packet.security_level not in (
+                SecurityLevel.FullFrameCounterAndMIC,
+                SecurityLevel.Encrypted,
+            ):
+                self._mac_seq_num_timestamps = {
+                    seq_num: timestamp
+                    for seq_num, timestamp in self._mac_seq_num_timestamps.items()
+                    if packet.timestamp - timestamp < GP_DUPLICATE_TIMEOUT
+                }
+                self._mac_seq_num_timestamps[packet.frame_counter] = packet.timestamp
 
         # Only a GPDF that passed the security and freshness checks above elects the
         # node to reply to the GPD

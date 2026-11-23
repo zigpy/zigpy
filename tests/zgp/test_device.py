@@ -231,6 +231,35 @@ def test_unprotected_duplicate_window(device, events, offsets, expected_events) 
 
 
 @pytest.mark.parametrize(
+    ("offset", "expected_events"),
+    [
+        # Within the 2s window, the first GPDF is still remembered
+        (timedelta(seconds=1), 2),
+        (timedelta(seconds=3), 3),
+    ],
+)
+def test_unprotected_duplicate_after_newer_frame(
+    device, events, offset, expected_events
+) -> None:
+    """An unprotected GPDF forwarded again after a newer one is still a duplicate."""
+    for seq_num, seq_offset in (
+        (7, timedelta(0)),
+        (8, timedelta(seconds=0.5)),
+        (7, offset),
+    ):
+        device.packet_received(
+            make_packet(
+                seq_num,
+                security_level=SecurityLevel.NoSecurity,
+                security_key_type=SecurityKeyType.NoKey,
+                offset=seq_offset,
+            )
+        )
+
+    assert len(events) == expected_events
+
+
+@pytest.mark.parametrize(
     ("security_level", "security_key_type"),
     [
         (SecurityLevel.NoSecurity, SecurityKeyType.NoKey),
@@ -695,3 +724,29 @@ async def test_send_gpdf_commissioning_window_open(gp_app) -> None:
         await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
 
     assert len(gp_app.send_packet.mock_calls) == 0
+
+
+async def test_send_gpdf_unprotected_candidate_after_newer_gpdf(gp_app) -> None:
+    """An unprotected GPDF forwarded after a newer one stays a TempMaster candidate."""
+    device = register_device(
+        gp_app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+    events = []
+    device.on_event("gp_command_received", events.append)
+    unprotected = {
+        "security_level": SecurityLevel.NoSecurity,
+        "security_key_type": SecurityKeyType.NoKey,
+    }
+
+    gp_app.gp_packet_received(
+        rx_after_tx_packet(0x1111, lqi=255).replace(**unprotected)
+    )
+    gp_app.gp_packet_received(make_packet(6).replace(**unprotected))
+    gp_app.gp_packet_received(rx_after_tx_packet(0x2222, lqi=10).replace(**unprotected))
+    await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
+
+    assert len(events) == 2
+    assert device.frame_counter == 6
+
+    [packet] = [c.args[0] for c in gp_app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x1111
