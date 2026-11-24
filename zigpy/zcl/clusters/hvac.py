@@ -9,6 +9,7 @@ from zigpy.zcl import Cluster
 from zigpy.zcl.foundation import (
     BaseAttributeDefs,
     BaseCommandDefs,
+    DataTypeId,
     ZCLAttributeDef,
     ZCLCommandDef,
 )
@@ -123,26 +124,26 @@ class Pump(Cluster):
         alarm_mask: Final = ZCLAttributeDef(id=0x0022, type=PumpAlarmMask, access="r")
 
 
-class CoolingSystemStage(t.enum8):
+class CoolingSystemStage(t.enum2):
     Cool_Stage_1 = 0x00
     Cool_Stage_2 = 0x01
     Cool_Stage_3 = 0x02
     Reserved = 0x03
 
 
-class HeatingSystemStage(t.enum8):
+class HeatingSystemStage(t.enum2):
     Heat_Stage_1 = 0x00
     Heat_Stage_2 = 0x01
     Heat_Stage_3 = 0x02
     Reserved = 0x03
 
 
-class HeatingSystemType(t.enum8):
+class HeatingSystemType(t.enum1):
     Conventional = 0x00
     Heat_Pump = 0x01
 
 
-class HeatingFuelSource(t.enum8):
+class HeatingFuelSource(t.enum1):
     Electric = 0x00
     Gas = 0x01
 
@@ -275,30 +276,13 @@ class SystemMode(t.enum8):
     Sleep = 0x09
 
 
-class SystemType(t.bitmap8):
-    Heat_and_or_Cool_Stage_1 = 0x00
-    Cool_Stage_1 = 0x01
-    Cool_Stage_2 = 0x02
-    Heat_Stage_1 = 0x04
-    Heat_Stage_2 = 0x08
-    Heat_Pump = 0x10
-    Gas = 0x20
-
-    @property
-    def cooling_system_stage(self) -> CoolingSystemStage:
-        return CoolingSystemStage(self & 0x03)
-
-    @property
-    def heating_system_stage(self) -> HeatingSystemStage:
-        return HeatingSystemStage((self >> 2) & 0x03)
-
-    @property
-    def heating_system_type(self) -> HeatingSystemType:
-        return HeatingSystemType((self >> 4) & 0x01)
-
-    @property
-    def heating_fuel_source(self) -> HeatingFuelSource:
-        return HeatingFuelSource((self >> 5) & 0x01)
+# Table 6-12. The wire type is `map8`, so the attribute carries an explicit `zcl_type`
+class SystemType(t.IntStruct, t.uint8_t):
+    cooling_system_stage: CoolingSystemStage
+    heating_system_stage: HeatingSystemStage
+    heating_system_type: HeatingSystemType
+    heating_fuel_source: HeatingFuelSource
+    _reserved: t.uint2_t
 
 
 class TemperatureSetpointHold(t.enum8):
@@ -378,7 +362,10 @@ class Thermostat(Cluster):
             id=0x0008, type=t.uint8_t, access="rp"
         )
         system_type_config: Final = ZCLAttributeDef(
-            id=0x0009, type=SystemType, access="r*w"
+            id=0x0009,
+            type=SystemType,
+            zcl_type=DataTypeId.map8,
+            access="r*w",
         )
         # Thermostat Settings
         local_temperature_calibration: Final = ZCLAttributeDef(
