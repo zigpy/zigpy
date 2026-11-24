@@ -75,7 +75,10 @@ class EUI64(basic.FixedList, item_type=basic.uint8_t, length=8):
         if ieee is None:
             return None
         ieee = [basic.uint8_t(p) for p in _hex_string_to_bytes(ieee)[::-1]]
-        assert len(ieee) == cls._length
+
+        if len(ieee) != cls._length:
+            raise ValueError(f"EUI64 must be {cls._length} bytes long: {ieee!r}")
+
         return cls(ieee)
 
 
@@ -89,7 +92,10 @@ class KeyData(basic.FixedList, item_type=basic.uint8_t, length=16):
     @classmethod
     def convert(cls, key: str) -> KeyData:
         key = [basic.uint8_t(p) for p in _hex_string_to_bytes(key)]
-        assert len(key) == cls._length
+
+        if len(key) != cls._length:
+            raise ValueError(f"Key must be {cls._length} bytes long: {key!r}")
+
         return cls(key)
 
 

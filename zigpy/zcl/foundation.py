@@ -627,7 +627,7 @@ class DataType(DataTypeInfo, enum.Enum):
             if parent_cls in python_type_index:
                 return python_type_index[parent_cls]
 
-        return cls.unk
+        raise ValueError(f"{python_type!r} has no ZCL data type")
 
     @classmethod
     @functools.cache
@@ -674,15 +674,7 @@ class ReadAttributeRecord:
         value = None
 
         if status == Status.SUCCESS:
-            type_id, data = DataTypeId.deserialize(data)
-
-            # Arrays, Sets, and Bags are treated differently
-            if type_id in (DataTypeId.array, DataTypeId.set, DataTypeId.bag):
-                value, data = DataType.from_type_id(type_id).python_type.deserialize(
-                    data
-                )
-            else:
-                value, data = TypeValue.deserialize(type_id.serialize() + data)
+            value, data = TypeValue.deserialize(data)
 
         return cls(attrid=attrid, status=status, value=value), data
 
@@ -692,14 +684,7 @@ class ReadAttributeRecord:
 
         if self.status == Status.SUCCESS:
             assert self.value is not None
-
-            if isinstance(self.value, Array | Set | Bag):
-                data += (
-                    DataType.from_python_type(type(self.value)).type_id.serialize()
-                    + self.value.serialize()
-                )
-            else:
-                data += self.value.serialize()
+            data += self.value.serialize()
 
         return data
 
@@ -1358,9 +1343,16 @@ class ZCLAttributeDef(t.BaseDataclassMixin):
             object.__setattr__(self, "access", ZCLAttributeAccess.from_str(self.access))
 
         if self.zcl_type is None:
-            object.__setattr__(
-                self, "zcl_type", DataType.from_python_type(self.type).type_id
-            )
+            try:
+                data_type = DataType.from_python_type(self.type)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Attribute (id={self.id!r}, name={self.name!r}) has type"
+                    f" {self.type!r}, which has no ZCL data type:"
+                    f" set `zcl_type` explicitly"
+                ) from exc
+
+            object.__setattr__(self, "zcl_type", data_type.type_id)
 
         ensure_valid_name(self.name)
 

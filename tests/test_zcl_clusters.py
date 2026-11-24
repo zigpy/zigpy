@@ -22,6 +22,7 @@ from zigpy.zcl.clusters.general import (
     KeepAlive,
     LocationMethod,
     LocationType,
+    MultistateInput,
     Ota,
     Partition,
     PartitionAckOptions,
@@ -30,7 +31,7 @@ from zigpy.zcl.clusters.general import (
     RSSILocation,
     Time,
 )
-from zigpy.zcl.clusters.protocol import BacnetProtocolTunnel
+from zigpy.zcl.clusters.protocol import BacnetProtocolTunnel, BinaryInputRegular
 import zigpy.zcl.clusters.security as sec
 from zigpy.zcl.clusters.wwah import WorksWithAllHubs
 from zigpy.zdo import types as zdo_t
@@ -56,6 +57,7 @@ def test_attributes():
             assert attr.id == attrid
             assert attr.name
             assert attr.type
+            assert attr.zcl_type != foundation.DataTypeId.unk
             assert callable(attr.type.deserialize)
             assert callable(attr.type.serialize)
 
@@ -1367,4 +1369,59 @@ def test_rssi_location_type_report() -> None:
         two_dimensional=1,
         coordinate_system=CoordinateSystem.Rectangular,
         _reserved=0,
+    )
+
+
+@pytest.mark.parametrize(
+    ("cluster_type", "attr_def", "report", "value"),
+    [
+        (
+            MultistateInput,
+            MultistateInput.AttributeDefs.state_text,
+            # Array of two strings
+            "0e00" + "48" + "42" + "0200" + "0161" + "0162",
+            foundation.Array(
+                type=foundation.DataTypeId.string,
+                value=types.LVList[types.CharacterString, types.uint16_t](["a", "b"]),
+            ),
+        ),
+        (
+            BinaryInputRegular,
+            BinaryInputRegular.AttributeDefs.change_of_state_time,
+            # Structure of a date and a time of day
+            "1000" + "4c" + "0200" + "e1" + "7c0b0f03" + "e0" + "0c1e2d00",
+            foundation.ZCLStructure(
+                [
+                    foundation.TypeValue(
+                        type=foundation.DataTypeId.date,
+                        value=types.Date(
+                            years_since_1900=124, month=11, day=15, day_of_week=3
+                        ),
+                    ),
+                    foundation.TypeValue(
+                        type=foundation.DataTypeId.ToD,
+                        value=types.TimeOfDay(
+                            hours=12, minutes=30, seconds=45, hundredths=0
+                        ),
+                    ),
+                ]
+            ),
+        ),
+    ],
+)
+def test_array_and_structure_attribute_report(
+    cluster_type, attr_def, report, value
+) -> None:
+    """Array and structure attributes are read and written in their ZCL format."""
+    cluster = cluster_type(MagicMock())
+
+    hdr, args = cluster.deserialize(bytes.fromhex("18010a" + report))
+    cluster.handle_message(hdr, args)
+
+    assert cluster.get(attr_def.name) == value
+    assert (
+        foundation.TypeValue(type=attr_def.zcl_type, value=attr_def.type(value))
+        .serialize()
+        .hex()
+        == report[4:]
     )

@@ -794,6 +794,22 @@ def test_eui64_convert():
     assert t.EUI64.convert(None) is None
 
 
+@pytest.mark.parametrize(
+    ("cls", "value"),
+    [
+        (t.EUI64, ""),
+        (t.EUI64, "00"),
+        (t.EUI64, "aa:bb"),
+        (t.EUI64, "00:11:22:33:44:55:66:77:88"),
+        (t.KeyData, ""),
+        (t.KeyData, "00:01:02:03:04:05:06:07"),
+    ],
+)
+def test_convert_wrong_length(cls, value) -> None:
+    with pytest.raises(ValueError, match="bytes long"):
+        cls.convert(value)
+
+
 def test_keydata():
     data = b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"
     extra = b"extra"
