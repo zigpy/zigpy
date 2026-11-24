@@ -1041,6 +1041,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
     async def _ask_blocked_device_to_leave(self, ieee: t.EUI64, nwk: t.NWK) -> None:
         """Send a leave request to a blocked device."""
 
+        # The device object below is only for sending the request. It must not leave
+        # a store behind for an IEEE that is not a device.
+        had_store = ieee in self.device_stores
+
         # Without `RemoveChildren`: a blocked router's children may be our own devices
         device = ZigbeeDevice(self, ieee, nwk)
 
@@ -1057,6 +1061,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         finally:
             # Unregister the callbacks the device object registered on creation
             device.on_remove()
+
+            if not had_store and ieee not in self.devices:
+                self.device_stores.discard(ieee)
 
     def handle_leave(self, nwk: t.NWK, ieee: t.EUI64):
         """Called when a device has left the network."""

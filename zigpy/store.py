@@ -438,6 +438,10 @@ class DeviceStores(EventBase):
         store.clear()
         self._removed[ieee] = store
 
+    def discard(self, ieee: t.EUI64) -> None:
+        """Forget the store of an IEEE that is not a device, like a blocked one."""
+        self._stores.pop(ieee, None)
+
     def reopen(self, ieee: t.EUI64) -> None:
         """Give a device added under `ieee` a new store if the last one was closed."""
         self._removed.pop(ieee, None)

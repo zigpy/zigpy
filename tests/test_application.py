@@ -2204,6 +2204,9 @@ async def test_blocked_device_join(blocking_app):
         for c in blocking_app.listener_event.mock_calls
     )
 
+    # The device object used for the leave request leaves no store behind
+    assert BLOCKED_IEEE not in blocking_app.device_stores
+
     [leave] = _leave_requests(blocking_app)
     assert leave.dst == t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x1234)
 
@@ -2315,6 +2318,10 @@ async def test_blocked_known_device_nwk_changed(blocking_app):
     assert blocking_app._discover_unknown_device.call_count == 0
     assert dev.packet_received.call_count == 0
     assert len(_leave_requests(blocking_app)) == 1
+
+    # A known device keeps its store
+    assert blocking_app.device_stores[BLOCKED_IEEE] is dev.store
+    assert not dev.store.closed
 
 
 async def test_blocked_device_relays(blocking_app):
