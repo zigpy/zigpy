@@ -128,7 +128,12 @@ def sent_command(packet: t.ZigbeePacket, schema: type[t.Struct]) -> t.Struct:
 
 
 def encrypted_gp_packet(
-    src_id: int, frame_counter: int, plaintext: bytes, key: bytes = KEY
+    src_id: int,
+    frame_counter: int,
+    plaintext: bytes,
+    key: bytes = KEY,
+    *,
+    rx_after_tx: bool = False,
 ) -> t.ZigbeeGpPacket:
     """A GPDF encrypted with an individual key, not processed by the radio.
 
@@ -140,7 +145,7 @@ def encrypted_gp_packet(
         security_level=SecurityLevel.Encrypted,
         individual_key=True,
         auto_commissioning=False,
-        rx_after_tx=False,
+        rx_after_tx=rx_after_tx,
     )
     ciphertext, mic = encrypt_payload(
         src_id,
@@ -162,7 +167,7 @@ def encrypted_gp_packet(
         security_status=SecurityStatus.Unprocessed,
         mic=t.uint32_t(int.from_bytes(mic, "little")),
         auto_commissioning=False,
-        rx_after_tx=False,
+        rx_after_tx=rx_after_tx,
         individual_key=True,
     )
 

@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Awaitable, Callable
 import itertools
 import time
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -71,12 +72,19 @@ FW_IMAGE = zigpy.ota.OtaImageWithMetadata(
 )
 
 
-def make_packet(dev: zigpy.device.Device, cluster: Cluster, cmd_name: str, **kwargs):
+def make_packet(
+    dev: zigpy.device.Device,
+    cluster: Cluster,
+    cmd_name: str,
+    *,
+    disable_default_response: bool = False,
+    **kwargs,
+):
     req_hdr, req_cmd = cluster._create_request(
         general=False,
         command_id=cluster.commands_by_name[cmd_name].id,
         schema=cluster.commands_by_name[cmd_name].schema,
-        disable_default_response=False,
+        disable_default_response=disable_default_response,
         direction=foundation.Direction.Client_to_Server,
         args=(),
         kwargs=kwargs,
@@ -989,3 +997,502 @@ async def test_ota_manager_deferred_download_cancelled():
         pytest.raises(asyncio.CancelledError),
     ):
         await update_firmware(MagicMock(), deferred_image)
+
+
+def _make_sleepy_device(
+    image_notify: Callable[[], Awaitable[None]],
+    first_block_delay: float = 0,
+    block_response_error: Exception | None = None,
+    upgrade_end_response_delay: float = 0,
+    logical_type: zdo_t.LogicalType = zdo_t.LogicalType.EndDevice,
+    wake_up_with_block: bool = False,
+) -> tuple[zigpy.device.Device, Cluster, list[str], Callable[[], None]]:
+    """Create a sleepy end device that only talks to us when it wants to.
+
+    Returns the device, its OTA cluster, a log of OTA commands, and a callback that
+    makes the device query for the next image (i.e. it was woken up). With
+    `wake_up_with_block`, the device instead starts by requesting the first block.
+    """
+    assert FW_IMAGE.firmware is not None
+    header = FW_IMAGE.firmware.header
+    image_data = FW_IMAGE.firmware.serialize()
+
+    app = make_app({})
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77"))
+    dev.node_desc = make_node_desc(logical_type=logical_type)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = zigpy.profiles.zha.DeviceType.REMOTE_CONTROL
+    ota = ep.add_output_cluster(Ota.cluster_id)
+
+    log: list[str] = []
+    loop = asyncio.get_running_loop()
+
+    def query_next_image() -> None:
+        log.append("query_next_image")
+        app.packet_received(
+            make_packet(
+                dev,
+                ota,
+                "query_next_image",
+                field_control=Ota.QueryNextImageCommand.FieldControl(0),
+                manufacturer_code=header.manufacturer_id,
+                image_type=header.image_type,
+                current_file_version=header.file_version - 10,
+            )
+        )
+
+    def image_block(offset: int) -> None:
+        app.packet_received(
+            make_packet(
+                dev,
+                ota,
+                "image_block",
+                field_control=Ota.ImageBlockCommand.FieldControl(0),
+                manufacturer_code=header.manufacturer_id,
+                image_type=header.image_type,
+                file_version=header.file_version,
+                file_offset=offset,
+                maximum_data_size=50,
+            )
+        )
+
+    def upgrade_end() -> None:
+        log.append("upgrade_end")
+        app.packet_received(
+            make_packet(
+                dev,
+                ota,
+                "upgrade_end",
+                status=foundation.Status.SUCCESS,
+                manufacturer_code=header.manufacturer_id,
+                image_type=header.image_type,
+                file_version=header.file_version,
+            )
+        )
+
+    async def send_packet(packet: t.ZigbeePacket) -> None:
+        if packet.cluster_id != Ota.cluster_id:
+            return
+
+        hdr, cmd = ota.deserialize(packet.data.serialize())
+
+        if isinstance(cmd, Ota.ImageNotifyCommand):
+            log.append("image_notify")
+            await image_notify()
+        elif isinstance(cmd, Ota.ClientCommandDefs.query_next_image_response.schema):
+            log.append(f"query_next_image_response:{cmd.status.name}")
+
+            if cmd.status == foundation.Status.SUCCESS:
+                loop.call_later(first_block_delay, image_block, 0)
+        elif isinstance(cmd, Ota.ClientCommandDefs.image_block_response.schema):
+            if block_response_error is not None:
+                # The device never receives the block and goes back to sleep
+                log.append("image_block_response:error")
+                raise block_response_error
+
+            if cmd.status != foundation.Status.SUCCESS:
+                log.append(f"image_block_response:{cmd.status.name}")
+                return
+
+            next_offset = cmd.file_offset + len(cmd.image_data)
+
+            if next_offset < len(image_data):
+                loop.call_soon(image_block, next_offset)
+            else:
+                log.append("image_block_response:last")
+                loop.call_soon(upgrade_end)
+        elif isinstance(cmd, Ota.ClientCommandDefs.upgrade_end_response.schema):
+            # Delivering the response can take a while, e.g. if it needs to be retried
+            await asyncio.sleep(upgrade_end_response_delay)
+            log.append("upgrade_end_response")
+
+    app.send_packet = AsyncMock(side_effect=send_packet)
+
+    def request_first_block() -> None:
+        log.append("image_block")
+        image_block(0)
+
+    return (
+        dev,
+        ota,
+        log,
+        request_first_block if wake_up_with_block else query_next_image,
+    )
+
+
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.3)
+async def test_ota_manager_notify_failure_device_requests_later() -> None:
+    """Test that a failed image notify does not abort the OTA."""
+    loop = asyncio.get_running_loop()
+    attempts = 0
+
+    async def image_notify() -> None:
+        nonlocal attempts
+        attempts += 1
+
+        if attempts == 3:
+            # The device is woken up near the end of the waiting period
+            loop.call_later(0.2, wake_up)
+
+        raise DeliveryError("Failed to send request: APS_NO_ACK")
+
+    # The first block request comes after the original waiting period has passed, it
+    # is only served because the query restarted the stall timer
+    dev, _ota, log, wake_up = _make_sleepy_device(image_notify, first_block_delay=0.2)
+
+    dev.ota_in_progress = True
+    status = await update_firmware(dev, FW_IMAGE)
+
+    assert status == foundation.Status.SUCCESS
+    assert log == [
+        # All three attempts fail
+        "image_notify",
+        "image_notify",
+        "image_notify",
+        "query_next_image",
+        "query_next_image_response:SUCCESS",
+        "image_block_response:last",
+        "upgrade_end",
+        "upgrade_end_response",
+    ]
+
+
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.3)
+async def test_ota_manager_notify_failure_timeout() -> None:
+    """Test that the OTA times out if the device never requests the image."""
+
+    async def image_notify() -> None:
+        raise DeliveryError("Failed to send request: APS_NO_ACK")
+
+    dev, _ota, log, _wake_up = _make_sleepy_device(image_notify)
+
+    dev.ota_in_progress = True
+    status = await update_firmware(dev, FW_IMAGE)
+
+    assert status == foundation.Status.TIMEOUT
+    assert log == ["image_notify", "image_notify", "image_notify"]
+
+
+@pytest.mark.parametrize(
+    "logical_type", [zdo_t.LogicalType.EndDevice, zdo_t.LogicalType.Router]
+)
+@pytest.mark.parametrize("wake_up_with_block", [False, True])
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.3)
+async def test_ota_manager_device_request_cancels_pending_notify(
+    logical_type: zdo_t.LogicalType,
+    wake_up_with_block: bool,
+) -> None:
+    """Test that a device request while the image notify is pending cancels it."""
+
+    notify_cancelled = asyncio.Event()
+
+    async def image_notify() -> None:
+        # The radio takes a long time to report delivery failure for end devices
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            notify_cancelled.set()
+            raise
+
+    dev, _ota, log, wake_up = _make_sleepy_device(
+        image_notify, logical_type=logical_type, wake_up_with_block=wake_up_with_block
+    )
+    asyncio.get_running_loop().call_later(0.1, wake_up)
+
+    dev.ota_in_progress = True
+
+    async with asyncio.timeout(2):
+        status = await update_firmware(dev, FW_IMAGE)
+
+    assert status == foundation.Status.SUCCESS
+    assert notify_cancelled.is_set()
+    assert dev._concurrent_requests_semaphore.active_requests == 0
+
+    # The notify is not retried once the device has sent its first request
+    first_request = (
+        ["image_block"]
+        if wake_up_with_block
+        else ["query_next_image", "query_next_image_response:SUCCESS"]
+    )
+    assert log == [
+        "image_notify",
+        *first_request,
+        "image_block_response:last",
+        "upgrade_end",
+        "upgrade_end_response",
+    ]
+
+
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.3)
+async def test_ota_manager_device_goes_silent_during_notify() -> None:
+    """Test that the OTA times out if the device stops responding mid-transfer."""
+
+    async def image_notify() -> None:
+        await asyncio.sleep(10)
+
+    dev, _ota, log, wake_up = _make_sleepy_device(
+        image_notify,
+        block_response_error=DeliveryError("Failed to send request: MAC_NO_ACK"),
+    )
+    asyncio.get_running_loop().call_later(0.1, wake_up)
+
+    dev.ota_in_progress = True
+
+    async with asyncio.timeout(2):
+        status = await update_firmware(dev, FW_IMAGE)
+
+    assert status == foundation.Status.TIMEOUT
+    assert log == [
+        "image_notify",
+        "query_next_image",
+        "query_next_image_response:SUCCESS",
+        # All three attempts fail
+        "image_block_response:error",
+        "image_block_response:error",
+        "image_block_response:error",
+    ]
+
+
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.3)
+@patch("zigpy.ota.manager.FINAL_BLOCK_TIMEOUT", 1.0)
+async def test_ota_manager_final_block_timeout_not_shortened() -> None:
+    """Test that device requests do not shorten the final block timeout."""
+
+    async def image_notify() -> None:
+        raise DeliveryError("Failed to send request: APS_NO_ACK")
+
+    # Sending the upgrade end response takes longer than `MAX_TIME_WITHOUT_PROGRESS`
+    dev, _ota, log, wake_up = _make_sleepy_device(
+        image_notify, upgrade_end_response_delay=0.5
+    )
+    asyncio.get_running_loop().call_later(0.1, wake_up)
+
+    dev.ota_in_progress = True
+    status = await update_firmware(dev, FW_IMAGE)
+
+    assert status == foundation.Status.SUCCESS
+    assert log[-3:] == [
+        "image_block_response:last",
+        "upgrade_end",
+        "upgrade_end_response",
+    ]
+
+
+async def test_ota_manager_cancelled_during_notify() -> None:
+    """Test that cancelling the OTA while the image notify is pending cleans up."""
+
+    notify_started = asyncio.Event()
+    notify_cancelled = asyncio.Event()
+
+    async def image_notify() -> None:
+        notify_started.set()
+
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            notify_cancelled.set()
+            raise
+
+    dev, _ota, log, _wake_up = _make_sleepy_device(image_notify)
+
+    task = asyncio.create_task(dev.update_firmware(FW_IMAGE))
+    await notify_started.wait()
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert notify_cancelled.is_set()
+    assert not dev.ota_in_progress
+    assert dev._concurrent_requests_semaphore.active_requests == 0
+    assert log == ["image_notify"]
+
+
+@pytest.mark.parametrize(
+    "end_status",
+    [
+        foundation.Status.INVALID_IMAGE,
+        foundation.Status.REQUIRE_MORE_IMAGE,
+        foundation.Status.ABORT,
+    ],
+)
+@pytest.mark.parametrize(
+    ("disable_default_response", "default_rsp_fails"),
+    [(False, False), (True, False), (False, True)],
+)
+async def test_ota_manager_upgrade_end_failure(
+    end_status: foundation.Status,
+    disable_default_response: bool,
+    default_rsp_fails: bool,
+) -> None:
+    """A failed Upgrade End Request gets a Default Response, not an Upgrade End
+    Response telling the device to upgrade (ZCL R8 11.13.9.4).
+    """
+
+    app = make_app({})
+    dev = add_initialized_device(
+        app, nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77")
+    )
+    cluster = dev.endpoints[1].add_output_cluster(Ota.cluster_id)
+    assert FW_IMAGE.firmware is not None
+
+    sent_commands = []
+    upgrade_end_tsns = []
+
+    async def send_packet(packet: t.ZigbeePacket):
+        if packet.cluster_id != Ota.cluster_id:
+            return
+
+        hdr, cmd = cluster.deserialize(packet.data.serialize())
+        sent_commands.append((hdr, cmd))
+
+        if hdr.frame_control.is_general and default_rsp_fails:
+            raise DeliveryError("Failed to send the Default Response")
+
+        if isinstance(cmd, Ota.ImageNotifyCommand):
+            dev.application.packet_received(
+                make_packet(
+                    dev,
+                    cluster,
+                    "query_next_image",
+                    field_control=Ota.QueryNextImageCommand.FieldControl(0),
+                    manufacturer_code=FW_IMAGE.firmware.header.manufacturer_id,
+                    image_type=FW_IMAGE.firmware.header.image_type,
+                    current_file_version=FW_IMAGE.firmware.header.file_version - 10,
+                )
+            )
+        elif isinstance(cmd, Ota.ClientCommandDefs.query_next_image_response.schema):
+            assert cmd.status == foundation.Status.SUCCESS
+
+            # The device downloads the image and rejects it
+            upgrade_end = make_packet(
+                dev,
+                cluster,
+                "upgrade_end",
+                disable_default_response=disable_default_response,
+                status=end_status,
+                manufacturer_code=FW_IMAGE.firmware.header.manufacturer_id,
+                image_type=FW_IMAGE.firmware.header.image_type,
+                file_version=FW_IMAGE.firmware.header.file_version,
+            )
+            upgrade_end_tsns.append(upgrade_end.tsn)
+            dev.application.packet_received(upgrade_end)
+
+    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+
+    # The update ends with the device's status, also when the Default Response fails
+    status = await dev.update_firmware(FW_IMAGE)
+    assert status == end_status
+
+    # No Upgrade End Response is sent for a failed upgrade
+    assert not any(
+        hdr.frame_control.is_cluster
+        and hdr.command_id == Ota.ClientCommandDefs.upgrade_end_response.id
+        for hdr, cmd in sent_commands
+    )
+
+    # It is acknowledged with a successful Default Response instead
+    default_rsps = [
+        (hdr, cmd)
+        for hdr, cmd in sent_commands
+        if hdr.frame_control.is_general
+        and hdr.command_id == foundation.GeneralCommand.Default_Response
+    ]
+
+    # Not when the request has its disable-default-response bit set
+    if disable_default_response:
+        assert not default_rsps
+        return
+
+    # A failed send is retried by the device's request retries
+    if default_rsp_fails:
+        assert len(default_rsps) > 1
+    else:
+        assert len(default_rsps) == 1
+
+    for rsp_hdr, rsp in default_rsps:
+        assert rsp_hdr.tsn == upgrade_end_tsns[0]
+        assert rsp.command_id == Ota.ServerCommandDefs.upgrade_end.id
+        assert rsp.status == foundation.Status.SUCCESS
+
+
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
+async def test_ota_manager_image_page_zero_data_size() -> None:
+    """An Image Page Request with a maximum data size of zero is malformed, it does not
+    make the OTA manager send empty Image Block Responses forever.
+    """
+
+    app = make_app({})
+    dev = add_initialized_device(
+        app, nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77")
+    )
+    cluster = dev.endpoints[1].add_output_cluster(Ota.cluster_id)
+    assert FW_IMAGE.firmware is not None
+
+    empty_blocks = 0
+    malformed_rsps = 0
+
+    async def send_packet(packet: t.ZigbeePacket):
+        nonlocal empty_blocks, malformed_rsps
+
+        if packet.cluster_id != Ota.cluster_id:
+            return
+
+        hdr, cmd = cluster.deserialize(packet.data.serialize())
+
+        if isinstance(cmd, Ota.ImageNotifyCommand):
+            dev.application.packet_received(
+                make_packet(
+                    dev,
+                    cluster,
+                    "query_next_image",
+                    field_control=Ota.QueryNextImageCommand.FieldControl(0),
+                    manufacturer_code=FW_IMAGE.firmware.header.manufacturer_id,
+                    image_type=FW_IMAGE.firmware.header.image_type,
+                    current_file_version=FW_IMAGE.firmware.header.file_version - 10,
+                )
+            )
+        elif isinstance(cmd, Ota.ClientCommandDefs.query_next_image_response.schema):
+            assert cmd.status == foundation.Status.SUCCESS
+
+            dev.application.packet_received(
+                make_packet(
+                    dev,
+                    cluster,
+                    "image_page",
+                    field_control=0,
+                    manufacturer_code=FW_IMAGE.firmware.header.manufacturer_id,
+                    image_type=FW_IMAGE.firmware.header.image_type,
+                    file_version=FW_IMAGE.firmware.header.file_version,
+                    file_offset=0,
+                    maximum_data_size=0,
+                    page_size=40,
+                    response_spacing=0,
+                )
+            )
+        elif (
+            isinstance(cmd, Ota.ClientCommandDefs.image_block_response.schema)
+            and cmd.status == foundation.Status.MALFORMED_COMMAND
+        ):
+            malformed_rsps += 1
+        elif (
+            isinstance(cmd, Ota.ClientCommandDefs.image_block_response.schema)
+            and cmd.status == foundation.Status.SUCCESS
+            and not cmd.image_data
+        ):
+            empty_blocks += 1
+
+            # Stop the loop for the test, it would never end otherwise
+            if empty_blocks >= 100:
+                raise RuntimeError("Too many empty image blocks")
+
+    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+
+    status = await dev.update_firmware(FW_IMAGE)
+
+    assert empty_blocks == 0
+    assert malformed_rsps == 1
+    assert status == foundation.Status.MALFORMED_COMMAND
