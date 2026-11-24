@@ -4628,3 +4628,83 @@ async def test_attribute_row_kept_if_value_not_saved(tmp_path, caplog, failure) 
     assert _count_store_rows(db, dev.ieee) == 0
 
     await app2.shutdown()
+
+
+NETWORK_MIGRATED_VALUE = StoredValue(namespace="quirk:test", key="network", type=str)
+
+
+class NetworkMigratingBasic(MigratingBasic):
+    """Also moves attribute 0x7775 to the network store."""
+
+    def migrate_attribute_cache_row(self, row, value) -> bool:
+        if row.attr_id != 0x7775:
+            return super().migrate_attribute_cache_row(row, value)
+
+        network_store = self.endpoint.device.application.network_store
+        network_store[NETWORK_MIGRATED_VALUE] = "x" * 200_000
+        return True
+
+
+async def test_attribute_row_migration_transaction_rolled_back(
+    tmp_path, caplog
+) -> None:
+    """A write error that rolls back the whole load transaction does not fail the load.
+
+    A full database rolls back the whole transaction when a single-row upsert, like the
+    network store's, fails. The held writes go to the worker and the rows are kept.
+    """
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+    await app.shutdown()
+
+    _insert_attr_row(db, 0x7777, 5)
+    _insert_attr_row(db, 0x7775, 6)
+
+    save_network_value = zigpy.appdb.PersistingListener._save_network_store_value
+    in_transaction = []
+
+    async def save_with_full_database(listener, event, **kwargs):
+        if in_transaction:
+            # The worker's write later succeeds
+            await save_network_value(listener, event, **kwargs)
+            return
+
+        # No page can be added while the value is written
+        async with listener.execute("PRAGMA page_count") as cursor:
+            (page_count,) = await cursor.fetchone()
+
+        await listener.execute(f"PRAGMA max_page_count = {page_count}")
+
+        try:
+            await save_network_value(listener, event, **kwargs)
+        finally:
+            in_transaction.append(listener._db.in_transaction)
+            await listener.execute("PRAGMA max_page_count = 1073741823")
+
+    with (
+        patch.object(
+            zigpy.appdb.PersistingListener,
+            "_save_network_store_value",
+            save_with_full_database,
+        ),
+        caplog.at_level(logging.WARNING),
+    ):
+        app2 = await make_app_with_db(
+            db, device_resolver=_quirk_resolver(NetworkMigratingBasic)
+        )
+
+        # The write during the load rolled back the transaction. SQLite does so for a
+        # single-row upsert, which it runs without a statement journal.
+        assert in_transaction == [False]
+        assert "database or disk is full" in caplog.text
+        assert "The load transaction was rolled back" in caplog.text
+
+        # Both rows are kept, to be migrated again
+        assert _read_attr_row(db, Basic.cluster_id, 0x7777) == (5, None)
+        assert _read_attr_row(db, Basic.cluster_id, 0x7775) == (6, None)
+
+        # The worker writes the held writes, the rolled back device store value too
+        await app2.shutdown()
+
+    assert _count_store_rows(db, dev.ieee) == 1
+    assert len(_network_store_rows(db)) == 1

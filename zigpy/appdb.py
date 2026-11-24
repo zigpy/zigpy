@@ -1238,6 +1238,19 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 # writes), the rows are kept and migrated again at the next start.
                 writes_failed = not await self._write_held_store_writes(held)
 
+                if not self._db.in_transaction:
+                    # The failed write rolled back the whole transaction, with the
+                    # held writes before it. The worker writes them all after the
+                    # load instead, and a new transaction takes the row changes.
+                    LOGGER.warning(
+                        "The load transaction was rolled back, leaving %d store"
+                        " writes to the worker",
+                        len(held),
+                    )
+                    self._held_store_writes[:0] = held
+                    held = []
+                    await self.execute("BEGIN TRANSACTION")
+
                 for ieee, result in results.items():
                     keep_migrated = writes_failed or (
                         bool(result.migrated) and self._store_closed(ieee)
@@ -1266,7 +1279,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         return True
 
     async def _write_held_store_writes(self, held: list[tuple[str, Any]]) -> bool:
-        """Write held store writes in the open transaction. Returns whether all did."""
+        """Write held store writes in the open transaction. Returns whether all did.
+
+        Some SQLite errors (`SQLITE_FULL`, `SQLITE_IOERR`, ...) can roll back the whole
+        transaction instead of only the failed statement. The writes stop there: the
+        next one would silently start a new transaction for the rest.
+        """
         ok = True
 
         for cb_name, event in held:
@@ -1281,6 +1299,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     exc_info=True,
                 )
                 ok = False
+
+                if not self._db.in_transaction:
+                    break
 
         return ok
 
