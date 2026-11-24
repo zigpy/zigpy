@@ -475,16 +475,23 @@ async def test_ota_manager_slow_device_skips_superseded_block_requests() -> None
         elif isinstance(cmd, Ota.ClientCommandDefs.image_block_response.schema):
             sent_offsets.append(cmd.file_offset)
 
+            # The device has the whole image and stopped asking
+            if expected_offset is None:
+                return
+
             # The device repeats its request a few times while the response is being
             # delivered and queues up behind it
             for _ in range(3):
-                request_block(cmd.file_offset)
+                request_block(expected_offset)
 
             await asyncio.sleep(0)
 
-            # A real device ignores a stale block and eventually aborts
+            # A real device ignores a stale block and asks again. It aborts once the
+            # backlog makes the transfer hopeless.
             if cmd.file_offset != expected_offset:
-                end_upgrade(foundation.Status.ABORT)
+                if len(sent_offsets) > 2 * len(offsets):
+                    end_upgrade(foundation.Status.ABORT)
+
                 return
 
             reconstructed_firmware.extend(cmd.image_data)
@@ -492,9 +499,116 @@ async def test_ota_manager_slow_device_skips_superseded_block_requests() -> None
 
             # The device asks for the next block before the send completes
             if expected_offset == len(image_data):
+                expected_offset = None
                 end_upgrade(foundation.Status.SUCCESS)
             else:
                 request_block(expected_offset)
+
+    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+    offsets = list(range(0, len(image_data), 50))
+
+    async with asyncio_timeout(10):
+        result = await update_firmware(dev, FW_IMAGE)
+
+    assert result == foundation.Status.SUCCESS
+    assert bytes(reconstructed_firmware) == image_data
+
+    # The repeats of a block that queue up during its delivery collapse into one, which
+    # is sent once more after the block itself
+    assert sent_offsets == [offset for offset in offsets for _ in range(2)]
+
+
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.5)
+async def test_ota_manager_parallel_block_requests() -> None:
+    """Test that a device requesting several blocks at once gets all of them."""
+
+    app = make_app({})
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.EndDevice)
+    dev.model = "model1"
+    dev.manufacturer = "manufacturer1"
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = zigpy.profiles.zha.DeviceType.PUMP
+
+    cluster = ep.add_output_cluster(Ota.cluster_id)
+
+    # Stop the general cluster handler from interfering
+    dev.ota_in_progress = True
+
+    assert FW_IMAGE.firmware is not None
+    image_data = FW_IMAGE.firmware.serialize()
+    header = FW_IMAGE.firmware.header
+
+    sent_offsets: list[int] = []
+    reconstructed_firmware = bytearray(len(image_data))
+
+    def request_block(offset: int) -> None:
+        dev.application.packet_received(
+            make_packet(
+                dev,
+                cluster,
+                "image_block",
+                field_control=Ota.ImageBlockCommand.FieldControl.RequestNodeAddr,
+                manufacturer_code=header.manufacturer_id,
+                image_type=header.image_type,
+                file_version=header.file_version,
+                file_offset=offset,
+                maximum_data_size=50,
+                request_node_addr=dev.ieee,
+            )
+        )
+
+    async def send_packet(packet: t.ZigbeePacket) -> None:
+        if packet.cluster_id != Ota.cluster_id:
+            return
+
+        hdr, cmd = cluster.deserialize(packet.data.serialize())
+
+        if isinstance(cmd, Ota.ImageNotifyCommand):
+            dev.application.packet_received(
+                make_packet(
+                    dev,
+                    cluster,
+                    "query_next_image",
+                    field_control=Ota.QueryNextImageCommand.FieldControl.HardwareVersion,
+                    manufacturer_code=header.manufacturer_id,
+                    image_type=header.image_type,
+                    current_file_version=header.file_version - 10,
+                    hardware_version=1,
+                )
+            )
+        elif isinstance(cmd, Ota.ClientCommandDefs.query_next_image_response.schema):
+            # The device keeps three block requests outstanding
+            request_block(0)
+            request_block(50)
+            request_block(100)
+        elif isinstance(cmd, Ota.ClientCommandDefs.image_block_response.schema):
+            sent_offsets.append(cmd.file_offset)
+            reconstructed_firmware[
+                cmd.file_offset : cmd.file_offset + len(cmd.image_data)
+            ] = cmd.image_data
+
+            await asyncio.sleep(0)
+
+            next_offset = cmd.file_offset + 3 * 50
+
+            if cmd.file_offset + len(cmd.image_data) == len(image_data):
+                dev.application.packet_received(
+                    make_packet(
+                        dev,
+                        cluster,
+                        "upgrade_end",
+                        status=foundation.Status.SUCCESS,
+                        manufacturer_code=header.manufacturer_id,
+                        image_type=header.image_type,
+                        file_version=header.file_version,
+                    )
+                )
+            elif next_offset < len(image_data):
+                request_block(next_offset)
 
     dev.application.send_packet = AsyncMock(side_effect=send_packet)
 
@@ -503,11 +617,7 @@ async def test_ota_manager_slow_device_skips_superseded_block_requests() -> None
 
     assert result == foundation.Status.SUCCESS
     assert bytes(reconstructed_firmware) == image_data
-
-    # Every block is sent once. The final block is sent twice: nothing newer replaces
-    # the repeats queued behind it.
-    offsets = list(range(0, len(image_data), 50))
-    assert sent_offsets == offsets + offsets[-1:]
+    assert sent_offsets == list(range(0, len(image_data), 50))
 
 
 async def test_ota_manager_image_page():

@@ -2738,14 +2738,24 @@ class Ota(Cluster):
 
         # Always send no image available response so that the device stops asking
         await self.query_next_image_response(
-            foundation.Status.NO_IMAGE_AVAILABLE, tsn=hdr.tsn
+            foundation.Status.NO_IMAGE_AVAILABLE,
+            tsn=hdr.tsn,
+            coalesce_key=self.make_coalesce_key(
+                self.ClientCommandDefs.query_next_image_response.id
+            ),
         )
 
         await self.endpoint.device.application.ota.check_cluster_for_ota(self)
 
     async def _handle_image_block_req(self, hdr, cmd):
         # Abort any running firmware update (i.e. the integration is reloaded midway)
-        await self.image_block_response(foundation.Status.ABORT, tsn=hdr.tsn)
+        await self.image_block_response(
+            foundation.Status.ABORT,
+            tsn=hdr.tsn,
+            coalesce_key=self.make_coalesce_key(
+                self.ClientCommandDefs.image_block_response.id
+            ),
+        )
 
 
 class ScheduleRecord(t.Struct):

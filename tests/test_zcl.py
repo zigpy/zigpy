@@ -948,6 +948,12 @@ async def test_handle_cluster_general_request_not_attr_report(cluster):
                 foundation.Status.SUCCESS,
                 tsn=mock.ANY,
                 priority=t.PacketPriority.LOW,
+                coalesce_key=cluster.make_coalesce_key(
+                    foundation.GeneralCommand.Default_Response,
+                    foundation.FrameType.GLOBAL_COMMAND,
+                    None,
+                    foundation.GeneralCommand.Write_Attributes,
+                ),
             )
         ]
 
@@ -1807,7 +1813,12 @@ async def test_received_onoff_toggle_generates_default_response():
             retries=None,
             retry_delay=None,
             aps_encryption=False,
-            coalesce_key=None,
+            coalesce_key=on_off_client.make_coalesce_key(
+                foundation.GeneralCommand.Default_Response,
+                foundation.FrameType.CLUSTER_COMMAND,
+                None,
+                OnOff.ServerCommandDefs.toggle.id,
+            ),
         )
     ]
 

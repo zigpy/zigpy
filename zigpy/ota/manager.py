@@ -156,7 +156,13 @@ class OTAManager:
                 file_version=self.image.firmware.header.file_version,
                 image_size=self.image.firmware.header.image_size,
                 tsn=hdr.tsn,
+                coalesce_key=self.ota_cluster.make_coalesce_key(
+                    Ota.ClientCommandDefs.query_next_image_response.id
+                ),
             )
+        except SupersededError:
+            # The response to the newer query decides how the update continues
+            return
         except Exception as ex:  # noqa: BLE001
             self.device.debug("OTA query_next_image handler exception", exc_info=ex)
             status = foundation.Status.FAILURE
@@ -205,11 +211,11 @@ class OTAManager:
                     image_data=block,
                     tsn=hdr.tsn,
                     # Slow devices re-send block requests while our previous response
-                    # is still queued, only the newest one needs a response
-                    coalesce_key=(
-                        self.ota_cluster.endpoint.endpoint_id,
-                        Ota.cluster_id,
+                    # is still queued, only the newest one needs a response. Devices
+                    # may request multiple blocks at once so the offset is included.
+                    coalesce_key=self.ota_cluster.make_coalesce_key(
                         Ota.ClientCommandDefs.image_block_response.id,
+                        command.file_offset,
                     ),
                 )
 
