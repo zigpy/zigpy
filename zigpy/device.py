@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from asyncio import timeout as asyncio_timeout
-from collections.abc import Callable
+from collections.abc import Callable, Hashable
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -605,6 +605,7 @@ class ZigbeeDevice(BaseDevice):
         self._model: str | None = None
         self.node_desc: zdo_t.NodeDescriptor | None = None
         self._requests: dict[ResponseKey, asyncio.Future] = {}
+        self._coalesced_requests: dict[Hashable, object] = {}
         self._relays: t.Relays | None = None
         self._skip_configuration: bool = False
         self._send_sequence: int = 0
@@ -1060,6 +1061,21 @@ class ZigbeeDevice(BaseDevice):
         for ep in self.non_zdo_endpoints:
             await ep.remove_from_group(grp_id)
 
+    def _raise_if_superseded(
+        self, coalesce_key: Hashable | None, coalesce_token: object
+    ) -> None:
+        """Raise `SupersededError` if a newer request with the same key was made."""
+        if coalesce_key is None:
+            return
+
+        if (
+            coalesce_key not in self._coalesced_requests
+            or self._coalesced_requests[coalesce_key] is not coalesce_token
+        ):
+            raise zigpy.exceptions.SupersededError(
+                f"Request superseded: {coalesce_key!r}"
+            )
+
     async def request(
         self,
         profile,
@@ -1075,6 +1091,7 @@ class ZigbeeDevice(BaseDevice):
         priority: int | None = None,
         retries: int | None = None,
         retry_delay: float | None = None,
+        coalesce_key: Hashable | None = None,
         **kwargs,
     ):
         if retries is None:
@@ -1140,43 +1157,63 @@ class ZigbeeDevice(BaseDevice):
             **kwargs,
         )
 
-        for attempt in range(max_attempts):
-            try:
-                async with self._limit_concurrency(priority=priority):
-                    if not expect_reply:
-                        await send_request(attempt=attempt)
-                        return None
+        # A newer request with the same coalesce key replaces this one, unless this one
+        # is already being sent
+        coalesce_token = object()
 
-                    assert rsp_key is not None
+        if coalesce_key is not None:
+            self._coalesced_requests[coalesce_key] = coalesce_token
 
-                    future: asyncio.Future[list[Any] | foundation.CommandSchema] = (
-                        asyncio.Future()
-                    )
-                    self._requests[rsp_key] = future
+        try:
+            for attempt in range(max_attempts):
+                try:
+                    async with self._limit_concurrency(priority=priority):
+                        self._raise_if_superseded(coalesce_key, coalesce_token)
 
-                    try:
-                        await send_request(attempt=attempt)
-                        async with asyncio_timeout(timeout):
-                            return await future
-                    finally:
-                        if not future.done():
-                            future.cancel()
-                        self._requests.pop(rsp_key, None)
-            except zigpy.exceptions.ParsingError:
-                raise
-            except Exception:
-                LOGGER.debug(
-                    "Failed to send request, attempt %d of %d",
-                    attempt + 1,
-                    max_attempts,
-                    exc_info=True,
-                )
+                        if not expect_reply:
+                            await send_request(attempt=attempt)
+                            return None
 
-                if attempt >= max_attempts - 1:
+                        assert rsp_key is not None
+
+                        future: asyncio.Future[list[Any] | foundation.CommandSchema] = (
+                            asyncio.Future()
+                        )
+                        self._requests[rsp_key] = future
+
+                        try:
+                            await send_request(attempt=attempt)
+                            async with asyncio_timeout(timeout):
+                                return await future
+                        finally:
+                            if not future.done():
+                                future.cancel()
+                            self._requests.pop(rsp_key, None)
+                except (
+                    zigpy.exceptions.ParsingError,
+                    zigpy.exceptions.SupersededError,
+                ):
                     raise
+                except Exception:
+                    LOGGER.debug(
+                        "Failed to send request, attempt %d of %d",
+                        attempt + 1,
+                        max_attempts,
+                        exc_info=True,
+                    )
 
-                await asyncio.sleep(retry_delay)
-                continue
+                    if attempt >= max_attempts - 1:
+                        raise
+
+                    await asyncio.sleep(retry_delay)
+                    continue
+        finally:
+            if (
+                coalesce_key is not None
+                and coalesce_key in self._coalesced_requests
+                and self._coalesced_requests[coalesce_key] is coalesce_token
+            ):
+                del self._coalesced_requests[coalesce_key]
 
     def handle_message(
         self,

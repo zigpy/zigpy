@@ -672,7 +672,13 @@ async def test_ota_handle_query_next_image(ota_cluster):
     await asyncio.sleep(0)
 
     assert ota_cluster.query_next_image_response.mock_calls == [
-        call(zcl.foundation.Status.NO_IMAGE_AVAILABLE, tsn=hdr.tsn)
+        call(
+            zcl.foundation.Status.NO_IMAGE_AVAILABLE,
+            tsn=hdr.tsn,
+            coalesce_key=ota_cluster.make_coalesce_key(
+                Ota.ClientCommandDefs.query_next_image_response.id
+            ),
+        )
     ]
     assert len(image_events) == 1
     assert isinstance(image_events[0], OtaImageAvailableEvent)
@@ -694,7 +700,13 @@ async def test_ota_handle_query_next_image(ota_cluster):
     await asyncio.sleep(0)
 
     assert ota_cluster.query_next_image_response.mock_calls == [
-        call(zcl.foundation.Status.NO_IMAGE_AVAILABLE, tsn=hdr.tsn)
+        call(
+            zcl.foundation.Status.NO_IMAGE_AVAILABLE,
+            tsn=hdr.tsn,
+            coalesce_key=ota_cluster.make_coalesce_key(
+                Ota.ClientCommandDefs.query_next_image_response.id
+            ),
+        )
     ]
     assert len(image_events) == 1
     assert image_events[0].images_result == OtaImagesResult(
@@ -719,7 +731,13 @@ async def test_ota_handle_image_block_req(ota_cluster):
     await asyncio.sleep(0)
 
     assert ota_cluster.image_block_response.mock_calls == [
-        call(zcl.foundation.Status.ABORT, tsn=hdr.tsn)
+        call(
+            zcl.foundation.Status.ABORT,
+            tsn=hdr.tsn,
+            coalesce_key=ota_cluster.make_coalesce_key(
+                Ota.ClientCommandDefs.image_block_response.id
+            ),
+        )
     ]
 
     ota_cluster.image_block_response.reset_mock()

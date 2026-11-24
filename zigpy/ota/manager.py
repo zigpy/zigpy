@@ -9,6 +9,7 @@ import contextlib
 from typing import TYPE_CHECKING
 
 import zigpy.datastructures
+from zigpy.exceptions import SupersededError
 import zigpy.ota
 import zigpy.types as t
 from zigpy.zcl import ClusterType, foundation
@@ -155,7 +156,13 @@ class OTAManager:
                 file_version=self.image.firmware.header.file_version,
                 image_size=self.image.firmware.header.image_size,
                 tsn=hdr.tsn,
+                coalesce_key=self.ota_cluster.make_coalesce_key(
+                    Ota.ClientCommandDefs.query_next_image_response.id
+                ),
             )
+        except SupersededError:
+            # The response to the newer query decides how the update continues
+            return
         except Exception as ex:  # noqa: BLE001
             self.device.debug("OTA query_next_image handler exception", exc_info=ex)
             status = foundation.Status.FAILURE
@@ -203,6 +210,13 @@ class OTAManager:
                     file_offset=command.file_offset,
                     image_data=block,
                     tsn=hdr.tsn,
+                    # Slow devices re-send block requests while our previous response
+                    # is still queued, only the newest one needs a response. Devices
+                    # may request multiple blocks at once so the offset is included.
+                    coalesce_key=self.ota_cluster.make_coalesce_key(
+                        Ota.ClientCommandDefs.image_block_response.id,
+                        command.file_offset,
+                    ),
                 )
 
             if command.file_offset + len(block) < len(self._image_data):
@@ -219,6 +233,11 @@ class OTAManager:
                 self.progress_callback(
                     command.file_offset + len(block), len(self._image_data)
                 )
+        except SupersededError:
+            self.device.debug(
+                "Skipping superseded OTA image block request for offset %d",
+                command.file_offset,
+            )
         except Exception as ex:  # noqa: BLE001
             self.device.debug("OTA image_block handler exception", exc_info=ex)
 

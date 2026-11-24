@@ -42,6 +42,10 @@ class SendError(DeliveryError):
     """Message could not be enqueued."""
 
 
+class SupersededError(ZigbeeException):
+    """A newer request with the same coalesce key replaced this one before it was sent."""
+
+
 class InvalidResponse(ZigbeeException):
     """A ZDO or ZCL response has an unsuccessful status code"""
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Coroutine
+from collections.abc import Coroutine, Hashable
 import functools
 import logging
 
@@ -62,6 +62,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         retries: int | None = None,
         retry_delay: float | None = None,
         aps_encryption: bool = False,
+        coalesce_key: Hashable | None = None,
         **kwargs,
     ):
         data = self._serialize(command, *args, **kwargs)
@@ -81,6 +82,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
             retries=retries,
             retry_delay=retry_delay,
             aps_encryption=aps_encryption,
+            coalesce_key=coalesce_key,
         )
 
     async def reply(
@@ -96,6 +98,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         retries: int | None = None,
         retry_delay: float | None = None,
         aps_encryption: bool = False,
+        coalesce_key: Hashable | None = None,
         **kwargs,
     ):
         data = self._serialize(command, *args, **kwargs)
@@ -116,6 +119,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
             retries=retries,
             retry_delay=retry_delay,
             aps_encryption=aps_encryption,
+            coalesce_key=coalesce_key,
         )
 
     def handle_message(
@@ -162,6 +166,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
                     [],
                     tsn=hdr.tsn,
                     priority=t.PacketPriority.LOW,
+                    coalesce_key=(ZDO_ENDPOINT, types.ZDOCmd.NWK_addr_rsp),
                 )
             )
 
@@ -191,6 +196,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
                     [],
                     tsn=hdr.tsn,
                     priority=t.PacketPriority.LOW,
+                    coalesce_key=(ZDO_ENDPOINT, types.ZDOCmd.IEEE_addr_rsp),
                 )
             )
 
@@ -233,6 +239,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
                     [],
                     tsn=hdr.tsn,
                     priority=t.PacketPriority.CRITICAL,
+                    coalesce_key=(ZDO_ENDPOINT, types.ZDOCmd.Match_Desc_rsp, profile),
                 )
             )
             return
@@ -244,6 +251,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
                 [t.uint8_t(1)],
                 tsn=hdr.tsn,
                 priority=t.PacketPriority.CRITICAL,
+                coalesce_key=(ZDO_ENDPOINT, types.ZDOCmd.Match_Desc_rsp, profile),
             )
         )
 

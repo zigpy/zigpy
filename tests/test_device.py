@@ -30,6 +30,7 @@ from zigpy.zcl.clusters.general import (
     OnOff,
     Ota,
     PollControl,
+    Time,
     ZigbeeDirectConfiguration,
 )
 from zigpy.zdo import types as zdo_t
@@ -2747,6 +2748,335 @@ async def test_request_retry_delay_releases_concurrency(app) -> None:
         # Tear down the still-pending requests so the task group can exit
         for task in tasks:
             task.cancel()
+
+
+@pytest.mark.parametrize(
+    ("keys", "expected_sent", "expected_superseded"),
+    [
+        # Without a key, nothing is coalesced
+        ([None, None, None, None], [0, 1, 2, 3], []),
+        # The request being sent is never superseded, only queued ones are
+        (["key", "key", "key", "key"], [0, 3], [1, 2]),
+        (["key", "key", "other", "key"], [0, 2, 3], [1]),
+        (["key", "other", "other", None], [0, 2, 3], [1]),
+    ],
+)
+async def test_request_coalesce_queued(
+    app,
+    keys: list[str | None],
+    expected_sent: list[int],
+    expected_superseded: list[int],
+) -> None:
+    """Test that a queued request is superseded by a newer one with the same key."""
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+    dev._concurrent_requests_semaphore = RequestLimiter(
+        max_concurrency=1, capacities={t.PacketPriority.LOW: 1}
+    )
+
+    first_sent = asyncio.Event()
+    release_first = asyncio.Event()
+
+    async def send_packet(packet: t.ZigbeePacket) -> None:
+        if packet.data.serialize() == bytes([0]):
+            first_sent.set()
+            await release_first.wait()
+
+    app.send_packet.side_effect = send_packet
+
+    def make_request(index: int, key: str | None):
+        return dev.request(
+            profile=0x0104,
+            cluster=0x0006,
+            src_ep=1,
+            dst_ep=1,
+            sequence=index,
+            data=bytes([index]),
+            expect_reply=False,
+            coalesce_key=key,
+        )
+
+    first = asyncio.create_task(make_request(0, keys[0]))
+    await first_sent.wait()
+
+    # All other requests queue up behind the one being sent
+    rest = [
+        asyncio.create_task(make_request(index, key))
+        for index, key in enumerate(keys[1:], start=1)
+    ]
+    await asyncio.sleep(0)
+    release_first.set()
+
+    results = await asyncio.gather(first, *rest, return_exceptions=True)
+
+    assert [c.args[0].data.serialize()[0] for c in app.send_packet.mock_calls] == (
+        expected_sent
+    )
+
+    assert [i for i, r in enumerate(results) if r is None] == expected_sent
+    assert [
+        i
+        for i, r in enumerate(results)
+        if isinstance(r, zigpy.exceptions.SupersededError)
+    ] == expected_superseded
+
+
+async def test_request_coalesce_retry(app) -> None:
+    """Test that a failed request is not retried once a newer one replaces it."""
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    # The first attempt of the old request fails, the new request succeeds
+    app.send_packet.side_effect = [zigpy.exceptions.DeliveryError("Failure"), None]
+
+    def make_request(index: int):
+        return dev.request(
+            profile=0x0104,
+            cluster=0x0006,
+            src_ep=1,
+            dst_ep=1,
+            sequence=index,
+            data=bytes([index]),
+            expect_reply=False,
+            retries=1,
+            retry_delay=0.01,
+            coalesce_key="key",
+        )
+
+    old = asyncio.create_task(make_request(0))
+    await asyncio.sleep(0)
+    new = asyncio.create_task(make_request(1))
+
+    with pytest.raises(zigpy.exceptions.SupersededError):
+        await old
+
+    await new
+
+    assert [c.args[0].data.serialize() for c in app.send_packet.mock_calls] == [
+        bytes([0]),
+        bytes([1]),
+    ]
+
+
+def _zcl_packet(
+    dev: device.Device,
+    cluster_type: ClusterType,
+    cluster_id: int,
+    tsn: int,
+    command_id: int,
+    *,
+    general: bool,
+    **kwargs,
+) -> t.ZigbeePacket:
+    ep = dev.endpoints[1]
+    clusters = ep.out_clusters if cluster_type == ClusterType.Client else ep.in_clusters
+    cluster = clusters[cluster_id]
+
+    if general:
+        schema = foundation.GENERAL_COMMANDS[command_id].schema
+    else:
+        schema = cluster.server_commands[command_id].schema
+
+    hdr, cmd = cluster._create_request(
+        general=general,
+        command_id=command_id,
+        schema=schema,
+        tsn=tsn,
+        disable_default_response=False,
+        direction=(
+            foundation.Direction.Client_to_Server
+            if cluster_type == ClusterType.Client
+            else foundation.Direction.Server_to_Client
+        ),
+        args=(),
+        kwargs=kwargs,
+    )
+
+    return t.ZigbeePacket(
+        profile_id=zha.PROFILE_ID,
+        cluster_id=cluster_id,
+        src_ep=1,
+        dst_ep=1,
+        tsn=tsn,
+        data=t.SerializableBytes(hdr.serialize() + cmd.serialize()),
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+    )
+
+
+def _read_time(
+    dev: device.Device, tsn: int, attr_id: int = Time.AttributeDefs.time.id
+) -> t.ZigbeePacket:
+    return _zcl_packet(
+        dev,
+        ClusterType.Client,
+        Time.cluster_id,
+        tsn,
+        foundation.GeneralCommand.Read_Attributes,
+        general=True,
+        attribute_ids=[attr_id],
+    )
+
+
+def _report_on_off(dev: device.Device, tsn: int) -> t.ZigbeePacket:
+    return _zcl_packet(
+        dev,
+        ClusterType.Server,
+        OnOff.cluster_id,
+        tsn,
+        foundation.GeneralCommand.Report_Attributes,
+        general=True,
+        attribute_reports=[
+            foundation.Attribute(
+                attrid=OnOff.AttributeDefs.on_off.id,
+                value=foundation.TypeValue(type=0x10, value=t.Bool.true),
+            )
+        ],
+    )
+
+
+def _toggle(dev: device.Device, tsn: int) -> t.ZigbeePacket:
+    return _zcl_packet(
+        dev,
+        ClusterType.Client,
+        OnOff.cluster_id,
+        tsn,
+        OnOff.ServerCommandDefs.toggle.id,
+        general=False,
+    )
+
+
+def _nwk_addr_req(dev: device.Device, tsn: int) -> t.ZigbeePacket:
+    return t.ZigbeePacket(
+        profile_id=0x0000,
+        cluster_id=zdo_t.ZDOCmd.NWK_addr_req,
+        src_ep=0,
+        dst_ep=0,
+        tsn=tsn,
+        data=t.SerializableBytes(
+            t.uint8_t(tsn).serialize()
+            + t.serialize(
+                [dev.application.state.node_info.ieee, 0, 0],
+                zdo_t.CLUSTERS[zdo_t.ZDOCmd.NWK_addr_req][1],
+            )
+        ),
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+    )
+
+
+@pytest.mark.parametrize(
+    ("requests", "expected_tsns"),
+    [
+        # Repeated requests only get one response, for the newest one
+        ([_read_time, _read_time, _read_time], [3]),
+        ([_report_on_off, _report_on_off, _report_on_off], [3]),
+        ([_toggle, _toggle, _toggle], [3]),
+        ([_nwk_addr_req, _nwk_addr_req, _nwk_addr_req], [3]),
+        # Different requests are all answered
+        (
+            [
+                _read_time,
+                lambda dev, tsn: _read_time(
+                    dev, tsn, Time.AttributeDefs.time_status.id
+                ),
+            ],
+            [1, 2],
+        ),
+        ([_report_on_off, _toggle, _report_on_off], [2, 3]),
+        ([_toggle, _read_time, _nwk_addr_req], [1, 2, 3]),
+    ],
+)
+async def test_responses_coalesced(app, requests, expected_tsns: list[int]) -> None:
+    """Test that responses queued behind a busy device only answer the newest request."""
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+    dev._concurrent_requests_semaphore = RequestLimiter(
+        max_concurrency=1, capacities={t.PacketPriority.LOW: 1}
+    )
+
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+    ep.profile_id = zha.PROFILE_ID
+    ep.add_input_cluster(OnOff.cluster_id)
+    ep.add_output_cluster(OnOff.cluster_id)
+    ep.add_output_cluster(Time.cluster_id)
+
+    block_sent = asyncio.Event()
+    release_block = asyncio.Event()
+
+    async def send_packet(packet: t.ZigbeePacket) -> None:
+        if packet.data.serialize() == b"block":
+            block_sent.set()
+            await release_block.wait()
+
+    app.send_packet.side_effect = send_packet
+
+    # Keep the device busy so all responses queue up
+    block = asyncio.create_task(
+        dev.request(
+            profile=zha.PROFILE_ID,
+            cluster=Basic.cluster_id,
+            src_ep=1,
+            dst_ep=1,
+            sequence=0,
+            data=b"block",
+            expect_reply=False,
+            priority=t.PacketPriority.LOW,
+        )
+    )
+    await block_sent.wait()
+
+    for tsn, make_packet in enumerate(requests, start=1):
+        dev.packet_received(make_packet(dev, tsn))
+
+    await asyncio.sleep(0.01)
+    release_block.set()
+    await block
+    await asyncio.sleep(0.01)
+
+    # Send order depends on response priority, only the set of answered requests matters
+    assert (
+        sorted(c.args[0].tsn for c in app.send_packet.mock_calls[1:]) == expected_tsns
+    )
+
+
+async def test_request_coalesce_key_passthrough(app) -> None:
+    """Test that cluster and ZDO requests pass the coalesce key to the device."""
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+    dev.node_desc = make_node_desc()
+
+    ep = dev.add_endpoint(1)
+    ep.status = endpoint.Status.ZDO_INIT
+    ep.add_input_cluster(Basic.cluster_id)
+
+    with patch.object(dev, "request", AsyncMock()) as mock_request:
+        await ep.basic.reset_fact_default(expect_reply=False, coalesce_key="zcl")
+        await ep.basic.general_command(
+            foundation.GeneralCommand.Default_Response,
+            Basic.ServerCommandDefs.reset_fact_default.id,
+            foundation.Status.SUCCESS,
+            tsn=1,
+            coalesce_key="zcl_reply",
+        )
+        await dev.zdo.request(zdo_t.ZDOCmd.Node_Desc_req, dev.nwk, coalesce_key="zdo")
+        await dev.zdo.reply(
+            zdo_t.ZDOCmd.NWK_addr_rsp,
+            0,
+            dev.ieee,
+            dev.nwk,
+            0,
+            0,
+            [],
+            coalesce_key="zdo_reply",
+        )
+
+    assert [c.kwargs["coalesce_key"] for c in mock_request.mock_calls] == [
+        "zcl",
+        "zcl_reply",
+        "zdo",
+        "zdo_reply",
+    ]
 
 
 async def test_radio_details_deprecated(dev) -> None:

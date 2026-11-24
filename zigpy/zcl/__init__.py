@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import collections
 from collections import defaultdict
-from collections.abc import Callable, Generator, Iterable, Sequence
+from collections.abc import Callable, Generator, Hashable, Iterable, Sequence
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -825,6 +825,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         timeout=APS_REPLY_TIMEOUT,
         retries: int | None = None,
         retry_delay: float | None = None,
+        coalesce_key: Hashable | None = None,
         **kwargs,
     ):
         if disable_default_response is None:
@@ -863,6 +864,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             retries=retries,
             retry_delay=retry_delay,
             aps_encryption=self.aps_encryption,
+            coalesce_key=coalesce_key,
         )
 
     async def reply(
@@ -881,6 +883,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         priority: int | None = None,
         retries: int | None = None,
         retry_delay: float | None = None,
+        coalesce_key: Hashable | None = None,
         **kwargs,
     ) -> None:
         if disable_default_response is None:
@@ -919,6 +922,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             retries=retries,
             retry_delay=retry_delay,
             aps_encryption=self.aps_encryption,
+            coalesce_key=coalesce_key,
         )
 
     def handle_message(
@@ -1000,7 +1004,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             records = self._handle_read_attributes(args.attribute_ids)
             # We do not emit a default response here because a ReadAttributesResponse is
             # sent instead
-            self.create_catching_task(self.read_attributes_rsp(records, tsn=hdr.tsn))
+            self.create_catching_task(
+                self.read_attributes_rsp(
+                    records,
+                    tsn=hdr.tsn,
+                    coalesce_key=self.make_coalesce_key(
+                        foundation.GeneralCommand.Read_Attributes_rsp,
+                        hdr.manufacturer,
+                        tuple(args.attribute_ids),
+                    ),
+                )
+            )
             return
 
         if hdr.command_id == foundation.GeneralCommand.Report_Attributes:
@@ -1946,6 +1960,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         general_command, foundation.GeneralCommand.Discover_Commands_Generated
     )
 
+    def make_coalesce_key(self, *parts: Hashable) -> tuple[Hashable, ...]:
+        """Create a coalesce key for a request sent by this cluster."""
+        return (self._endpoint.endpoint_id, self.cluster_id, self._type, *parts)
+
     def send_default_rsp(
         self,
         hdr: foundation.ZCLHeader,
@@ -1959,6 +1977,12 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 status,
                 tsn=hdr.tsn,
                 priority=t.PacketPriority.LOW,
+                coalesce_key=self.make_coalesce_key(
+                    foundation.GeneralCommand.Default_Response,
+                    hdr.frame_control.frame_type,
+                    hdr.manufacturer,
+                    hdr.command_id,
+                ),
             )
         )
 
