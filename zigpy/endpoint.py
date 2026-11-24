@@ -60,8 +60,10 @@ class Endpoint(zigpy.util.LocalLogMixin, zigpy.util.ListenableMixin):
                 self._device.nwk, self._endpoint_id
             )
 
-            if status == ZDOStatus.NOT_ACTIVE:
-                # These endpoints are essentially junk but this lets the device join
+            if status in (ZDOStatus.NOT_ACTIVE, ZDOStatus.INVALID_EP):
+                # These endpoints are essentially junk but this lets the device join.
+                # Some devices list endpoints outside 0x01-0xF0 as active and then
+                # reject their descriptor request with INVALID_EP (e.g. SALUS ST100ZB)
                 self.status = Status.ENDPOINT_INACTIVE
                 return
             elif status != ZDOStatus.SUCCESS:

@@ -7,7 +7,12 @@ from unittest.mock import call
 
 import pytest
 
-from tests.conftest import make_node_desc, mock_attribute_reads
+from tests.conftest import (
+    add_initialized_device,
+    make_ieee,
+    make_node_desc,
+    mock_attribute_reads,
+)
 from zigpy import device, endpoint
 import zigpy.application
 from zigpy.datastructures import RequestLimiter
@@ -224,10 +229,19 @@ async def test_initialize_ep_failed(monkeypatch, dev):
         # Aqara H1 remote, zigpy/zigpy#1894
         ([1, 2, 3, 4], [5, 6]),
         ([1, 3], [2]),
+        # SALUS ST100ZB lists endpoint 242 but rejects it with INVALID_EP
+        ([9], [242]),
     ],
 )
+@pytest.mark.parametrize(
+    "inactive_status", [zdo_t.Status.NOT_ACTIVE, zdo_t.Status.INVALID_EP]
+)
 async def test_initialize_removes_inactive_endpoints(
-    monkeypatch, dev, active_eps: list[int], inactive_eps: list[int]
+    monkeypatch,
+    dev,
+    active_eps: list[int],
+    inactive_eps: list[int],
+    inactive_status: zdo_t.Status,
 ) -> None:
     """Endpoints listed as active but without a simple descriptor are removed."""
 
@@ -236,7 +250,7 @@ async def test_initialize_removes_inactive_endpoints(
 
     async def mock_simple_desc_req(nwk, endpoint_id):
         if endpoint_id in inactive_eps:
-            return [zdo_t.Status.NOT_ACTIVE, nwk, None]
+            return [inactive_status, nwk, None]
 
         return [
             zdo_t.Status.SUCCESS,
@@ -1795,6 +1809,7 @@ async def test_poll_control_checkin_callback(
                     tsn=0x12,
                     expect_reply=False,
                     disable_default_response=True,
+                    retries=0,
                 )
             ]
         else:
@@ -1805,8 +1820,85 @@ async def test_poll_control_checkin_callback(
                     tsn=0x12,
                     expect_reply=False,
                     disable_default_response=True,
+                    retries=0,
                 )
             ]
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        zigpy.exceptions.DeliveryError("Failed to send request: APS_NO_ACK"),
+        TimeoutError(),
+    ],
+)
+async def test_poll_control_checkin_callback_send_failure(
+    dev: device.Device, exc: Exception, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test a failed check-in response is logged at debug level and not raised."""
+    ep = dev.add_endpoint(1)
+    poll_control = ep.add_input_cluster(PollControl.cluster_id)
+    poll_control.checkin_response = AsyncMock(side_effect=exc)
+
+    zcl_hdr = foundation.ZCLHeader.cluster(
+        tsn=0x12, command_id=PollControl.ClientCommandDefs.checkin.id
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        await dev.poll_control_checkin_callback(
+            zcl_hdr, PollControl.ClientCommandDefs.checkin.schema()
+        )
+
+    assert len(poll_control.checkin_response.mock_calls) == 1
+    assert "Failed to send check-in response" in caplog.text
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+async def test_poll_control_checkin_response_not_retried(
+    app_mock: zigpy.application.ControllerApplication,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Test a check-in response that fails to send is not retried."""
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.EndDevice)
+    dev.endpoints[1].add_input_cluster(PollControl.cluster_id)
+
+    app_mock.send_packet = AsyncMock(
+        side_effect=zigpy.exceptions.DeliveryError(
+            "Failed to send request: APS_NO_ACK", status=0xB7
+        )
+    )
+
+    hdr = foundation.ZCLHeader.cluster(
+        tsn=0x12, command_id=PollControl.ClientCommandDefs.checkin.id
+    )
+    hdr.frame_control = hdr.frame_control.replace(
+        direction=foundation.Direction.Server_to_Client,
+        disable_default_response=True,
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        app_mock.packet_received(
+            t.ZigbeePacket(
+                src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+                src_ep=1,
+                dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+                dst_ep=1,
+                tsn=0x12,
+                profile_id=zha.PROFILE_ID,
+                cluster_id=PollControl.cluster_id,
+                data=t.SerializableBytes(hdr.serialize()),
+                lqi=255,
+                rssi=-30,
+            )
+        )
+
+        # Wait for the callback task to finish
+        await asyncio.gather(*app_mock._tasks)
+
+    assert len(app_mock.send_packet.mock_calls) == 1
+    assert "Failed to send check-in response" in caplog.text
+    assert "callback failed" not in caplog.text
 
 
 async def test_begin_fast_polling_with_cluster(dev: device.Device) -> None:
@@ -2197,6 +2289,67 @@ async def test_reinterview_end_to_end(
         c for c in app.listener_event.call_args_list if c[0][0] == "device_initialized"
     ]
     assert len(device_initialized_calls) == 0
+
+
+async def test_reinterview_invalid_ep(
+    monkeypatch,
+    app: zigpy.application.ControllerApplication,
+):
+    """Reinterview succeeds when an active endpoint is rejected with INVALID_EP."""
+    ieee = t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11")
+    node_desc = zdo_t.NodeDescriptor(1, 1, 1, 4, 5, 6, 7, 8)
+
+    async def mock_get_node_descriptor(self):
+        self.node_desc = node_desc
+        return node_desc
+
+    # SALUS ST100ZB: endpoint 242 is listed as active, its descriptor is not
+    async def mock_active_ep_req(nwk):
+        return [zdo_t.Status.SUCCESS, nwk, [9, 242]]
+
+    async def mock_simple_desc_req(nwk, endpoint_id):
+        if endpoint_id == 242:
+            return [zdo_t.Status.INVALID_EP, nwk, None]
+
+        return [
+            zdo_t.Status.SUCCESS,
+            nwk,
+            zdo_t.SizePrefixedSimpleDescriptor(
+                endpoint=endpoint_id,
+                profile=zha.PROFILE_ID,
+                device_type=zha.DeviceType.THERMOSTAT,
+                device_version=1,
+                input_clusters=[Basic.cluster_id],
+                output_clusters=[],
+            ),
+        ]
+
+    async def mock_ep_get_model_info(self):
+        return "ST100ZB", "SALUS"
+
+    original_init = device.Device.__init__
+
+    def patched_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        self.zdo.Active_EP_req = mock_active_ep_req
+        self.zdo.Simple_Desc_req = mock_simple_desc_req
+
+    monkeypatch.setattr(device.Device, "get_node_descriptor", mock_get_node_descriptor)
+    monkeypatch.setattr(device.Device, "__init__", patched_init)
+    monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
+
+    old_dev = app.add_device(ieee=ieee, nwk=t.NWK(0xDED6))
+    await old_dev.initialize()
+    assert old_dev.is_initialized
+
+    app.listener_event.reset_mock()
+    await old_dev.reinterview()
+
+    new_dev = app.devices[ieee]
+    assert new_dev is not old_dev
+    assert new_dev.is_initialized
+    assert [ep.endpoint_id for ep in new_dev.non_zdo_endpoints] == [9]
+    app.listener_event.assert_any_call("device_reinterviewed", new_dev)
 
 
 @pytest.mark.parametrize(

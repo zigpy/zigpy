@@ -11,10 +11,13 @@ import freezegun
 import pytest
 
 from tests.async_mock import AsyncMock
+from tests.conftest import App, FeaturelessApp, make_app
 from tests.zgp.conftest import (
     COMMISSIONING_NOTIFICATION_ID,
     KEY,
+    STEP_UP,
     commission,
+    commission_individual_key,
     commissioning_payload,
     encrypted_gp_packet,
     make_commissioning_options,
@@ -24,6 +27,7 @@ from tests.zgp.conftest import (
     wait_for_gp_processing,
 )
 from zigpy.device import GreenPowerDevice
+from zigpy.exceptions import DeliveryError
 import zigpy.types as t
 from zigpy.zcl import foundation
 from zigpy.zcl.clusters.greenpower import (
@@ -37,11 +41,13 @@ import zigpy.zdo.types as zdo_types
 from zigpy.zgp.commands import (
     GPChannelConfigurationPayload,
     GPChannelRequestPayload,
+    GPCommissioningReplyOptions,
     GPCommissioningReplyPayload,
     GPGenericSwitchConfiguration,
     GPSwitchInformation,
 )
 from zigpy.zgp.crypto import build_gpdf_header, encrypt_payload, encrypt_security_key
+from zigpy.zgp.manager import GPDF_LIFETIME
 from zigpy.zgp.types import (
     GP_ENDPOINT,
     GP_GROUP_ID,
@@ -447,7 +453,7 @@ async def test_recommissioning_replaces_device(app, manager):
 @pytest.mark.parametrize(
     ("security_level", "key", "outgoing_counter", "frame_counter"),
     [
-        # A replayed Commissioning GPDF with an older counter keeps the newer one
+        # A replayed Commissioning GPDF with an older counter is ignored
         (SecurityLevel.Encrypted, KEY, 50, 100),
         (SecurityLevel.Encrypted, KEY, 200, 200),
         (SecurityLevel.FullFrameCounterAndMIC, KEY, 50, 100),
@@ -483,6 +489,22 @@ async def test_recommissioning_keeps_frame_counter(
     assert app.devices[synthetic_ieee(0x11223344)].frame_counter == frame_counter
 
 
+async def test_recommissioning_equal_counter_is_accepted(app, manager):
+    """A retry with an unchanged outgoing counter can re-commission the GPD."""
+    await manager.permit_join(time_s=60)
+    payload = commissioning_payload(
+        security_level=SecurityLevel.Encrypted, key=KEY, outgoing_counter=100
+    )
+    await commission(app, 0x11223344, payload)
+    ieee = synthetic_ieee(0x11223344)
+    original = app.devices[ieee]
+
+    await commission(app, 0x11223344, payload, frame_counter=2)
+
+    assert app.devices[ieee] is not original
+    assert app.devices[ieee].frame_counter == 100
+
+
 @pytest.mark.parametrize(
     ("payload", "gpp_short_addr", "temp_master", "security_level", "security_key_type"),
     [
@@ -492,14 +514,6 @@ async def test_recommissioning_keeps_frame_counter(
             UNPROTECTED_COMMISSIONING,
             0x5678,
             0x5678,
-            SecurityLevel.NoSecurity,
-            SecurityKeyType.NoKey,
-        ),
-        # Received directly by the coordinator
-        (
-            UNPROTECTED_COMMISSIONING,
-            None,
-            0x0000,
             SecurityLevel.NoSecurity,
             SecurityKeyType.NoKey,
         ),
@@ -602,17 +616,19 @@ async def test_bidirectional_commissioning(
 ):
     """A GPD listening for a reply is paired once its Success GPDF arrives (A.3.9.1)."""
     app.subscribe_to_multicast_group = AsyncMock(wraps=app.subscribe_to_multicast_group)
+    app.send_gpdf = AsyncMock()
 
     await manager.permit_join(time_s=60)
     app.send_packet.reset_mock()
 
     await commission(app, 0x11223344, payload, rx_after_tx=True)
 
-    # Only the Commissioning Reply is sent, the GPD is not registered yet
-    [reply] = [c.args[0] for c in app.send_packet.mock_calls]
-    assert sent_command(reply, ResponseSchema).gpd_command_id == (
-        GPDCommandID.CommissioningReply
-    )
+    # Only the Commissioning Reply is sent, by the radio that heard the GPD. The GPD is
+    # not registered yet
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x0000
+    [reply] = app.send_gpdf.mock_calls
+    assert reply.kwargs["command_id"] == GPDCommandID.CommissioningReply
     assert synthetic_ieee(0x11223344) not in app.devices
     assert len(app.device_initialized.mock_calls) == 0
     assert len(app.subscribe_to_multicast_group.mock_calls) == 0
@@ -829,7 +845,8 @@ async def test_bidirectional_commissioning_window_changes(
     app, manager, change_window, commissioned
 ):
     """Commissioning in progress follows the window until its Success GPDF."""
-    with freezegun.freeze_time() as frozen:
+    # The clock keeps ticking for the TempMaster election (Dmax)
+    with freezegun.freeze_time(tick=True) as frozen:
         await manager.permit_join(time_s=60)
         await commission(app, 0x11223344, ENCRYPTED_COMMISSIONING, rx_after_tx=True)
 
@@ -919,15 +936,13 @@ async def test_ieee_addressing_ignored(app, manager):
 
 
 @pytest.mark.parametrize(
-    ("channel", "next_channel", "gpp_short_addr", "temp_master"),
+    ("channel", "next_channel"),
     [
-        (20, 15, 0x1234, 0x1234),
-        (15, 25, None, 0x0000),
+        (20, 15),
+        (15, 25),
     ],
 )
-async def test_channel_request(
-    app, manager, channel, next_channel, gpp_short_addr, temp_master
-):
+async def test_channel_request(app, manager, channel, next_channel):
     """A Channel Request is answered with the operational channel, on the GPD's."""
     app.state.network_info.channel = channel
     await manager.permit_join(time_s=60)
@@ -940,7 +955,7 @@ async def test_channel_request(
             GPChannelRequestPayload(
                 next_channel=next_channel - 11, second_next_channel=26 - 11
             ).serialize(),
-            gpp_short_addr=gpp_short_addr,
+            gpp_short_addr=0x1234,
         )
     )
     await wait_for_gp_processing()
@@ -948,7 +963,9 @@ async def test_channel_request(
     [packet] = [c.args[0] for c in app.send_packet.mock_calls]
     response = sent_command(packet, ResponseSchema)
 
-    assert response.temp_master_short_addr == temp_master
+    # A Maintenance frame is queued for SrcID 0 (A.1.5.2.2)
+    assert response.gpd_id == 0x00000000
+    assert response.temp_master_short_addr == 0x1234
     assert response.temp_master_tx_channel.transmit_channel == next_channel - 11
     assert response.gpd_command_id == GPDCommandID.ChannelConfiguration
 
@@ -957,6 +974,148 @@ async def test_channel_request(
     )
     assert configuration.operational_channel == channel - 11
     assert configuration.basic
+
+
+async def test_channel_request_direct(app, manager):
+    """A Channel Request heard by the radio is answered by the radio."""
+    app.send_gpdf = AsyncMock()
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
+    app.gp_packet_received(
+        make_gp_packet(
+            0x12345678,
+            GPDCommandID.ChannelRequest,
+            GPChannelRequestPayload(
+                next_channel=15 - 11, second_next_channel=26 - 11
+            ).serialize(),
+        )
+    )
+    await wait_for_gp_processing()
+
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    response = sent_command(packet, ResponseSchema)
+    assert response.temp_master_short_addr == 0x0000
+    assert response.gpd_id == 0x00000000
+    assert app.send_gpdf.mock_calls == [
+        call(
+            target=None,
+            command_id=GPDCommandID.ChannelConfiguration,
+            payload=GPChannelConfigurationPayload(
+                operational_channel=15 - 11, basic=1, _reserved=0
+            ).serialize(),
+            channel=15,
+            lifetime=GPDF_LIFETIME,
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("proxy", "temp_master"),
+    [
+        # No node can transmit on the GPD's next channel
+        (False, None),
+        # A proxy with a worse link than the sink
+        (True, 0x1234),
+    ],
+)
+async def test_channel_request_other_channel(app, manager, caplog, proxy, temp_master):
+    """The sink cannot transmit a Channel Configuration off the operational channel."""
+    caplog.set_level(logging.DEBUG)
+    app.send_gpdf = AsyncMock()
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
+    request = make_gp_packet(
+        0x12345678,
+        GPDCommandID.ChannelRequest,
+        GPChannelRequestPayload(
+            next_channel=25 - 11, second_next_channel=26 - 11
+        ).serialize(),
+    )
+    app.gp_packet_received(request.replace(lqi=t.uint8_t(255), rssi=t.int8s(-20)))
+
+    if proxy:
+        app.gp_packet_received(
+            request.replace(
+                gpp_short_addr=t.NWK(0x1234),
+                gpp_bidirectional_cap=True,
+                gpp_tx_queue_full=False,
+                lqi=t.uint8_t(0),
+                rssi=t.int8s(-90),
+            )
+        )
+
+    await wait_for_gp_processing()
+
+    assert len(app.send_gpdf.mock_calls) == 0
+    assert (
+        "Sink cannot transmit to 00:00:00:00:12:34:56:78 on channel 25, only on the"
+        " operational channel 15"
+    ) in caplog.text
+
+    responses = [
+        sent_command(c.args[0], ResponseSchema).temp_master_short_addr
+        for c in app.send_packet.mock_calls
+    ]
+    assert responses == ([] if temp_master is None else [temp_master])
+
+
+async def test_commissioning_reply_direct(app, manager):
+    """A Commissioning GPDF heard by the radio is answered by the radio."""
+    app.send_gpdf = AsyncMock()
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
+    await commission(app, 0x11223344, UNPROTECTED_COMMISSIONING, rx_after_tx=True)
+
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x0000
+    assert app.send_gpdf.mock_calls == [
+        call(
+            target=SrcID(0x11223344),
+            command_id=GPDCommandID.CommissioningReply,
+            payload=GPCommissioningReplyPayload(
+                options=GPCommissioningReplyOptions(
+                    pan_id_present=0,
+                    security_key_present=0,
+                    key_encrypted=0,
+                    security_level=SecurityLevel.NoSecurity,
+                    key_type=SecurityKeyType.NoKey,
+                )
+            ).serialize(),
+            channel=15,
+            lifetime=GPDF_LIFETIME,
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("app_base", "send_gpdf"),
+    [
+        (FeaturelessApp, None),
+        (App, AsyncMock(side_effect=DeliveryError("GPDF expired"))),
+    ],
+)
+async def test_commissioning_reply_not_sent(app_base, send_gpdf):
+    """A Commissioning Reply that is not sent does not stop commissioning."""
+    app = make_app({}, app_base=app_base)
+    app.state.network_info.channel = 15
+    manager = app.green_power
+
+    if send_gpdf is not None:
+        app.send_gpdf = send_gpdf
+
+    await manager.permit_join(time_s=60)
+    await commission(app, 0x11223344, UNPROTECTED_COMMISSIONING, rx_after_tx=True)
+
+    # The GPD can still finish commissioning with its Success GPDF
+    app.gp_packet_received(
+        make_gp_packet(0x11223344, GPDCommandID.SuccessReport, frame_counter=2)
+    )
+    await wait_for_gp_processing()
+
+    assert synthetic_ieee(0x11223344) in app.devices
 
 
 async def test_channel_request_window_closed(app, manager):
@@ -1137,6 +1296,23 @@ async def test_shutdown(app, manager):
     assert synthetic_ieee(0x11223344) not in app.devices
 
 
+async def test_shutdown_cancels_unstarted_temp_master_election(app, manager):
+    """A cancelled election does not leave candidates behind."""
+    await manager.permit_join(time_s=60)
+    app.gp_packet_received(
+        make_gp_packet(
+            0x11223344,
+            GPDCommandID.CommissioningRequest,
+            UNPROTECTED_COMMISSIONING,
+            rx_after_tx=True,
+        )
+    )
+
+    await manager.shutdown()
+
+    assert not manager._temp_master_candidates
+
+
 @pytest.mark.parametrize(
     ("security_level", "mac_seq_num_capability", "frame_counter"),
     [
@@ -1201,6 +1377,7 @@ async def request_channel(app, manager) -> None:
             0x12345678,
             GPDCommandID.ChannelRequest,
             GPChannelRequestPayload(next_channel=0, second_next_channel=0).serialize(),
+            gpp_short_addr=0x1234,
         )
     )
     await wait_for_gp_processing()
@@ -1244,3 +1421,416 @@ async def test_commands_sent_server_to_client(app, manager, send, command):
     assert hdr.tsn == packet.tsn
 
     sent_command(packet, command.schema)
+
+
+def commissioning_notification(
+    src_id: int,
+    frame_counter: int,
+    payload: bytes,
+    *,
+    gpp_short_addr: int,
+    bidirectional_cap: bool,
+    link_quality: GPLinkQuality = GPLinkQuality.High,
+    rssi: int = 20,
+) -> t.ZigbeePacket:
+    """A Commissioning GPDF with RxAfterTx, tunneled by a proxy."""
+    command = CommissioningNotificationSchema(
+        options=make_commissioning_options(
+            rx_after_tx=1, bidirectional_cap=int(bidirectional_cap)
+        ),
+        gpd_id=src_id,
+        frame_counter=frame_counter,
+        command_id=GPDCommandID.CommissioningRequest,
+        payload=GPDCommandPayload(payload),
+        gpp_short_addr=gpp_short_addr,
+        gpp_gpd_link=GPPGPDLink(rssi=rssi, link_quality=link_quality),
+    )
+
+    return make_tunnel_packet(
+        COMMISSIONING_NOTIFICATION_ID,
+        command.serialize(),
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=gpp_short_addr),
+        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+    )
+
+
+@pytest.mark.parametrize(
+    ("forwarders", "temp_master"),
+    [
+        # The first proxy to forward cannot transmit to the GPD
+        (
+            [(0x1111, False, GPLinkQuality.Excellent, 30), (0x2222, True, 0, 0)],
+            0x2222,
+        ),
+        # The best link among bidirectional proxies, in any order of arrival
+        (
+            [(0x1111, True, GPLinkQuality.Poor, 30), (0x2222, True, 2, 0)],
+            0x2222,
+        ),
+        # Equal Link quality: the higher RSSI
+        ([(0x1111, True, 2, 10), (0x2222, True, 2, 11)], 0x2222),
+        # Equal link: the lower short address
+        ([(0x2222, True, 2, 10), (0x1111, True, 2, 10)], 0x1111),
+        # No bidirectional proxy: the best link of all
+        ([(0x1111, False, 1, 10), (0x2222, False, 2, 10)], 0x2222),
+        # The coordinator received the GPDF directly, without a link value
+        ([None, (0x2222, True, 0, 0)], 0x2222),
+    ],
+)
+async def test_temp_master_election(app, manager, forwarders, temp_master):
+    """The sink elects the TempMaster from the instances within Dmax (A.3.6.2.3)."""
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
+    for forwarder in forwarders:
+        if forwarder is None:
+            app.gp_packet_received(
+                make_gp_packet(
+                    0x11223344,
+                    GPDCommandID.CommissioningRequest,
+                    ENCRYPTED_COMMISSIONING,
+                    rx_after_tx=True,
+                )
+            )
+            continue
+
+        gpp_short_addr, bidirectional_cap, link_quality, rssi = forwarder
+        app.packet_received(
+            commissioning_notification(
+                0x11223344,
+                1,
+                ENCRYPTED_COMMISSIONING,
+                gpp_short_addr=gpp_short_addr,
+                bidirectional_cap=bidirectional_cap,
+                link_quality=GPLinkQuality(link_quality),
+                rssi=rssi,
+            )
+        )
+
+    await wait_for_gp_processing()
+
+    # One GP Response for the GPDF, however many proxies forwarded it
+    [reply] = [c.args[0] for c in app.send_packet.mock_calls]
+    response = sent_command(reply, ResponseSchema)
+    assert response.temp_master_short_addr == temp_master
+    assert response.gpd_command_id == GPDCommandID.CommissioningReply
+
+
+async def test_temp_master_election_tx_queue_full(app, manager):
+    """A bidirectional proxy with a full gpTxQueue is not a candidate (A.3.6.2.3)."""
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
+    for gpp_short_addr, tx_queue_full, lqi in ((0x1111, True, 255), (0x2222, False, 0)):
+        app.gp_packet_received(
+            make_gp_packet(
+                0x12345678,
+                GPDCommandID.ChannelRequest,
+                GPChannelRequestPayload(
+                    next_channel=15 - 11, second_next_channel=26 - 11
+                ).serialize(),
+                gpp_short_addr=gpp_short_addr,
+                rx_after_tx=True,
+            ).replace(
+                lqi=t.uint8_t(lqi),
+                gpp_bidirectional_cap=True,
+                gpp_tx_queue_full=tx_queue_full,
+            )
+        )
+
+    await wait_for_gp_processing()
+
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x2222
+
+
+@pytest.mark.parametrize(
+    ("app_base", "temp_master"),
+    [
+        # The sink competes on its link like any proxy
+        (App, 0x0000),
+        # Unless its radio cannot transmit GPDFs
+        (FeaturelessApp, 0x2222),
+    ],
+)
+async def test_temp_master_election_direct_sink(app_base, temp_master):
+    """The sink is a candidate if it received the GPDF and can transmit GPDFs."""
+    app = make_app({}, app_base=app_base)
+    app.state.network_info.channel = 15
+    manager = app.green_power
+
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+    app.gp_packet_received(
+        make_gp_packet(
+            0x11223344,
+            GPDCommandID.CommissioningRequest,
+            ENCRYPTED_COMMISSIONING,
+            rx_after_tx=True,
+        ).replace(lqi=t.uint8_t(255), rssi=t.int8s(-20))
+    )
+    app.packet_received(
+        commissioning_notification(
+            0x11223344,
+            1,
+            ENCRYPTED_COMMISSIONING,
+            gpp_short_addr=0x2222,
+            bidirectional_cap=False,
+            link_quality=GPLinkQuality.Poor,
+        )
+    )
+    await wait_for_gp_processing()
+
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == temp_master
+
+
+@pytest.mark.parametrize(
+    ("delay", "temp_master"),
+    [(0.05, 0x2222), (0.15, 0x1111)],
+)
+async def test_temp_master_election_deadline(app, manager, delay, temp_master):
+    """A delayed election task cannot admit candidates received after Dmax."""
+    with freezegun.freeze_time() as frozen:
+        await manager.permit_join(time_s=60)
+        app.send_packet.reset_mock()
+        app.packet_received(
+            commissioning_notification(
+                0x11223344,
+                1,
+                ENCRYPTED_COMMISSIONING,
+                gpp_short_addr=0x1111,
+                bidirectional_cap=True,
+                link_quality=GPLinkQuality.Poor,
+            )
+        )
+        frozen.tick(delay)
+        app.packet_received(
+            commissioning_notification(
+                0x11223344,
+                1,
+                ENCRYPTED_COMMISSIONING,
+                gpp_short_addr=0x2222,
+                bidirectional_cap=True,
+                link_quality=GPLinkQuality.Excellent,
+            )
+        )
+        frozen.tick(1)
+        await wait_for_gp_processing()
+
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == temp_master
+
+
+async def test_temp_master_election_window_closed(app, manager):
+    """No GP Response is sent if the window closes during the election."""
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+
+    app.packet_received(
+        commissioning_notification(
+            0x11223344,
+            1,
+            ENCRYPTED_COMMISSIONING,
+            gpp_short_addr=0x1111,
+            bidirectional_cap=True,
+        )
+    )
+    await asyncio.sleep(0)
+    await manager.permit_join(time_s=0)
+    app.send_packet.reset_mock()
+    await wait_for_gp_processing()
+
+    assert len(app.send_packet.mock_calls) == 0
+
+
+@pytest.mark.parametrize("started", [False, True])
+async def test_temp_master_election_window_reopened(app, manager, started):
+    """Reopening the window cannot revive a GPDF from the previous window."""
+    await manager.permit_join(time_s=60)
+    manager._send_proxy_commissioning_mode = AsyncMock()
+    app.packet_received(
+        commissioning_notification(
+            0x11223344,
+            1,
+            ENCRYPTED_COMMISSIONING,
+            gpp_short_addr=0x1111,
+            bidirectional_cap=True,
+        )
+    )
+    if started:
+        await asyncio.sleep(0)
+
+    await manager.permit_join(time_s=0)
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+    await wait_for_gp_processing()
+
+    assert not app.send_packet.mock_calls
+    assert manager.get_pending_device(synthetic_ieee(0x11223344)) is None
+
+
+async def test_channel_election_window_reopened(app, manager):
+    """A Channel Configuration is not sent for an earlier window."""
+    await manager.permit_join(time_s=60)
+    app.gp_packet_received(
+        make_gp_packet(
+            0x12345678,
+            GPDCommandID.ChannelRequest,
+            GPChannelRequestPayload(next_channel=4, second_next_channel=15).serialize(),
+            gpp_short_addr=0x1111,
+            rx_after_tx=True,
+        )
+    )
+    await asyncio.sleep(0)
+    await manager.permit_join(time_s=0)
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+    await wait_for_gp_processing()
+
+    assert not app.send_packet.mock_calls
+
+
+async def test_temp_master_election_window_extended(app, manager):
+    """Extending an open window keeps an election in progress."""
+    await manager.permit_join(time_s=60)
+    app.packet_received(
+        commissioning_notification(
+            0x11223344,
+            1,
+            ENCRYPTED_COMMISSIONING,
+            gpp_short_addr=0x1111,
+            bidirectional_cap=True,
+        )
+    )
+    await asyncio.sleep(0)
+    await manager.permit_join(time_s=120)
+    app.send_packet.reset_mock()
+    await wait_for_gp_processing()
+
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x1111
+    assert manager.get_pending_device(synthetic_ieee(0x11223344)) is not None
+
+
+async def test_temp_master_election_retry_after_window_reopened(app, manager):
+    """The same GPDF can start a fresh election in a new window."""
+    await manager.permit_join(time_s=60)
+    app.packet_received(
+        commissioning_notification(
+            0x11223344,
+            1,
+            ENCRYPTED_COMMISSIONING,
+            gpp_short_addr=0x1111,
+            bidirectional_cap=True,
+        )
+    )
+    await asyncio.sleep(0)
+    await manager.permit_join(time_s=0)
+    await manager.permit_join(time_s=60)
+    app.send_packet.reset_mock()
+    app.packet_received(
+        commissioning_notification(
+            0x11223344,
+            1,
+            ENCRYPTED_COMMISSIONING,
+            gpp_short_addr=0x2222,
+            bidirectional_cap=True,
+        )
+    )
+    await wait_for_gp_processing()
+
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x2222
+    assert manager.get_pending_device(synthetic_ieee(0x11223344)) is not None
+
+    app.gp_packet_received(encrypted_success_packet(0x11223344, 8))
+    await wait_for_gp_processing()
+    assert synthetic_ieee(0x11223344) in app.devices
+
+
+async def test_stale_commissioning_after_success(app, manager):
+    """A Commissioning GPDF tunneled after the Success GPDF does not restart it.
+
+    A proxy with a poor link forwards the GPD's last Commissioning GPDF after the
+    TempMaster's Commissioning Reply was answered with Success. Commissioning the GPD
+    again from it would divert its GPDFs to a pending device until the window closes.
+    """
+    await manager.permit_join(time_s=60)
+    app.packet_received(
+        commissioning_notification(
+            0x11223344,
+            1,
+            ENCRYPTED_COMMISSIONING,
+            gpp_short_addr=0x1234,
+            bidirectional_cap=True,
+        )
+    )
+    await wait_for_gp_processing()
+    app.packet_received(tunneled_success_packet(0x11223344, 8, SecurityLevel.Encrypted))
+    await wait_for_gp_processing()
+
+    ieee = synthetic_ieee(0x11223344)
+    device = app.devices[ieee]
+    assert device.frame_counter == 8
+    app.send_packet.reset_mock()
+
+    # The GPD's next Commissioning GPDF, with the outgoing counter 7 it carried
+    app.packet_received(
+        commissioning_notification(
+            0x11223344,
+            2,
+            ENCRYPTED_COMMISSIONING,
+            gpp_short_addr=0x5678,
+            bidirectional_cap=False,
+            link_quality=GPLinkQuality.Poor,
+        )
+    )
+    await wait_for_gp_processing()
+
+    assert manager.get_pending_device(ieee) is None
+    assert app.devices[ieee] is device
+    assert len(app.send_packet.mock_calls) == 0
+
+
+@pytest.mark.parametrize(
+    ("command_id", "payload"),
+    [
+        (GPDCommandID.CommissioningRequest, UNPROTECTED_COMMISSIONING),
+        (
+            GPDCommandID.ChannelRequest,
+            GPChannelRequestPayload(next_channel=4, second_next_channel=4).serialize(),
+        ),
+    ],
+)
+async def test_window_closed_commissioning_gpdf_keeps_election(
+    app, manager, command_id, payload
+):
+    """An unprotected commissioning GPDF outside of the window elects no TempMaster."""
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=SrcID(0x12345678)
+    )
+    commission_individual_key(device)
+    app.devices[device.ieee] = device
+
+    app.gp_packet_received(
+        encrypted_gp_packet(
+            0x12345678,
+            1000,
+            bytes([GPDCommandID.StepUp]) + STEP_UP.serialize(),
+            rx_after_tx=True,
+        ).replace(
+            gpp_short_addr=t.NWK(0x1111),
+            gpp_bidirectional_cap=True,
+            gpp_tx_queue_full=False,
+        )
+    )
+    app.gp_packet_received(
+        make_gp_packet(
+            0x12345678, command_id, payload, gpp_short_addr=0x2222, rx_after_tx=True
+        ).replace(gpp_bidirectional_cap=True, gpp_tx_queue_full=False)
+    )
+    await device.send_gpdf(GPDCommandID(0xFE), b"\x00")
+
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert sent_command(packet, ResponseSchema).temp_master_short_addr == 0x1111
