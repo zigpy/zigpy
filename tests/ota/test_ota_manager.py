@@ -70,12 +70,19 @@ FW_IMAGE = zigpy.ota.OtaImageWithMetadata(
 )
 
 
-def make_packet(dev: zigpy.device.Device, cluster: Cluster, cmd_name: str, **kwargs):
+def make_packet(
+    dev: zigpy.device.Device,
+    cluster: Cluster,
+    cmd_name: str,
+    *,
+    disable_default_response: bool = False,
+    **kwargs,
+):
     req_hdr, req_cmd = cluster._create_request(
         general=False,
         command_id=cluster.commands_by_name[cmd_name].id,
         schema=cluster.commands_by_name[cmd_name].schema,
-        disable_default_response=False,
+        disable_default_response=disable_default_response,
         direction=foundation.Direction.Client_to_Server,
         args=(),
         kwargs=kwargs,
@@ -932,7 +939,15 @@ async def test_ota_manager_deferred_download_failure():
         foundation.Status.ABORT,
     ],
 )
-async def test_ota_manager_upgrade_end_failure(end_status: foundation.Status) -> None:
+@pytest.mark.parametrize(
+    ("disable_default_response", "default_rsp_fails"),
+    [(False, False), (True, False), (False, True)],
+)
+async def test_ota_manager_upgrade_end_failure(
+    end_status: foundation.Status,
+    disable_default_response: bool,
+    default_rsp_fails: bool,
+) -> None:
     """A failed Upgrade End Request gets a Default Response, not an Upgrade End
     Response telling the device to upgrade (ZCL R8 11.13.9.4).
     """
@@ -954,6 +969,9 @@ async def test_ota_manager_upgrade_end_failure(end_status: foundation.Status) ->
         hdr, cmd = cluster.deserialize(packet.data.serialize())
         sent_commands.append((hdr, cmd))
 
+        if hdr.frame_control.is_general and default_rsp_fails:
+            raise DeliveryError("Failed to send the Default Response")
+
         if isinstance(cmd, Ota.ImageNotifyCommand):
             dev.application.packet_received(
                 make_packet(
@@ -974,6 +992,7 @@ async def test_ota_manager_upgrade_end_failure(end_status: foundation.Status) ->
                 dev,
                 cluster,
                 "upgrade_end",
+                disable_default_response=disable_default_response,
                 status=end_status,
                 manufacturer_code=FW_IMAGE.firmware.header.manufacturer_id,
                 image_type=FW_IMAGE.firmware.header.image_type,
@@ -984,6 +1003,7 @@ async def test_ota_manager_upgrade_end_failure(end_status: foundation.Status) ->
 
     dev.application.send_packet = AsyncMock(side_effect=send_packet)
 
+    # The update ends with the device's status, also when the Default Response fails
     status = await dev.update_firmware(FW_IMAGE)
     assert status == end_status
 
@@ -1001,8 +1021,19 @@ async def test_ota_manager_upgrade_end_failure(end_status: foundation.Status) ->
         if hdr.frame_control.is_general
         and hdr.command_id == foundation.GeneralCommand.Default_Response
     ]
-    assert len(default_rsps) == 1
-    rsp_hdr, rsp = default_rsps[0]
-    assert rsp_hdr.tsn == upgrade_end_tsns[0]
-    assert rsp.command_id == Ota.ServerCommandDefs.upgrade_end.id
-    assert rsp.status == foundation.Status.SUCCESS
+
+    # Not when the request has its disable-default-response bit set
+    if disable_default_response:
+        assert not default_rsps
+        return
+
+    # A failed send is retried by the device's request retries
+    if default_rsp_fails:
+        assert len(default_rsps) > 1
+    else:
+        assert len(default_rsps) == 1
+
+    for rsp_hdr, rsp in default_rsps:
+        assert rsp_hdr.tsn == upgrade_end_tsns[0]
+        assert rsp.command_id == Ota.ServerCommandDefs.upgrade_end.id
+        assert rsp.status == foundation.Status.SUCCESS
