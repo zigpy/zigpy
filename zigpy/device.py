@@ -730,6 +730,8 @@ class GreenPowerDevice(BaseDevice):
         clusters = self.endpoints[None].in_clusters
 
         for (cluster_id, manufacturer), attributes in grouped.items():
+            # TODO: create the clusters mandated by the GPD's DeviceID, a GPD may leave
+            # them out of its Cluster List (spec A.4.2.1.1.9)
             if cluster_id not in clusters:
                 self.debug("Dropping report for unknown cluster 0x%04X", cluster_id)
                 continue
