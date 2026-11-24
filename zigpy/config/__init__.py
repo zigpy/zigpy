@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import math
-
 import voluptuous as vol
 
 from zigpy.config.defaults import (
@@ -44,6 +42,7 @@ from zigpy.config.defaults import (
 from zigpy.config.validators import (
     cv_boolean,
     cv_deprecated,
+    cv_eui64,
     cv_folder,
     cv_hex,
     cv_json_file,
@@ -56,6 +55,7 @@ from zigpy.config.validators import (
 import zigpy.types as t
 
 CONF_ADDITIONAL_ENDPOINTS = "additional_endpoints"
+CONF_BLOCKED_DEVICES = "blocked_devices"
 CONF_DATABASE = "database_path"
 CONF_DB_COMMIT_INTERVAL = "database_commit_interval"
 CONF_DEVICE = "device"
@@ -424,9 +424,7 @@ ZIGPY_SCHEMA = vol.Schema(
         vol.Optional(CONF_DATABASE, default=None): vol.Any(None, str),
         vol.Optional(
             CONF_DB_COMMIT_INTERVAL, default=CONF_DB_COMMIT_INTERVAL_DEFAULT
-        ): vol.All(
-            vol.Coerce(float), vol.Range(min=0, max=math.inf, max_included=False)
-        ),
+        ): vol.All(vol.Coerce(float), vol.Range(min=0)),
         vol.Optional(CONF_NWK, default={}): SCHEMA_NETWORK,
         vol.Optional(CONF_OTA, default={}): SCHEMA_OTA,
         vol.Optional(
@@ -448,6 +446,9 @@ ZIGPY_SCHEMA = vol.Schema(
             CONF_NWK_VALIDATE_SETTINGS, default=CONF_NWK_VALIDATE_SETTINGS_DEFAULT
         ): cv_boolean,
         vol.Optional(CONF_ADDITIONAL_ENDPOINTS, default=[]): [cv_simple_descriptor],
+        vol.Optional(CONF_BLOCKED_DEVICES, default=[]): vol.All(
+            [cv_eui64], vol.Coerce(frozenset)
+        ),
         vol.Optional(
             CONF_MAX_CONCURRENT_REQUESTS, default=CONF_MAX_CONCURRENT_REQUESTS_DEFAULT
         ): vol.All(int, vol.Range(min=0)),

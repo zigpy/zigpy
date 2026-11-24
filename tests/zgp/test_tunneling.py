@@ -86,6 +86,8 @@ def test_notification(gpd_kwargs, expected_src_id, expected_ieee, expected_endpo
     assert gp_packet.lqi == 170
     assert gp_packet.gpp_short_addr == 0xAABB
     assert gp_packet.rx_after_tx is False
+    assert gp_packet.gpp_bidirectional_cap is False
+    assert gp_packet.gpp_tx_queue_full is True
 
 
 def test_commissioning_notification():
@@ -112,6 +114,31 @@ def test_commissioning_notification():
     assert gp_packet.lqi == 0
     assert gp_packet.gpp_short_addr == 0x1234
     assert gp_packet.rx_after_tx is False
+    assert gp_packet.gpp_bidirectional_cap is False
+    # A GP Commissioning Notification has no gpTxQueueFull sub-field
+    assert gp_packet.gpp_tx_queue_full is False
+
+
+def test_commissioning_notification_bidirectional_proxy():
+    """The TempMaster election needs the forwarding proxy's capability."""
+    command = CommissioningNotificationSchema(
+        options=make_commissioning_options(rx_after_tx=1, bidirectional_cap=1),
+        gpd_id=0x01020304,
+        frame_counter=42,
+        command_id=GPDCommandID.CommissioningRequest,
+        payload=GPDCommandPayload(b"\x02\x00"),
+        gpp_short_addr=0x1234,
+        gpp_gpd_link=GPPGPDLink(rssi=20, link_quality=GPLinkQuality.High),
+    )
+    packet = make_tunnel_packet(COMMISSIONING_NOTIFICATION_ID, command.serialize())
+
+    gp_packet = gp_packet_from_zcl(packet)
+
+    assert gp_packet.rx_after_tx is True
+    assert gp_packet.gpp_bidirectional_cap is True
+    assert gp_packet.gpp_tx_queue_full is False
+    assert gp_packet.lqi == 170
+    assert gp_packet.rssi == -70
 
 
 def test_commissioning_notification_security_failed():
