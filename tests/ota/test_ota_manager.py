@@ -922,3 +922,87 @@ async def test_ota_manager_deferred_download_failure():
         pytest.raises(aiohttp.ClientError, match="Download failed"),
     ):
         await update_firmware(MagicMock(), deferred_image)
+
+
+@pytest.mark.parametrize(
+    "end_status",
+    [
+        foundation.Status.INVALID_IMAGE,
+        foundation.Status.REQUIRE_MORE_IMAGE,
+        foundation.Status.ABORT,
+    ],
+)
+async def test_ota_manager_upgrade_end_failure(end_status: foundation.Status) -> None:
+    """A failed Upgrade End Request gets a Default Response, not an Upgrade End
+    Response telling the device to upgrade (ZCL R8 11.13.9.4).
+    """
+
+    app = make_app({})
+    dev = add_initialized_device(
+        app, nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77")
+    )
+    cluster = dev.endpoints[1].add_output_cluster(Ota.cluster_id)
+    assert FW_IMAGE.firmware is not None
+
+    sent_commands = []
+    upgrade_end_tsns = []
+
+    async def send_packet(packet: t.ZigbeePacket):
+        if packet.cluster_id != Ota.cluster_id:
+            return
+
+        hdr, cmd = cluster.deserialize(packet.data.serialize())
+        sent_commands.append((hdr, cmd))
+
+        if isinstance(cmd, Ota.ImageNotifyCommand):
+            dev.application.packet_received(
+                make_packet(
+                    dev,
+                    cluster,
+                    "query_next_image",
+                    field_control=Ota.QueryNextImageCommand.FieldControl(0),
+                    manufacturer_code=FW_IMAGE.firmware.header.manufacturer_id,
+                    image_type=FW_IMAGE.firmware.header.image_type,
+                    current_file_version=FW_IMAGE.firmware.header.file_version - 10,
+                )
+            )
+        elif isinstance(cmd, Ota.ClientCommandDefs.query_next_image_response.schema):
+            assert cmd.status == foundation.Status.SUCCESS
+
+            # The device downloads the image and rejects it
+            upgrade_end = make_packet(
+                dev,
+                cluster,
+                "upgrade_end",
+                status=end_status,
+                manufacturer_code=FW_IMAGE.firmware.header.manufacturer_id,
+                image_type=FW_IMAGE.firmware.header.image_type,
+                file_version=FW_IMAGE.firmware.header.file_version,
+            )
+            upgrade_end_tsns.append(upgrade_end.tsn)
+            dev.application.packet_received(upgrade_end)
+
+    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+
+    status = await dev.update_firmware(FW_IMAGE)
+    assert status == end_status
+
+    # No Upgrade End Response is sent for a failed upgrade
+    assert not any(
+        hdr.frame_control.is_cluster
+        and hdr.command_id == Ota.ClientCommandDefs.upgrade_end_response.id
+        for hdr, cmd in sent_commands
+    )
+
+    # It is acknowledged with a successful Default Response instead
+    default_rsps = [
+        (hdr, cmd)
+        for hdr, cmd in sent_commands
+        if hdr.frame_control.is_general
+        and hdr.command_id == foundation.GeneralCommand.Default_Response
+    ]
+    assert len(default_rsps) == 1
+    rsp_hdr, rsp = default_rsps[0]
+    assert rsp_hdr.tsn == upgrade_end_tsns[0]
+    assert rsp.command_id == Ota.ServerCommandDefs.upgrade_end.id
+    assert rsp.status == foundation.Status.SUCCESS

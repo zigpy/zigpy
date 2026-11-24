@@ -292,6 +292,25 @@ class OTAManager:
         self, hdr: foundation.ZCLHeader, command: foundation.CommandSchema
     ) -> None:
         """Handle upgrade end request."""
+        if command.status != foundation.Status.SUCCESS:
+            # A failed upgrade gets a successful Default Response, never an Upgrade End
+            # Response telling the device when to upgrade (ZCL R8 11.13.9.4)
+            if not hdr.frame_control.disable_default_response:
+                try:
+                    await self.ota_cluster.general_command(
+                        foundation.GeneralCommand.Default_Response,
+                        hdr.command_id,
+                        foundation.Status.SUCCESS,
+                        tsn=hdr.tsn,
+                    )
+                except Exception as ex:  # noqa: BLE001
+                    self.device.debug(
+                        "OTA upgrade_end default response exception", exc_info=ex
+                    )
+
+            self._finish(command.status)
+            return
+
         try:
             await self.ota_cluster.upgrade_end_response(
                 manufacturer_code=self.image.firmware.header.manufacturer_id,
