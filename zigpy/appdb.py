@@ -28,7 +28,13 @@ import zigpy.exceptions
 import zigpy.group
 import zigpy.profiles
 import zigpy.state
-from zigpy.store import StoreValueDeletedEvent, StoreValueUpdatedEvent
+from zigpy.store import (
+    NetworkStoreValueDeletedEvent,
+    NetworkStoreValueUpdatedEvent,
+    Store,
+    StoreValueDeletedEvent,
+    StoreValueUpdatedEvent,
+)
 import zigpy.types as t
 import zigpy.typing
 import zigpy.util
@@ -151,6 +157,14 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             ),
             application.device_stores.on_event(
                 StoreValueDeletedEvent.event_type, self.on_store_value_deleted
+            ),
+            application.network_store.on_event(
+                NetworkStoreValueUpdatedEvent.event_type,
+                self.on_network_store_value_updated,
+            ),
+            application.network_store.on_event(
+                NetworkStoreValueDeletedEvent.event_type,
+                self.on_network_store_value_deleted,
             ),
         ]
 
@@ -954,6 +968,49 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             f"DELETE FROM device_store{DB_V} WHERE ieee = ? AND namespace = ? AND key = ?",
             (event.device_ieee, event.namespace, event.key),
         )
+
+        await self._commit()
+
+    def on_network_store_value_updated(
+        self, event: NetworkStoreValueUpdatedEvent
+    ) -> None:
+        self.enqueue("_save_network_store_value", event)
+
+    async def _save_network_store_value(
+        self, event: NetworkStoreValueUpdatedEvent
+    ) -> None:
+        await self.execute(
+            f"""INSERT INTO network_store{DB_V}
+                    (namespace, key, value, version, last_updated)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT (namespace, key) DO UPDATE SET
+                    value=excluded.value,
+                    version=excluded.version,
+                    last_updated=excluded.last_updated""",
+            (
+                event.namespace,
+                event.key,
+                json.dumps(event.value),
+                event.version,
+                event.last_updated.timestamp(),
+            ),
+        )
+
+        await self._commit()
+
+    def on_network_store_value_deleted(
+        self, event: NetworkStoreValueDeletedEvent
+    ) -> None:
+        self.enqueue("_delete_network_store_value", event)
+
+    async def _delete_network_store_value(
+        self, event: NetworkStoreValueDeletedEvent
+    ) -> None:
+        await self.execute(
+            f"DELETE FROM network_store{DB_V} WHERE namespace = ? AND key = ?",
+            (event.namespace, event.key),
+        )
+
         await self._commit()
 
     def register_gp_device_events(self, device: GreenPowerDevice) -> None:
@@ -1067,7 +1124,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._load_devices()
         await self._load_gp_devices()
 
-        # Quirks applied below may read from the store
+        # Quirks applied below may read from the stores
+        await self._load_network_store()
         await self._load_device_store()
 
         await self._load_node_descriptors()
@@ -1296,27 +1354,57 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                         cluster.last_query_cmd = cmd
                         break
 
+    async def _load_network_store(self) -> None:
+        async with self.execute(f"SELECT * FROM network_store{DB_V}") as cursor:
+            async for namespace, key, value, version, last_updated in cursor:
+                self._restore_store_row(
+                    self._application.network_store,
+                    namespace,
+                    key,
+                    value,
+                    version,
+                    last_updated,
+                )
+
     async def _load_device_store(self) -> None:
         async with self.execute(f"SELECT * FROM device_store{DB_V}") as cursor:
             async for ieee, namespace, key, value, version, last_updated in cursor:
-                try:
-                    decoded = json.loads(value)
-                except ValueError:
-                    LOGGER.warning(
-                        "Skipping undecodable store value %s/%s of %s: %r",
-                        namespace,
-                        key,
-                        ieee,
-                        value,
-                    )
-                    continue
-
-                self._application.device_stores[ieee].namespace(namespace).restore(
+                self._restore_store_row(
+                    self._application.device_stores[ieee],
+                    namespace,
                     key,
-                    decoded,
-                    version=version,
-                    last_updated=datetime.fromtimestamp(last_updated, UTC),
+                    value,
+                    version,
+                    last_updated,
                 )
+
+    def _restore_store_row(
+        self,
+        store: Store[Any],
+        namespace: str,
+        key: str,
+        value: str,
+        version: int,
+        last_updated: float,
+    ) -> None:
+        try:
+            decoded = json.loads(value)
+        except ValueError:
+            LOGGER.warning(
+                "Skipping undecodable store value %s/%s of %s: %r",
+                namespace,
+                key,
+                store.log_name,
+                value,
+            )
+            return
+
+        store.namespace(namespace).restore(
+            key,
+            decoded,
+            version=version,
+            last_updated=datetime.fromtimestamp(last_updated, UTC),
+        )
 
     async def _load_gp_devices(self) -> None:
         async with self.execute(f"SELECT * FROM gp_devices{DB_V}") as cursor:

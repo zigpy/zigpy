@@ -32,7 +32,7 @@ import zigpy.listeners
 import zigpy.ota
 import zigpy.profiles
 import zigpy.state
-from zigpy.store import DeviceStores
+from zigpy.store import DeviceStores, NetworkStore
 import zigpy.topology
 import zigpy.types as t
 import zigpy.util
@@ -84,6 +84,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
     def __init__(self, config: dict) -> None:
         self.devices: dict[t.EUI64, BaseDevice] = {}
         self.device_stores = DeviceStores()
+        self.network_store = NetworkStore()
         self.state: zigpy.state.State = zigpy.state.State()
         self._listeners = {}
         self._config = self.SCHEMA(config)

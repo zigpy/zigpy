@@ -4175,3 +4175,129 @@ async def test_device_store_bound_at_construction(tmp_path):
     assert STORE_COUNT not in new_dev.store
 
     await app.shutdown()
+
+
+GROUP_STATE = StoredValue(namespace="zigpy.groups", key="allocation", type=dict)
+
+
+def _network_store_rows(db) -> list[tuple]:
+    """Read the committed network store rows through a separate connection."""
+    with contextlib.closing(sqlite3.connect(db)) as conn:
+        return list(
+            conn.execute(
+                f"SELECT namespace, key, value, version FROM network_store{zigpy.appdb.DB_V}"
+                " ORDER BY namespace, key"
+            )
+        )
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_network_store_round_trip(tmp_path):
+    """Network values survive a restart and are loaded before devices are resolved."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    dev, _, _ = _add_joined_device(app)
+
+    app.network_store[GROUP_STATE] = {"next": 5}
+    app.network_store.namespace("other").set("k", [1, None], version=3)
+    app.network_store.namespace("other")["gone"] = 1
+    del app.network_store.namespace("other")["gone"]
+    last_updated = app.network_store.last_updated(GROUP_STATE)
+
+    # Network values do not follow devices
+    app._dblistener.device_removed(dev)
+    await app.shutdown()
+
+    seen = []
+
+    def resolver(device):
+        seen.append(device.application.network_store.get(GROUP_STATE))
+        return device
+
+    app2 = await make_app_with_db(db, device_resolver=resolver)
+
+    # The device row was removed, so add one to see what its resolution can read
+    assert seen == []
+    assert app2.network_store[GROUP_STATE] == {"next": 5}
+    assert app2.network_store.last_updated(GROUP_STATE).timestamp() == pytest.approx(
+        last_updated.timestamp()
+    )
+
+    item = app2.network_store.namespace("other").item("k")
+    assert item.value == [1, None]
+    assert item.version == 3
+    assert "gone" not in app2.network_store.namespace("other")
+
+    _add_joined_device(app2)
+    app2.network_store[GROUP_STATE] = {"next": 6}
+    await app2.shutdown()
+
+    seen.clear()
+    app3 = await make_app_with_db(db, device_resolver=resolver)
+
+    assert seen == [{"next": 6}]
+    assert app3.network_store[GROUP_STATE] == {"next": 6}
+    assert _network_store_rows(db) == [
+        ("other", "k", "[1, null]", 3),
+        ("zigpy.groups", "allocation", '{"next": 6}', 1),
+    ]
+
+    await app3.shutdown()
+
+
+async def test_network_store_version_rules_persisted(tmp_path):
+    """A newer row is kept on disk, a stale one is dropped from it."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    ns = app.network_store.namespace("zigpy.groups")
+    ns.set("allocation", {"next": 1}, version=2)
+    ns.set("stale", 1, version=0)
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    stale = StoredValue(namespace="zigpy.groups", key="stale", type=int)
+
+    assert GROUP_STATE not in app2.network_store
+    assert app2.network_store.get(stale) is None
+    await app2.shutdown()
+
+    assert _network_store_rows(db) == [
+        ("zigpy.groups", "allocation", '{"next": 1}', 2),
+    ]
+
+
+async def test_network_store_skips_undecodable_row(tmp_path, caplog):
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    app.network_store[GROUP_STATE] = {"next": 1}
+    await app.shutdown()
+
+    with contextlib.closing(sqlite3.connect(db)) as conn:
+        conn.execute(
+            f"INSERT INTO network_store{zigpy.appdb.DB_V} VALUES (?, ?, ?, ?, ?)",
+            ("zigpy.groups", "broken", "{", 1, 0.0),
+        )
+        conn.commit()
+
+    with caplog.at_level(logging.WARNING):
+        app2 = await make_app_with_db(db)
+
+    assert "Skipping undecodable store value zigpy.groups/broken of network" in (
+        caplog.text
+    )
+    assert app2.network_store[GROUP_STATE] == {"next": 1}
+    assert "broken" not in app2.network_store.namespace("zigpy.groups")
+
+    await app2.shutdown()
+
+
+async def test_network_store_without_database():
+    """Without a database the network store is in memory."""
+    app = make_app({})
+    await app._load_db()
+
+    assert app._dblistener is None
+
+    app.network_store[GROUP_STATE] = {"next": 1}
+
+    assert app.network_store[GROUP_STATE] == {"next": 1}
