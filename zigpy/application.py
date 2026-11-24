@@ -32,6 +32,7 @@ import zigpy.listeners
 import zigpy.ota
 import zigpy.profiles
 import zigpy.state
+from zigpy.store import DeviceStores
 import zigpy.topology
 import zigpy.types as t
 import zigpy.util
@@ -82,6 +83,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
 
     def __init__(self, config: dict) -> None:
         self.devices: dict[t.EUI64, BaseDevice] = {}
+        self.device_stores = DeviceStores()
         self.state: zigpy.state.State = zigpy.state.State()
         self._listeners = {}
         self._config = self.SCHEMA(config)
@@ -638,12 +640,19 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         assert isinstance(ieee, t.EUI64)
         # TODO: Shut down existing device
 
+        self.device_stores.reopen(ieee)
         dev = ZigbeeDevice(self, ieee, nwk)
         self.devices[ieee] = dev
         return dev
 
     def _finalize_device(self, device: BaseDevice) -> BaseDevice:
         """Resolve a device, persist to DB, and register the device."""
+        if device.ieee not in self.devices:
+            # A device not created through `add_device` (Green Power devices are not)
+            # may hold the closed store of a device removed under the same IEEE
+            self.device_stores.reopen(device.ieee)
+            device._store = self.device_stores[device.ieee]
+
         self.listener_event("raw_device_initialized", device)
 
         # Ensure we propagate the original device signature
@@ -788,11 +797,16 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         if isinstance(dev, GreenPowerDevice):
             LOGGER.info("Removing device 0x%04x (%s)", dev.nwk, ieee)
             self.devices.pop(ieee, None)
+            self.device_stores.pop(ieee)
             self.listener_event("device_removed", dev)
             await self.green_power.unpair(dev)
             return
 
         dev.cancel_initialization()
+
+        # The device stays known until its leave request completes, but its store rows
+        # are deleted now, so nothing written in between may recreate them
+        self.device_stores.close(ieee)
 
         LOGGER.info("Removing device 0x%04x (%s)", dev.nwk, ieee)
         self.create_task(
@@ -843,6 +857,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             LOGGER.debug("Sending 'zdo_leave_req' failed: %s", ex)
 
         self.devices.pop(device.ieee, None)
+        self.device_stores.pop(device.ieee)
 
     def deserialize(
         self,
@@ -1026,6 +1041,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
     async def _ask_blocked_device_to_leave(self, ieee: t.EUI64, nwk: t.NWK) -> None:
         """Send a leave request to a blocked device."""
 
+        # The device object below is only for sending the request. It must not leave
+        # a store behind for an IEEE that is not a device.
+        had_store = ieee in self.device_stores
+
         # Without `RemoveChildren`: a blocked router's children may be our own devices
         device = ZigbeeDevice(self, ieee, nwk)
 
@@ -1042,6 +1061,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         finally:
             # Unregister the callbacks the device object registered on creation
             device.on_remove()
+
+            if not had_store and ieee not in self.devices:
+                self.device_stores.discard(ieee)
 
     def handle_leave(self, nwk: t.NWK, ieee: t.EUI64):
         """Called when a device has left the network."""

@@ -39,6 +39,7 @@ from zigpy.exceptions import DeliveryError
 import zigpy.listeners
 from zigpy.ota.manager import update_firmware
 from zigpy.profiles import zha, zll
+import zigpy.store
 import zigpy.types as t
 import zigpy.util
 from zigpy.util import CreateTaskMixin
@@ -74,6 +75,7 @@ from zigpy.zgp.util import (
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
     from zigpy.ota.providers import OtaImageWithMetadata
+    from zigpy.store import DeviceStore
 
 
 LOGGER = logging.getLogger(__name__)
@@ -145,6 +147,8 @@ class BaseDevice(
 ):
     """Base class shared by all device types, keyed on `ieee` and `nwk` addresses."""
 
+    _store: DeviceStore | None = None
+
     def __init__(
         self, application: ControllerApplication, ieee: t.EUI64, nwk: t.NWK
     ) -> None:
@@ -162,6 +166,28 @@ class BaseDevice(
 
         self._on_remove_callbacks: list[typing.Callable[[], None]] = []
         self._tasks: set[asyncio.Future[Any]] = set()
+
+        # Bound now, so that an object outliving its device's removal can never reach
+        # the store of a device added later under the same IEEE
+        stores = getattr(application, "device_stores", None)
+
+        if isinstance(stores, zigpy.store.DeviceStores):
+            self._store = stores[ieee]
+
+    @property
+    def store(self) -> DeviceStore:
+        """Persistent key/value store for device state that is not a ZCL attribute.
+
+        The store belongs to the application and is keyed by IEEE, so it is shared by
+        every object that represents this device (the raw device, a quirk replacement,
+        a re-interview shadow) and outlives each of them. A device object keeps the
+        store of the device it was created for, so once the device is removed, it
+        keeps a closed store even if a device with the same IEEE is added again.
+        """
+        if self._store is None:
+            self._store = self._application.device_stores[self.ieee]
+
+        return self._store
 
     def on_remove(self) -> None:
         """Call on remove callbacks."""
