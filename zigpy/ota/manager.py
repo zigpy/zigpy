@@ -69,6 +69,12 @@ class OTAManager:
         self.progress_callback = progress_callback
         self.force = force
 
+        # Slow devices re-send image block requests while our previous response is
+        # still queued. Responses are sent one at a time and only the newest request
+        # is answered, anything older has been superseded by the device.
+        self._image_block_lock = asyncio.Lock()
+        self._image_block_req_counter = 0
+
         self._upgrade_end_future = asyncio.get_running_loop().create_future()
         self._stall_timer = zigpy.datastructures.ReschedulableTimeout(
             self._stall_callback
@@ -180,6 +186,28 @@ class OTAManager:
         self, hdr: foundation.ZCLHeader, command: ImageBlockCommand
     ) -> None:
         """Handle image block request."""
+        self._image_block_req_counter += 1
+        req_counter = self._image_block_req_counter
+
+        async with self._image_block_lock:
+            # A repeat queued while the previous block was delivered is only skipped
+            # if the device's request for the next block arrived before that send
+            # returned. Otherwise the repeat is the newest request and the device gets
+            # the same block twice, which it ignores before asking again. Skipping by
+            # offset instead would stall the transfer when a block is lost in transit.
+            if req_counter != self._image_block_req_counter:
+                self.device.debug(
+                    "Skipping superseded OTA image block request for offset %d",
+                    command.file_offset,
+                )
+                return
+
+            await self._send_image_block(hdr, command)
+
+    async def _send_image_block(
+        self, hdr: foundation.ZCLHeader, command: ImageBlockCommand
+    ) -> None:
+        """Send an image block response."""
         default_image_block_size = _image_block_size_for_manufacturer(
             command.manufacturer_code, command.maximum_data_size
         )

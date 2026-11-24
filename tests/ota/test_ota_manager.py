@@ -1,3 +1,5 @@
+import asyncio
+from asyncio import timeout as asyncio_timeout
 import itertools
 import time
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -388,6 +390,131 @@ async def test_ota_manager():
     assert result == foundation.Status.SUCCESS
 
     assert bytes(reconstructed_firmware) == FW_IMAGE.firmware.serialize()
+
+
+async def test_ota_manager_slow_device_skips_superseded_block_requests() -> None:
+    """Test that a slow device repeating its block requests does not build a backlog.
+
+    Sleepy end devices re-ask for the same block every few seconds while the previous
+    answer is still waiting to be delivered. Only the newest request must be answered,
+    otherwise the device receives blocks for offsets it already has, ignores them and
+    eventually aborts.
+    """
+
+    app = make_app({})
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.EndDevice)
+    dev.model = "model1"
+    dev.manufacturer = "manufacturer1"
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = zigpy.profiles.zha.DeviceType.PUMP
+
+    cluster = ep.add_output_cluster(Ota.cluster_id)
+
+    # Stop the general cluster handler from interfering
+    dev.ota_in_progress = True
+
+    assert FW_IMAGE.firmware is not None
+    image_data = FW_IMAGE.firmware.serialize()
+    header = FW_IMAGE.firmware.header
+
+    # Repeats of the current request that arrive while its answer is being delivered
+    repeats_per_delivery = 3
+
+    expected_offset: int | None = None
+    stale_offsets: list[int] = []
+    reconstructed_firmware = bytearray()
+
+    def request_block(offset: int) -> None:
+        dev.application.packet_received(
+            make_packet(
+                dev,
+                cluster,
+                "image_block",
+                field_control=Ota.ImageBlockCommand.FieldControl.RequestNodeAddr,
+                manufacturer_code=header.manufacturer_id,
+                image_type=header.image_type,
+                file_version=header.file_version,
+                file_offset=offset,
+                maximum_data_size=63,
+                request_node_addr=dev.ieee,
+            )
+        )
+
+    def end_upgrade(status: foundation.Status) -> None:
+        dev.application.packet_received(
+            make_packet(
+                dev,
+                cluster,
+                "upgrade_end",
+                status=status,
+                manufacturer_code=header.manufacturer_id,
+                image_type=header.image_type,
+                file_version=header.file_version,
+            )
+        )
+
+    async def send_packet(packet: t.ZigbeePacket) -> None:
+        nonlocal expected_offset
+
+        if packet.cluster_id != Ota.cluster_id:
+            return
+
+        hdr, cmd = cluster.deserialize(packet.data.serialize())
+
+        if isinstance(cmd, Ota.ImageNotifyCommand):
+            dev.application.packet_received(
+                make_packet(
+                    dev,
+                    cluster,
+                    "query_next_image",
+                    field_control=Ota.QueryNextImageCommand.FieldControl.HardwareVersion,
+                    manufacturer_code=header.manufacturer_id,
+                    image_type=header.image_type,
+                    current_file_version=header.file_version - 10,
+                    hardware_version=1,
+                )
+            )
+        elif isinstance(cmd, Ota.ClientCommandDefs.query_next_image_response.schema):
+            expected_offset = 0
+            request_block(expected_offset)
+        elif isinstance(cmd, Ota.ClientCommandDefs.image_block_response.schema):
+            # Delivery to a sleepy end device is slow: the device re-asks for the
+            # block it waits for before this answer reaches it. Yield once so those
+            # requests are queued before the send returns.
+            assert expected_offset is not None
+            for _ in range(repeats_per_delivery):
+                request_block(expected_offset)
+
+            await asyncio.sleep(0)
+
+            if cmd.file_offset != expected_offset:
+                # A real device ignores a stale block and eventually aborts
+                stale_offsets.append(cmd.file_offset)
+                expected_offset = None
+                end_upgrade(foundation.Status.ABORT)
+                return
+
+            reconstructed_firmware.extend(cmd.image_data)
+            expected_offset = cmd.file_offset + len(cmd.image_data)
+
+            if expected_offset == len(image_data):
+                expected_offset = None
+                end_upgrade(foundation.Status.SUCCESS)
+            else:
+                request_block(expected_offset)
+
+    dev.application.send_packet = AsyncMock(side_effect=send_packet)
+
+    async with asyncio_timeout(10):
+        result = await update_firmware(dev, FW_IMAGE)
+
+    assert stale_offsets == []
+    assert result == foundation.Status.SUCCESS
+    assert bytes(reconstructed_firmware) == image_data
 
 
 async def test_ota_manager_image_page():
