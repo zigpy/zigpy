@@ -234,7 +234,8 @@ class OTAManager:
             command.page_size, len(self._image_data) - command.file_offset
         )
 
-        if bytes_remaining <= 0:
+        # Blocks of zero bytes would never advance through the page
+        if bytes_remaining <= 0 or max_block_size <= 0:
             await self._finish_malformed_image_block_response(
                 "image_page_req",
                 tsn=hdr.tsn,
