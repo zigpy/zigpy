@@ -2839,8 +2839,13 @@ async def test_gp_device_attribute_round_trip(
         if is_server
         else device.endpoints[None].out_clusters
     )
-    # A GPD has no ZCL sequence number
-    await mock_attribute_report(clusters[cluster.cluster_id], {attr_def: value}, tsn=0)
+    # A GPD has no ZCL sequence number and cannot receive a Default Response
+    await mock_attribute_report(
+        clusters[cluster.cluster_id],
+        {attr_def: value},
+        tsn=0,
+        disable_default_response=True,
+    )
     await app.shutdown()
 
     with contextlib.closing(sqlite3.connect(db)) as conn:

@@ -514,6 +514,7 @@ async def mock_attribute_report(
     attributes: dict[str | int | foundation.ZCLAttributeDef, typing.Any],
     *,
     tsn: int | None = None,
+    disable_default_response: bool = False,
 ) -> None:
     """Mock attribute reports on a cluster."""
     reports = []
@@ -560,7 +561,7 @@ async def mock_attribute_report(
             if cluster.is_client
             else foundation.Direction.Server_to_Client
         ),
-        disable_default_response=False,
+        disable_default_response=disable_default_response,
         reserved=0b000,
     )
 
