@@ -163,6 +163,13 @@ class StoreNamespace:
         self.set(key, value)
 
     def __delitem__(self, key: str) -> None:
+        self.delete(key)
+
+    def delete(self, key: str) -> None:
+        """Delete a key and emit `StoreValueDeletedEvent`.
+
+        Raises `KeyError` if the key is absent. A closed store ignores the delete.
+        """
         if key not in self._items:
             raise KeyError(key)
 

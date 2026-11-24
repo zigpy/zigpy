@@ -78,6 +78,27 @@ def test_namespace_mapping(stores: DeviceStores) -> None:
     with pytest.raises(KeyError):
         del ns["k"]
 
+    ns.delete("k2")
+
+    assert "k2" not in ns
+    assert len(ns) == 0
+
+    with pytest.raises(KeyError):
+        ns.delete("k2")
+
+
+def test_namespace_delete_event(stores: DeviceStores, listener: MagicMock) -> None:
+    ieee = make_ieee(1)
+    ns = stores[ieee].namespace("ns")
+    ns["k"] = 1
+    listener.reset_mock()
+
+    ns.delete("k")
+
+    assert listener.mock_calls == [
+        call(StoreValueDeletedEvent(device_ieee=str(ieee), namespace="ns", key="k"))
+    ]
+
 
 @pytest.mark.parametrize(
     ("value", "expected"),
