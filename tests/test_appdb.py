@@ -5150,6 +5150,35 @@ async def test_attribute_row_not_offered_if_defined_under_other_code(
     assert _read_attr_row(db, Basic.cluster_id, 0x7777) == (5, None)
 
 
+async def test_attribute_row_migration_load_transaction_fails(tmp_path) -> None:
+    """A failed load keeps the row and leaves the held store writes to the worker."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+    await app.shutdown()
+
+    _insert_attr_row(db, 0x7777, 5)
+
+    app2 = make_app({conf.CONF_DATABASE: str(db)})
+    app2.register_device_resolver(_quirk_resolver(MigratingBasic))
+
+    with (
+        patch.object(
+            zigpy.appdb.PersistingListener,
+            "_replace_attribute_cache_row",
+            side_effect=sqlite3.OperationalError("Broken"),
+        ),
+        pytest.raises(sqlite3.OperationalError, match="Broken"),
+    ):
+        await app2._load_db()
+
+    # The transaction was rolled back, so the migrated value is written by the worker
+    await app2.flush_database()
+    await app2.shutdown()
+
+    assert _read_attr_row(db, Basic.cluster_id, 0x7777) == (5, None)
+    assert _count_store_rows(db, dev.ieee) == 1
+
+
 @pytest.mark.parametrize("failure", ["write", "closed"])
 async def test_attribute_row_kept_if_value_not_saved(tmp_path, caplog, failure) -> None:
     """Rows are kept, to be migrated again, if their value does not reach the database."""
