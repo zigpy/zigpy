@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone, tzinfo
+import io
 import re
+import struct
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -11,9 +13,31 @@ import pytest
 from zigpy import device, types, zcl
 import zigpy.endpoint
 from zigpy.ota import OTA, OtaImagesResult
+from zigpy.time import TimeSnapshot, utc_periods
 from zigpy.zcl import OtaImageAvailableEvent, OtaQueryCacheUpdatedEvent, foundation
-from zigpy.zcl.clusters.general import Basic, KeepAlive, Ota, Time
+from zigpy.zcl.clusters.closures import DoorLock
+from zigpy.zcl.clusters.general import (
+    Basic,
+    Commissioning,
+    CoordinateSystem,
+    GetLocationDataFlags,
+    KeepAlive,
+    LocationMethod,
+    LocationType,
+    MultistateInput,
+    Ota,
+    Partition,
+    PartitionAckOptions,
+    PartitionFragmentationOptions,
+    PowerProfile,
+    ResetStartupParametersOptions,
+    RSSILocation,
+    Scenes,
+    Time,
+)
+from zigpy.zcl.clusters.protocol import BacnetProtocolTunnel, BinaryInputRegular
 import zigpy.zcl.clusters.security as sec
+from zigpy.zcl.clusters.wwah import WorksWithAllHubs
 from zigpy.zdo import types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, call, patch, sentinel
@@ -37,6 +61,7 @@ def test_attributes():
             assert attr.id == attrid
             assert attr.name
             assert attr.type
+            assert attr.zcl_type != foundation.DataTypeId.unk
             assert callable(attr.type.deserialize)
             assert callable(attr.type.serialize)
 
@@ -170,42 +195,146 @@ async def test_keepalive_cluster() -> None:
     )
 
 
-def _make_patched_datetime(fake_now):
-    """Create a PatchedDatetime class that returns `fake_now` as the current time."""
+@pytest.mark.parametrize(
+    "command",
+    [Scenes.ServerCommandDefs.add, Scenes.ServerCommandDefs.enhanced_add],
+)
+def test_scenes_add_extension_field_sets(command: foundation.ZCLCommandDef) -> None:
+    """Add Scene and Enhanced Add Scene carry trailing extension field sets."""
+    header = (
+        b"\x34\x12"  # Group ID
+        b"\x05"  # Scene ID
+        b"\x0a\x00"  # Transition time
+        b"\x02ab"  # Scene name
+    )
+    field_sets = (
+        b"\x06\x00\x01\x01"  # On/Off: on_off=1
+        b"\x08\x00\x01\x80"  # Level control: current_level=0x80
+        b"\x00\x03\x00"  # Color control: empty field set
+    )
 
-    class PatchedDatetime(datetime):
-        _fake_now = fake_now
+    cmd, rest = command.schema.deserialize(header + field_sets)
+    assert rest == b""
+    assert cmd.group_id == 0x1234
+    assert cmd.scene_id == 5
+    assert cmd.transition_time == 10
+    assert cmd.scene_name == "ab"
+    assert cmd.extension_field_sets == [
+        Scenes.ExtensionFieldSet(cluster_id=0x0006, extension=b"\x01"),
+        Scenes.ExtensionFieldSet(cluster_id=0x0008, extension=b"\x80"),
+        Scenes.ExtensionFieldSet(cluster_id=0x0300, extension=b""),
+    ]
+    assert cmd.serialize() == header + field_sets
 
-        def astimezone(self):
-            return self.replace(tzinfo=self._fake_now.tzinfo)
+    # Extension field sets may be omitted entirely
+    cmd, rest = command.schema.deserialize(header)
+    assert rest == b""
+    assert cmd.extension_field_sets is None
 
-        @classmethod
-        def now(cls, tzinfo=None):
-            if tzinfo is None:
-                return cls(
-                    cls._fake_now.year,
-                    cls._fake_now.month,
-                    cls._fake_now.day,
-                    cls._fake_now.hour,
-                    cls._fake_now.minute,
-                    cls._fake_now.second,
-                )
-            else:
-                assert tzinfo is UTC
-                return (
-                    cls(
-                        cls._fake_now.year,
-                        cls._fake_now.month,
-                        cls._fake_now.day,
-                        cls._fake_now.hour,
-                        cls._fake_now.minute,
-                        cls._fake_now.second,
-                        tzinfo=tzinfo,
-                    )
-                    - cls._fake_now.utcoffset()
-                )
+    kwargs = {
+        "group_id": 0x1234,
+        "scene_id": 5,
+        "transition_time": 10,
+        "scene_name": "ab",
+    }
+    assert command.schema(**kwargs).serialize() == header
 
-    return PatchedDatetime
+    # An empty list of field sets adds no bytes
+    assert command.schema(**kwargs, extension_field_sets=[]).serialize() == header
+
+    # A truncated field set is rejected
+    with pytest.raises(ValueError):
+        command.schema.deserialize(header + b"\x06\x00\x02\x01")
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        Scenes.ClientCommandDefs.view_response,
+        Scenes.ClientCommandDefs.enhanced_view_response,
+    ],
+)
+def test_scenes_view_response_extension_field_sets(
+    command: foundation.ZCLCommandDef,
+) -> None:
+    """View Scene responses carry extension field sets on success only."""
+    header = b"\x34\x12" + b"\x05"  # Group ID, Scene ID
+    success = (
+        b"\x00"  # Status
+        + header
+        + b"\x0a\x00"  # Transition time
+        + b"\x02ab"  # Scene name
+    )
+    field_sets = b"\x06\x00\x01\x01" + b"\x02\x01\x02\xff\x00"
+
+    cmd, rest = command.schema.deserialize(success + field_sets)
+    assert rest == b""
+    assert cmd.status == foundation.Status.SUCCESS
+    assert cmd.transition_time == 10
+    assert cmd.scene_name == "ab"
+    assert cmd.extension_field_sets == [
+        Scenes.ExtensionFieldSet(cluster_id=0x0006, extension=b"\x01"),
+        Scenes.ExtensionFieldSet(cluster_id=0x0102, extension=b"\xff\x00"),
+    ]
+    assert cmd.serialize() == success + field_sets
+
+    # A successful response with a scene that has no field sets
+    cmd, rest = command.schema.deserialize(success)
+    assert rest == b""
+    assert cmd.extension_field_sets is None
+    assert cmd.serialize() == success
+
+    # Any other status omits all trailing fields
+    failure = b"\x8b" + header
+    cmd, rest = command.schema.deserialize(failure)
+    assert rest == b""
+    assert cmd.status == foundation.Status.NOT_FOUND
+    assert cmd.transition_time is None
+    assert cmd.scene_name is None
+    assert cmd.extension_field_sets is None
+    assert cmd.serialize() == failure
+
+
+@pytest.mark.parametrize(
+    ("raw_mode", "mode"),
+    [
+        (0x00, Scenes.CopyMode(0)),
+        (0x01, Scenes.CopyMode.Copy_All_Scenes),
+        # Reserved bits are kept
+        (0x81, Scenes.CopyMode.Copy_All_Scenes | Scenes.CopyMode(0x80)),
+    ],
+)
+def test_scenes_copy_mode(raw_mode: int, mode: Scenes.CopyMode) -> None:
+    """The Copy Scene mode field is a map8 with a Copy All Scenes bit."""
+    data = (
+        bytes([raw_mode])
+        + b"\x34\x12"  # Group identifier from
+        + b"\x05"  # Scene identifier from
+        + b"\x78\x56"  # Group identifier to
+        + b"\x06"  # Scene identifier to
+    )
+    schema = Scenes.ServerCommandDefs.copy.schema
+
+    cmd, rest = schema.deserialize(data)
+    assert rest == b""
+    assert type(cmd.mode) is Scenes.CopyMode
+    assert cmd.mode == mode
+    assert cmd.group_id_from == 0x1234
+    assert cmd.scene_id_from == 5
+    assert cmd.group_id_to == 0x5678
+    assert cmd.scene_id_to == 6
+
+    # Plain integers keep working
+    assert (
+        schema(
+            mode=raw_mode,
+            group_id_from=0x1234,
+            scene_id_from=5,
+            group_id_to=0x5678,
+            scene_id_to=6,
+        ).serialize()
+        == data
+    )
 
 
 @pytest.mark.parametrize(
@@ -240,10 +369,12 @@ def _make_patched_datetime(fake_now):
     ],
 )
 async def test_time_cluster(
-    fake_now, expected_utc, expected_tz, expected_standard, expected_local
+    fake_now, expected_utc, expected_tz, expected_standard, expected_local, app_mock
 ):
     ep = MagicMock()
     ep.reply = AsyncMock()
+    ep.device.application = app_mock
+    app_mock.local_timezone = fake_now.tzinfo
 
     cluster = Time(ep)
 
@@ -251,9 +382,8 @@ async def test_time_cluster(
         foundation.GeneralCommand.Read_Attributes_rsp
     ].schema
 
-    PatchedDatetime = _make_patched_datetime(fake_now)
-
-    with patch("zigpy.zcl.clusters.general.datetime", PatchedDatetime):
+    with patch("zigpy.zcl.clusters.general.datetime", wraps=datetime) as clock:
+        clock.now.return_value = fake_now.astimezone(UTC)
         # Supported attributes
         rsp1 = await read_attributes(
             cluster,
@@ -321,6 +451,298 @@ async def test_time_cluster(
             )
         ]
     )
+
+
+async def test_time_cluster_dst_attributes(app_mock):
+    ep = MagicMock()
+    ep.reply = AsyncMock()
+    ep.device.application = app_mock
+    cluster = Time(ep)
+
+    response = await read_attributes(cluster, [0x0003, 0x0004, 0x0005])
+
+    assert [record.status for record in response.status_records] == [
+        foundation.Status.SUCCESS,
+        foundation.Status.SUCCESS,
+        foundation.Status.SUCCESS,
+    ]
+
+
+@pytest.mark.parametrize(
+    ("zone_name", "instant", "start", "end", "shift"),
+    [
+        ("Europe/Berlin", "2026-01-15", "2026-03-29T01:00", "2026-10-25T01:00", 3600),
+        ("Europe/Berlin", "2026-07-15", "2026-03-29T01:00", "2026-10-25T01:00", 3600),
+        ("Europe/Berlin", "2026-12-15", "2027-03-28T01:00", "2027-10-31T01:00", 3600),
+        (
+            "America/Los_Angeles",
+            "2026-07-15",
+            "2026-03-08T10:00",
+            "2026-11-01T09:00",
+            3600,
+        ),
+        (
+            "Australia/Sydney",
+            "2026-01-15",
+            "2025-10-04T16:00",
+            "2026-04-04T16:00",
+            3600,
+        ),
+        (
+            "Australia/Sydney",
+            "2026-07-15",
+            "2026-10-03T16:00",
+            "2027-04-03T16:00",
+            3600,
+        ),
+        (
+            "Australia/Sydney",
+            "2026-12-15",
+            "2026-10-03T16:00",
+            "2027-04-03T16:00",
+            3600,
+        ),
+        (
+            "Australia/Lord_Howe",
+            "2026-01-15",
+            "2025-10-04T15:30",
+            "2026-04-04T15:00",
+            1800,
+        ),
+        ("Australia/Sydney", "2000-01-02", "2000-01-01", "2000-03-25T16:00", 3600),
+    ],
+)
+async def test_time_cluster_dst_period(zone_name, instant, start, end, shift, app_mock):
+    zone = ZoneInfo(zone_name)
+    now = datetime.fromisoformat(instant).replace(tzinfo=UTC)
+    ep = MagicMock()
+    ep.reply = AsyncMock()
+    ep.device.application = app_mock
+    app_mock.local_timezone = zone
+    cluster = Time(ep)
+
+    with patch("zigpy.zcl.clusters.general.datetime", wraps=datetime) as clock:
+        clock.now.return_value = now
+        response = await read_attributes(cluster, list(range(8)))
+        clock.now.assert_called_once_with(UTC)
+
+    assert all(
+        record.status == foundation.Status.SUCCESS for record in response.status_records
+    )
+    values = {record.attrid: record.value.value for record in response.status_records}
+    assert values[3] == types.UTCTime.from_datetime(
+        datetime.fromisoformat(start).replace(tzinfo=UTC)
+    )
+    assert (
+        values[4]
+        == types.UTCTime.from_datetime(datetime.fromisoformat(end).replace(tzinfo=UTC))
+        - 1
+    )
+    assert values[5] == shift
+    assert response.status_records[3].value.type == foundation.DataTypeId.uint32
+    assert response.status_records[4].value.type == foundation.DataTypeId.uint32
+    assert response.status_records[5].value.type == foundation.DataTypeId.int32
+    assert values[6] == values[0] + values[2]
+    assert values[7] == values[6] + (
+        shift if values[3] <= values[0] <= values[4] else 0
+    )
+    assert values[7] == types.UTCTime.from_datetime(
+        now + now.astimezone(zone).utcoffset()
+    )
+
+
+@pytest.mark.parametrize(
+    "zone", [UTC, timezone(timedelta(hours=5, minutes=30)), ZoneInfo("Asia/Tokyo")]
+)
+def test_snapshot_no_dst(zone):
+    now = datetime(2026, 7, 15, tzinfo=UTC)
+    values = TimeSnapshot.compute(zone, now)
+    assert values.authoritative
+    assert (values.dst_start, values.dst_end, values.dst_shift) == (
+        types.UTCTime.INVALID,
+        types.UTCTime.INVALID,
+        0,
+    )
+    assert values.standard_time == values.local_time
+    assert values.local_time == values.time + values.time_zone
+
+
+@pytest.mark.parametrize(
+    "zone_name",
+    [
+        "Europe/Berlin",
+        "Australia/Sydney",
+        "Australia/Lord_Howe",
+        "Europe/Dublin",
+        "Africa/Casablanca",
+    ],
+)
+def test_snapshot_transition_boundaries(zone_name):
+    zone = ZoneInfo(zone_name)
+    for start, end, _offset, _is_dst in utc_periods(zone, 2026):
+        for transition in (start, end):
+            for seconds in (-1, 0, 1):
+                now = types.UTCTime(transition).to_datetime() + timedelta(
+                    seconds=seconds
+                )
+                values = TimeSnapshot.compute(zone, now)
+                current_shift = values.local_time - values.standard_time
+                advertised_shift = (
+                    values.dst_shift
+                    if values.dst_start <= values.time <= values.dst_end
+                    else 0
+                )
+                assert values.authoritative
+                assert advertised_shift == current_shift
+                assert bool(current_shift) == bool(now.astimezone(zone).dst())
+                assert values.local_time == values.standard_time + current_shift
+                assert values.local_time == types.UTCTime.from_datetime(
+                    now + now.astimezone(zone).utcoffset()
+                )
+
+
+def test_utc_periods_cache():
+    utc_periods.cache_clear()
+    zone = ZoneInfo("Europe/Berlin")
+    winter = TimeSnapshot.compute(zone, datetime(2026, 1, 15, tzinfo=UTC))
+    summer = TimeSnapshot.compute(zone, datetime(2026, 7, 15, tzinfo=UTC))
+    assert winter.dst_start == summer.dst_start
+    assert winter.dst_shift == summer.dst_shift == 3600
+    assert utc_periods.cache_info().misses == 1
+    assert TimeSnapshot.compute(zone, datetime(2026, 1, 15, tzinfo=UTC)) == winter
+    TimeSnapshot.compute(zone, datetime(2027, 1, 15, tzinfo=UTC))
+    assert utc_periods.cache_info().misses == 2
+    changed = TimeSnapshot.compute(
+        ZoneInfo("Australia/Sydney"), datetime(2027, 1, 15, tzinfo=UTC)
+    )
+    assert changed.time_zone == 36000
+    assert utc_periods.cache_info().misses == 3
+
+
+def test_snapshot_equivalent_aware_datetimes():
+    zone = ZoneInfo("Europe/Berlin")
+    now = datetime(2026, 10, 25, 0, 30, tzinfo=UTC)
+
+    assert TimeSnapshot.compute(zone, now.astimezone(zone)) == TimeSnapshot.compute(
+        zone, now
+    )
+
+
+def test_snapshot_negative_dst():
+    start = datetime(2026, 3, 1, tzinfo=UTC)
+    end = datetime(2026, 6, 1, tzinfo=UTC)
+    header = b"TZif\0" + bytes(15) + struct.pack(">6I", 0, 0, 0, 3, 2, 8)
+    transitions = struct.pack(
+        ">3i",
+        int(datetime(2025, 1, 1, tzinfo=UTC).timestamp()),
+        int(start.timestamp()),
+        int(end.timestamp()),
+    )
+    offsets = struct.pack(">iBBiBB", 3600, 0, 0, 0, 1, 4)
+    zone = ZoneInfo.from_file(
+        io.BytesIO(header + transitions + b"\0\1\0" + offsets + b"STD\0DST\0")
+    )
+    now = datetime(2026, 4, 15, tzinfo=UTC)
+    values = TimeSnapshot.compute(zone, now)
+    assert values.time_zone == 3600
+    assert values.dst_shift == -3600
+    assert values.local_time == values.time
+    assert values.dst_start == types.UTCTime.from_datetime(start)
+    assert values.dst_end == types.UTCTime.from_datetime(end) - 1
+    assert types.int32s.deserialize(types.int32s(values.dst_shift).serialize()) == (
+        -3600,
+        b"",
+    )
+
+
+@pytest.mark.parametrize(
+    "seconds", [-0.5, -1, types.UTCTime.INVALID, types.UTCTime.INVALID + 1]
+)
+def test_snapshot_out_of_range(seconds):
+    values = TimeSnapshot.compute(
+        UTC, types.UTCTime(0).to_datetime() + timedelta(seconds=seconds)
+    )
+    assert values.time == types.UTCTime.INVALID
+    assert not values.authoritative
+
+
+@pytest.mark.parametrize("seconds", [0, 1, types.UTCTime.INVALID - 1])
+def test_snapshot_valid_range(seconds):
+    values = TimeSnapshot.compute(
+        UTC, types.UTCTime(0).to_datetime() + timedelta(seconds=seconds)
+    )
+    assert values.time == seconds
+    assert values.authoritative
+
+
+def test_snapshot_missing_timezone():
+    now = datetime(2026, 7, 15, tzinfo=UTC)
+    values = TimeSnapshot.compute(None, now)
+    assert not values.authoritative
+    assert values.local_time == types.UTCTime.from_datetime(
+        now + now.astimezone().utcoffset()
+    )
+    assert values.dst_start == values.dst_end == types.UTCTime.INVALID
+
+
+@pytest.mark.parametrize("valid_clock", [True, False])
+async def test_time_cluster_status(valid_clock, app_mock):
+    ep = MagicMock()
+    ep.device.application = app_mock
+    cluster = Time(ep)
+    now = datetime(2026 if valid_clock else 1999, 7, 15, tzinfo=UTC)
+    with patch("zigpy.zcl.clusters.general.datetime", wraps=datetime) as clock:
+        clock.now.return_value = now
+        response = await read_attributes(cluster, [0, 1, 3, 4, 5])
+    values = {record.attrid: record.value.value for record in response.status_records}
+    assert values[1] == (Time.TimeStatus.Master if valid_clock else 0)
+    assert values[3] == values[4] == types.UTCTime.INVALID
+    assert values[5] == 0
+
+
+def test_snapshot_unbounded_dst():
+    class PermanentDST(tzinfo):
+        def utcoffset(self, value):
+            return timedelta(hours=2)
+
+        def dst(self, value):
+            return timedelta(hours=1)
+
+    values = TimeSnapshot.compute(PermanentDST(), datetime(2026, 7, 15, tzinfo=UTC))
+    assert values.authoritative
+    assert values.time_zone == 7200
+    assert values.dst_start == values.dst_end == types.UTCTime.INVALID
+    assert values.dst_shift == 0
+
+
+def test_snapshot_inferred_dst_magnitude():
+    # CPython infers dst() per offset type from its first transition. Inuvik
+    # jumped from PST straight to MDT in 1979, so dst() reports two hours.
+    zone = ZoneInfo("America/Inuvik")
+    now = datetime(2025, 7, 15, tzinfo=UTC)
+    assert now.astimezone(zone).dst() == timedelta(hours=2)
+    values = TimeSnapshot.compute(zone, now)
+    assert values.time_zone == -25200
+    assert values.dst_shift == 3600
+    assert values.local_time == values.standard_time + 3600
+
+
+async def test_time_cluster_shared_utc_periods_cache(app_mock):
+    zone = ZoneInfo("Europe/Berlin")
+    app_mock.local_timezone = zone
+    endpoints = [MagicMock(), MagicMock()]
+    for endpoint in endpoints:
+        endpoint.device.application = app_mock
+        endpoint.reply = AsyncMock()
+    clusters = [Time(endpoint) for endpoint in endpoints]
+    utc_periods.cache_clear()
+    responses = await asyncio.gather(
+        *(read_attributes(cluster, [3, 4, 5]) for cluster in clusters)
+    )
+    assert utc_periods.cache_info().misses == 1
+    assert responses[0] == responses[1]
+    serialized = responses[0].serialize()
+    assert type(responses[0]).deserialize(serialized) == (responses[0], b"")
 
 
 @pytest.fixture
@@ -498,169 +920,124 @@ def test_basic_cluster_power_source():
 
 
 @pytest.mark.parametrize(
-    ("raw", "mode", "name"),
+    ("raw", "mode", "strobe", "level"),
     [
-        (0x00, 0, "Stop"),
-        (0x01, 0, "Stop"),
-        (0x02, 0, "Stop"),
-        (0x03, 0, "Stop"),
-        (0x30, 3, "Emergency"),
-        (0x31, 3, "Emergency"),
-        (0x32, 3, "Emergency"),
-        (0x33, 3, "Emergency"),
+        (
+            0x00,
+            sec.WarningMode.Stop,
+            sec.Strobe.No_strobe,
+            sec.SirenLevel.Low_level_sound,
+        ),
+        (
+            0x04,
+            sec.WarningMode.Stop,
+            sec.Strobe.Strobe,
+            sec.SirenLevel.Low_level_sound,
+        ),
+        (
+            0x17,
+            sec.WarningMode.Burglar,
+            sec.Strobe.Strobe,
+            sec.SirenLevel.Very_high_level_sound,
+        ),
+        (
+            0x32,
+            sec.WarningMode.Emergency,
+            sec.Strobe.No_strobe,
+            sec.SirenLevel.High_level_sound,
+        ),
+        (
+            0x65,
+            sec.WarningMode.Emergency_Panic,
+            sec.Strobe.Strobe,
+            sec.SirenLevel.Medium_level_sound,
+        ),
     ],
 )
-def test_security_iaswd_warning_mode(raw, mode, name):
-    """Test warning command class of IasWD cluster."""
-
-    def _test(warning, data):
-        assert warning.serialize() == data
-        assert warning == raw
-        assert warning.mode == mode
-        assert warning.mode.name == name
-        warning.mode = mode
-        assert warning.serialize() == data
-        assert warning.mode == mode
-
-    data = types.uint8_t(raw).serialize()
-    _test(sec.IasWd.Warning(raw), data)
-
+def test_security_iaswd_warning(raw, mode, strobe, level):
+    """Test the warning bitmap of the IAS WD Start Warning command."""
     extra = b"The rest of the owl\xaa\x55"
-    warn, rest = sec.IasWd.Warning.deserialize(data + extra)
+    warning, rest = sec.IasWd.Warning.deserialize(bytes([raw]) + extra)
+
     assert rest == extra
-    _test(warn, data)
-    repr(warn)
-
-
-def test_security_iaswd_warning_mode_2():
-    """Test warning command class of IasWD cluster."""
-
-    def _test(data, raw, mode, name):
-        warning, _ = sec.IasWd.Warning.deserialize(data)
-        assert warning.serialize() == data
-        assert warning == raw
-        assert warning.mode == mode
-        assert warning.mode.name == name
-        warning.mode = mode
-        assert warning.serialize() == data
-        assert warning.mode == mode
-
-    for mode in sec.IasWd.Warning.WarningMode:
-        for other in range(16):
-            raw = mode << 4 | other
-            data = types.uint8_t(raw).serialize()
-            _test(data, raw, mode.value, mode.name)
-
-
-def test_security_iaswd_warning_strobe():
-    """Test strobe of warning command class of IasWD cluster."""
-
-    for strobe in sec.IasWd.Warning.Strobe:
-        for mode in range(16):
-            for siren in range(4):
-                raw = mode << 4 | siren
-                raw |= strobe.value << 2
-                data = types.uint8_t(raw).serialize()
-                warning, _ = sec.IasWd.Warning.deserialize(data)
-                assert warning.serialize() == data
-                assert warning == raw
-                assert warning.strobe == strobe.value
-                assert warning.strobe.name == strobe.name
-                warning.strobe = strobe
-                assert warning.serialize() == data
-                assert warning.strobe == strobe.value
-
-
-def test_security_iaswd_warning_siren():
-    """Test siren of warning command class of IasWD cluster."""
-
-    for siren in sec.IasWd.Warning.SirenLevel:
-        for mode in range(16):
-            for strobe in range(4):
-                raw = mode << 4 | (strobe << 2)
-                raw |= siren.value
-                data = types.uint8_t(raw).serialize()
-                warning, _ = sec.IasWd.Warning.deserialize(data)
-                assert warning.serialize() == data
-                assert warning == raw
-                assert warning.level == siren.value
-                assert warning.level.name == siren.name
-                warning.level = siren
-                assert warning.serialize() == data
-                assert warning.level == siren.value
+    assert warning == raw
+    assert warning.mode == mode
+    assert warning.strobe == strobe
+    assert warning.level == level
+    assert sec.IasWd.Warning(mode=mode, strobe=strobe, level=level) == raw
+    assert warning.serialize() == bytes([raw])
 
 
 @pytest.mark.parametrize(
-    ("raw", "mode", "name"),
+    ("raw", "strobe", "expected"),
     [
-        (0x00, 0, "Armed"),
-        (0x01, 0, "Armed"),
-        (0x02, 0, "Armed"),
-        (0x03, 0, "Armed"),
-        (0x10, 1, "Disarmed"),
-        (0x11, 1, "Disarmed"),
-        (0x12, 1, "Disarmed"),
-        (0x13, 1, "Disarmed"),
+        (0b0011_0111, sec.Strobe.No_strobe, 0b0011_0011),
+        (0b0011_1011, sec.Strobe.No_strobe, 0b0011_0011),
+        (0b0011_0011, sec.Strobe.Strobe, 0b0011_0111),
+        (0b0011_1011, sec.Strobe.Strobe, 0b0011_0111),
     ],
 )
-def test_security_iaswd_squawk_mode(raw, mode, name):
-    """Test squawk command class of IasWD cluster."""
+def test_security_iaswd_warning_strobe_replace(raw, strobe, expected):
+    """Test replacing the strobe of a warning replaces both strobe bits."""
+    warning = sec.IasWd.Warning(raw).replace(strobe=strobe)
 
-    def _test(squawk, data):
-        assert squawk.serialize() == data
-        assert squawk == raw
-        assert squawk.mode == mode
-        assert squawk.mode.name == name
-        squawk.mode = mode
-        assert squawk.serialize() == data
-        assert squawk.mode == mode
+    assert warning == expected
+    assert warning.strobe == strobe
 
-    data = types.uint8_t(raw).serialize()
-    _test(sec.IasWd.Squawk(raw), data)
 
+@pytest.mark.parametrize(
+    ("raw", "mode", "strobe", "level"),
+    [
+        (
+            0x00,
+            sec.SquawkMode.Armed,
+            sec.SquawkStrobe.No_strobe,
+            sec.SquawkLevel.Low_level_sound,
+        ),
+        (
+            0x08,
+            sec.SquawkMode.Armed,
+            sec.SquawkStrobe.Strobe,
+            sec.SquawkLevel.Low_level_sound,
+        ),
+        (
+            0x13,
+            sec.SquawkMode.Disarmed,
+            sec.SquawkStrobe.No_strobe,
+            sec.SquawkLevel.Very_high_level_sound,
+        ),
+        (
+            0x1A,
+            sec.SquawkMode.Disarmed,
+            sec.SquawkStrobe.Strobe,
+            sec.SquawkLevel.High_level_sound,
+        ),
+    ],
+)
+def test_security_iaswd_squawk(raw, mode, strobe, level):
+    """Test the squawk bitmap of the IAS WD Squawk command."""
     extra = b"The rest of the owl\xaa\x55"
-    squawk, rest = sec.IasWd.Squawk.deserialize(data + extra)
+    squawk, rest = sec.IasWd.Squawk.deserialize(bytes([raw]) + extra)
+
     assert rest == extra
-    _test(squawk, data)
-    repr(squawk)
+    assert squawk == raw
+    assert squawk.mode == mode
+    assert squawk.strobe == strobe
+    assert squawk.level == level
+    assert sec.IasWd.Squawk(mode=mode, strobe=strobe, level=level) == raw
+    assert squawk.serialize() == bytes([raw])
 
 
-def test_security_iaswd_squawk_strobe():
-    """Test strobe of squawk command class of IasWD cluster."""
+def test_security_iaswd_squawk_warning_strobe():
+    """Test a squawk accepts the warning strobe enum."""
+    squawk = sec.IasWd.Squawk(
+        mode=sec.SquawkMode.Armed,
+        strobe=sec.Strobe.Strobe,
+        level=sec.SquawkLevel.Low_level_sound,
+    )
 
-    for strobe in sec.IasWd.Squawk.Strobe:
-        for mode in range(16):
-            for level in range(4):
-                raw = mode << 4 | level
-                raw |= strobe.value << 3
-                data = types.uint8_t(raw).serialize()
-                squawk, _ = sec.IasWd.Squawk.deserialize(data)
-                assert squawk.serialize() == data
-                assert squawk == raw
-                assert squawk.strobe == strobe.value
-                assert squawk.strobe == strobe
-                assert squawk.strobe.name == strobe.name
-                squawk.strobe = strobe
-                assert squawk.serialize() == data
-                assert squawk.strobe == strobe
-
-
-def test_security_iaswd_squawk_level():
-    """Test level of squawk command class of IasWD cluster."""
-
-    for level in sec.IasWd.Squawk.SquawkLevel:
-        for other in range(64):
-            raw = other << 2 | level.value
-            data = types.uint8_t(raw).serialize()
-            squawk, _ = sec.IasWd.Squawk.deserialize(data)
-            assert squawk.serialize() == data
-            assert squawk == raw
-            assert squawk.level == level.value
-            assert squawk.level == level
-            assert squawk.level.name == level.name
-            squawk.level = level
-            assert squawk.serialize() == data
-            assert squawk.level == level
+    assert squawk == 0x08
+    assert squawk.strobe == sec.SquawkStrobe.Strobe
 
 
 def test_hvac_thermostat_system_type():
@@ -678,6 +1055,24 @@ def test_hvac_thermostat_system_type():
     assert sys_type.heating_system_stage == hvac.HeatingSystemStage.Heat_Stage_2
     assert sys_type.heating_fuel_source == hvac.HeatingFuelSource.Gas
     assert sys_type.heating_system_type == hvac.HeatingSystemType.Heat_Pump
+
+    # ZCL R8 Table 6-12: the stage sub-fields are 2-bit values, 0b10 is Stage 3
+    sys_type = hvac.Thermostat.SystemType(0x0A)
+    assert sys_type.cooling_system_stage == hvac.CoolingSystemStage.Cool_Stage_3
+    assert sys_type.heating_system_stage == hvac.HeatingSystemStage.Heat_Stage_3
+    assert sys_type == hvac.Thermostat.SystemType(
+        cooling_system_stage=hvac.CoolingSystemStage.Cool_Stage_3,
+        heating_system_stage=hvac.HeatingSystemStage.Heat_Stage_3,
+        heating_system_type=hvac.HeatingSystemType.Conventional,
+        heating_fuel_source=hvac.HeatingFuelSource.Electric,
+        _reserved=0,
+    )
+    assert sys_type.serialize() == b"\x0a"
+
+    # Reserved bits are kept
+    sys_type = hvac.Thermostat.SystemType(0xFF)
+    assert sys_type._reserved == 0b11
+    assert sys_type.serialize() == b"\xff"
 
 
 @patch("zigpy.zcl.Cluster.send_default_rsp")
@@ -763,3 +1158,562 @@ def test_ias_zone_enum_subclass_zcl_type():
     """Test `IasZone.zone_type` is an enum16, not a uint16."""
 
     assert sec.IasZone.AttributeDefs.zone_type.zcl_type == foundation.DataTypeId.enum16
+
+
+def test_thermostat_system_type_zcl_type() -> None:
+    """`Thermostat.system_type_config` is a `map8` on the wire, per ZCL R8 Table 6-12."""
+
+    attr = zcl.clusters.hvac.Thermostat.AttributeDefs.system_type_config
+    assert attr.zcl_type == foundation.DataTypeId.map8
+
+
+async def test_thermostat_system_type_read() -> None:
+    """A `map8` read of `system_type_config` decodes into `SystemType` fields."""
+
+    hvac = zcl.clusters.hvac
+    cluster = hvac.Thermostat(MagicMock())
+
+    # Read_Attributes_rsp: attribute 0x0009, SUCCESS, map8, 0x3A
+    hdr, rsp = cluster.deserialize(bytes.fromhex("18010109000018" + "3a"))
+
+    with patch.object(cluster, "_read_attributes", new=AsyncMock(return_value=rsp)):
+        success, failure = await cluster.read_attributes(["system_type_config"])
+
+    assert not failure
+    value = success["system_type_config"]
+    assert type(value) is hvac.SystemType
+    assert value.cooling_system_stage == hvac.CoolingSystemStage.Cool_Stage_3
+    assert value.heating_system_stage == hvac.HeatingSystemStage.Heat_Stage_3
+    assert value.heating_system_type == hvac.HeatingSystemType.Heat_Pump
+    assert value.heating_fuel_source == hvac.HeatingFuelSource.Gas
+    assert cluster.get("system_type_config") == value
+
+
+async def test_thermostat_system_type_write() -> None:
+    """Writing `system_type_config` serializes a `map8` with the spec bit layout."""
+
+    hvac = zcl.clusters.hvac
+    cluster = hvac.Thermostat(MagicMock())
+    success_response = [
+        [foundation.WriteAttributesStatusRecord(status=foundation.Status.SUCCESS)]
+    ]
+
+    write_mock = AsyncMock(return_value=success_response)
+
+    with patch.object(cluster, "_write_attributes", new=write_mock):
+        await cluster.write_attributes(
+            {
+                "system_type_config": hvac.SystemType(
+                    cooling_system_stage=hvac.CoolingSystemStage.Cool_Stage_2,
+                    heating_system_stage=hvac.HeatingSystemStage.Heat_Stage_3,
+                    heating_system_type=hvac.HeatingSystemType.Heat_Pump,
+                    heating_fuel_source=hvac.HeatingFuelSource.Electric,
+                    _reserved=0,
+                )
+            }
+        )
+
+    (records,) = write_mock.call_args.args
+    # Attribute 0x0009, map8, 0b0001_1001
+    assert b"".join(r.serialize() for r in records) == bytes.fromhex("090018" + "19")
+
+
+@pytest.mark.parametrize(
+    ("command_id", "command_name"),
+    [(0x05, "set_pin_code_response"), (0x16, "set_rfid_code_response")],
+)
+@pytest.mark.parametrize(
+    ("raw", "status"),
+    [
+        (0x00, DoorLock.SetPinOrIdStatus.Success),
+        (0x01, DoorLock.SetPinOrIdStatus.GeneralFailure),
+        (0x02, DoorLock.SetPinOrIdStatus.MemoryFull),
+        (0x03, DoorLock.SetPinOrIdStatus.DuplicateCodeError),
+    ],
+)
+def test_door_lock_set_pin_or_id_status(
+    command_id: int,
+    command_name: str,
+    raw: int,
+    status: DoorLock.SetPinOrIdStatus,
+) -> None:
+    """Set PIN/RFID Code responses carry cluster-specific status values.
+
+    ZCL R8 7.3.2.16.6 and 7.3.2.16.23: 0 Success, 1 General failure, 2 Memory full,
+    3 Duplicate code/ID error. These are not ZCL `Status` values.
+    """
+
+    cluster = DoorLock(MagicMock())
+    data = bytes([0x19, 0x01, command_id, raw])
+
+    hdr, args = cluster.deserialize(data)
+    assert hdr.command_id == command_id
+    assert cluster.client_commands[command_id].name == command_name
+    assert type(args.status) is DoorLock.SetPinOrIdStatus
+    assert args.status == status
+    assert args.status.name == status.name
+
+    schema = cluster.client_commands[command_id].schema
+    assert schema(status=status).serialize() == bytes([raw])
+
+
+@pytest.mark.parametrize(
+    ("raw", "options"),
+    [
+        (0x00, ResetStartupParametersOptions(0)),
+        (0x01, ResetStartupParametersOptions.Reset_current),
+        (0x02, ResetStartupParametersOptions.Reset_all),
+        (
+            0x06,
+            ResetStartupParametersOptions.Reset_all
+            | ResetStartupParametersOptions.Erase_index,
+        ),
+    ],
+)
+def test_commissioning_reset_startup_parameters_options(
+    raw: int, options: ResetStartupParametersOptions
+) -> None:
+    """Reset Startup Parameters options are defined bits, per ZCL R8 Figure 13-6."""
+
+    cluster = Commissioning(MagicMock())
+    data = bytes([0x01, 0x01, 0x03, raw, 0x02])
+
+    hdr, args = cluster.deserialize(data)
+    assert hdr.command_id == 0x03
+    assert type(args.options) is ResetStartupParametersOptions
+    assert args.options == options
+    assert args.index == 0x02
+
+    schema = Commissioning.ServerCommandDefs.reset_startup_parameters.schema
+    assert schema(options=options, index=0x02).serialize() == data[3:]
+
+
+@pytest.mark.parametrize(
+    ("fragmentation_options", "partition_indicator", "serialized"),
+    [
+        (PartitionFragmentationOptions.First_Block, 0x07, "010702aabb"),
+        (
+            PartitionFragmentationOptions.First_Block
+            | PartitionFragmentationOptions.Indicator_Length_16bit,
+            0x0107,
+            "03070102aabb",
+        ),
+    ],
+)
+def test_partition_indicator_width(
+    fragmentation_options: PartitionFragmentationOptions,
+    partition_indicator: int,
+    serialized: str,
+) -> None:
+    """`partition_indicator` is 1 or 2 octets wide, per ZCL R8 Figure 9-8."""
+    schema = Partition.ServerCommandDefs.transfer_partitioned_frame.schema
+    command = schema(
+        fragmentation_options=fragmentation_options,
+        partition_indicator=partition_indicator,
+        partitioned_frame=b"\xaa\xbb",
+    )
+
+    assert command.serialize() == bytes.fromhex(serialized)
+    assert schema.deserialize(bytes.fromhex(serialized)) == (command, b"")
+
+
+@pytest.mark.parametrize(
+    ("ack_options", "first_frame_id", "nack_ids", "serialized"),
+    [
+        (PartitionAckOptions(0), 0x03, [], "0003"),
+        (PartitionAckOptions(0), 0x03, [0x04, 0x05], "00030405"),
+        (
+            PartitionAckOptions.NACKId_Length_16bit,
+            0x0103,
+            [0x0104, 0x0105],
+            "01030104010501",
+        ),
+        (PartitionAckOptions.NACKId_Length_16bit, 0x0103, [], "010301"),
+    ],
+)
+def test_partition_nack_id_width(
+    ack_options: PartitionAckOptions,
+    first_frame_id: int,
+    nack_ids: list[int],
+    serialized: str,
+) -> None:
+    """`first_frame_id` and NACK ids are 1 or 2 octets wide, per ZCL R8 Figure 9-13."""
+    schema = Partition.ClientCommandDefs.multiple_ack.schema
+    command = schema(
+        ack_options=ack_options,
+        first_frame_id=first_frame_id,
+        nack_ids=nack_ids,
+    )
+
+    assert command.serialize() == bytes.fromhex(serialized)
+    assert schema.deserialize(bytes.fromhex(serialized)) == (command, b"")
+
+
+def test_bacnet_protocol_tunnel_transfer_npdu() -> None:
+    """The NPDU has no length prefix, per ZCL R8 Figure 9-4."""
+    cluster = BacnetProtocolTunnel(MagicMock())
+    schema = BacnetProtocolTunnel.ServerCommandDefs.transfer_npdu.schema
+    npdu = bytes.fromhex("0120ffff00ff1008")
+
+    assert schema(npdu=npdu).serialize() == npdu
+
+    # Cluster-specific, client to server, TSN 0x12, Transfer NPDU
+    hdr, command = cluster.deserialize(bytes.fromhex("011200") + npdu)
+    assert hdr.command_id == BacnetProtocolTunnel.ServerCommandDefs.transfer_npdu.id
+    assert command == schema(npdu=npdu)
+
+
+def test_wwah_debug_report_query_response() -> None:
+    """The debug report data is opaque and has no length prefix."""
+    cluster = WorksWithAllHubs(MagicMock())
+    command_def = WorksWithAllHubs.ClientCommandDefs.debug_report_query_response
+    data = bytes.fromhex("0102030405")
+    command = command_def.schema(debug_report_id=0x07, debug_report_data=data)
+
+    assert command.serialize() == b"\x07" + data
+
+    # Manufacturer-specific (0x1217), cluster-specific, server to client, TSN 0x12
+    hdr, deserialized = cluster.deserialize(
+        bytes.fromhex("1d171212") + bytes([command_def.id]) + b"\x07" + data
+    )
+    assert hdr.command_id == command_def.id
+    assert deserialized == command
+
+
+def test_power_profile_transferred_phase() -> None:
+    """Each transferred phase is 10 octets, per ZCL R8 Figure 3-72."""
+    schema = PowerProfile.ClientCommandDefs.power_profile_notification.schema
+    command = schema(
+        total_profile_num=1,
+        power_profile_id=1,
+        transfer_phases=[
+            PowerProfile.PowerProfilePhase(
+                energy_phase_id=1,
+                macro_phase_id=2,
+                expected_duration=0x0003,
+                peak_power=0x0004,
+                energy=0x0005,
+                max_activation_delay=0x0006,
+            ),
+            PowerProfile.PowerProfilePhase(
+                energy_phase_id=2,
+                macro_phase_id=3,
+                expected_duration=0x0103,
+                peak_power=0x0104,
+                energy=0x0105,
+                max_activation_delay=0x0106,
+            ),
+        ],
+    )
+    # Header, then two phases: IDs, duration, peak power, energy, max activation delay
+    serialized = bytes.fromhex("010102 0102030004000500 0600 0203030104010501 0601")
+
+    assert len(serialized) == 1 + 1 + 1 + 2 * 10
+    assert command.serialize() == serialized
+    assert schema.deserialize(serialized) == (command, b"")
+
+
+@pytest.mark.parametrize(
+    "command_name",
+    [
+        "energy_phases_schedule_state_response",
+        "energy_phases_schedule_state_notification",
+    ],
+)
+@pytest.mark.parametrize(
+    ("scheduled_phases", "serialized"),
+    [
+        ([], "0100"),
+        ([(1, 0x0010), (2, 0x0120)], "0102011000022001"),
+    ],
+)
+def test_power_profile_schedule_state(
+    command_name: str, scheduled_phases: list[tuple[int, int]], serialized: str
+) -> None:
+    """Schedule state commands carry the phase records, per ZCL R8 3.17.6.8/9."""
+    schema = getattr(PowerProfile.ClientCommandDefs, command_name).schema
+    command = schema(
+        power_profile_id=1,
+        scheduled_phases=[
+            PowerProfile.ScheduleRecord(phase_id=phase_id, scheduled_time=time)
+            for phase_id, time in scheduled_phases
+        ],
+    )
+
+    assert command.serialize() == bytes.fromhex(serialized)
+    assert schema.deserialize(bytes.fromhex(serialized)) == (command, b"")
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "serialized"),
+    [
+        (
+            {
+                "packed": GetLocationDataFlags.Absolute_Only,
+                "num_responses": 1,
+                "target_addr": types.EUI64.convert("00:11:22:33:44:55:66:77"),
+            },
+            "01017766554433221100",
+        ),
+        # The target address is omitted when the broadcast indicator is set
+        (
+            {
+                "packed": (
+                    GetLocationDataFlags.Broadcast_Indicator
+                    | GetLocationDataFlags.Compact_Response
+                ),
+                "num_responses": 2,
+            },
+            "1402",
+        ),
+    ],
+)
+def test_rssi_location_get_location_data(
+    kwargs: dict[str, Any], serialized: str
+) -> None:
+    """Test the Get Location Data payload, per ZCL R8 Figure 3-52."""
+    schema = RSSILocation.ServerCommandDefs.get_location_data.schema
+    command = schema(**kwargs)
+
+    assert command.serialize() == bytes.fromhex(serialized)
+    assert schema.deserialize(bytes.fromhex(serialized)) == (command, b"")
+
+
+RSSI_LOCATION_DATA = {
+    "coordinate1": 0x0102,
+    "coordinate2": 0x0304,
+    "coordinate3": 0x0506,
+    "power": 0x0708,
+    "path_loss_exponent": 0x090A,
+    "location_method": LocationMethod.Centralized,
+    "quality_measure": 0x50,
+    "location_age": 0x0B0C,
+}
+
+
+@pytest.mark.parametrize(
+    ("command_name", "location_type", "fields", "serialized"),
+    [
+        (
+            "location_data_notification",
+            0b00,
+            RSSI_LOCATION_DATA.keys(),
+            "00 0201 0403 0605 0807 0a09 04 50 0c0b",
+        ),
+        (
+            "location_data_notification",
+            0b01,
+            [
+                "coordinate1",
+                "coordinate2",
+                "coordinate3",
+                "power",
+                "path_loss_exponent",
+            ],
+            "01 0201 0403 0605 0807 0a09",
+        ),
+        (
+            "location_data_notification",
+            0b10,
+            RSSI_LOCATION_DATA.keys() - {"coordinate3"},
+            "02 0201 0403 0807 0a09 04 50 0c0b",
+        ),
+        (
+            "location_data_notification",
+            0b11,
+            ["coordinate1", "coordinate2", "power", "path_loss_exponent"],
+            "03 0201 0403 0807 0a09",
+        ),
+        (
+            "compact_location_data_notification",
+            0b00,
+            [
+                "coordinate1",
+                "coordinate2",
+                "coordinate3",
+                "quality_measure",
+                "location_age",
+            ],
+            "00 0201 0403 0605 50 0c0b",
+        ),
+        (
+            "compact_location_data_notification",
+            0b01,
+            ["coordinate1", "coordinate2", "coordinate3"],
+            "01 0201 0403 0605",
+        ),
+        (
+            "compact_location_data_notification",
+            0b10,
+            ["coordinate1", "coordinate2", "quality_measure", "location_age"],
+            "02 0201 0403 50 0c0b",
+        ),
+        (
+            "compact_location_data_notification",
+            0b11,
+            ["coordinate1", "coordinate2"],
+            "03 0201 0403",
+        ),
+    ],
+)
+def test_rssi_location_data_notification(
+    command_name: str, location_type: int, fields: list[str], serialized: str
+) -> None:
+    """Test the location data notifications, per ZCL R8 Figure 3-58 and 3.13.2.4.4.
+
+    Coordinate 3 is omitted for 2-D locations, the calculated location fields for
+    absolute ones.
+    """
+    schema = getattr(RSSILocation.ClientCommandDefs, command_name).schema
+    command = schema(
+        location_type=LocationType(location_type),
+        **{field: RSSI_LOCATION_DATA[field] for field in fields},
+    )
+
+    assert command.serialize() == bytes.fromhex(serialized)
+    assert schema.deserialize(bytes.fromhex(serialized)) == (command, b"")
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "serialized"),
+    [
+        # Only the status is sent when it isn't `SUCCESS`
+        ({"status": foundation.Status.NOT_FOUND}, "8b"),
+        (
+            {
+                "status": foundation.Status.SUCCESS,
+                "location_type": LocationType(0b00),
+                **RSSI_LOCATION_DATA,
+            },
+            "00 00 0201 0403 0605 0807 0a09 04 50 0c0b",
+        ),
+        (
+            {
+                "status": foundation.Status.SUCCESS,
+                "location_type": LocationType(0b01),
+                "coordinate1": 0x0102,
+                "coordinate2": 0x0304,
+                "coordinate3": 0x0506,
+                "power": 0x0708,
+                "path_loss_exponent": 0x090A,
+            },
+            "00 01 0201 0403 0605 0807 0a09",
+        ),
+        (
+            {
+                "status": foundation.Status.SUCCESS,
+                "location_type": LocationType(0b10),
+                "coordinate1": 0x0102,
+                "coordinate2": 0x0304,
+                "power": 0x0708,
+                "path_loss_exponent": 0x090A,
+                "location_method": LocationMethod.Centralized,
+                "quality_measure": 0x50,
+                "location_age": 0x0B0C,
+            },
+            "00 02 0201 0403 0807 0a09 04 50 0c0b",
+        ),
+        (
+            {
+                "status": foundation.Status.SUCCESS,
+                "location_type": LocationType(0b11),
+                "coordinate1": 0x0102,
+                "coordinate2": 0x0304,
+                "power": 0x0708,
+                "path_loss_exponent": 0x090A,
+            },
+            "00 03 0201 0403 0807 0a09",
+        ),
+    ],
+)
+def test_rssi_location_data_response(kwargs: dict[str, Any], serialized: str) -> None:
+    """Test the Location Data Response payload, per ZCL R8 Figure 3-57."""
+    schema = RSSILocation.ClientCommandDefs.location_data_response.schema
+    command = schema(**kwargs)
+
+    assert command.serialize() == bytes.fromhex(serialized)
+    assert schema.deserialize(bytes.fromhex(serialized)) == (command, b"")
+
+
+def test_rssi_location_data_response_incomplete() -> None:
+    """An incomplete response without a location type can still be displayed."""
+    command = RSSILocation.LocationDataResponseCommand(status=foundation.Status.SUCCESS)
+
+    assert "coordinate3" not in repr(command)
+    assert "location_method" not in repr(command)
+
+    with pytest.raises(ValueError, match="location_type"):
+        command.serialize()
+
+
+def test_rssi_location_type_report() -> None:
+    """Test a `data8` location type report is coerced into `LocationType`."""
+
+    ep = MagicMock()
+    cluster = RSSILocation(ep)
+
+    # Report_Attributes: attribute 0x0000, data8, value 0x03
+    hdr, args = cluster.deserialize(bytes.fromhex("18010a00000803"))
+    cluster.handle_message(hdr, args)
+
+    assert cluster.get(RSSILocation.AttributeDefs.type.name) == LocationType(
+        absolute=1,
+        two_dimensional=1,
+        coordinate_system=CoordinateSystem.Rectangular,
+        _reserved=0,
+    )
+
+
+@pytest.mark.parametrize(
+    ("cluster_type", "attr_def", "report", "value"),
+    [
+        (
+            MultistateInput,
+            MultistateInput.AttributeDefs.state_text,
+            # Array of two strings
+            "0e00" + "48" + "42" + "0200" + "0161" + "0162",
+            foundation.Array(
+                type=foundation.DataTypeId.string,
+                value=types.LVList[types.CharacterString, types.uint16_t](["a", "b"]),
+            ),
+        ),
+        (
+            BinaryInputRegular,
+            BinaryInputRegular.AttributeDefs.change_of_state_time,
+            # Structure of a date and a time of day
+            "1000" + "4c" + "0200" + "e1" + "7c0b0f03" + "e0" + "0c1e2d00",
+            foundation.ZCLStructure(
+                [
+                    foundation.TypeValue(
+                        type=foundation.DataTypeId.date,
+                        value=types.Date(
+                            years_since_1900=124, month=11, day=15, day_of_week=3
+                        ),
+                    ),
+                    foundation.TypeValue(
+                        type=foundation.DataTypeId.ToD,
+                        value=types.TimeOfDay(
+                            hours=12, minutes=30, seconds=45, hundredths=0
+                        ),
+                    ),
+                ]
+            ),
+        ),
+    ],
+)
+def test_array_and_structure_attribute_report(
+    cluster_type, attr_def, report, value
+) -> None:
+    """Array and structure attributes are read and written in their ZCL format."""
+    cluster = cluster_type(MagicMock())
+
+    hdr, args = cluster.deserialize(bytes.fromhex("18010a" + report))
+    cluster.handle_message(hdr, args)
+
+    assert cluster.get(attr_def.name) == value
+    assert (
+        foundation.TypeValue(type=attr_def.zcl_type, value=attr_def.type(value))
+        .serialize()
+        .hex()
+        == report[4:]
+    )
