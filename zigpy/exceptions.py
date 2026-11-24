@@ -80,10 +80,6 @@ class CorruptDatabase(ZigbeeException):
     """The SQLite database is corrupt or otherwise inconsistent"""
 
 
-class DatabaseFlushError(ZigbeeException):
-    """Changes could not be confirmed as written to the database"""
-
-
 class QuirksException(Exception):
     """Base exception class"""
 

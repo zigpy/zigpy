@@ -185,19 +185,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         await self._dblistener.load()
         self._add_db_listeners()
 
-    async def flush_database(self) -> None:
-        """Wait until all changes made so far are committed to the database.
-
-        Raises `zigpy.exceptions.DatabaseFlushError` if the commit fails, if a store
-        write failed or was rolled back since the previous flush, or if the database has
-        been shut down. Only this method reports such failures: `shutdown()` logs them.
-        Does nothing without a database.
-        """
-        if self._dblistener is None:
-            return
-
-        await self._dblistener.flush()
-
     def _add_db_listeners(self):
         if self._dblistener is None:
             return

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
-from collections.abc import Iterator
 import contextlib
 from datetime import UTC, datetime, timedelta
 import json
@@ -136,10 +135,6 @@ def aiosqlite_connect(
     )
 
 
-# The error a `flush()` raises, and the recorded store failures it reports
-_FlushOutcome = tuple[zigpy.exceptions.DatabaseFlushError | None, tuple[Exception, ...]]
-
-
 class PersistingListener(zigpy.util.CatchingTaskMixin):
     def __init__(
         self,
@@ -172,12 +167,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 self.on_network_store_value_deleted,
             ),
         ]
-
-        # Store write failures no `flush()` caller has received yet (the first and the
-        # latest), and whether the open transaction holds store writes that a rollback
-        # would lose
-        self._store_write_errors: list[Exception] = []
-        self._uncommitted_store_writes = False
 
     async def initialize_tables(self) -> None:
         async with self.execute("PRAGMA integrity_check") as cursor:
@@ -237,7 +226,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             try:
                 await handler(*args)
             except sqlite3.Error as exc:
-                self._check_lost_store_writes(exc)
                 LOGGER.debug(
                     "Error handling '%s' event with %s params: %s",
                     cb_name,
@@ -245,8 +233,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     str(exc),
                     exc_info=True,
                 )
-            except Exception as exc:  # noqa: BLE001
-                self._check_lost_store_writes(exc)
+            except Exception:  # noqa: BLE001
                 LOGGER.exception(
                     "Unexpected error while processing %s(%s)", cb_name, args
                 )
@@ -260,7 +247,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         """
         if force or self._commit_interval <= 0:
             try:
-                await self._commit_db()
+                await self._db.commit()
             except Exception:
                 # Retry the uncommitted writes after another interval
                 if self._commit_interval > 0:
@@ -284,166 +271,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _flush_commit(self) -> None:
         """Commit any open transaction, invoked by the worker after the delay."""
         if not self._db.in_transaction:
-            # A handler can have caught the error of a statement that rolled back
-            self._check_lost_store_writes()
             return
 
         try:
-            await self._commit_db()
+            await self._db.commit()
         except Exception:
             LOGGER.exception("Failed to flush pending database commits")
             self._arm_commit_timer()
-
-    async def _commit_db(self) -> None:
-        """Commit the open transaction, recording store writes that a failure lost.
-
-        Every commit while the listener runs must go through here: it is what clears
-        `_uncommitted_store_writes`, and a commit that bypasses it would make a later
-        check mistake the committed store writes for rolled back ones.
-        """
-        try:
-            await self._db.commit()
-        except Exception as exc:
-            # A failed commit usually leaves the transaction open for a retry, but
-            # SQLite rolls it back after some errors (a full disk, an I/O error)
-            self._check_lost_store_writes(exc)
-            raise
-
-        self._uncommitted_store_writes = False
-
-    def _record_store_write_error(self, exc: Exception) -> None:
-        # Keep the first failure for the message, and the latest so that a failure
-        # after a flush published its outcome survives that flush (see `flush()`)
-        if len(self._store_write_errors) < 2:
-            self._store_write_errors.append(exc)
-        else:
-            self._store_write_errors[-1] = exc
-
-    def _check_lost_store_writes(self, exc: Exception | None = None) -> None:
-        """Record store writes lost because their transaction was rolled back.
-
-        Any failing statement or commit can make SQLite roll back the whole open
-        transaction (a full disk, an I/O error, `RAISE(ROLLBACK)`), including store
-        writes made by earlier handlers.
-        """
-        if not self._uncommitted_store_writes or self._db.in_transaction:
-            return
-
-        self._uncommitted_store_writes = False
-        self._record_store_write_error(
-            exc
-            if exc is not None
-            else RuntimeError("The transaction holding store writes was rolled back")
-        )
-
-    @contextlib.contextmanager
-    def _store_write(self) -> Iterator[None]:
-        """Track a store write, so that the next `flush()` reports a failure.
-
-        Only the statements go in here: a commit that fails and keeps the transaction
-        open has not lost the write (see `_commit_db`).
-        """
-        self._uncommitted_store_writes = True
-
-        try:
-            yield
-        except Exception as exc:
-            self._record_store_write_error(exc)
-            raise
-
-    async def flush(self) -> None:
-        """Wait until everything queued before this call is handled and committed.
-
-        Raises `DatabaseFlushError` if the commit fails, if a store write failed or was
-        rolled back since the previous flush, or if the database worker is not running.
-        If the commit fails but keeps its transaction for a retry, only the commit error
-        is raised and earlier store failures are raised by the next flush. A failure is
-        reported until a caller has received it, so a cancelled flush leaves it for the
-        next one. Failures of other writes are not tracked. Only `flush()` reports failures:
-        writes that fail after the last flush, including in `shutdown()`, are only
-        logged. Must not be called from a database handler, since the worker would
-        wait for itself.
-        """
-        if not self.running or self._worker_task.done():
-            raise zigpy.exceptions.DatabaseFlushError(
-                "The database worker is not running"
-            )
-
-        result: asyncio.Future[_FlushOutcome] = (
-            asyncio.get_running_loop().create_future()
-        )
-        self._callback_handlers.put_nowait(("_flush", (result,)))
-
-        try:
-            # The worker can stop before it reaches the flush
-            waiting: list[asyncio.Future[Any]] = [result, self._worker_task]
-            await asyncio.wait(waiting, return_when=asyncio.FIRST_COMPLETED)
-
-            if not result.done():
-                raise zigpy.exceptions.DatabaseFlushError(
-                    "The database worker stopped before the flush ran"
-                )
-
-            error, reported = result.result()
-        finally:
-            # Nothing reads the result if the caller was cancelled or the worker stopped
-            result.cancel()
-
-        # The worker only publishes the failures. They are cleared here, once a caller
-        # has them, so that a caller cancelled before this point leaves them for the
-        # next flush. Failures recorded after publication stay as well.
-        self._store_write_errors = [
-            exc
-            for exc in self._store_write_errors
-            if not any(exc is received for received in reported)
-        ]
-
-        if error is not None:
-            raise error
-
-    async def _flush(self, result: asyncio.Future[_FlushOutcome]) -> None:
-        """Commit on the worker and publish the outcome to the waiting `flush()`.
-
-        The outcome is the error to raise and the recorded store failures it reports,
-        which the caller clears once it has received them.
-        """
-        if result.done():
-            return
-
-        # A handler can have caught the error of a statement that rolled back
-        self._check_lost_store_writes()
-        commit_error: Exception | None = None
-
-        try:
-            await self._commit(force=True)
-        except Exception as exc:  # noqa: BLE001
-            commit_error = exc
-
-        if result.done():
-            return
-
-        error: zigpy.exceptions.DatabaseFlushError | None = None
-        reported: tuple[Exception, ...] = ()
-
-        if commit_error is not None:
-            error = zigpy.exceptions.DatabaseFlushError(
-                f"Failed to commit database changes: {commit_error!r}"
-            )
-            error.__cause__ = commit_error
-
-            # A commit that rolled the transaction back reports every store failure
-            # with it. One that kept the transaction for a retry says nothing about
-            # them, so they are left for the next flush.
-            if not self._db.in_transaction:
-                reported = tuple(self._store_write_errors)
-        elif self._store_write_errors:
-            reported = tuple(self._store_write_errors)
-            error = zigpy.exceptions.DatabaseFlushError(
-                f"A store write failed since the last flush: {reported[0]!r}"
-            )
-            error.__cause__ = reported[0]
-
-        result.set_result((error, reported))
 
     async def shutdown(self) -> None:
         """Shutdown connection."""
@@ -1078,17 +912,16 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         ]
 
         if rows:
-            with self._store_write():
-                await self._db.executemany(
-                    f"""INSERT INTO device_store{DB_V}
-                            (ieee, namespace, key, value, version, last_updated)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                        ON CONFLICT (ieee, namespace, key) DO UPDATE SET
-                            value=excluded.value,
-                            version=excluded.version,
-                            last_updated=excluded.last_updated""",
-                    rows,
-                )
+            await self._db.executemany(
+                f"""INSERT INTO device_store{DB_V}
+                        (ieee, namespace, key, value, version, last_updated)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (ieee, namespace, key) DO UPDATE SET
+                        value=excluded.value,
+                        version=excluded.version,
+                        last_updated=excluded.last_updated""",
+                rows,
+            )
 
     def on_store_value_updated(self, event: StoreValueUpdatedEvent) -> None:
         self.enqueue("_save_store_value", event)
@@ -1097,34 +930,33 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         # A value can be set before its device is saved (during joining, by a quirk, or
         # for a device that never finishes initializing). There is no row to reference
         # yet, so the value is written by the device save instead.
-        with self._store_write():
-            cursor = await self.execute(
-                f"""INSERT INTO device_store{DB_V}
-                        (ieee, namespace, key, value, version, last_updated)
-                    SELECT ?, ?, ?, ?, ?, ?
-                    WHERE EXISTS (SELECT 1 FROM devices{DB_V} WHERE ieee = ?)
-                    ON CONFLICT (ieee, namespace, key) DO UPDATE SET
-                        value=excluded.value,
-                        version=excluded.version,
-                        last_updated=excluded.last_updated""",
-                (
-                    event.device_ieee,
-                    event.namespace,
-                    event.key,
-                    json.dumps(event.value),
-                    event.version,
-                    event.last_updated.timestamp(),
-                    event.device_ieee,
-                ),
-            )
+        cursor = await self.execute(
+            f"""INSERT INTO device_store{DB_V}
+                    (ieee, namespace, key, value, version, last_updated)
+                SELECT ?, ?, ?, ?, ?, ?
+                WHERE EXISTS (SELECT 1 FROM devices{DB_V} WHERE ieee = ?)
+                ON CONFLICT (ieee, namespace, key) DO UPDATE SET
+                    value=excluded.value,
+                    version=excluded.version,
+                    last_updated=excluded.last_updated""",
+            (
+                event.device_ieee,
+                event.namespace,
+                event.key,
+                json.dumps(event.value),
+                event.version,
+                event.last_updated.timestamp(),
+                event.device_ieee,
+            ),
+        )
 
-            if cursor.rowcount == 0:
-                LOGGER.debug(
-                    "Not saving %s/%s for %s yet, the device is not saved",
-                    event.namespace,
-                    event.key,
-                    event.device_ieee,
-                )
+        if cursor.rowcount == 0:
+            LOGGER.debug(
+                "Not saving %s/%s for %s yet, the device is not saved",
+                event.namespace,
+                event.key,
+                event.device_ieee,
+            )
 
         await self._commit()
 
@@ -1132,12 +964,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         self.enqueue("_delete_store_value", event)
 
     async def _delete_store_value(self, event: StoreValueDeletedEvent) -> None:
-        with self._store_write():
-            await self.execute(
-                f"""DELETE FROM device_store{DB_V}
-                    WHERE ieee = ? AND namespace = ? AND key = ?""",
-                (event.device_ieee, event.namespace, event.key),
-            )
+        await self.execute(
+            f"DELETE FROM device_store{DB_V} WHERE ieee = ? AND namespace = ? AND key = ?",
+            (event.device_ieee, event.namespace, event.key),
+        )
 
         await self._commit()
 
@@ -1149,23 +979,22 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _save_network_store_value(
         self, event: NetworkStoreValueUpdatedEvent
     ) -> None:
-        with self._store_write():
-            await self.execute(
-                f"""INSERT INTO network_store{DB_V}
-                        (namespace, key, value, version, last_updated)
-                    VALUES (?, ?, ?, ?, ?)
-                    ON CONFLICT (namespace, key) DO UPDATE SET
-                        value=excluded.value,
-                        version=excluded.version,
-                        last_updated=excluded.last_updated""",
-                (
-                    event.namespace,
-                    event.key,
-                    json.dumps(event.value),
-                    event.version,
-                    event.last_updated.timestamp(),
-                ),
-            )
+        await self.execute(
+            f"""INSERT INTO network_store{DB_V}
+                    (namespace, key, value, version, last_updated)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT (namespace, key) DO UPDATE SET
+                    value=excluded.value,
+                    version=excluded.version,
+                    last_updated=excluded.last_updated""",
+            (
+                event.namespace,
+                event.key,
+                json.dumps(event.value),
+                event.version,
+                event.last_updated.timestamp(),
+            ),
+        )
 
         await self._commit()
 
@@ -1177,11 +1006,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     async def _delete_network_store_value(
         self, event: NetworkStoreValueDeletedEvent
     ) -> None:
-        with self._store_write():
-            await self.execute(
-                f"DELETE FROM network_store{DB_V} WHERE namespace = ? AND key = ?",
-                (event.namespace, event.key),
-            )
+        await self.execute(
+            f"DELETE FROM network_store{DB_V} WHERE namespace = ? AND key = ?",
+            (event.namespace, event.key),
+        )
 
         await self._commit()
 
