@@ -1175,18 +1175,73 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
 
         return self._get_effective_manufacturer_code(attr_def)
 
+    def migrate_attribute_cache_row(self, row: AttributeCacheRow, value: Any) -> bool:
+        """Migrate the stored value of an attribute this cluster no longer defines.
+
+        Quirks override this to carry the value of an attribute they used to invent
+        into the place that replaced it, such as the device's store. It is called once
+        per row while the database is loaded, only for devices a quirk was applied to,
+        once their store has been loaded, and only for rows that hold a value of an
+        attribute ID the cluster defines under no manufacturer code. `value` is decoded
+        with the row's stored data type, or as stored for rows from before data types
+        were stored; rows of a type that only the attribute definition can decode are
+        not offered.
+
+        It runs in the middle of the load: the attribute caches of other clusters and
+        devices may not be populated yet, groups and the rest of the network state are
+        not loaded, and the device is not initialized. Only the device's store should be
+        relied on. Store writes made here are written by the load, before the migrated
+        rows are deleted.
+
+        Return `True` if the row was migrated, which deletes it from the database, so
+        that a later quirk without the migration cannot load it as current. An
+        exception is logged and keeps the row.
+        """
+        return False
+
+    def _defines_attribute_id(self, attr_id: int) -> bool:
+        """Whether the cluster defines the attribute ID under any manufacturer code."""
+        try:
+            self.find_attributes(attr_id)
+        except KeyError:
+            return False
+
+        return True
+
+    def _migrate_attribute_cache_row(self, row: AttributeCacheRow, value: Any) -> bool:
+        try:
+            migrated = self.migrate_attribute_cache_row(row, value)
+        except Exception:  # noqa: BLE001
+            self.warning(
+                "Failed to migrate attribute 0x%04X, keeping it",
+                row.attr_id,
+                exc_info=True,
+            )
+            return False
+
+        if migrated:
+            self.debug("Migrated attribute 0x%04X", row.attr_id)
+
+        return bool(migrated)
+
     def _load_attribute_cache_row(
         self,
         row: AttributeCacheRow,
         *,
         existing_keys: set[tuple],
         result: AttributeCacheLoadResult,
+        migrate: bool = False,
     ) -> tuple[foundation.ZCLAttributeDef, Any] | None:
         """Populate the attribute cache from a database row.
 
+        With `migrate`, a row of an attribute the cluster does not define is offered to
+        `migrate_attribute_cache_row` first, and deleted if it is migrated.
+
         Returns the attribute definition and value, if the row is a known attribute.
         """
-        new_row, loaded = self._read_attribute_cache_row(row, existing_keys)
+        new_row, loaded = self._read_attribute_cache_row(
+            row, existing_keys, result, migrate=migrate
+        )
 
         if new_row != row:
             result.changes.append(AttributeCacheRowChange(old=row, new=new_row))
@@ -1197,6 +1252,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         self,
         row: AttributeCacheRow,
         existing_keys: set[tuple],
+        result: AttributeCacheLoadResult,
+        *,
+        migrate: bool,
     ) -> tuple[AttributeCacheRow | None, tuple[foundation.ZCLAttributeDef, Any] | None]:
         manufacturer_code = row.manufacturer_code
 
@@ -1252,6 +1310,16 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             return None, None
 
         if attr_def is None:
+            # An `unk` value can only be decoded with the definition that is gone
+            if (
+                migrate
+                and row.data_type != foundation.DataTypeId.unk
+                and not self._defines_attribute_id(row.attr_id)
+                and self._migrate_attribute_cache_row(row, value)
+            ):
+                result.migrated.append(row)
+                return None, None
+
             self._attr_cache.set_legacy_value(
                 row.attr_id, value, last_updated=last_updated
             )
