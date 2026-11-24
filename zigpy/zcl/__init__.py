@@ -1032,7 +1032,19 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                     )
                     continue
 
-                value = _convert_attribute_value(attr_def, attr.value)
+                try:
+                    value = _convert_attribute_value(attr_def, attr.value)
+                except (ValueError, TypeError):
+                    self.warning(
+                        "Dropping reported value %r of attribute %s: it does not fit"
+                        " type %s",
+                        attr.value,
+                        attr_def.name,
+                        attr_def.type,
+                        exc_info=True,
+                    )
+                    continue
+
                 cached_value = self._legacy_apply_quirk_attribute_update(
                     attr_def, value, attr.value
                 )

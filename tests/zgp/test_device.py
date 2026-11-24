@@ -839,6 +839,26 @@ VENDOR_CLUSTER_ID = 0xFC00
                 (Metering.cluster_id, ENERGY.attrid, None, 1234),
             ],
         ),
+        # A value that does not fit its attribute's type does not drop the others
+        (
+            GPDCommandID.MultiClusterReporting,
+            GPMultiClusterReportingPayload(
+                reports=[
+                    GPClusterReport(
+                        cluster_id=Metering.cluster_id,
+                        attribute=attribute(
+                            ENERGY.attrid,
+                            DataTypeId.string,
+                            t.CharacterString("abc"),
+                        ),
+                    ),
+                    GPClusterReport(
+                        cluster_id=ElectricalMeasurement.cluster_id, attribute=VOLTAGE
+                    ),
+                ]
+            ),
+            [(ElectricalMeasurement.cluster_id, VOLTAGE.attrid, None, 230)],
+        ),
         # Manufacturer-specific attributes need a manufacturer code
         (
             GPDCommandID.AttributeReporting,
