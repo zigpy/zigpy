@@ -2156,3 +2156,449 @@ async def test_coordinator_group_subscribe_unsubscribe(
             call(group_id=0x1234, endpoint_id=1),
             call(group_id=0x1234, endpoint_id=2),
         ]
+
+
+BLOCKED_DEVICE_LEAVE_INTERVAL = zigpy.application.BLOCKED_DEVICE_LEAVE_INTERVAL
+BLOCKED_IEEE = t.EUI64.convert("00:11:22:33:44:55:66:77")
+
+
+@pytest.fixture
+def blocking_app():
+    """Application with one blocked device."""
+    return make_app({conf.CONF_BLOCKED_DEVICES: [str(BLOCKED_IEEE)]})
+
+
+def _make_packet(nwk: int, cluster_id: int = 0x0006) -> t.ZigbeePacket:
+    return t.ZigbeePacket(
+        profile_id=260,
+        cluster_id=cluster_id,
+        src_ep=1,
+        dst_ep=1,
+        data=t.SerializableBytes(b"\x18\x01\x0a\x00\x00\x10\x01"),
+        src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=nwk),
+        dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+    )
+
+
+def _leave_requests(app) -> list[t.ZigbeePacket]:
+    return [
+        c.args[0]
+        for c in app.send_packet.mock_calls
+        if c.args and c.args[0].cluster_id == zdo_t.ZDOCmd.Mgmt_Leave_req
+    ]
+
+
+async def _settle() -> None:
+    for _ in range(10):
+        await asyncio.sleep(0)
+
+
+async def test_blocked_device_join(blocking_app):
+    """A blocked device joining is not added and is asked to leave."""
+    blocking_app.handle_join(nwk=0x1234, ieee=BLOCKED_IEEE, parent_nwk=0x0000)
+    await _settle()
+
+    assert BLOCKED_IEEE not in blocking_app.devices
+    assert not any(
+        c.args and c.args[0] == "device_joined"
+        for c in blocking_app.listener_event.mock_calls
+    )
+
+    [leave] = _leave_requests(blocking_app)
+    assert leave.dst == t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x1234)
+
+    # Neither `RemoveChildren` nor `Rejoin`: its children may be our own devices
+    # The first byte is the ZDO sequence number
+    assert leave.data.serialize()[1:] == BLOCKED_IEEE.serialize() + b"\x00"
+
+
+async def test_blocked_device_join_other_device(blocking_app):
+    """Devices that are not blocked still join normally."""
+    ieee = make_ieee(0x40)
+    blocking_app.handle_join(nwk=0x1234, ieee=ieee, parent_nwk=0x0000)
+    await _settle()
+
+    assert ieee in blocking_app.devices
+    assert _leave_requests(blocking_app) == []
+
+
+async def test_blocked_device_leave_rate_limited(blocking_app):
+    """Repeated announcements send at most one leave request per interval."""
+    blocking_app.handle_join(nwk=0x1234, ieee=BLOCKED_IEEE, parent_nwk=None)
+    blocking_app.handle_join(nwk=0x1234, ieee=BLOCKED_IEEE, parent_nwk=None)
+    blocking_app.packet_received(_make_packet(0x1234))
+    await _settle()
+
+    assert len(_leave_requests(blocking_app)) == 1
+
+    # Once the interval has passed, the device is asked again
+    with patch("zigpy.application.BLOCKED_DEVICE_LEAVE_INTERVAL", 0):
+        blocking_app.handle_join(nwk=0x1234, ieee=BLOCKED_IEEE, parent_nwk=None)
+        await _settle()
+
+    assert len(_leave_requests(blocking_app)) == 2
+
+
+async def test_blocked_device_nwk_rediscovered(blocking_app):
+    """A blocked device's address is rediscovered at most once per interval."""
+    blocking_app._discover_unknown_device = AsyncMock(
+        spec_set=blocking_app._discover_unknown_device
+    )
+
+    with patch("zigpy.application.time") as mock_time:
+        mock_time.monotonic.return_value = 1000
+        blocking_app.handle_join(nwk=0x1234, ieee=BLOCKED_IEEE, parent_nwk=None)
+        await _settle()
+
+        for _ in range(5):
+            blocking_app.packet_received(_make_packet(0x1234))
+        await _settle()
+        assert blocking_app._discover_unknown_device.call_count == 0
+
+        # Once the interval has passed, the address may belong to another device
+        mock_time.monotonic.return_value = 1000 + BLOCKED_DEVICE_LEAVE_INTERVAL
+
+        for _ in range(5):
+            blocking_app.packet_received(_make_packet(0x1234))
+            blocking_app.handle_relays(nwk=0x1234, relays=[0x5678])
+        await _settle()
+
+        # One discovery, the other packets are still dropped while it is answered
+        blocking_app._discover_unknown_device.assert_called_once_with(0x1234)
+
+        # The IEEE address response shows it is still the blocked device
+        blocking_app.handle_join(
+            nwk=0x1234, ieee=BLOCKED_IEEE, parent_nwk=None, handle_rejoin=False
+        )
+        await _settle()
+
+    assert list(blocking_app._blocked_device_nwks) == [0x1234]
+    assert len(_leave_requests(blocking_app)) == 2
+
+
+async def test_blocked_device_nwk_rediscovered_other_device(blocking_app):
+    """An address rediscovered as another device's is no longer dropped."""
+    blocking_app._discover_unknown_device = AsyncMock(
+        spec_set=blocking_app._discover_unknown_device
+    )
+    blocking_app.handle_join(nwk=0x1234, ieee=BLOCKED_IEEE, parent_nwk=None)
+
+    with patch("zigpy.application.BLOCKED_DEVICE_LEAVE_INTERVAL", 0):
+        blocking_app.packet_received(_make_packet(0x1234))
+    await _settle()
+    blocking_app._discover_unknown_device.assert_called_once_with(0x1234)
+
+    ieee = make_ieee(0x40)
+    blocking_app.handle_join(
+        nwk=0x1234, ieee=ieee, parent_nwk=None, handle_rejoin=False
+    )
+
+    assert blocking_app._blocked_device_nwks == {}
+    assert blocking_app.get_device(nwk=0x1234).ieee == ieee
+
+
+async def test_blocked_known_device_nwk_changed(blocking_app):
+    """A device that joined before it was blocked keeps its address current."""
+    dev = blocking_app.add_device(BLOCKED_IEEE, 0x1234)
+    dev.packet_received = MagicMock()
+    blocking_app._discover_unknown_device = AsyncMock(
+        spec_set=blocking_app._discover_unknown_device
+    )
+
+    blocking_app.handle_join(nwk=0x9999, ieee=BLOCKED_IEEE, parent_nwk=None)
+
+    for _ in range(5):
+        blocking_app.packet_received(_make_packet(0x9999))
+    await _settle()
+
+    assert dev.nwk == 0x9999
+    assert blocking_app._discover_unknown_device.call_count == 0
+    assert dev.packet_received.call_count == 0
+    assert len(_leave_requests(blocking_app)) == 1
+
+
+async def test_blocked_device_relays(blocking_app):
+    """Route records from a blocked device's address are dropped too."""
+    blocking_app._discover_unknown_device = AsyncMock(
+        spec_set=blocking_app._discover_unknown_device
+    )
+    blocking_app.handle_join(nwk=0x1234, ieee=BLOCKED_IEEE, parent_nwk=None)
+
+    for _ in range(5):
+        blocking_app.handle_relays(nwk=0x1234, relays=[0x5678])
+    await _settle()
+
+    assert blocking_app._discover_unknown_device.call_count == 0
+
+
+async def test_blocked_coordinator_ignored():
+    """The coordinator's own IEEE address is never blocked."""
+    app = make_app({conf.CONF_BLOCKED_DEVICES: [str(NCP_IEEE)]})
+    coordinator = app.add_device(NCP_IEEE, 0x0000)
+    coordinator.packet_received = MagicMock()
+
+    with patch.object(
+        type(coordinator),
+        "is_initialized",
+        new_callable=PropertyMock,
+        return_value=True,
+    ):
+        app.packet_received(_make_packet(0x0000))
+    app.handle_join(nwk=0x0000, ieee=NCP_IEEE, parent_nwk=None)
+    await _settle()
+
+    assert coordinator.packet_received.call_count == 1
+    assert app.devices[NCP_IEEE] is coordinator
+    assert _leave_requests(app) == []
+
+
+async def test_blocked_device_packet_from_known_nwk(blocking_app):
+    """Packets from a blocked device's NWK are dropped without IEEE discovery."""
+    blocking_app._discover_unknown_device = AsyncMock(
+        spec_set=blocking_app._discover_unknown_device
+    )
+    listener = MagicMock()
+    blocking_app.add_listener(listener)
+
+    blocking_app.handle_join(nwk=0x1234, ieee=BLOCKED_IEEE, parent_nwk=None)
+    blocking_app.packet_received(_make_packet(0x1234))
+    await _settle()
+
+    assert blocking_app._discover_unknown_device.call_count == 0
+    assert listener.handle_message.call_count == 0
+    assert BLOCKED_IEEE not in blocking_app.devices
+
+    # An unrelated unknown address is still discovered
+    blocking_app.packet_received(_make_packet(0x5678))
+    await _settle()
+    blocking_app._discover_unknown_device.assert_called_once_with(0x5678)
+
+
+async def test_blocked_device_nwk_reused(blocking_app):
+    """A device that takes over a blocked device's NWK is not dropped."""
+    blocking_app.handle_join(nwk=0x1234, ieee=BLOCKED_IEEE, parent_nwk=None)
+    assert 0x1234 in blocking_app._blocked_device_nwks
+
+    ieee = make_ieee(0x40)
+    blocking_app.handle_join(nwk=0x1234, ieee=ieee, parent_nwk=None)
+    assert 0x1234 not in blocking_app._blocked_device_nwks
+
+    dev = blocking_app.get_device(ieee=ieee)
+    dev.packet_received = MagicMock()
+
+    with patch.object(
+        type(dev), "is_initialized", new_callable=PropertyMock, return_value=True
+    ):
+        blocking_app.packet_received(_make_packet(0x1234))
+
+    assert dev.packet_received.call_count == 1
+
+
+async def test_blocked_device_nwk_changed(blocking_app):
+    """Only the most recent NWK address of a blocked device is remembered."""
+    blocking_app.handle_join(nwk=0x1234, ieee=BLOCKED_IEEE, parent_nwk=None)
+    blocking_app.handle_join(nwk=0x5678, ieee=BLOCKED_IEEE, parent_nwk=None)
+
+    assert list(blocking_app._blocked_device_nwks) == [0x5678]
+
+
+async def test_blocked_device_already_joined(blocking_app):
+    """A device blocked after it joined stays known but is ignored and asked to leave."""
+    dev = blocking_app.add_device(BLOCKED_IEEE, 0x1234)
+    dev.packet_received = MagicMock()
+    listener = MagicMock()
+    blocking_app.add_listener(listener)
+
+    blocking_app.packet_received(_make_packet(0x1234))
+    blocking_app.handle_join(nwk=0x1234, ieee=BLOCKED_IEEE, parent_nwk=None)
+    await _settle()
+
+    # Removing it is left to the user, zigpy's consumers may not be listening yet
+    assert blocking_app.devices[BLOCKED_IEEE] is dev
+    assert listener.device_removed.call_count == 0
+    assert listener.device_joined.call_count == 0
+    assert listener.handle_message.call_count == 0
+    assert dev.packet_received.call_count == 0
+    assert len(_leave_requests(blocking_app)) == 1
+    assert list(blocking_app._blocked_device_nwks) == [0x1234]
+
+
+async def test_blocked_known_device_takes_stale_address(blocking_app):
+    """An already-known blocked device using an address another device has stored."""
+    stale = blocking_app.add_device(make_ieee(0x40), 0x9999)
+    stale.packet_received = MagicMock()
+    stale.relays = [0x1111]
+    dev = blocking_app.add_device(BLOCKED_IEEE, 0x1234)
+    dev.packet_received = MagicMock()
+    listener = MagicMock()
+    blocking_app.add_listener(listener)
+
+    # Both devices now have the address stored
+    blocking_app.handle_join(nwk=0x9999, ieee=BLOCKED_IEEE, parent_nwk=None)
+    blocking_app.devices[stale.ieee].nwk = 0x9999
+    stale.nwk = 0x9999
+    dev.nwk = 0x9999
+
+    with patch.object(
+        type(stale), "is_initialized", new_callable=PropertyMock, return_value=True
+    ):
+        blocking_app.packet_received(_make_packet(0x9999))
+    blocking_app.handle_relays(nwk=0x9999, relays=[0x5678])
+    await _settle()
+
+    assert list(blocking_app._blocked_device_nwks) == [0x9999]
+    assert stale.packet_received.call_count == 0
+    assert dev.packet_received.call_count == 0
+    assert listener.handle_message.call_count == 0
+    assert stale.relays == [0x1111]
+
+
+async def test_blocked_known_device_route_record_asked_to_leave(blocking_app):
+    """A route record from a known blocked device is dropped and it is asked to leave."""
+    dev = blocking_app.add_device(BLOCKED_IEEE, 0x1234)
+    dev.relays = [0x1111]
+
+    blocking_app.handle_relays(nwk=0x1234, relays=[0x5678])
+    await _settle()
+
+    assert dev.relays == [0x1111]
+    assert len(_leave_requests(blocking_app)) == 1
+    assert list(blocking_app._blocked_device_nwks) == [0x1234]
+
+
+async def test_blocked_known_device_asked_again(blocking_app):
+    """An already-known blocked device is asked to leave again while it keeps talking."""
+    blocking_app.add_device(BLOCKED_IEEE, 0x1234)
+    blocking_app._discover_unknown_device = AsyncMock(
+        spec_set=blocking_app._discover_unknown_device
+    )
+
+    with patch("zigpy.application.time") as mock_time:
+        mock_time.monotonic.return_value = 1000
+        blocking_app.packet_received(_make_packet(0x1234))
+        blocking_app.packet_received(_make_packet(0x1234))
+        await _settle()
+        assert len(_leave_requests(blocking_app)) == 1
+
+        mock_time.monotonic.return_value = 1000 + BLOCKED_DEVICE_LEAVE_INTERVAL
+        blocking_app.packet_received(_make_packet(0x1234))
+        await _settle()
+
+    assert len(_leave_requests(blocking_app)) == 2
+
+
+async def test_blocked_device_removed_by_user(blocking_app):
+    """Once removed, a device blocked after it joined is handled like any other."""
+    blocking_app.add_device(BLOCKED_IEEE, 0x1234)
+    blocking_app._discover_unknown_device = AsyncMock(
+        spec_set=blocking_app._discover_unknown_device
+    )
+
+    with patch.object(blocking_app, "_remove_device", AsyncMock()):
+        await blocking_app.remove(BLOCKED_IEEE)
+    blocking_app.devices.pop(BLOCKED_IEEE)
+
+    # Its address is unknown now, so it is discovered first
+    blocking_app.packet_received(_make_packet(0x1234))
+    blocking_app._discover_unknown_device.assert_called_once_with(0x1234)
+
+    blocking_app.handle_join(
+        nwk=0x1234, ieee=BLOCKED_IEEE, parent_nwk=None, handle_rejoin=False
+    )
+    await _settle()
+
+    assert BLOCKED_IEEE not in blocking_app.devices
+    assert list(blocking_app._blocked_device_nwks) == [0x1234]
+    assert len(_leave_requests(blocking_app)) == 1
+
+
+async def test_blocked_device_left(blocking_app):
+    """The address of a blocked device that left is no longer dropped."""
+    blocking_app._discover_unknown_device = AsyncMock(
+        spec_set=blocking_app._discover_unknown_device
+    )
+
+    blocking_app.handle_join(nwk=0x1234, ieee=BLOCKED_IEEE, parent_nwk=None)
+    blocking_app.handle_leave(nwk=0x1234, ieee=BLOCKED_IEEE)
+    assert blocking_app._blocked_device_nwks == {}
+
+    # A device that now uses the address and wasn't heard joining is discovered
+    blocking_app.packet_received(_make_packet(0x1234))
+    blocking_app._discover_unknown_device.assert_called_once_with(0x1234)
+
+
+async def test_blocked_device_leave_cleans_up(blocking_app):
+    """The device object used to send the leave request unregisters its callbacks."""
+    listeners_before = sum(len(v) for v in blocking_app._req_listeners.values())
+
+    with patch("zigpy.application.BLOCKED_DEVICE_LEAVE_INTERVAL", 0):
+        for _ in range(3):
+            blocking_app.handle_join(nwk=0x1234, ieee=BLOCKED_IEEE, parent_nwk=None)
+            await _settle()
+
+    assert len(_leave_requests(blocking_app)) == 3
+    assert sum(len(v) for v in blocking_app._req_listeners.values()) == listeners_before
+
+
+async def test_blocked_device_leave_fails(blocking_app, caplog):
+    """A leave request that cannot be delivered is only logged."""
+    blocking_app.send_packet.side_effect = DeliveryError("failed")
+
+    with caplog.at_level(logging.DEBUG):
+        blocking_app.handle_join(nwk=0x1234, ieee=BLOCKED_IEEE, parent_nwk=None)
+        await asyncio.sleep(1)
+
+    assert "Failed to send leave request to blocked device" in caplog.text
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+
+
+async def test_blocked_coordinator_startup_warning(caplog):
+    """Blocking the coordinator's own IEEE address logs a warning on startup."""
+    app = make_app({conf.CONF_BLOCKED_DEVICES: [str(NCP_IEEE)]})
+    app.permit = AsyncMock()
+
+    with caplog.at_level(logging.WARNING):
+        await app.startup(auto_form=False)
+
+    assert "Ignoring the coordinator's own IEEE address" in caplog.text
+
+
+async def test_blocked_device_takes_stale_address(blocking_app):
+    """A blocked device using an address another device still has stored is dropped."""
+    stale = blocking_app.add_device(make_ieee(0x40), 0x1234)
+    stale.packet_received = MagicMock()
+    stale.relays = [0x1111]
+    listener = MagicMock()
+    blocking_app.add_listener(listener)
+
+    blocking_app.handle_join(nwk=0x1234, ieee=BLOCKED_IEEE, parent_nwk=None)
+
+    with patch.object(
+        type(stale), "is_initialized", new_callable=PropertyMock, return_value=True
+    ):
+        blocking_app.packet_received(_make_packet(0x1234))
+    blocking_app.handle_relays(nwk=0x1234, relays=[0x5678])
+    await _settle()
+
+    assert stale.packet_received.call_count == 0
+    assert listener.handle_message.call_count == 0
+    assert stale.relays == [0x1111]
+
+    # Once the stored device announces itself with the address again, it is its own
+    stale.packet_received.reset_mock()
+    blocking_app.handle_join(nwk=0x1234, ieee=stale.ieee, parent_nwk=None)
+    assert blocking_app._blocked_device_nwks == {}
+
+    with patch.object(
+        type(stale), "is_initialized", new_callable=PropertyMock, return_value=True
+    ):
+        blocking_app.packet_received(_make_packet(0x1234))
+
+    assert stale.packet_received.call_count == 1
+
+
+async def test_blocked_device_coordinator_address(blocking_app):
+    """A blocked device claiming the coordinator's address never shadows it."""
+    blocking_app.handle_join(nwk=0x0000, ieee=BLOCKED_IEEE, parent_nwk=None)
+
+    assert blocking_app._blocked_device_nwks == {}
