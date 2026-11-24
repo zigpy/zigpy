@@ -113,6 +113,25 @@ def _register_sqlite_adapters():
     sqlite3.register_converter("ieee", convert_ieee)
 
 
+def _is_storable_value(value: Any) -> bool:
+    """Check if a value can be bound as an SQLite parameter, either natively or via
+    a registered adapter. List and struct values, for example, cannot be.
+    """
+    # SQLite integers are signed 64-bit, so large `uint64_t` values don't fit
+    if isinstance(value, int):
+        return -(2**63) <= value < 2**63
+
+    if value is None or isinstance(value, (float, str, bytes, bytearray)):
+        return True
+
+    try:
+        sqlite3.adapt(value, sqlite3.PrepareProtocol)
+    except sqlite3.ProgrammingError:
+        return False
+
+    return True
+
+
 def aiosqlite_connect(
     database: str, iter_chunk_size: int = 64, **kwargs
 ) -> aiosqlite.Connection:
@@ -591,24 +610,41 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         await self._db.executemany(q, clusters)
 
     async def _save_attribute_cache(self, ep: Endpoint) -> None:
-        clusters = [
-            (
-                ep.device.ieee,
-                ep.endpoint_id,
-                cluster.cluster_type,
-                cluster.cluster_id,
-                attrid,
-                manufacturer_code,
-                Status.SUCCESS,
-                cache_item.value,
-                cache_item.last_updated.timestamp(),
-            )
-            for cluster in ep.clusters
+        clusters = []
+
+        for cluster in ep.clusters:
             for (
                 attrid,
                 manufacturer_code,
-            ), cache_item in cluster._attr_cache._cache.items()
-        ]
+            ), cache_item in cluster._attr_cache._cache.items():
+                # A single unbindable value would fail the entire `executemany` below
+                # and abort the rest of the device save
+                if not _is_storable_value(cache_item.value):
+                    LOGGER.warning(
+                        "[%s:%s:0x%04x] Not persisting attribute 0x%04x, its value"
+                        " cannot be stored in the database: %r",
+                        ep.device.ieee,
+                        ep.endpoint_id,
+                        cluster.cluster_id,
+                        attrid,
+                        cache_item.value,
+                    )
+                    continue
+
+                clusters.append(
+                    (
+                        ep.device.ieee,
+                        ep.endpoint_id,
+                        cluster.cluster_type,
+                        cluster.cluster_id,
+                        attrid,
+                        manufacturer_code,
+                        Status.SUCCESS,
+                        cache_item.value,
+                        cache_item.last_updated.timestamp(),
+                    )
+                )
+
         q = f"""INSERT INTO attributes_cache{DB_V} (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code, status, value, last_updated)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code_idx)
@@ -688,6 +724,15 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
     ) -> None:
         if isinstance(event, AttributeWrittenEvent) and event.status != Status.SUCCESS:
             LOGGER.debug("Ignoring failed attribute write event: %s", event)
+            return
+
+        # Logged at debug level only: these values are re-read or re-reported often
+        if not _is_storable_value(event.value):
+            LOGGER.debug(
+                "Not persisting attribute event, its value cannot be stored in the"
+                " database: %s",
+                event,
+            )
             return
 
         await self.execute(

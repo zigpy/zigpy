@@ -7,7 +7,7 @@ import collections
 from collections.abc import AsyncGenerator, Callable
 import contextlib
 import contextvars
-from datetime import UTC, datetime, tzinfo
+from datetime import UTC, datetime, timedelta, tzinfo
 import errno
 import inspect
 import logging
@@ -1172,11 +1172,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             )
             dst = t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=device.nwk)
 
-        if self.config[conf.CONF_SOURCE_ROUTING]:
-            source_route = self.build_source_route_to(dest=device)
-        else:
-            source_route = None
-
         tx_options = t.TransmitOptions.NONE
 
         if ask_for_ack is not None:
@@ -1203,7 +1198,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
                 cluster_id=cluster,
                 data=t.SerializableBytes(data),
                 extended_timeout=extended_timeout,
-                source_route=source_route,
                 tx_options=tx_options,
                 priority=priority,
             )
@@ -1837,6 +1831,37 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         self, group_id: t.Group, endpoint_id: int
     ) -> None:
         """Ask the coordinator firmware to unsubscribe from a group, if needed."""
+
+    async def send_gpdf(
+        self,
+        *,
+        target: zigpy.zgp.types.SrcID | tuple[t.EUI64, int] | None,
+        command_id: zigpy.zgp.types.GPDCommandID,
+        payload: bytes,
+        channel: int,
+        lifetime: timedelta,
+    ) -> None:
+        """Send a GPDF from the radio in its GPD's next receive window."""
+        await self._send_gpdf(
+            target=target,
+            command_id=command_id,
+            payload=payload,
+            channel=channel,
+            lifetime=lifetime,
+        )
+
+    # @abc.abstractmethod
+    async def _send_gpdf(
+        self,
+        *,
+        target: zigpy.zgp.types.SrcID | tuple[t.EUI64, int] | None,
+        command_id: zigpy.zgp.types.GPDCommandID,
+        payload: bytes,
+        channel: int,
+        lifetime: timedelta,
+    ) -> None:
+        """Send a GPDF from the radio once its GPD listens, internal."""
+        raise NotImplementedError
 
     async def permit(self, time_s: int = 60, node: t.EUI64 | str | None = None) -> None:
         """Permit joining on a specific node or all router nodes."""

@@ -1,5 +1,6 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
+import logging
 import pathlib
 import sqlite3
 import time
@@ -49,7 +50,7 @@ from zigpy.zcl import (
     OtaQueryCacheUpdatedEvent,
     UnsupportedAttribute,
 )
-from zigpy.zcl.clusters.general import Basic, Identify, OnOff, Ota
+from zigpy.zcl.clusters.general import Basic, Identify, MultistateInput, OnOff, Ota
 from zigpy.zcl.foundation import Status as ZCLStatus, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
 from zigpy.zgp.commands import GPGenericSwitchConfiguration
@@ -182,7 +183,8 @@ async def test_database(tmp_path):
     assert dev.get_signature()[SIG_MANUFACTURER] == "Custom"
     assert dev.get_signature()[SIG_MODEL] == "Model"
 
-    ts = time.time()
+    # Updates within `MIN_UPDATE_DELTA` of the stored value aren't saved, so go past it
+    ts = time.time() + zigpy.appdb.MIN_UPDATE_DELTA + 1
     dev.last_seen = ts
     dev_last_seen = dev.last_seen
     assert isinstance(dev.last_seen, float)
@@ -1346,6 +1348,115 @@ async def test_attribute_reads_persist(tmp_path) -> None:
         )
         == 0xAB
     )
+
+    await app2.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("value", "storable"),
+    [
+        (None, True),
+        (t.uint8_t(1), True),
+        (t.uint64_t(2**63 - 1), True),
+        (t.uint64_t(2**63), False),
+        (t.int64s(-(2**63)), True),
+        (True, True),
+        (zdo_t.LogicalType.Router, True),
+        (t.Single(1.5), True),
+        (t.CharacterString("text"), True),
+        (t.LVBytes(b"\x01\x02"), True),
+        (t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"), True),
+        (t.LVList[t.CharacterString, t.uint16_t](["a", "b"]), False),
+        (t.KeyData(range(16)), False),
+        (make_node_desc(), False),
+    ],
+)
+def test_is_storable_value(value, storable) -> None:
+    """Values SQLite cannot bind are detected."""
+    zigpy.appdb._register_sqlite_adapters()
+    assert zigpy.appdb._is_storable_value(value) is storable
+
+
+async def test_unstorable_attribute_values_not_persisted(tmp_path, caplog) -> None:
+    """An attribute value that cannot be stored does not prevent saving the rest."""
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    for ep_id in (1, 2):
+        ep = dev.add_endpoint(ep_id)
+        ep.status = zigpy.endpoint.Status.ZDO_INIT
+        ep.profile_id = 260
+        ep.device_type = profiles.zha.DeviceType.ON_OFF_SWITCH
+        ep.add_input_cluster(MultistateInput.cluster_id)
+        ep.add_input_cluster(OnOff.cluster_id)
+
+    dev.model = "some model"
+    dev.manufacturer = "some manufacturer"
+
+    # The device save stores the attribute cache in bulk
+    multistate = dev.endpoints[1].multistate_input
+    multistate.update_attribute(MultistateInput.AttributeDefs.present_value, 2)
+    multistate.update_attribute(
+        MultistateInput.AttributeDefs.state_text,
+        t.LVList[t.CharacterString, t.uint16_t](["a", "b"]),
+    )
+    multistate.update_attribute(MultistateInput.AttributeDefs.number_of_states, 2)
+    dev.endpoints[1].on_off.update_attribute(OnOff.AttributeDefs.on_off, 1)
+    dev.endpoints[2].on_off.update_attribute(OnOff.AttributeDefs.on_off, 0)
+
+    with caplog.at_level(logging.DEBUG, logger="zigpy.appdb"):
+        await dev.initialize()
+        await app._dblistener._callback_handlers.join()
+
+        # Attribute events are stored individually
+        dev = app.get_device(ieee=dev.ieee)
+        multistate = dev.endpoints[1].multistate_input
+
+        with mock_attribute_reads(
+            multistate,
+            {
+                MultistateInput.AttributeDefs.state_text: ["c", "d"],
+                MultistateInput.AttributeDefs.description: "some description",
+            },
+        ):
+            await multistate.read_attributes(
+                [
+                    MultistateInput.AttributeDefs.state_text,
+                    MultistateInput.AttributeDefs.description,
+                ]
+            )
+
+        await app._dblistener._callback_handlers.join()
+
+    assert (
+        "[aa:bb:cc:dd:11:22:33:44:1:0x0012] Not persisting attribute 0x000e"
+        in caplog.text
+    )
+    assert "Not persisting attribute event" in caplog.text
+    assert not any(
+        isinstance(record.exc_info and record.exc_info[1], sqlite3.ProgrammingError)
+        for record in caplog.records
+    )
+
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(ieee=dev.ieee)
+
+    # Everything but the unstorable value is persisted, including the second endpoint
+    multistate2 = dev2.endpoints[1].multistate_input
+    assert multistate2.get_cached_value("present_value") == 2
+    assert multistate2.get_cached_value("number_of_states") == 2
+    assert multistate2.get_cached_value("description") == "some description"
+    assert dev2.endpoints[1].on_off.get_cached_value("on_off") == 1
+    assert dev2.endpoints[2].on_off.get_cached_value("on_off") == 0
+
+    with pytest.raises(KeyError):
+        multistate2.get_cached_value("state_text")
 
     await app2.shutdown()
 

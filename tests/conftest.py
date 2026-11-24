@@ -178,6 +178,9 @@ class App(BaseApp):
     ) -> None:
         pass
 
+    async def _send_gpdf(self, **kwargs) -> None:
+        pass
+
 
 def recursive_dict_merge(
     obj: dict[str, typing.Any], updates: dict[str, typing.Any]

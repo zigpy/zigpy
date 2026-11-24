@@ -130,8 +130,9 @@ class IasZone(Cluster):
             schema={
                 "zone_status": ZoneStatus,
                 "extended_status": t.bitmap8,
-                "zone_id": t.uint8_t,
-                "delay": t.uint16_t,
+                # Added in HA 1.2, devices implementing an older revision omit them
+                "zone_id?": t.uint8_t,
+                "delay?": t.uint16_t,
             },
         )
         enroll: Final = ZCLCommandDef(
@@ -253,15 +254,17 @@ class IasAce(Cluster):
             id=0x00,
             schema={
                 "arm_mode": ArmMode,
-                "arm_disarm_code": t.CharacterString,
-                "zone_id": t.uint8_t,
+                # Added in HA 1.2, devices implementing an older revision omit them
+                "arm_disarm_code?": t.CharacterString,
+                "zone_id?": t.uint8_t,
             },
         )
         bypass: Final = ZCLCommandDef(
             id=0x01,
             schema={
                 "zones_ids": t.LVList[t.uint8_t, t.uint8_t],
-                "arm_disarm_code": t.CharacterString,
+                # Added in HA 1.2.1, devices implementing an older revision omit it
+                "arm_disarm_code?": t.CharacterString,
             },
         )
         emergency: Final = ZCLCommandDef(
@@ -317,7 +320,8 @@ class IasAce(Cluster):
                 "zone_id": t.uint8_t,
                 "zone_type": ZoneType,
                 "ieee": t.EUI64,
-                "zone_label": t.CharacterString,
+                # Added in HA 1.2.1, devices implementing an older revision omit it
+                "zone_label?": t.CharacterString,
             },
         )
         zone_status_changed: Final = ZCLCommandDef(
@@ -325,8 +329,9 @@ class IasAce(Cluster):
             schema={
                 "zone_id": t.uint8_t,
                 "zone_status": ZoneStatus,
-                "audible_notification": AudibleNotification,
-                "zone_label": t.CharacterString,
+                # Added in HA 1.2.1, devices implementing an older revision omit them
+                "audible_notification?": AudibleNotification,
+                "zone_label?": t.CharacterString,
             },
         )
         panel_status_changed: Final = ZCLCommandDef(
@@ -334,8 +339,9 @@ class IasAce(Cluster):
             schema={
                 "panel_status": PanelStatus,
                 "seconds_remaining": t.uint8_t,
-                "audible_notification": AudibleNotification,
-                "alarm_status": AlarmStatus,
+                # Added in HA 1.2.1, devices implementing an older revision omit them
+                "audible_notification?": AudibleNotification,
+                "alarm_status?": AlarmStatus,
             },
         )
         panel_status_response: Final = ZCLCommandDef(
@@ -364,33 +370,9 @@ class IasAce(Cluster):
         )
 
 
-class Strobe(t.enum8):
+class Strobe(t.enum2):
     No_strobe = 0x00
     Strobe = 0x01
-
-
-class _SquawkOrWarningCommand:  # noqa: PLW1641
-    def __init__(self, value: int = 0) -> None:
-        self.value = t.uint8_t(value)
-
-    @classmethod
-    def deserialize(cls, data: bytes) -> tuple[_SquawkOrWarningCommand, bytes]:
-        val, data = t.uint8_t.deserialize(data)
-        return cls(val), data
-
-    def serialize(self) -> bytes:
-        return t.uint8_t(self.value).serialize()
-
-    def __repr__(self) -> str:
-        return (
-            f"<{self.__class__.__name__}.mode={self.mode.name} "
-            f"strobe={self.strobe.name} level={self.level.name}: "
-            f"{self.value}>"
-        )
-
-    def __eq__(self, other):
-        """Compare to int."""
-        return self.value == other
 
 
 class StrobeLevel(t.enum8):
@@ -400,14 +382,14 @@ class StrobeLevel(t.enum8):
     Very_high_level_strobe = 0x03
 
 
-class SirenLevel(t.enum8):
+class SirenLevel(t.enum2):
     Low_level_sound = 0x00
     Medium_level_sound = 0x01
     High_level_sound = 0x02
     Very_high_level_sound = 0x03
 
 
-class WarningMode(t.enum8):
+class WarningMode(t.enum4):
     Stop = 0x00
     Burglar = 0x01
     Fire = 0x02
@@ -417,32 +399,10 @@ class WarningMode(t.enum8):
     Emergency_Panic = 0x06
 
 
-class WarningType(_SquawkOrWarningCommand):
-    @property
-    def mode(self) -> WarningMode:
-        return WarningMode((self.value >> 4) & 0x0F)
-
-    @mode.setter
-    def mode(self, mode: WarningMode) -> None:
-        self.value = (self.value & 0xF) | (mode << 4)
-
-    @property
-    def strobe(self) -> Strobe:
-        return Strobe((self.value >> 2) & 0x01)
-
-    @strobe.setter
-    def strobe(self, strobe: Strobe) -> None:
-        self.value = (self.value & 0xF7) | (
-            (strobe & 0x01) << 2  # type:ignore[operator]
-        )
-
-    @property
-    def level(self) -> SirenLevel:
-        return SirenLevel(self.value & 0x03)
-
-    @level.setter
-    def level(self, level: SirenLevel) -> None:
-        self.value = (self.value & 0xFC) | (level & 0x03)
+class WarningType(t.IntStruct, t.uint8_t):
+    level: SirenLevel
+    strobe: Strobe
+    mode: WarningMode
 
     # For backwards compatibility
     Strobe: Final = Strobe
@@ -450,45 +410,31 @@ class WarningType(_SquawkOrWarningCommand):
     SirenLevel: Final = SirenLevel
 
 
-class SquawkLevel(t.enum8):
+class SquawkStrobe(t.enum1):
+    No_strobe = 0x00
+    Strobe = 0x01
+
+
+class SquawkLevel(t.enum2):
     Low_level_sound = 0x00
     Medium_level_sound = 0x01
     High_level_sound = 0x02
     Very_high_level_sound = 0x03
 
 
-class SquawkMode(t.enum8):
+class SquawkMode(t.enum4):
     Armed = 0x00
     Disarmed = 0x01
 
 
-class Squawk(_SquawkOrWarningCommand):
-    @property
-    def mode(self) -> SquawkMode:
-        return SquawkMode((self.value >> 4) & 0x0F)
-
-    @mode.setter
-    def mode(self, mode: SquawkMode) -> None:
-        self.value = (self.value & 0xF) | ((mode & 0x0F) << 4)
-
-    @property
-    def strobe(self) -> Strobe:
-        return Strobe((self.value >> 3) & 0x01)
-
-    @strobe.setter
-    def strobe(self, strobe: Strobe) -> None:
-        self.value = (self.value & 0xF7) | (strobe << 3)  # type:ignore[operator]
-
-    @property
-    def level(self) -> SquawkLevel:
-        return SquawkLevel(self.value & 0x03)
-
-    @level.setter
-    def level(self, level: SquawkLevel) -> None:
-        self.value = (self.value & 0xFC) | (level & 0x03)
+class Squawk(t.IntStruct, t.uint8_t):
+    level: SquawkLevel
+    _reserved: t.uint1_t = t.StructField(default=0)
+    strobe: SquawkStrobe
+    mode: SquawkMode
 
     # For backwards compatibility
-    Strobe: Final = Strobe
+    Strobe: Final = SquawkStrobe
     SquawkLevel: Final = SquawkLevel
     SquawkMode: Final = SquawkMode
 
@@ -521,8 +467,9 @@ class IasWd(Cluster):
             schema={
                 "warning": WarningType,
                 "warning_duration": t.uint16_t,
-                "strobe_duty_cycle": t.uint8_t,
-                "strobe_level": StrobeLevel,
+                # Added in HA 1.2, devices implementing an older revision omit them
+                "strobe_duty_cycle?": t.uint8_t,
+                "strobe_level?": StrobeLevel,
             },
         )
         squawk: Final = ZCLCommandDef(

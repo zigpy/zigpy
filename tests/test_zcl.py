@@ -583,6 +583,8 @@ async def test_write_attributes_wrong_type(cluster):
     [
         (0, "zcl_version", 0xAA, b"\x00\x00\x20\xaa"),
         (0, "model", "model x", b"\x05\x00\x42\x07model x"),
+        # The length prefix counts octets, not characters
+        (0, "location_desc", "Küche", b"\x10\x00\x42\x06K\xc3\xbcche"),
         (0, "device_enabled", True, b"\x12\x00\x10\x01"),
         (0, "alarm_mask", 0x55, b"\x13\x00\x18\x55"),
         (0x0202, "fan_mode", 0xDE, b"\x00\x00\x30\xde"),
@@ -816,6 +818,18 @@ async def test_invalid_arguments_cluster_client_command(client_cluster):
         )
 
 
+async def test_cluster_command_optional_field_gap(cluster_by_id):
+    """Test an omitted optional field can't be followed by a set one."""
+    cluster = cluster_by_id(0x0008)
+
+    # `options_override` would otherwise be deserialized as the `options_mask`
+    with pytest.raises(ValueError, match="'options_mask' cannot be omitted"):
+        await cluster.move_to_level(level=10, transition_time=0, options_override=1)
+
+    # Nothing is sent
+    assert cluster._endpoint.request.call_count == 0
+
+
 def test_name(cluster):
     assert cluster.name == "Basic"
 
@@ -897,6 +911,25 @@ async def test_handle_cluster_general_request_disable_default_rsp(endpoint):
         assert len(event_listener.mock_calls) > 0
         assert general_cmd_mock.call_count == 1
         assert general_cmd_mock.call_args[1]["tsn"] == hdr.tsn
+
+
+async def test_handle_cluster_general_request_default_rsp_not_answered(cluster):
+    """A received Default Response must not be answered with a Default Response.
+
+    ZCL R8 2.5.12.2: "the Default Response command SHALL not be generated in response
+    to reception of another Default Response command."
+    """
+    # `00 20 0b 05 01`: DefaultResponse(command_id=5, status=FAILURE), TSN 32, as sent
+    # by a real device mid-OTA with the Disable Default Response bit cleared.
+    hdr, values = cluster.deserialize(b"\x00\x20\x0b\x05\x01")
+
+    assert hdr.command_id == foundation.GeneralCommand.Default_Response
+    assert not hdr.frame_control.disable_default_response
+
+    with patch.object(cluster, "general_command") as general_cmd_mock:
+        cluster.handle_cluster_general_request(hdr, values)
+        await asyncio.sleep(0)
+        assert general_cmd_mock.call_count == 0
 
 
 async def test_handle_cluster_general_request_not_attr_report(cluster):

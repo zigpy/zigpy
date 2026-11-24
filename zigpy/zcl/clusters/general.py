@@ -1063,11 +1063,21 @@ class LevelControl(Cluster):
         )
         move_to_level_with_on_off: Final = ZCLCommandDef(
             id=0x04,
-            schema={"level": t.uint8_t, "transition_time": t.uint16_t},
+            schema={
+                "level": t.uint8_t,
+                "transition_time": t.uint16_t,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
+            },
         )
         move_with_on_off: Final = ZCLCommandDef(
             id=0x05,
-            schema={"move_mode": MoveMode, "rate": t.uint8_t},
+            schema={
+                "move_mode": MoveMode,
+                "rate": t.uint8_t,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
+            },
         )
         step_with_on_off: Final = ZCLCommandDef(
             id=0x06,
@@ -1075,9 +1085,17 @@ class LevelControl(Cluster):
                 "step_mode": StepMode,
                 "step_size": t.uint8_t,
                 "transition_time": t.uint16_t,
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
             },
         )
-        stop_with_on_off: Final = ZCLCommandDef(id=0x07, schema={})
+        stop_with_on_off: Final = ZCLCommandDef(
+            id=0x07,
+            schema={
+                "options_mask?": OptionsMask,
+                "options_override?": Options,
+            },
+        )
         move_to_closest_frequency: Final = ZCLCommandDef(
             id=0x08,
             schema={"frequency": t.uint16_t},
@@ -1238,6 +1256,118 @@ class NeighborInfo(t.Struct):
     num_measurements: t.uint8_t
 
 
+# Figure 3-52
+class GetLocationDataFlags(t.bitmap8):
+    Absolute_Only = 0b00000001
+    Recalculate = 0b00000010
+    Broadcast_Indicator = 0b00000100
+    Broadcast_Response = 0b00001000
+    Compact_Response = 0b00010000
+
+
+# Figure 3-52
+class GetLocationDataCommand(foundation.CommandSchema):
+    packed: GetLocationDataFlags
+    num_responses: t.uint8_t
+    # A broadcast or multicast request implicitly targets the receiving device
+    target_addr: t.EUI64 = t.StructField(
+        requires=lambda s: GetLocationDataFlags.Broadcast_Indicator not in s.packed
+    )
+
+
+def _has_coordinate3(location_type: LocationType | None) -> bool:
+    """Coordinate 3 is omitted for 2-D locations."""
+    return location_type is not None and not location_type.two_dimensional
+
+
+def _has_calculated_location(location_type: LocationType | None) -> bool:
+    """Location method, quality measure, and age are omitted for absolute locations."""
+    return location_type is not None and not location_type.absolute
+
+
+# Figure 3-57
+class LocationDataResponseCommand(foundation.CommandSchema):
+    status: foundation.Status
+
+    # All other fields are only sent with a `SUCCESS` status
+    location_type: LocationType = t.StructField(
+        requires=lambda s: s.status == foundation.Status.SUCCESS
+    )
+    coordinate1: t.int16s = t.StructField(
+        requires=lambda s: s.status == foundation.Status.SUCCESS
+    )
+    coordinate2: t.int16s = t.StructField(
+        requires=lambda s: s.status == foundation.Status.SUCCESS
+    )
+    coordinate3: t.int16s = t.StructField(
+        requires=lambda s: (
+            s.status == foundation.Status.SUCCESS and _has_coordinate3(s.location_type)
+        )
+    )
+    power: t.int16s = t.StructField(
+        requires=lambda s: s.status == foundation.Status.SUCCESS
+    )
+    path_loss_exponent: t.uint16_t = t.StructField(
+        requires=lambda s: s.status == foundation.Status.SUCCESS
+    )
+    location_method: LocationMethod = t.StructField(
+        requires=lambda s: (
+            s.status == foundation.Status.SUCCESS
+            and _has_calculated_location(s.location_type)
+        )
+    )
+    quality_measure: t.uint8_t = t.StructField(
+        requires=lambda s: (
+            s.status == foundation.Status.SUCCESS
+            and _has_calculated_location(s.location_type)
+        )
+    )
+    location_age: t.uint16_t = t.StructField(
+        requires=lambda s: (
+            s.status == foundation.Status.SUCCESS
+            and _has_calculated_location(s.location_type)
+        )
+    )
+
+
+# Figure 3-58
+class LocationDataNotificationCommand(foundation.CommandSchema):
+    location_type: LocationType
+    coordinate1: t.int16s
+    coordinate2: t.int16s
+    coordinate3: t.int16s = t.StructField(
+        requires=lambda s: _has_coordinate3(s.location_type)
+    )
+    power: t.int16s
+    path_loss_exponent: t.uint16_t
+    location_method: LocationMethod = t.StructField(
+        requires=lambda s: _has_calculated_location(s.location_type)
+    )
+    quality_measure: t.uint8_t = t.StructField(
+        requires=lambda s: _has_calculated_location(s.location_type)
+    )
+    location_age: t.uint16_t = t.StructField(
+        requires=lambda s: _has_calculated_location(s.location_type)
+    )
+
+
+# 3.13.2.4.4: the Location Data Notification without power, path loss exponent, and
+# location method
+class CompactLocationDataNotificationCommand(foundation.CommandSchema):
+    location_type: LocationType
+    coordinate1: t.int16s
+    coordinate2: t.int16s
+    coordinate3: t.int16s = t.StructField(
+        requires=lambda s: _has_coordinate3(s.location_type)
+    )
+    quality_measure: t.uint8_t = t.StructField(
+        requires=lambda s: _has_calculated_location(s.location_type)
+    )
+    location_age: t.uint16_t = t.StructField(
+        requires=lambda s: _has_calculated_location(s.location_type)
+    )
+
+
 class RSSILocation(Cluster):
     """Attributes and commands that provide a means for
     exchanging location information and channel parameters
@@ -1248,6 +1378,13 @@ class RSSILocation(Cluster):
     CoordinateSystem: Final = CoordinateSystem
     LocationMethod: Final = LocationMethod
     NeighborInfo: Final = NeighborInfo
+    GetLocationDataFlags: Final = GetLocationDataFlags
+    GetLocationDataCommand: Final = GetLocationDataCommand
+    LocationDataResponseCommand: Final = LocationDataResponseCommand
+    LocationDataNotificationCommand: Final = LocationDataNotificationCommand
+    CompactLocationDataNotificationCommand: Final = (
+        CompactLocationDataNotificationCommand
+    )
 
     cluster_id: Final[t.uint16_t] = 0x000B
     ep_attribute: Final = "rssi_location"
@@ -1320,11 +1457,7 @@ class RSSILocation(Cluster):
         )
         get_location_data: Final = ZCLCommandDef(
             id=0x03,
-            schema={
-                "packed": t.bitmap8,
-                "num_responses": t.uint8_t,
-                "target_addr": t.EUI64,
-            },
+            schema=GetLocationDataCommand,
         )
         rssi_response: Final = ZCLCommandDef(
             id=0x04,
@@ -1369,21 +1502,16 @@ class RSSILocation(Cluster):
         )
         location_data_response: Final = ZCLCommandDef(
             id=0x01,
-            schema={
-                "status": foundation.Status,
-                "location_type?": LocationType,
-                "coordinate1?": t.int16s,
-                "coordinate2?": t.int16s,
-                "coordinate3?": t.int16s,
-                "power?": t.int16s,
-                "path_loss_exponent?": t.uint16_t,
-                "location_method?": LocationMethod,
-                "quality_measure?": t.uint8_t,
-                "location_age?": t.uint16_t,
-            },
+            schema=LocationDataResponseCommand,
         )
-        location_data_notification: Final = ZCLCommandDef(id=0x02, schema={})
-        compact_location_data_notification: Final = ZCLCommandDef(id=0x03, schema={})
+        location_data_notification: Final = ZCLCommandDef(
+            id=0x02,
+            schema=LocationDataNotificationCommand,
+        )
+        compact_location_data_notification: Final = ZCLCommandDef(
+            id=0x03,
+            schema=CompactLocationDataNotificationCommand,
+        )
         rssi_ping: Final = ZCLCommandDef(
             id=0x04,
             schema={"location_type": LocationType},
@@ -2444,7 +2572,8 @@ class ImageBlockResponseCommand(foundation.CommandSchema):
         requires=lambda s: s.status == foundation.Status.WAIT_FOR_DATA
     )
     minimum_block_period: t.uint16_t = t.StructField(
-        requires=lambda s: s.status == foundation.Status.WAIT_FOR_DATA
+        requires=lambda s: s.status == foundation.Status.WAIT_FOR_DATA,
+        optional=True,
     )
 
 
@@ -2630,6 +2759,7 @@ class PowerProfilePhase(t.Struct):
     expected_duration: t.uint16_t
     peak_power: t.uint16_t
     energy: t.uint16_t
+    max_activation_delay: t.uint16_t
 
 
 class PowerProfileType(t.Struct):
@@ -2776,14 +2906,14 @@ class PowerProfile(Cluster):
             id=0x07,
             schema={
                 "power_profile_id": t.uint8_t,
-                "num_scheduled_energy_phases": t.uint8_t,
+                "scheduled_phases": t.LVList[ScheduleRecord, t.uint8_t],
             },
         )
         energy_phases_schedule_state_notification: Final = ZCLCommandDef(
             id=0x08,
             schema={
                 "power_profile_id": t.uint8_t,
-                "num_scheduled_energy_phases": t.uint8_t,
+                "scheduled_phases": t.LVList[ScheduleRecord, t.uint8_t],
             },
         )
         power_profile_schedule_constraints_notification: Final = ZCLCommandDef(

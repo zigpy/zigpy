@@ -18,16 +18,21 @@ from zigpy.zcl import OtaImageAvailableEvent, OtaQueryCacheUpdatedEvent, foundat
 from zigpy.zcl.clusters.general import (
     Basic,
     CoordinateSystem,
+    GetLocationDataFlags,
     KeepAlive,
+    LocationMethod,
     LocationType,
     Ota,
     Partition,
     PartitionAckOptions,
     PartitionFragmentationOptions,
+    PowerProfile,
     RSSILocation,
     Time,
 )
+from zigpy.zcl.clusters.protocol import BacnetProtocolTunnel
 import zigpy.zcl.clusters.security as sec
+from zigpy.zcl.clusters.wwah import WorksWithAllHubs
 from zigpy.zdo import types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, call, patch, sentinel
@@ -767,169 +772,124 @@ def test_basic_cluster_power_source():
 
 
 @pytest.mark.parametrize(
-    ("raw", "mode", "name"),
+    ("raw", "mode", "strobe", "level"),
     [
-        (0x00, 0, "Stop"),
-        (0x01, 0, "Stop"),
-        (0x02, 0, "Stop"),
-        (0x03, 0, "Stop"),
-        (0x30, 3, "Emergency"),
-        (0x31, 3, "Emergency"),
-        (0x32, 3, "Emergency"),
-        (0x33, 3, "Emergency"),
+        (
+            0x00,
+            sec.WarningMode.Stop,
+            sec.Strobe.No_strobe,
+            sec.SirenLevel.Low_level_sound,
+        ),
+        (
+            0x04,
+            sec.WarningMode.Stop,
+            sec.Strobe.Strobe,
+            sec.SirenLevel.Low_level_sound,
+        ),
+        (
+            0x17,
+            sec.WarningMode.Burglar,
+            sec.Strobe.Strobe,
+            sec.SirenLevel.Very_high_level_sound,
+        ),
+        (
+            0x32,
+            sec.WarningMode.Emergency,
+            sec.Strobe.No_strobe,
+            sec.SirenLevel.High_level_sound,
+        ),
+        (
+            0x65,
+            sec.WarningMode.Emergency_Panic,
+            sec.Strobe.Strobe,
+            sec.SirenLevel.Medium_level_sound,
+        ),
     ],
 )
-def test_security_iaswd_warning_mode(raw, mode, name):
-    """Test warning command class of IasWD cluster."""
-
-    def _test(warning, data):
-        assert warning.serialize() == data
-        assert warning == raw
-        assert warning.mode == mode
-        assert warning.mode.name == name
-        warning.mode = mode
-        assert warning.serialize() == data
-        assert warning.mode == mode
-
-    data = types.uint8_t(raw).serialize()
-    _test(sec.IasWd.Warning(raw), data)
-
+def test_security_iaswd_warning(raw, mode, strobe, level):
+    """Test the warning bitmap of the IAS WD Start Warning command."""
     extra = b"The rest of the owl\xaa\x55"
-    warn, rest = sec.IasWd.Warning.deserialize(data + extra)
+    warning, rest = sec.IasWd.Warning.deserialize(bytes([raw]) + extra)
+
     assert rest == extra
-    _test(warn, data)
-    repr(warn)
-
-
-def test_security_iaswd_warning_mode_2():
-    """Test warning command class of IasWD cluster."""
-
-    def _test(data, raw, mode, name):
-        warning, _ = sec.IasWd.Warning.deserialize(data)
-        assert warning.serialize() == data
-        assert warning == raw
-        assert warning.mode == mode
-        assert warning.mode.name == name
-        warning.mode = mode
-        assert warning.serialize() == data
-        assert warning.mode == mode
-
-    for mode in sec.IasWd.Warning.WarningMode:
-        for other in range(16):
-            raw = mode << 4 | other
-            data = types.uint8_t(raw).serialize()
-            _test(data, raw, mode.value, mode.name)
-
-
-def test_security_iaswd_warning_strobe():
-    """Test strobe of warning command class of IasWD cluster."""
-
-    for strobe in sec.IasWd.Warning.Strobe:
-        for mode in range(16):
-            for siren in range(4):
-                raw = mode << 4 | siren
-                raw |= strobe.value << 2
-                data = types.uint8_t(raw).serialize()
-                warning, _ = sec.IasWd.Warning.deserialize(data)
-                assert warning.serialize() == data
-                assert warning == raw
-                assert warning.strobe == strobe.value
-                assert warning.strobe.name == strobe.name
-                warning.strobe = strobe
-                assert warning.serialize() == data
-                assert warning.strobe == strobe.value
-
-
-def test_security_iaswd_warning_siren():
-    """Test siren of warning command class of IasWD cluster."""
-
-    for siren in sec.IasWd.Warning.SirenLevel:
-        for mode in range(16):
-            for strobe in range(4):
-                raw = mode << 4 | (strobe << 2)
-                raw |= siren.value
-                data = types.uint8_t(raw).serialize()
-                warning, _ = sec.IasWd.Warning.deserialize(data)
-                assert warning.serialize() == data
-                assert warning == raw
-                assert warning.level == siren.value
-                assert warning.level.name == siren.name
-                warning.level = siren
-                assert warning.serialize() == data
-                assert warning.level == siren.value
+    assert warning == raw
+    assert warning.mode == mode
+    assert warning.strobe == strobe
+    assert warning.level == level
+    assert sec.IasWd.Warning(mode=mode, strobe=strobe, level=level) == raw
+    assert warning.serialize() == bytes([raw])
 
 
 @pytest.mark.parametrize(
-    ("raw", "mode", "name"),
+    ("raw", "strobe", "expected"),
     [
-        (0x00, 0, "Armed"),
-        (0x01, 0, "Armed"),
-        (0x02, 0, "Armed"),
-        (0x03, 0, "Armed"),
-        (0x10, 1, "Disarmed"),
-        (0x11, 1, "Disarmed"),
-        (0x12, 1, "Disarmed"),
-        (0x13, 1, "Disarmed"),
+        (0b0011_0111, sec.Strobe.No_strobe, 0b0011_0011),
+        (0b0011_1011, sec.Strobe.No_strobe, 0b0011_0011),
+        (0b0011_0011, sec.Strobe.Strobe, 0b0011_0111),
+        (0b0011_1011, sec.Strobe.Strobe, 0b0011_0111),
     ],
 )
-def test_security_iaswd_squawk_mode(raw, mode, name):
-    """Test squawk command class of IasWD cluster."""
+def test_security_iaswd_warning_strobe_replace(raw, strobe, expected):
+    """Test replacing the strobe of a warning replaces both strobe bits."""
+    warning = sec.IasWd.Warning(raw).replace(strobe=strobe)
 
-    def _test(squawk, data):
-        assert squawk.serialize() == data
-        assert squawk == raw
-        assert squawk.mode == mode
-        assert squawk.mode.name == name
-        squawk.mode = mode
-        assert squawk.serialize() == data
-        assert squawk.mode == mode
+    assert warning == expected
+    assert warning.strobe == strobe
 
-    data = types.uint8_t(raw).serialize()
-    _test(sec.IasWd.Squawk(raw), data)
 
+@pytest.mark.parametrize(
+    ("raw", "mode", "strobe", "level"),
+    [
+        (
+            0x00,
+            sec.SquawkMode.Armed,
+            sec.SquawkStrobe.No_strobe,
+            sec.SquawkLevel.Low_level_sound,
+        ),
+        (
+            0x08,
+            sec.SquawkMode.Armed,
+            sec.SquawkStrobe.Strobe,
+            sec.SquawkLevel.Low_level_sound,
+        ),
+        (
+            0x13,
+            sec.SquawkMode.Disarmed,
+            sec.SquawkStrobe.No_strobe,
+            sec.SquawkLevel.Very_high_level_sound,
+        ),
+        (
+            0x1A,
+            sec.SquawkMode.Disarmed,
+            sec.SquawkStrobe.Strobe,
+            sec.SquawkLevel.High_level_sound,
+        ),
+    ],
+)
+def test_security_iaswd_squawk(raw, mode, strobe, level):
+    """Test the squawk bitmap of the IAS WD Squawk command."""
     extra = b"The rest of the owl\xaa\x55"
-    squawk, rest = sec.IasWd.Squawk.deserialize(data + extra)
+    squawk, rest = sec.IasWd.Squawk.deserialize(bytes([raw]) + extra)
+
     assert rest == extra
-    _test(squawk, data)
-    repr(squawk)
+    assert squawk == raw
+    assert squawk.mode == mode
+    assert squawk.strobe == strobe
+    assert squawk.level == level
+    assert sec.IasWd.Squawk(mode=mode, strobe=strobe, level=level) == raw
+    assert squawk.serialize() == bytes([raw])
 
 
-def test_security_iaswd_squawk_strobe():
-    """Test strobe of squawk command class of IasWD cluster."""
+def test_security_iaswd_squawk_warning_strobe():
+    """Test a squawk accepts the warning strobe enum."""
+    squawk = sec.IasWd.Squawk(
+        mode=sec.SquawkMode.Armed,
+        strobe=sec.Strobe.Strobe,
+        level=sec.SquawkLevel.Low_level_sound,
+    )
 
-    for strobe in sec.IasWd.Squawk.Strobe:
-        for mode in range(16):
-            for level in range(4):
-                raw = mode << 4 | level
-                raw |= strobe.value << 3
-                data = types.uint8_t(raw).serialize()
-                squawk, _ = sec.IasWd.Squawk.deserialize(data)
-                assert squawk.serialize() == data
-                assert squawk == raw
-                assert squawk.strobe == strobe.value
-                assert squawk.strobe == strobe
-                assert squawk.strobe.name == strobe.name
-                squawk.strobe = strobe
-                assert squawk.serialize() == data
-                assert squawk.strobe == strobe
-
-
-def test_security_iaswd_squawk_level():
-    """Test level of squawk command class of IasWD cluster."""
-
-    for level in sec.IasWd.Squawk.SquawkLevel:
-        for other in range(64):
-            raw = other << 2 | level.value
-            data = types.uint8_t(raw).serialize()
-            squawk, _ = sec.IasWd.Squawk.deserialize(data)
-            assert squawk.serialize() == data
-            assert squawk == raw
-            assert squawk.level == level.value
-            assert squawk.level == level
-            assert squawk.level.name == level.name
-            squawk.level = level
-            assert squawk.serialize() == data
-            assert squawk.level == level
+    assert squawk == 0x08
+    assert squawk.strobe == sec.SquawkStrobe.Strobe
 
 
 def test_hvac_thermostat_system_type():
@@ -1093,6 +1053,303 @@ def test_partition_nack_id_width(
 
     assert command.serialize() == bytes.fromhex(serialized)
     assert schema.deserialize(bytes.fromhex(serialized)) == (command, b"")
+
+
+def test_bacnet_protocol_tunnel_transfer_npdu() -> None:
+    """The NPDU has no length prefix, per ZCL R8 Figure 9-4."""
+    cluster = BacnetProtocolTunnel(MagicMock())
+    schema = BacnetProtocolTunnel.ServerCommandDefs.transfer_npdu.schema
+    npdu = bytes.fromhex("0120ffff00ff1008")
+
+    assert schema(npdu=npdu).serialize() == npdu
+
+    # Cluster-specific, client to server, TSN 0x12, Transfer NPDU
+    hdr, command = cluster.deserialize(bytes.fromhex("011200") + npdu)
+    assert hdr.command_id == BacnetProtocolTunnel.ServerCommandDefs.transfer_npdu.id
+    assert command == schema(npdu=npdu)
+
+
+def test_wwah_debug_report_query_response() -> None:
+    """The debug report data is opaque and has no length prefix."""
+    cluster = WorksWithAllHubs(MagicMock())
+    command_def = WorksWithAllHubs.ClientCommandDefs.debug_report_query_response
+    data = bytes.fromhex("0102030405")
+    command = command_def.schema(debug_report_id=0x07, debug_report_data=data)
+
+    assert command.serialize() == b"\x07" + data
+
+    # Manufacturer-specific (0x1217), cluster-specific, server to client, TSN 0x12
+    hdr, deserialized = cluster.deserialize(
+        bytes.fromhex("1d171212") + bytes([command_def.id]) + b"\x07" + data
+    )
+    assert hdr.command_id == command_def.id
+    assert deserialized == command
+
+
+def test_power_profile_transferred_phase() -> None:
+    """Each transferred phase is 10 octets, per ZCL R8 Figure 3-72."""
+    schema = PowerProfile.ClientCommandDefs.power_profile_notification.schema
+    command = schema(
+        total_profile_num=1,
+        power_profile_id=1,
+        transfer_phases=[
+            PowerProfile.PowerProfilePhase(
+                energy_phase_id=1,
+                macro_phase_id=2,
+                expected_duration=0x0003,
+                peak_power=0x0004,
+                energy=0x0005,
+                max_activation_delay=0x0006,
+            ),
+            PowerProfile.PowerProfilePhase(
+                energy_phase_id=2,
+                macro_phase_id=3,
+                expected_duration=0x0103,
+                peak_power=0x0104,
+                energy=0x0105,
+                max_activation_delay=0x0106,
+            ),
+        ],
+    )
+    # Header, then two phases: IDs, duration, peak power, energy, max activation delay
+    serialized = bytes.fromhex("010102 0102030004000500 0600 0203030104010501 0601")
+
+    assert len(serialized) == 1 + 1 + 1 + 2 * 10
+    assert command.serialize() == serialized
+    assert schema.deserialize(serialized) == (command, b"")
+
+
+@pytest.mark.parametrize(
+    "command_name",
+    [
+        "energy_phases_schedule_state_response",
+        "energy_phases_schedule_state_notification",
+    ],
+)
+@pytest.mark.parametrize(
+    ("scheduled_phases", "serialized"),
+    [
+        ([], "0100"),
+        ([(1, 0x0010), (2, 0x0120)], "0102011000022001"),
+    ],
+)
+def test_power_profile_schedule_state(
+    command_name: str, scheduled_phases: list[tuple[int, int]], serialized: str
+) -> None:
+    """Schedule state commands carry the phase records, per ZCL R8 3.17.6.8/9."""
+    schema = getattr(PowerProfile.ClientCommandDefs, command_name).schema
+    command = schema(
+        power_profile_id=1,
+        scheduled_phases=[
+            PowerProfile.ScheduleRecord(phase_id=phase_id, scheduled_time=time)
+            for phase_id, time in scheduled_phases
+        ],
+    )
+
+    assert command.serialize() == bytes.fromhex(serialized)
+    assert schema.deserialize(bytes.fromhex(serialized)) == (command, b"")
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "serialized"),
+    [
+        (
+            {
+                "packed": GetLocationDataFlags.Absolute_Only,
+                "num_responses": 1,
+                "target_addr": types.EUI64.convert("00:11:22:33:44:55:66:77"),
+            },
+            "01017766554433221100",
+        ),
+        # The target address is omitted when the broadcast indicator is set
+        (
+            {
+                "packed": (
+                    GetLocationDataFlags.Broadcast_Indicator
+                    | GetLocationDataFlags.Compact_Response
+                ),
+                "num_responses": 2,
+            },
+            "1402",
+        ),
+    ],
+)
+def test_rssi_location_get_location_data(
+    kwargs: dict[str, Any], serialized: str
+) -> None:
+    """Test the Get Location Data payload, per ZCL R8 Figure 3-52."""
+    schema = RSSILocation.ServerCommandDefs.get_location_data.schema
+    command = schema(**kwargs)
+
+    assert command.serialize() == bytes.fromhex(serialized)
+    assert schema.deserialize(bytes.fromhex(serialized)) == (command, b"")
+
+
+RSSI_LOCATION_DATA = {
+    "coordinate1": 0x0102,
+    "coordinate2": 0x0304,
+    "coordinate3": 0x0506,
+    "power": 0x0708,
+    "path_loss_exponent": 0x090A,
+    "location_method": LocationMethod.Centralized,
+    "quality_measure": 0x50,
+    "location_age": 0x0B0C,
+}
+
+
+@pytest.mark.parametrize(
+    ("command_name", "location_type", "fields", "serialized"),
+    [
+        (
+            "location_data_notification",
+            0b00,
+            RSSI_LOCATION_DATA.keys(),
+            "00 0201 0403 0605 0807 0a09 04 50 0c0b",
+        ),
+        (
+            "location_data_notification",
+            0b01,
+            [
+                "coordinate1",
+                "coordinate2",
+                "coordinate3",
+                "power",
+                "path_loss_exponent",
+            ],
+            "01 0201 0403 0605 0807 0a09",
+        ),
+        (
+            "location_data_notification",
+            0b10,
+            RSSI_LOCATION_DATA.keys() - {"coordinate3"},
+            "02 0201 0403 0807 0a09 04 50 0c0b",
+        ),
+        (
+            "location_data_notification",
+            0b11,
+            ["coordinate1", "coordinate2", "power", "path_loss_exponent"],
+            "03 0201 0403 0807 0a09",
+        ),
+        (
+            "compact_location_data_notification",
+            0b00,
+            [
+                "coordinate1",
+                "coordinate2",
+                "coordinate3",
+                "quality_measure",
+                "location_age",
+            ],
+            "00 0201 0403 0605 50 0c0b",
+        ),
+        (
+            "compact_location_data_notification",
+            0b01,
+            ["coordinate1", "coordinate2", "coordinate3"],
+            "01 0201 0403 0605",
+        ),
+        (
+            "compact_location_data_notification",
+            0b10,
+            ["coordinate1", "coordinate2", "quality_measure", "location_age"],
+            "02 0201 0403 50 0c0b",
+        ),
+        (
+            "compact_location_data_notification",
+            0b11,
+            ["coordinate1", "coordinate2"],
+            "03 0201 0403",
+        ),
+    ],
+)
+def test_rssi_location_data_notification(
+    command_name: str, location_type: int, fields: list[str], serialized: str
+) -> None:
+    """Test the location data notifications, per ZCL R8 Figure 3-58 and 3.13.2.4.4.
+
+    Coordinate 3 is omitted for 2-D locations, the calculated location fields for
+    absolute ones.
+    """
+    schema = getattr(RSSILocation.ClientCommandDefs, command_name).schema
+    command = schema(
+        location_type=LocationType(location_type),
+        **{field: RSSI_LOCATION_DATA[field] for field in fields},
+    )
+
+    assert command.serialize() == bytes.fromhex(serialized)
+    assert schema.deserialize(bytes.fromhex(serialized)) == (command, b"")
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "serialized"),
+    [
+        # Only the status is sent when it isn't `SUCCESS`
+        ({"status": foundation.Status.NOT_FOUND}, "8b"),
+        (
+            {
+                "status": foundation.Status.SUCCESS,
+                "location_type": LocationType(0b00),
+                **RSSI_LOCATION_DATA,
+            },
+            "00 00 0201 0403 0605 0807 0a09 04 50 0c0b",
+        ),
+        (
+            {
+                "status": foundation.Status.SUCCESS,
+                "location_type": LocationType(0b01),
+                "coordinate1": 0x0102,
+                "coordinate2": 0x0304,
+                "coordinate3": 0x0506,
+                "power": 0x0708,
+                "path_loss_exponent": 0x090A,
+            },
+            "00 01 0201 0403 0605 0807 0a09",
+        ),
+        (
+            {
+                "status": foundation.Status.SUCCESS,
+                "location_type": LocationType(0b10),
+                "coordinate1": 0x0102,
+                "coordinate2": 0x0304,
+                "power": 0x0708,
+                "path_loss_exponent": 0x090A,
+                "location_method": LocationMethod.Centralized,
+                "quality_measure": 0x50,
+                "location_age": 0x0B0C,
+            },
+            "00 02 0201 0403 0807 0a09 04 50 0c0b",
+        ),
+        (
+            {
+                "status": foundation.Status.SUCCESS,
+                "location_type": LocationType(0b11),
+                "coordinate1": 0x0102,
+                "coordinate2": 0x0304,
+                "power": 0x0708,
+                "path_loss_exponent": 0x090A,
+            },
+            "00 03 0201 0403 0807 0a09",
+        ),
+    ],
+)
+def test_rssi_location_data_response(kwargs: dict[str, Any], serialized: str) -> None:
+    """Test the Location Data Response payload, per ZCL R8 Figure 3-57."""
+    schema = RSSILocation.ClientCommandDefs.location_data_response.schema
+    command = schema(**kwargs)
+
+    assert command.serialize() == bytes.fromhex(serialized)
+    assert schema.deserialize(bytes.fromhex(serialized)) == (command, b"")
+
+
+def test_rssi_location_data_response_incomplete() -> None:
+    """An incomplete response without a location type can still be displayed."""
+    command = RSSILocation.LocationDataResponseCommand(status=foundation.Status.SUCCESS)
+
+    assert "coordinate3" not in repr(command)
+    assert "location_method" not in repr(command)
+
+    with pytest.raises(ValueError, match="location_type"):
+        command.serialize()
 
 
 def test_rssi_location_type_report() -> None:

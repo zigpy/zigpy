@@ -940,16 +940,16 @@ async def test_request(app, device, packet):
     )
     app.send_packet.reset_mock()
 
-    # Test sending with source route
+    # Source routing leaves the route to the radio
     app.build_source_route_to.return_value = [0x000A, 0x000B]
 
     with patch.dict(app.config, {conf.CONF_SOURCE_ROUTING: True}):
         await send_request(app)
 
-    app.build_source_route_to.assert_called_once_with(dest=device)
-    app.send_packet.assert_called_once_with(
-        packet.replace(source_route=[0x000A, 0x000B], priority=t.PacketPriority.NORMAL)
-    )
+    assert app.build_source_route_to.mock_calls == []
+    assert app.send_packet.mock_calls == [
+        call(packet.replace(priority=t.PacketPriority.NORMAL))
+    ]
     app.send_packet.reset_mock()
 
     # Test sending without waiting for a reply

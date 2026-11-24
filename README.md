@@ -5,7 +5,7 @@
 
 **[zigpy](https://github.com/zigpy/zigpy)** is a hardware independent **[Zigbee protocol stack](https://en.wikipedia.org/wiki/Zigbee)** integration project to implement **[Zigbee](https://www.zigbee.org/)** standard specifications as a Python 3 library. 
 
-Zigbee integration via zigpy allows you to connect one of many off-the-shelf Zigbee Coordinator adapters using one of the available Zigbee radio library modules compatible with zigpy to control Zigbee based devices. There is currently support for controlling Zigbee device types such as binary sensors (e.g., motion and door sensors), sensors (e.g., temperature sensors), lights, switches, buttons, covers, fans, climate control equipment, locks, and intruder alarm system devices. Note that Zigbee Green Power devices [currently are unsupported](https://github.com/zigpy/zigpy/issues/341).
+Zigbee integration via zigpy allows you to connect one of many off-the-shelf Zigbee Coordinator adapters using one of the available Zigbee radio library modules compatible with zigpy to control Zigbee based devices. There is currently support for controlling Zigbee device types such as binary sensors (e.g., motion and door sensors), sensors (e.g., temperature sensors), lights, switches, buttons, covers, fans, climate control equipment, locks, and intruder alarm system devices.
 
 Zigbee stacks and hardware from many different hardware chip manufacturers are supported via radio libraries which translate their proprietary communication protocol into a common API which is shared among all radio libraries for zigpy. If some Zigbee stack or Zigbee Coordinator hardware for other manufacturers is not supported by yet zigpy it is possible for any independent developer to step-up and develop a new radio library for zigpy which translates its proprietary communication protocol into the common API that zigpy can understand.
 
@@ -35,14 +35,15 @@ You can contribute to this project either as an end-user, a tester (advanced use
 
 Radio libraries for zigpy are separate projects with their own repositories and include **[bellows](https://github.com/zigpy/bellows)** (for communicating with Silicon Labs EmberZNet based radios), **[zigpy-deconz](https://github.com/zigpy/zigpy-deconz)** (for communicating with deCONZ based radios from Dresden Elektronik), and **[zigpy-xbee](https://github.com/zigpy/zigpy-xbee)** (for communicating with XBee based Zigbee radios), **[zigpy-zigate](https://github.com/zigpy/zigpy-zigate)** for communicating with ZiGate based radios, **[zigpy-znp](https://github.com/zha-ng/zigpy-znp)** or **[zigpy-cc](https://github.com/zigpy/zigpy-cc)** for communicating with Texas Instruments based radios that have Z-Stack ZNP coordinator firmware.
 
-Note! Zigbee 3.0 support or not in zigpy depends primarily on your Zigbee coordinator hardware and its firmware. Some Zigbee coordinator hardware support Zigbee 3.0 but might be shipped with an older firmware which does not, in which case may want to upgrade the firmware manually yourself. Some other Zigbee coordinator hardware may not support a firmware that is capable of Zigbee 3.0 at all but can still be fully functional and feature complete for your needs, (this is very common as many if not most Zigbee devices do not yet Zigbee 3.0 or are backwards-compable with a Zigbee profile that is support by your Zigbee coordinator hardware and its firmware). As a general rule, newer Zigbee coordinator hardware released can normally support Zigbee 3.0 firmware and it is up to its manufacturer to make such firmware available for them.
+Note! zigpy supports Zigbee 3.0, but your Zigbee coordinator hardware and its firmware must also support it. Some Zigbee coordinator hardware can support Zigbee 3.0 but might ship with older firmware that does not, in which case you may want to upgrade the firmware yourself. Other Zigbee coordinator hardware may not support Zigbee 3.0 capable firmware at all, but can still be fully functional for all your other needs (this is common, as most Zigbee devices are backwards-compatible with older Zigbee profiles that are supported by almost all Zigbee coordinator hardware and firmware). Also, if you need direct Zigbee Green Power (ZGP) support, so that ZGP devices such as batteryless switches and buttons can connect directly to the Zigbee coordinator instead of through a ZGP proxy (which many Zigbee router devices and zigpy radio libraries support), be aware that direct ZGP is not supported by all zigpy radio libraries and Zigbee stacks.
 
 ### Compatible zigpy radio libraries
 
-- **Digi XBee** based Zigbee radios via the [zigpy-xbee](https://github.com/zigpy/zigpy-xbee) library for zigpy.
-- **dresden elektronik** deCONZ based Zigbee radios via the [zigpy-deconz](https://github.com/zigpy/zigpy-deconz) library for zigpy.
+- **Ziggurat** (fully open-source host-side Zigbee-stack implemented in Rust) via [zigpy-ziggurat](https://github.com/zigpy/zigpy-ziggurat) library for zigpy.
 - **Silicon Labs** (EmberZNet) based Zigbee radios using the EZSP protocol via the [bellows](https://github.com/zigpy/bellows) library for zigpy.
 - **Texas Instruments** based Zigbee radios with all compatible Z-Stack firmware via the [zigpy-znp](https://github.com/zha-ng/zigpy-znp) library for zigpy.
+- **dresden elektronik** deCONZ based Zigbee radios via the [zigpy-deconz](https://github.com/zigpy/zigpy-deconz) library for zigpy.
+- **Digi XBee** based Zigbee radios via the [zigpy-xbee](https://github.com/zigpy/zigpy-xbee) library for zigpy.
 - **ZiGate** based Zigbee radios via the [zigpy-zigate](https://github.com/zigpy/zigpy-zigate) library for zigpy.
 
 ### Legacy or obsolete zigpy radio libraries
@@ -61,6 +62,7 @@ Older packages of tagged versions are still available on the "zigpy-homeassistan
 
 Packages of tagged versions of the radio libraries are released via separate projects on PyPI
 - https://pypi.org/project/zigpy/
+  - https://pypi.org/project/zigpy-ziggurat/
   - https://pypi.org/project/bellows/
   - https://pypi.org/project/zigpy-cc/
   - https://pypi.org/project/zigpy-deconz/
