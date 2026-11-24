@@ -366,6 +366,57 @@ def test_attribute_report_manufacturer_specific_does_not_update_zcl_attribute(
     assert metering._attr_cache._legacy_cache[0x0302].value == 0x0200
 
 
+@pytest.mark.parametrize(
+    "bad_value",
+    [
+        foundation.TypeValue(
+            type=foundation.DataTypeId.string, value=t.CharacterString("abc")
+        ),
+        foundation.TypeValue(type=foundation.DataTypeId.int64, value=t.int64s(-1)),
+        foundation.TypeValue(
+            type=foundation.DataTypeId.data16, value=t.data16([0x01, 0x02])
+        ),
+        foundation.TypeValue(type=foundation.DataTypeId.array, value=[1]),
+    ],
+)
+def test_attribute_report_unconvertible_value(app_mock, bad_value) -> None:
+    """A reported value that does not fit its attribute's type is dropped alone."""
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    metering = Metering(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(Metering.cluster_id, metering)
+
+    events = []
+    metering.on_event(AttributeReportedEvent.event_type, events.append)
+
+    hdr = foundation.ZCLHeader.general(
+        tsn=1,
+        command_id=foundation.GeneralCommand.Report_Attributes,
+        direction=foundation.Direction.Server_to_Client,
+    )
+    report = foundation.GENERAL_COMMANDS[foundation.GeneralCommand.Report_Attributes]
+    metering.handle_message(
+        hdr,
+        report.schema(
+            [
+                foundation.Attribute(
+                    attrid=Metering.AttributeDefs.current_summ_delivered.id,
+                    value=bad_value,
+                ),
+                foundation.Attribute(
+                    attrid=Metering.AttributeDefs.divisor.id,
+                    value=foundation.TypeValue(
+                        type=foundation.DataTypeId.uint24, value=t.uint24_t(1000)
+                    ),
+                ),
+            ]
+        ),
+    )
+
+    assert [(e.attribute_name, e.value) for e in events] == [("divisor", 1000)]
+    assert metering.get(Metering.AttributeDefs.divisor) == 1000
+    assert metering.get(Metering.AttributeDefs.current_summ_delivered) is None
+
+
 def test_handle_request_unknown(cluster):
     hdr = MagicMock(auto_spec=foundation.ZCLHeader)
     hdr.command_id = 0x42
