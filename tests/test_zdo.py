@@ -443,40 +443,27 @@ async def test_address_replies_retries(
         assert request_call.kwargs["retries"] == expected_retries
 
 
-def test_handle_announce(zdo_f):
-    dev = zdo_f._device
-    listener = MagicMock()
-    zdo_f.add_listener(listener)
-
-    dev._application.devices.pop(dev.ieee)
-    frame = make_frame(
-        zdo_c.DeviceAnnce(
-            nwk_addr=dev.nwk,
-            ieee_addr=dev.ieee,
-            capability=zdo_types.MACCapabilityFlags.NONE,
-        )
-    )
+@pytest.mark.parametrize(
+    "frame",
+    [
+        make_frame(
+            zdo_c.DeviceAnnce(
+                nwk_addr=0x1234,
+                ieee_addr=t.EUI64.convert(IEEE),
+                capability=zdo_types.MACCapabilityFlags.NONE,
+            )
+        ),
+        make_frame(
+            zdo_c.MgmtPermitJoiningReq(permit_duration=100, tc_significant=True)
+        ),
+        zdo_c.ZDOCommand.deserialize(0xFFFF, b"\x10\xaa"),
+    ],
+)
+async def test_handle_without_handler(zdo_f, frame):
+    """Frames without a handler are not answered."""
     zdo_f.handle_message(frame)
+    await asyncio.sleep(0)
 
-    assert listener.device_announce.mock_calls == [((dev,),)]
-    assert listener.zdo_device_annce.mock_calls == [((dev, None, frame),)]
-
-
-def test_handle_permit_join(zdo_f):
-    listener = MagicMock()
-    zdo_f.add_listener(listener)
-    zdo_f.handle_message(
-        make_frame(zdo_c.MgmtPermitJoiningReq(permit_duration=100, tc_significant=True))
-    )
-    assert listener.permit_duration.mock_calls == [((100,),)]
-
-
-def test_handle_unsupported(zdo_f):
-    listener = MagicMock()
-    zdo_f.add_listener(listener)
-    zdo_f.handle_message(zdo_c.ZDOCommand.deserialize(0xFFFF, b"\x10\xaa"))
-
-    assert len(listener.zdo_undefined_0xffff.mock_calls) == 1
     assert len(zdo_f.device.request.mock_calls) == 0
 
 

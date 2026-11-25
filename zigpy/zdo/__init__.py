@@ -13,12 +13,11 @@ LOGGER = logging.getLogger(__name__)
 ZDO_ENDPOINT = 0
 
 
-class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
+class ZDO(zigpy.util.CatchingTaskMixin):
     """The ZDO endpoint of a device"""
 
     def __init__(self, device):
         self._device = device
-        self._listeners = {}
 
     def handle_message(self, frame: commands.ZDOCommand) -> None:
         self.debug("ZDO request %s: %s", frame.command_id, frame.command)
@@ -30,13 +29,6 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
             self.debug(
                 "No handler for ZDO request:%s(%s)", frame.command_id, frame.command
             )
-
-        self.listener_event(
-            f"zdo_{frame.command_id.name.lower()}",
-            self._device,
-            None,  # was `dst_addressing` but this was never set
-            frame,
-        )
 
     def handle_nwk_addr_req(self, frame: commands.ZDOCommand) -> None:
         """Handle ZDO NWK Address request."""
@@ -92,17 +84,6 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
                     retries=self._device.reply_retries,
                 )
             )
-
-    def handle_device_annce(self, frame: commands.ZDOCommand) -> None:
-        """Handle ZDO device announcement request."""
-        self.listener_event("device_announce", self._device)
-
-    def handle_mgmt_permit_joining_req(self, frame: commands.ZDOCommand) -> None:
-        """Handle ZDO permit joining request."""
-        command = frame.command
-        assert isinstance(command, commands.MgmtPermitJoiningReq)
-
-        self.listener_event("permit_duration", command.permit_duration)
 
     def handle_match_desc_req(self, frame: commands.ZDOCommand) -> None:
         """Handle ZDO Match_desc_req request."""
