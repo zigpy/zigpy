@@ -26,6 +26,7 @@ from zigpy.time import TimeSnapshot
 import zigpy.types as t
 from zigpy.zcl import clusters, foundation
 from zigpy.zcl.clusters.greenpower import GreenPowerProxy
+import zigpy.zdo.commands as zdo_c
 import zigpy.zdo.types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
@@ -527,13 +528,13 @@ async def test_remove_parent_devices(app, make_initialized_device):
     ]
 
     p1 = patch.object(end_device.zdo, "leave", AsyncMock())
-    p2 = patch.object(end_device.zdo, "request", AsyncMock())
+    p2 = patch.object(end_device, "send_zdo_command", AsyncMock())
     p3 = patch.object(parent.zdo, "leave", AsyncMock())
-    p4 = patch.object(parent.zdo, "request", AsyncMock())
+    p4 = patch.object(parent, "send_zdo_command", AsyncMock())
     p5 = patch.object(router_1.zdo, "leave", AsyncMock())
-    p6 = patch.object(router_1.zdo, "request", AsyncMock())
+    p6 = patch.object(router_1, "send_zdo_command", AsyncMock())
     p7 = patch.object(router_2.zdo, "leave", AsyncMock())
-    p8 = patch.object(router_2.zdo, "request", AsyncMock())
+    p8 = patch.object(router_2, "send_zdo_command", AsyncMock())
 
     with p1, p2, p3, p4, p5, p6, p7, p8:
         await app.remove(end_device.ieee)
@@ -541,13 +542,21 @@ async def test_remove_parent_devices(app, make_initialized_device):
             await asyncio.sleep(0)
 
         assert end_device.zdo.leave.await_count == 1
-        assert end_device.zdo.request.await_count == 0
+        assert end_device.send_zdo_command.await_count == 0
         assert router_1.zdo.leave.await_count == 0
-        assert router_1.zdo.request.await_count == 0
+        assert router_1.send_zdo_command.await_count == 0
         assert router_2.zdo.leave.await_count == 0
-        assert router_2.zdo.request.await_count == 0
+        assert router_2.send_zdo_command.await_count == 0
         assert parent.zdo.leave.await_count == 0
-        assert parent.zdo.request.await_count == 1
+        assert parent.send_zdo_command.mock_calls == [
+            call(
+                zdo_c.MgmtLeaveReq(
+                    device_address=end_device.ieee,
+                    options=zdo_c.LeaveOptions.RemoveChildren,
+                ),
+                response_type=zdo_c.MgmtLeaveRsp,
+            )
+        ]
 
 
 @patch("zigpy.device.Device.schedule_initialize", new_callable=MagicMock)
@@ -1221,14 +1230,11 @@ def zdo_packet(app, device):
 async def test_packet_received_new_device_zdo_announce(app, device, zdo_packet):
     app.handle_join = MagicMock(wraps=app.handle_join)
 
-    zdo_data = zigpy.zdo.ZDO(None)._serialize(
-        zdo_t.ZDOCmd.Device_annce,
-        *{
-            "NWKAddr": device.nwk,
-            "IEEEAddr": device.ieee,
-            "Capability": 0x00,
-        }.values(),
-    )
+    zdo_data = zdo_c.DeviceAnnce(
+        nwk_addr=device.nwk,
+        ieee_addr=device.ieee,
+        capability=zdo_t.MACCapabilityFlags.NONE,
+    ).serialize()
 
     zdo_packet.cluster_id = zdo_t.ZDOCmd.Device_annce
     zdo_packet.data = t.SerializableBytes(
@@ -1253,28 +1259,18 @@ async def test_packet_received_new_device_discovery(app, device, zdo_packet):
         if packet.dst_ep != 0x00 or packet.cluster_id != zdo_t.ZDOCmd.IEEE_addr_req:
             return
 
-        hdr, args = zigpy.zdo.ZDO(None).deserialize(
-            packet.cluster_id, packet.data.serialize()
-        )
-        assert args == list(
-            {
-                "NWKAddrOfInterest": device.nwk,
-                "RequestType": zdo_t.AddrRequestType.Single,
-                "StartIndex": 0,
-            }.values()
+        _, command = zdo_c.deserialize(packet.cluster_id, packet.data.serialize())
+        assert command == zdo_c.IeeeAddrReq(
+            nwk_addr_of_interest=device.nwk,
+            request_type=zdo_t.AddrRequestType.Single,
+            start_index=0,
         )
 
-        zdo_data = zigpy.zdo.ZDO(None)._serialize(
-            zdo_t.ZDOCmd.IEEE_addr_rsp,
-            *{
-                "Status": zdo_t.Status.SUCCESS,
-                "IEEEAddr": device.ieee,
-                "NWKAddr": device.nwk,
-                "NumAssocDev": 0,
-                "StartIndex": 0,
-                "NWKAddrAssocDevList": [],
-            }.values(),
-        )
+        zdo_data = zdo_c.IeeeAddrRsp(
+            status=zdo_t.Status.SUCCESS,
+            ieee_addr=device.ieee,
+            nwk_addr=device.nwk,
+        ).serialize()
 
         # Receive the IEEE address reply
         zdo_packet.data = t.SerializableBytes(
@@ -1307,14 +1303,11 @@ async def test_packet_received_ieee_no_rejoin(app, device, zdo_packet, caplog):
 
     app.handle_join = MagicMock(wraps=app.handle_join)
 
-    zdo_data = zigpy.zdo.ZDO(None)._serialize(
-        zdo_t.ZDOCmd.IEEE_addr_rsp,
-        *{
-            "Status": zdo_t.Status.SUCCESS,
-            "IEEEAddr": device.ieee,
-            "NWKAddr": device.nwk,
-        }.values(),
-    )
+    zdo_data = zdo_c.IeeeAddrRsp(
+        status=zdo_t.Status.SUCCESS,
+        ieee_addr=device.ieee,
+        nwk_addr=device.nwk,
+    ).serialize()
 
     zdo_packet.cluster_id = zdo_t.ZDOCmd.IEEE_addr_rsp
     zdo_packet.data = t.SerializableBytes(
@@ -1339,14 +1332,11 @@ async def test_packet_received_ieee_rejoin(app, device, zdo_packet, caplog):
 
     app.handle_join = MagicMock(wraps=app.handle_join)
 
-    zdo_data = zigpy.zdo.ZDO(None)._serialize(
-        zdo_t.ZDOCmd.IEEE_addr_rsp,
-        *{
-            "Status": zdo_t.Status.SUCCESS,
-            "IEEEAddr": device.ieee,
-            "NWKAddr": device.nwk + 1,  # NWK has changed
-        }.values(),
-    )
+    zdo_data = zdo_c.IeeeAddrRsp(
+        status=zdo_t.Status.SUCCESS,
+        ieee_addr=device.ieee,
+        nwk_addr=device.nwk + 1,  # NWK has changed
+    ).serialize()
 
     zdo_packet.cluster_id = zdo_t.ZDOCmd.IEEE_addr_rsp
     zdo_packet.data = t.SerializableBytes(
@@ -1556,14 +1546,14 @@ async def test_energy_scan_default(app):
         187,
     ]
     coordinator = app._device
-    coordinator.zdo.Mgmt_NWK_Update_req = AsyncMock(
-        return_value=[
-            zdo_t.Status.SUCCESS,
-            t.Channels.ALL_CHANNELS,
-            29,
-            10,
-            raw_scan_results,
-        ]
+    coordinator.send_zdo_command = AsyncMock(
+        return_value=zdo_c.MgmtNwkUpdateRsp(
+            status=zdo_t.Status.SUCCESS,
+            scanned_channels=t.Channels.ALL_CHANNELS,
+            total_transmissions=29,
+            transmission_failures=10,
+            energy_values=raw_scan_results,
+        )
     )
 
     results = await app.energy_scan(
@@ -1577,7 +1567,7 @@ async def test_energy_scan_default(app):
 async def test_energy_scan_not_implemented(app):
     """Energy scanning still "works" even when the radio doesn't implement it."""
     await app.startup()
-    app._device.zdo.Mgmt_NWK_Update_req.side_effect = TimeoutError()
+    app._device.send_zdo_command.side_effect = TimeoutError()
 
     results = await app.energy_scan(
         channels=t.Channels.ALL_CHANNELS, duration_exp=2, count=1
@@ -1616,9 +1606,9 @@ async def test_move_network_to_new_channel():
             await asyncio.sleep(
                 zigpy.application.CHANNEL_CHANGE_SETTINGS_RELOAD_DELAY_S * 5
             )
-            NwkUpdate = args[0]
-            app.state.network_info.channel = list(NwkUpdate.ScanChannels)[0]
-            app.state.network_info.nwk_update_id = NwkUpdate.nwkUpdateId
+            command = args[0]
+            app.state.network_info.channel = list(command.scan_channels)[0]
+            app.state.network_info.nwk_update_id = command.nwk_update_id
 
         asyncio.create_task(inner())  # noqa: RUF006
 
@@ -1628,7 +1618,7 @@ async def test_move_network_to_new_channel():
 
     with (
         patch.object(
-            app._device.zdo, "Mgmt_NWK_Update_req", side_effect=nwk_update
+            app._device, "send_zdo_command", side_effect=nwk_update
         ) as mock_update,
         patch.object(app.backups, "create_backup", new=AsyncMock()) as mock_backup,
     ):

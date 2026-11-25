@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Coroutine
-import functools
 import logging
 
-from zigpy.const import APS_REPLY_TIMEOUT
 import zigpy.profiles
 import zigpy.types as t
 import zigpy.util
 
-from . import types
+from . import commands, types
 
 LOGGER = logging.getLogger(__name__)
 
@@ -23,136 +20,48 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         self._device = device
         self._listeners = {}
 
-    def _serialize(self, command, *args, **kwargs):
-        keys, schema = types.CLUSTERS[command]
-        # TODO: expose this in a future PR
-        assert not kwargs
-        return t.serialize(args, schema)
-
-    def deserialize(self, cluster_id, data):
-        if cluster_id not in types.CLUSTERS:
-            raise ValueError(f"Invalid ZDO cluster ID: 0x{cluster_id:04X}")
-
-        _, param_types = types.CLUSTERS[cluster_id]
-        hdr, data = types.ZDOHeader.deserialize(cluster_id, data)
-        args, data = t.deserialize(data, param_types)
-
-        if data:
-            # TODO: Seems sane to check, but what should we do?
-            self.warning("Data remains after deserializing ZDO frame: %r", data)
-
-        return hdr, args
-
-    async def request(
-        self,
-        command,
-        *args,
-        timeout=APS_REPLY_TIMEOUT,
-        expect_reply: bool = True,
-        use_ieee: bool = False,
-        ask_for_ack: bool | None = None,
-        priority: int | None = None,
-        retries: int | None = None,
-        retry_delay: float | None = None,
-        aps_encryption: bool = False,
-        **kwargs,
-    ):
-        data = self._serialize(command, *args, **kwargs)
-        tsn = self.device.get_sequence()
-        return await self._device.request(
-            profile=0x0000,
-            cluster=command,
-            src_ep=ZDO_ENDPOINT,
-            dst_ep=ZDO_ENDPOINT,
-            sequence=tsn,
-            data=t.uint8_t(tsn).serialize() + data,
-            timeout=timeout,
-            expect_reply=expect_reply,
-            use_ieee=use_ieee,
-            ask_for_ack=ask_for_ack,
-            priority=priority,
-            retries=retries,
-            retry_delay=retry_delay,
-            aps_encryption=aps_encryption,
-        )
-
-    async def reply(
-        self,
-        command,
-        *args,
-        tsn: int | t.uint8_t | None = None,
-        timeout=APS_REPLY_TIMEOUT,
-        expect_reply: bool = False,
-        use_ieee: bool = False,
-        ask_for_ack: bool | None = None,
-        priority: int | None = None,
-        retries: int | None = None,
-        retry_delay: float | None = None,
-        aps_encryption: bool = False,
-        **kwargs,
-    ):
-        data = self._serialize(command, *args, **kwargs)
-        if tsn is None:
-            tsn = self.device.get_sequence()
-        return await self._device.reply(
-            profile=0x0000,
-            cluster=command,
-            src_ep=ZDO_ENDPOINT,
-            dst_ep=ZDO_ENDPOINT,
-            sequence=tsn,
-            data=t.uint8_t(tsn).serialize() + data,
-            timeout=timeout,
-            expect_reply=expect_reply,
-            use_ieee=use_ieee,
-            ask_for_ack=ask_for_ack,
-            priority=priority,
-            retries=retries,
-            retry_delay=retry_delay,
-            aps_encryption=aps_encryption,
-        )
-
     def handle_message(
         self,
         profile: int,
         cluster: int,
         hdr: types.ZDOHeader,
-        args: list,
+        command: commands.ZDOCommand,
     ) -> None:
-        self.debug("ZDO request %s: %s", hdr.command_id, args)
+        self.debug("ZDO request %s: %s", hdr.command_id, command)
 
         handler = getattr(self, f"handle_{hdr.command_id.name.lower()}", None)
         if handler is not None:
-            handler(hdr, *args)
+            handler(hdr, command)
         else:
-            self.debug("No handler for ZDO request:%s(%s)", hdr.command_id, args)
+            self.debug("No handler for ZDO request:%s(%s)", hdr.command_id, command)
 
         self.listener_event(
             f"zdo_{hdr.command_id.name.lower()}",
             self._device,
             None,  # was `dst_addressing` but this was never set
             hdr,
-            args,
+            command,
         )
 
     def handle_nwk_addr_req(
-        self,
-        hdr: types.ZDOHeader,
-        ieee: t.EUI64,
-        request_type: int,
-        start_index: int | None = None,
-    ):
+        self, hdr: types.ZDOHeader, command: commands.NwkAddrReq
+    ) -> None:
         """Handle ZDO NWK Address request."""
 
         app = self._device.application
-        if ieee == app.state.node_info.ieee:
+        if command.ieee_addr == app.state.node_info.ieee:
             self.create_catching_task(
-                self.NWK_addr_rsp(
-                    0,
-                    app.state.node_info.ieee,
-                    app.state.node_info.nwk,
-                    0,
-                    0,
-                    [],
+                self._device.send_zdo_command(
+                    commands.NwkAddrRsp(
+                        status=types.Status.SUCCESS,
+                        ieee_addr=app.state.node_info.ieee,
+                        nwk_addr=app.state.node_info.nwk,
+                        num_assoc_dev=(
+                            0
+                            if command.request_type == types.AddrRequestType.Extended
+                            else None
+                        ),
+                    ),
                     tsn=hdr.tsn,
                     priority=t.PacketPriority.LOW,
                     retries=self._device.reply_retries,
@@ -160,29 +69,29 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
             )
 
     def handle_ieee_addr_req(
-        self,
-        hdr: types.ZDOHeader,
-        nwk: t.NWK,
-        request_type: int,
-        start_index: int | None = None,
-    ):
+        self, hdr: types.ZDOHeader, command: commands.IeeeAddrReq
+    ) -> None:
         """Handle ZDO IEEE Address request."""
 
         app = self._device.application
-        if nwk in (
+        if command.nwk_addr_of_interest in (
             t.BroadcastAddress.ALL_DEVICES,
             t.BroadcastAddress.RX_ON_WHEN_IDLE,
             t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
             app.state.node_info.nwk,
         ):
             self.create_catching_task(
-                self.IEEE_addr_rsp(
-                    0,
-                    app.state.node_info.ieee,
-                    app.state.node_info.nwk,
-                    0,
-                    0,
-                    [],
+                self._device.send_zdo_command(
+                    commands.IeeeAddrRsp(
+                        status=types.Status.SUCCESS,
+                        ieee_addr=app.state.node_info.ieee,
+                        nwk_addr=app.state.node_info.nwk,
+                        num_assoc_dev=(
+                            0
+                            if command.request_type == types.AddrRequestType.Extended
+                            else None
+                        ),
+                    ),
                     tsn=hdr.tsn,
                     priority=t.PacketPriority.LOW,
                     retries=self._device.reply_retries,
@@ -190,86 +99,86 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
             )
 
     def handle_device_annce(
-        self,
-        hdr: types.ZDOHeader,
-        nwk: t.NWK,
-        ieee: t.EUI64,
-        capability: int,
-    ):
+        self, hdr: types.ZDOHeader, command: commands.DeviceAnnce
+    ) -> None:
         """Handle ZDO device announcement request."""
         self.listener_event("device_announce", self._device)
 
     def handle_mgmt_permit_joining_req(
-        self,
-        hdr: types.ZDOHeader,
-        permit_duration: int,
-        tc_significance: int,
-    ):
+        self, hdr: types.ZDOHeader, command: commands.MgmtPermitJoiningReq
+    ) -> None:
         """Handle ZDO permit joining request."""
 
-        self.listener_event("permit_duration", permit_duration)
+        self.listener_event("permit_duration", command.permit_duration)
 
     def handle_match_desc_req(
-        self,
-        hdr: types.ZDOHeader,
-        addr: t.NWK,
-        profile: int,
-        in_clusters: list,
-        out_cluster: list,
-    ):
+        self, hdr: types.ZDOHeader, command: commands.MatchDescReq
+    ) -> None:
         """Handle ZDO Match_desc_req request."""
 
-        local_addr = self._device.application.state.node_info.nwk
-        if profile != zigpy.profiles.zha.PROFILE_ID:
-            self.create_catching_task(
-                self.Match_Desc_rsp(
-                    0,
-                    local_addr,
-                    [],
-                    tsn=hdr.tsn,
-                    priority=t.PacketPriority.CRITICAL,
-                )
-            )
-            return
+        if command.profile_id == zigpy.profiles.zha.PROFILE_ID:
+            match_list = [t.uint8_t(1)]
+        else:
+            match_list = []
 
         self.create_catching_task(
-            self.Match_Desc_rsp(
-                0,
-                local_addr,
-                [t.uint8_t(1)],
+            self._device.send_zdo_command(
+                commands.MatchDescRsp(
+                    status=types.Status.SUCCESS,
+                    nwk_addr_of_interest=self._device.application.state.node_info.nwk,
+                    match_list=match_list,
+                ),
                 tsn=hdr.tsn,
                 priority=t.PacketPriority.CRITICAL,
             )
         )
 
-    async def bind(self, cluster, **kwargs):
-        return await self.Bind_req(
-            self._device.ieee,
-            cluster.endpoint.endpoint_id,
-            cluster.cluster_id,
-            self.device.application.get_dst_address(cluster),
+    async def bind(self, cluster, **kwargs) -> commands.BindRsp:
+        return await self._device.send_zdo_command(
+            commands.BindReq(
+                src_address=self._device.ieee,
+                src_endpoint=cluster.endpoint.endpoint_id,
+                cluster_id=cluster.cluster_id,
+                dst_address=self._device.application.get_dst_address(cluster),
+            ),
+            response_type=commands.BindRsp,
             **kwargs,
         )
 
-    async def unbind(self, cluster):
-        return await self.Unbind_req(
-            self._device.ieee,
-            cluster.endpoint.endpoint_id,
-            cluster.cluster_id,
-            self.device.application.get_dst_address(cluster),
+    async def unbind(self, cluster) -> commands.UnbindRsp:
+        return await self._device.send_zdo_command(
+            commands.UnbindReq(
+                src_address=self._device.ieee,
+                src_endpoint=cluster.endpoint.endpoint_id,
+                cluster_id=cluster.cluster_id,
+                dst_address=self._device.application.get_dst_address(cluster),
+            ),
+            response_type=commands.UnbindRsp,
         )
 
-    def leave(self, remove_children: bool = True, rejoin: bool = False) -> Coroutine:
-        opts = self.LeaveOptions.NONE
+    async def leave(
+        self, remove_children: bool = True, rejoin: bool = False
+    ) -> commands.MgmtLeaveRsp:
+        opts = commands.LeaveOptions.NONE
         if remove_children:
-            opts |= self.LeaveOptions.RemoveChildren
+            opts |= commands.LeaveOptions.RemoveChildren
         if rejoin:
-            opts |= self.LeaveOptions.Rejoin
+            opts |= commands.LeaveOptions.Rejoin
 
-        return self.Mgmt_Leave_req(self._device.ieee, opts)
+        return await self._device.send_zdo_command(
+            commands.MgmtLeaveReq(device_address=self._device.ieee, options=opts),
+            response_type=commands.MgmtLeaveRsp,
+        )
 
-    def permit(self, duration=60, tc_significance=0):
-        return self.Mgmt_Permit_Joining_req(duration, tc_significance)
+    async def permit(
+        self, duration: int = 60, tc_significance: bool = False
+    ) -> commands.MgmtPermitJoiningRsp:
+        return await self._device.send_zdo_command(
+            commands.MgmtPermitJoiningReq(
+                permit_duration=duration, tc_significant=tc_significance
+            ),
+            response_type=commands.MgmtPermitJoiningRsp,
+        )
 
     def log(self, lvl, msg, *args, **kwargs):
         msg = "[0x%04x:zdo] " + msg
@@ -280,39 +189,22 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
     def device(self):
         return self._device
 
-    def __getattr__(self, name):
-        try:
-            command = types.ZDOCmd[name]
-        except KeyError as exc:
-            raise AttributeError(f"No such '{name}' ZDO command") from exc
-
-        if command & 0x8000:
-            return functools.partial(self.reply, command)
-        return functools.partial(self.request, command)
-
 
 def broadcast(
     app,
-    command,
+    command: commands.ZDOCommand,
     grpid,
     radius,
-    *args,
+    *,
     broadcast_address=t.BroadcastAddress.RX_ON_WHEN_IDLE,
-    **kwargs,
 ):
-    params, param_types = types.CLUSTERS[command]
-
-    named_args = dict(zip(params, args, strict=False))
-    named_args.update(kwargs)
-    assert set(named_args.keys()) == set(params)
-
     sequence = app.get_sequence()
-    data = bytes([sequence]) + t.serialize(named_args.values(), param_types)
+    data = bytes([sequence]) + command.serialize()
 
     return zigpy.device.broadcast(
         app,
         0,
-        command,
+        command.command_id,
         0,
         0,
         grpid,

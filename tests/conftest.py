@@ -25,6 +25,7 @@ import zigpy.state as app_state
 import zigpy.types as t
 from zigpy.typing import UNDEFINED, UndefinedType
 from zigpy.zcl import Cluster, foundation
+import zigpy.zdo.commands as zdo_c
 import zigpy.zdo.types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock
@@ -103,15 +104,16 @@ class BaseApp(zigpy.application.ControllerApplication):
         dev.model = "Coordinator Model"
         dev.manufacturer = "Coordinator Manufacturer"
 
-        dev.zdo.Mgmt_NWK_Update_req = AsyncMock(
-            return_value=[
-                zdo_t.Status.SUCCESS,
-                t.Channels.ALL_CHANNELS,
-                0,
-                0,
-                [80] * 16,
-            ]
-        )
+        async def respond_to_nwk_update(command):
+            return zdo_c.MgmtNwkUpdateRsp(
+                status=zdo_t.Status.SUCCESS,
+                scanned_channels=t.Channels.ALL_CHANNELS,
+                total_transmissions=0,
+                transmission_failures=0,
+                energy_values=[80] * 16,
+            )
+
+        mock_zdo_requests(dev, {zdo_c.MgmtNwkUpdateReq: respond_to_nwk_update})
 
     async def force_remove(self, dev):
         pass
@@ -180,6 +182,45 @@ class App(BaseApp):
 
     async def _send_gpdf(self, **kwargs) -> None:
         pass
+
+
+def make_simple_desc_rsp(
+    nwk: t.NWK, descriptor: zdo_t.SimpleDescriptor
+) -> zdo_c.SimpleDescRsp:
+    return zdo_c.SimpleDescRsp(
+        status=zdo_t.Status.SUCCESS,
+        nwk_addr_of_interest=nwk,
+        length=len(descriptor.serialize()),
+        simple_descriptor=descriptor,
+    )
+
+
+def mock_zdo_requests(
+    dev,
+    handlers: dict[
+        type[zdo_c.ZDOCommand],
+        typing.Callable[[typing.Any], typing.Awaitable[zdo_c.ZDOCommand]],
+    ],
+) -> AsyncMock:
+    """Answer ZDO requests of the given types with handlers, send all others.
+
+    Calling it again for the same device adds or replaces handlers.
+    """
+    if not isinstance(dev.send_zdo_command, AsyncMock):
+        send_zdo_command = dev.send_zdo_command
+        all_handlers = {}
+
+        async def send(command, response_type=None, **kwargs):
+            if type(command) not in all_handlers:
+                return await send_zdo_command(command, response_type, **kwargs)
+
+            return await all_handlers[type(command)](command)
+
+        dev.send_zdo_command = AsyncMock(side_effect=send)
+        dev.send_zdo_command.handlers = all_handlers
+
+    dev.send_zdo_command.handlers.update(handlers)
+    return dev.send_zdo_command
 
 
 def recursive_dict_merge(

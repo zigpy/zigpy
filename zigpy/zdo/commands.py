@@ -1,38 +1,61 @@
 from __future__ import annotations
 
+import logging
+from typing import ClassVar, TypeVar
+
 import zigpy.types as t
-from typing import ClassVar
 from zigpy.zdo.types import (
     CHANNEL_CHANGE_REQ,
     CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ,
     AddrRequestType,
     Binding,
+    MACCapabilityFlags,
     MultiAddress,
     Neighbor,
     NodeDescriptor,
     PowerDescriptor,
     Route,
+    SimpleDescriptor,
     SizePrefixedSimpleDescriptor,
     Status,
     ZDOCmd,
+    ZDOHeader,
 )
 
+LOGGER = logging.getLogger(__name__)
 
 
 class ZDOCommand(t.Struct):
     command_id: ClassVar[ZDOCmd]
 
 
+ZDOCommandT = TypeVar("ZDOCommandT", bound=ZDOCommand)
+
+
 ZDO_COMMANDS: dict[ZDOCmd, type[ZDOCommand]] = {}
 
 
 def command(cmd_id: ZDOCmd):
-    def decorator[T](cls: T) -> T:
+    def decorator(cls: type[ZDOCommandT]) -> type[ZDOCommandT]:
         cls.command_id = cmd_id
         ZDO_COMMANDS[cmd_id] = cls
         return cls
 
     return decorator
+
+
+def deserialize(cluster_id: t.uint16_t, data: bytes) -> tuple[ZDOHeader, ZDOCommand]:
+    """Deserialize a ZDO frame, including its header."""
+    if cluster_id not in ZDO_COMMANDS:
+        raise ValueError(f"Invalid ZDO cluster ID: 0x{cluster_id:04X}")
+
+    hdr, data = ZDOHeader.deserialize(cluster_id, data)
+    command, data = ZDO_COMMANDS[hdr.command_id].deserialize(data)
+
+    if data:
+        LOGGER.warning("Data remains after deserializing ZDO frame: %r", data)
+
+    return hdr, command
 
 
 # Device and Service Discovery Server Requests
@@ -94,7 +117,7 @@ class DiscoveryCacheReq(ZDOCommand):
 class DeviceAnnce(ZDOCommand):
     nwk_addr: t.NWK
     ieee_addr: t.EUI64
-    capability: t.uint8_t
+    capability: MACCapabilityFlags
 
 
 @command(ZDOCmd.User_Desc_set)
@@ -219,6 +242,7 @@ class LeaveOptions(t.bitmap8):
     RemoveChildren = 1 << 6
     Rejoin = 1 << 7
 
+
 @command(ZDOCmd.Mgmt_Leave_req)
 class MgmtLeaveReq(ZDOCommand):
     device_address: t.EUI64
@@ -251,14 +275,14 @@ class NwkAddrRsp(ZDOCommand):
     status: Status
     ieee_addr: t.EUI64
     nwk_addr: t.NWK
-    num_assoc_dev: t.uint8_t | None = t.StructField(
-        requires=lambda s: s.status == Status.SUCCESS
+    # Only present for an extended request, which the response does not indicate
+    num_assoc_dev: t.uint8_t = t.StructField(optional=True)
+    start_index: t.uint8_t = t.StructField(
+        requires=lambda s: s.num_assoc_dev is not None and s.num_assoc_dev > 0
     )
-    start_index: t.uint8_t | None = t.StructField(
-        requires=lambda s: s.status == Status.SUCCESS
-    )
-    nwk_address_assoc_dev_list: t.List[t.NWK] | None = t.StructField(
-        requires=lambda s: s.status == Status.SUCCESS
+    nwk_address_assoc_dev_list: t.List[t.NWK] = t.StructField(
+        requires=lambda s: s.num_assoc_dev is not None and s.num_assoc_dev > 0,
+        length=lambda s: s.num_assoc_dev,
     )
 
 
@@ -267,14 +291,14 @@ class IeeeAddrRsp(ZDOCommand):
     status: Status
     ieee_addr: t.EUI64
     nwk_addr: t.NWK
-    num_assoc_dev: t.uint8_t | None = t.StructField(
-        requires=lambda s: s.status == Status.SUCCESS
+    # Only present for an extended request, which the response does not indicate
+    num_assoc_dev: t.uint8_t = t.StructField(optional=True)
+    start_index: t.uint8_t = t.StructField(
+        requires=lambda s: s.num_assoc_dev is not None and s.num_assoc_dev > 0
     )
-    start_index: t.uint8_t | None = t.StructField(
-        requires=lambda s: s.status == Status.SUCCESS
-    )
-    nwk_addr_assoc_dev_list: t.List[t.NWK] | None = t.StructField(
-        requires=lambda s: s.status == Status.SUCCESS
+    nwk_addr_assoc_dev_list: t.List[t.NWK] = t.StructField(
+        requires=lambda s: s.num_assoc_dev is not None and s.num_assoc_dev > 0,
+        length=lambda s: s.num_assoc_dev,
     )
 
 
@@ -282,7 +306,7 @@ class IeeeAddrRsp(ZDOCommand):
 class NodeDescRsp(ZDOCommand):
     status: Status
     nwk_addr_of_interest: t.NWK
-    node_descriptor: NodeDescriptor | None = t.StructField(
+    node_descriptor: NodeDescriptor = t.StructField(
         requires=lambda s: s.status == Status.SUCCESS
     )
 
@@ -291,7 +315,7 @@ class NodeDescRsp(ZDOCommand):
 class PowerDescRsp(ZDOCommand):
     status: Status
     nwk_addr_of_interest: t.NWK
-    power_descriptor: PowerDescriptor | None = t.StructField(
+    power_descriptor: PowerDescriptor = t.StructField(
         requires=lambda s: s.status == Status.SUCCESS
     )
 
@@ -300,7 +324,8 @@ class PowerDescRsp(ZDOCommand):
 class SimpleDescRsp(ZDOCommand):
     status: Status
     nwk_addr_of_interest: t.NWK
-    simple_descriptor: SizePrefixedSimpleDescriptor | None = t.StructField(
+    length: t.uint8_t
+    simple_descriptor: SimpleDescriptor = t.StructField(
         requires=lambda s: s.status == Status.SUCCESS
     )
 
@@ -390,7 +415,7 @@ class ExtendedSimpleDescRsp(ZDOCommand):
     app_input_cluster_count: t.uint8_t
     app_output_cluster_count: t.uint8_t
     start_index: t.uint8_t
-    app_cluster_list: t.List[t.uint16_t] | None = t.StructField(
+    app_cluster_list: t.List[t.uint16_t] = t.StructField(
         requires=lambda s: s.status == Status.SUCCESS
     )
 
@@ -430,13 +455,13 @@ class UnbindRsp(ZDOCommand):
 @command(ZDOCmd.Mgmt_Lqi_rsp)
 class MgmtLqiRsp(ZDOCommand):
     status: Status
-    entries: t.uint8_t | None = t.StructField(
+    neighbor_table_entries: t.uint8_t = t.StructField(
         requires=lambda s: s.status == Status.SUCCESS
     )
-    start_index: t.uint8_t | None = t.StructField(
+    start_index: t.uint8_t = t.StructField(
         requires=lambda s: s.status == Status.SUCCESS
     )
-    neighbor_table_list: t.LVList[Neighbor, t.uint8_t] | None = t.StructField(
+    neighbor_table_list: t.LVList[Neighbor, t.uint8_t] = t.StructField(
         requires=lambda s: s.status == Status.SUCCESS
     )
 
@@ -444,13 +469,13 @@ class MgmtLqiRsp(ZDOCommand):
 @command(ZDOCmd.Mgmt_Rtg_rsp)
 class MgmtRtgRsp(ZDOCommand):
     status: Status
-    entries: t.uint8_t | None = t.StructField(
+    routing_table_entries: t.uint8_t = t.StructField(
         requires=lambda s: s.status == Status.SUCCESS
     )
-    start_index: t.uint8_t | None = t.StructField(
+    start_index: t.uint8_t = t.StructField(
         requires=lambda s: s.status == Status.SUCCESS
     )
-    routing_table_list: t.LVList[Route, t.uint8_t] | None = t.StructField(
+    routing_table_list: t.LVList[Route, t.uint8_t] = t.StructField(
         requires=lambda s: s.status == Status.SUCCESS
     )
 
@@ -458,9 +483,15 @@ class MgmtRtgRsp(ZDOCommand):
 @command(ZDOCmd.Mgmt_Bind_rsp)
 class MgmtBindRsp(ZDOCommand):
     status: Status
-    binding_table_entries: t.uint8_t
-    start_index: t.uint8_t
-    binding_table_list: t.LVList[Binding, t.uint8_t]
+    binding_table_entries: t.uint8_t = t.StructField(
+        requires=lambda s: s.status == Status.SUCCESS
+    )
+    start_index: t.uint8_t = t.StructField(
+        requires=lambda s: s.status == Status.SUCCESS
+    )
+    binding_table_list: t.LVList[Binding, t.uint8_t] = t.StructField(
+        requires=lambda s: s.status == Status.SUCCESS
+    )
 
 
 @command(ZDOCmd.Mgmt_Leave_rsp)

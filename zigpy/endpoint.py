@@ -11,6 +11,7 @@ import zigpy.types as t
 import zigpy.util
 import zigpy.zcl
 from zigpy.zcl.foundation import GENERAL_COMMANDS, GeneralCommand, Status as ZCLStatus
+import zigpy.zdo.commands as zdo_c
 from zigpy.zdo.types import Status as ZDOStatus
 
 if TYPE_CHECKING:
@@ -185,9 +186,14 @@ class Endpoint(BaseEndpoint["ZigbeeDevice"]):
         if self.profile_id is not None or self.status == Status.ENDPOINT_INACTIVE:
             self.info("Endpoint descriptor already queried")
         else:
-            status, _, sd = await self._device.zdo.Simple_Desc_req(
-                self._device.nwk, self._endpoint_id
+            rsp = await self._device.send_zdo_command(
+                zdo_c.SimpleDescReq(
+                    nwk_addr_of_interest=self._device.nwk, endpoint=self._endpoint_id
+                ),
+                response_type=zdo_c.SimpleDescRsp,
             )
+            status = rsp.status
+            sd = rsp.simple_descriptor
 
             if status in (ZDOStatus.NOT_ACTIVE, ZDOStatus.INVALID_EP):
                 # These endpoints are essentially junk but this lets the device join.

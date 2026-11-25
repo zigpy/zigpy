@@ -40,6 +40,7 @@ from zigpy.util import CreateTaskMixin
 import zigpy.zcl
 from zigpy.zcl.clusters.greenpower import GreenPowerProxy
 import zigpy.zdo
+import zigpy.zdo.commands as zdo_commands
 import zigpy.zdo.types as zdo_types
 from zigpy.zgp.manager import GreenPowerManager
 import zigpy.zgp.tunneling
@@ -392,19 +393,21 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
     ) -> dict[int, float]:
         """Runs an energy detection scan and returns the per-channel scan results."""
         try:
-            rsp = await self._device.zdo.Mgmt_NWK_Update_req(
-                zigpy.zdo.types.NwkUpdate(
-                    ScanChannels=channels,
-                    ScanDuration=duration_exp,
-                    ScanCount=count,
-                )
+            rsp = await self._device.send_zdo_command(
+                zdo_commands.MgmtNwkUpdateReq(
+                    scan_channels=channels,
+                    scan_duration=duration_exp,
+                    scan_count=count,
+                ),
+                response_type=zdo_commands.MgmtNwkUpdateRsp,
             )
         except (TimeoutError, zigpy.exceptions.DeliveryError):
             LOGGER.warning("Coordinator does not support energy scanning")
             scanned_channels = channels
             energy_values = [0] * len(scanned_channels)
         else:
-            _, scanned_channels, _, _, energy_values = rsp
+            scanned_channels = rsp.scanned_channels
+            energy_values = rsp.energy_values
 
         return dict(zip(scanned_channels, energy_values, strict=True))
 
@@ -446,12 +449,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
     ) -> None:
         """Broadcasts the channel migration update request."""
         # Default implementation for radios that migrate via a loopback ZDO request
-        await self._device.zdo.Mgmt_NWK_Update_req(
-            zigpy.zdo.types.NwkUpdate(
-                ScanChannels=zigpy.types.Channels.from_channel_list([new_channel]),
-                ScanDuration=zigpy.zdo.types.NwkUpdate.CHANNEL_CHANGE_REQ,
-                nwkUpdateId=new_nwk_update_id,
-            )
+        await self._device.send_zdo_command(
+            zdo_commands.MgmtNwkUpdateReq(
+                scan_channels=zigpy.types.Channels.from_channel_list([new_channel]),
+                scan_duration=zdo_types.CHANNEL_CHANGE_REQ,
+                nwk_update_id=new_nwk_update_id,
+            ),
+            response_type=zdo_commands.MgmtNwkUpdateRsp,
         )
 
     async def move_network_to_channel(
@@ -473,15 +477,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
 
             await zigpy.zdo.broadcast(
                 app=self,
-                command=zigpy.zdo.types.ZDOCmd.Mgmt_NWK_Update_req,
+                command=zdo_commands.MgmtNwkUpdateReq(
+                    scan_channels=zigpy.types.Channels.from_channel_list([new_channel]),
+                    scan_duration=zdo_types.CHANNEL_CHANGE_REQ,
+                    nwk_update_id=new_nwk_update_id,
+                ),
                 grpid=None,
                 radius=30,  # Explicitly set the maximum radius
                 broadcast_address=zigpy.types.BroadcastAddress.ALL_DEVICES,
-                NwkUpdate=zigpy.zdo.types.NwkUpdate(
-                    ScanChannels=zigpy.types.Channels.from_channel_list([new_channel]),
-                    ScanDuration=zigpy.zdo.types.NwkUpdate.CHANNEL_CHANGE_REQ,
-                    nwkUpdateId=new_nwk_update_id,
-                ),
             )
 
             await asyncio.sleep(CHANNEL_CHANGE_BROADCAST_DELAY_S)
@@ -843,11 +846,16 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
                 LOGGER.debug(
                     "Sending leave request for %s to %s parent", dev.ieee, parent.ieee
                 )
-                opts = parent.zdo.LeaveOptions.RemoveChildren
+                opts = zdo_commands.LeaveOptions.RemoveChildren
                 if rejoin:
-                    opts |= parent.zdo.LeaveOptions.Rejoin
+                    opts |= zdo_commands.LeaveOptions.Rejoin
                 parent.zdo.create_catching_task(
-                    parent.zdo.Mgmt_Leave_req(dev.ieee, opts)
+                    parent.send_zdo_command(
+                        zdo_commands.MgmtLeaveReq(
+                            device_address=dev.ieee, options=opts
+                        ),
+                        response_type=zdo_commands.MgmtLeaveRsp,
+                    )
                 )
 
         self.listener_event("device_removed", dev)
@@ -1073,12 +1081,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         device = ZigbeeDevice(self, ieee, nwk)
 
         try:
-            await device.zdo.request(
-                zdo_types.ZDOCmd.Mgmt_Leave_req,
-                ieee,
-                device.zdo.LeaveOptions.NONE,
-                # The reply would be dropped, the device being blocked
-                expect_reply=False,
+            # No response type: the reply would be dropped, the device being blocked
+            await device.send_zdo_command(
+                zdo_commands.MgmtLeaveReq(
+                    device_address=ieee, options=zdo_commands.LeaveOptions.NONE
+                )
             )
         except Exception as ex:  # noqa: BLE001
             LOGGER.debug("Failed to send leave request to blocked device: %s", ex)
@@ -1512,25 +1519,20 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
 
         return await zigpy.zdo.broadcast(
             app=self,
-            command=zdo_types.ZDOCmd.IEEE_addr_req,
+            command=zdo_commands.IeeeAddrReq(
+                nwk_addr_of_interest=nwk,
+                request_type=zdo_types.AddrRequestType.Single,
+                start_index=0,
+            ),
             grpid=None,
             radius=0,
-            NWKAddrOfInterest=nwk,
-            RequestType=zdo_types.AddrRequestType.Single,
-            StartIndex=0,
         )
 
     def _maybe_parse_zdo(self, packet: t.ZigbeePacket) -> None:
         """Attempt to parse an incoming packet as ZDO, to extract useful notifications."""
 
-        # The current zigpy device may not exist if we receive a packet early
         try:
-            zdo = self._device.zdo
-        except KeyError:
-            zdo = zigpy.zdo.ZDO(None)
-
-        try:
-            zdo_hdr, zdo_args = zdo.deserialize(
+            _, command = zdo_commands.deserialize(
                 cluster_id=packet.cluster_id, data=packet.data.serialize()
             )
         except ValueError:
@@ -1538,19 +1540,22 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             return
 
         # Interpret useful global ZDO responses and notifications
-        if zdo_hdr.command_id == zdo_types.ZDOCmd.Device_annce:
-            nwk, ieee, _ = zdo_args
-            self.handle_join(nwk=nwk, ieee=ieee, parent_nwk=None)
-        elif zdo_hdr.command_id in (
-            zdo_types.ZDOCmd.NWK_addr_rsp,
-            zdo_types.ZDOCmd.IEEE_addr_rsp,
-        ):
-            status, ieee, nwk, _, _, _ = zdo_args
-
-            if status == zdo_types.Status.SUCCESS:
-                LOGGER.debug("Discovered IEEE address for NWK=%s: %s", nwk, ieee)
+        if isinstance(command, zdo_commands.DeviceAnnce):
+            self.handle_join(
+                nwk=command.nwk_addr, ieee=command.ieee_addr, parent_nwk=None
+            )
+        elif isinstance(command, zdo_commands.NwkAddrRsp | zdo_commands.IeeeAddrRsp):
+            if command.status == zdo_types.Status.SUCCESS:
+                LOGGER.debug(
+                    "Discovered IEEE address for NWK=%s: %s",
+                    command.nwk_addr,
+                    command.ieee_addr,
+                )
                 self.handle_join(
-                    nwk=nwk, ieee=ieee, parent_nwk=None, handle_rejoin=False
+                    nwk=command.nwk_addr,
+                    ieee=command.ieee_addr,
+                    parent_nwk=None,
+                    handle_rejoin=False,
                 )
 
     def packet_received(self, packet: t.ZigbeePacket) -> None:
@@ -2110,12 +2115,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             return
 
         await zigpy.zdo.broadcast(
-            self,  # app
-            zdo_types.ZDOCmd.Mgmt_Permit_Joining_req,  # command
-            0x0000,  # grpid
-            0x00,  # radius
-            time_s,
-            0,
+            app=self,
+            command=zdo_commands.MgmtPermitJoiningReq(
+                permit_duration=time_s, tc_significant=False
+            ),
+            grpid=0x0000,
+            radius=0x00,
             broadcast_address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
         )
         await self.permit_ncp(time_s)
@@ -2189,7 +2194,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         return dev
 
     def _persist_coordinator_model_strings_in_db(self) -> None:
-        cluster = self._device.endpoints[1].add_input_cluster(
+        endpoint = self._device.endpoints[1]
+        assert isinstance(endpoint, zigpy.endpoint.Endpoint)
+
+        cluster = endpoint.add_input_cluster(
             zigpy.zcl.clusters.general.Basic.cluster_id
         )
 

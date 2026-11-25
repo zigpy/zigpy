@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 import pytest
 
@@ -6,19 +7,19 @@ from tests.conftest import make_node_desc
 from zigpy import zdo
 import zigpy.device
 import zigpy.types as t
+from zigpy.zdo import commands as zdo_c
 import zigpy.zdo.types as zdo_types
 
-from .async_mock import AsyncMock, MagicMock, patch, sentinel
+from .async_mock import AsyncMock, MagicMock
+
+IEEE = "11:22:33:44:55:66:77:88"
+IEEE_BYTES = "8877665544332211"
 
 
 def test_commands():
-    for cmdid, cmdspec in zdo.types.CLUSTERS.items():
-        assert 0 <= cmdid <= 0xFFFF
-        assert isinstance(cmdspec, tuple)
-        for paramname, paramtype in zip(cmdspec[0], cmdspec[1], strict=True):
-            assert isinstance(paramname, str)
-            assert hasattr(paramtype, "serialize")
-            assert hasattr(paramtype, "deserialize")
+    for command_id, command in zdo_c.ZDO_COMMANDS.items():
+        assert command.command_id == command_id
+        assert issubclass(command, zdo_c.ZDOCommand)
 
 
 @pytest.fixture
@@ -32,44 +33,217 @@ def zdo_f(app):
     return zdo.ZDO(dev)
 
 
-def test_deserialize(zdo_f):
-    hdr, args = zdo_f.deserialize(2, b"\x01\x02\x03xx")
+def test_deserialize(caplog):
+    with caplog.at_level(logging.WARNING):
+        hdr, command = zdo_c.deserialize(0x0002, b"\x01\x02\x03xx")
+
     assert hdr.tsn == 1
     assert hdr.is_reply is False
-    assert args == [0x0302]
+    assert command == zdo_c.NodeDescReq(nwk_addr_of_interest=0x0302)
+    assert "Data remains after deserializing ZDO frame" in caplog.text
 
 
-def test_deserialize_unknown(zdo_f):
+def test_deserialize_unknown():
     with pytest.raises(ValueError):
-        hdr, args = zdo_f.deserialize(0x0100, b"\x01")
+        zdo_c.deserialize(0x0100, b"\x01")
 
 
-async def test_request(zdo_f):
-    with patch.object(
-        zdo_f._device, "get_sequence", wraps=zdo_f._device.get_sequence
-    ) as get_sequence:
-        await zdo_f.request(2, 65535)
-        assert zdo_f.device.request.call_count == 1
-        assert zdo_f.device.request.mock_calls[0].kwargs["expect_reply"] is True
-        assert get_sequence.call_count == 1
+@pytest.mark.parametrize(
+    ("cluster_id", "data", "expected"),
+    [
+        # Single device response: no associated device fields
+        (
+            zdo_types.ZDOCmd.NWK_addr_rsp,
+            "00" + IEEE_BYTES + "3412",
+            zdo_c.NwkAddrRsp(
+                status=zdo_types.Status.SUCCESS,
+                ieee_addr=t.EUI64.convert(IEEE),
+                nwk_addr=0x1234,
+            ),
+        ),
+        # Extended response with no associated devices: only the count
+        (
+            zdo_types.ZDOCmd.NWK_addr_rsp,
+            "00" + IEEE_BYTES + "3412" + "00",
+            zdo_c.NwkAddrRsp(
+                status=zdo_types.Status.SUCCESS,
+                ieee_addr=t.EUI64.convert(IEEE),
+                nwk_addr=0x1234,
+                num_assoc_dev=0,
+            ),
+        ),
+        # Extended response with associated devices
+        (
+            zdo_types.ZDOCmd.IEEE_addr_rsp,
+            "00" + IEEE_BYTES + "3412" + "02" + "00" + "0100" + "0200",
+            zdo_c.IeeeAddrRsp(
+                status=zdo_types.Status.SUCCESS,
+                ieee_addr=t.EUI64.convert(IEEE),
+                nwk_addr=0x1234,
+                num_assoc_dev=2,
+                start_index=0,
+                nwk_addr_assoc_dev_list=[0x0001, 0x0002],
+            ),
+        ),
+        (
+            zdo_types.ZDOCmd.NWK_addr_rsp,
+            "81" + IEEE_BYTES + "ffff",
+            zdo_c.NwkAddrRsp(
+                status=zdo_types.Status.DEVICE_NOT_FOUND,
+                ieee_addr=t.EUI64.convert(IEEE),
+                nwk_addr=0xFFFF,
+            ),
+        ),
+        (
+            zdo_types.ZDOCmd.Node_Desc_rsp,
+            "813412",
+            zdo_c.NodeDescRsp(
+                status=zdo_types.Status.DEVICE_NOT_FOUND, nwk_addr_of_interest=0x1234
+            ),
+        ),
+        (
+            zdo_types.ZDOCmd.Power_Desc_rsp,
+            "893412",
+            zdo_c.PowerDescRsp(
+                status=zdo_types.Status.NO_DESCRIPTOR, nwk_addr_of_interest=0x1234
+            ),
+        ),
+        # The length is always present, the descriptor only on success
+        (
+            zdo_types.ZDOCmd.Simple_Desc_rsp,
+            "83341200",
+            zdo_c.SimpleDescRsp(
+                status=zdo_types.Status.NOT_ACTIVE,
+                nwk_addr_of_interest=0x1234,
+                length=0,
+            ),
+        ),
+        (
+            zdo_types.ZDOCmd.Simple_Desc_rsp,
+            "0034120a" + "01" + "0401" + "0001" + "01" + "01" + "0000" + "00",
+            zdo_c.SimpleDescRsp(
+                status=zdo_types.Status.SUCCESS,
+                nwk_addr_of_interest=0x1234,
+                length=10,
+                simple_descriptor=zdo_types.SimpleDescriptor(
+                    endpoint=1,
+                    profile=0x0104,
+                    device_type=0x0100,
+                    device_version=1,
+                    input_clusters=[0x0000],
+                    output_clusters=[],
+                ),
+            ),
+        ),
+        (
+            zdo_types.ZDOCmd.Active_EP_rsp,
+            "81341200",
+            zdo_c.ActiveEpRsp(
+                status=zdo_types.Status.DEVICE_NOT_FOUND,
+                nwk_addr_of_interest=0x1234,
+                active_ep_list=[],
+            ),
+        ),
+        (
+            zdo_types.ZDOCmd.Mgmt_Lqi_rsp,
+            "84",
+            zdo_c.MgmtLqiRsp(status=zdo_types.Status.NOT_SUPPORTED),
+        ),
+        (
+            zdo_types.ZDOCmd.Mgmt_Rtg_rsp,
+            "84",
+            zdo_c.MgmtRtgRsp(status=zdo_types.Status.NOT_SUPPORTED),
+        ),
+        (
+            zdo_types.ZDOCmd.Mgmt_Bind_rsp,
+            "84",
+            zdo_c.MgmtBindRsp(status=zdo_types.Status.NOT_SUPPORTED),
+        ),
+        # An empty binding table has a count of zero and no list
+        (
+            zdo_types.ZDOCmd.Mgmt_Bind_rsp,
+            "00000000",
+            zdo_c.MgmtBindRsp(
+                status=zdo_types.Status.SUCCESS,
+                binding_table_entries=0,
+                start_index=0,
+                binding_table_list=[],
+            ),
+        ),
+    ],
+)
+def test_response_round_trip(cluster_id, data, expected):
+    """Responses follow the field presence rules of the specification."""
+    hdr, command = zdo_c.deserialize(cluster_id, bytes.fromhex("05" + data))
+
+    assert hdr.tsn == 5
+    assert command == expected
+    assert command.serialize() == bytes.fromhex(data)
 
 
-async def test_bind(zdo_f):
+async def test_send_zdo_command(zdo_f):
+    rsp = zdo_c.NodeDescRsp(
+        status=zdo_types.Status.SUCCESS,
+        nwk_addr_of_interest=0x1234,
+        node_descriptor=make_node_desc(),
+    )
+    zdo_f.device.request.return_value = rsp
+
+    result = await zdo_f.device.send_zdo_command(
+        zdo_c.NodeDescReq(nwk_addr_of_interest=0x1234),
+        response_type=zdo_c.NodeDescRsp,
+    )
+
+    assert result is rsp
+    assert len(zdo_f.device.request.mock_calls) == 1
+
+    kwargs = zdo_f.device.request.mock_calls[0].kwargs
+    assert kwargs["cluster"] == zdo_types.ZDOCmd.Node_Desc_req
+    assert kwargs["expect_reply"] is True
+    assert kwargs["data"] == bytes([kwargs["sequence"]]) + b"\x34\x12"
+
+
+async def test_send_zdo_command_no_response(zdo_f):
+    result = await zdo_f.device.send_zdo_command(
+        zdo_c.MgmtLeaveRsp(status=zdo_types.Status.SUCCESS), tsn=0x23
+    )
+
+    assert result is None
+
+    kwargs = zdo_f.device.request.mock_calls[0].kwargs
+    assert kwargs["cluster"] == zdo_types.ZDOCmd.Mgmt_Leave_rsp
+    assert kwargs["expect_reply"] is False
+    assert kwargs["sequence"] == 0x23
+    assert kwargs["data"] == b"\x23\x00"
+
+
+@pytest.mark.parametrize("aps_encryption", [False, True])
+async def test_send_zdo_command_aps_encryption(zdo_f, aps_encryption):
+    await zdo_f.device.send_zdo_command(
+        zdo_c.MgmtLeaveRsp(status=zdo_types.Status.SUCCESS),
+        aps_encryption=aps_encryption,
+    )
+    assert zdo_f.device.request.mock_calls[0].kwargs["aps_encryption"] is aps_encryption
+
+
+@pytest.mark.parametrize(
+    ("method", "command_id", "response"),
+    [
+        ("bind", zdo_types.ZDOCmd.Bind_req, zdo_c.BindRsp),
+        ("unbind", zdo_types.ZDOCmd.Unbind_req, zdo_c.UnbindRsp),
+    ],
+)
+async def test_bind_unbind(zdo_f, method, command_id, response):
+    zdo_f.device.request.return_value = response(status=zdo_types.Status.SUCCESS)
+
     cluster = MagicMock()
     cluster.endpoint.endpoint_id = 1
     cluster.cluster_id = 1026
-    await zdo_f.bind(cluster)
-    assert zdo_f.device.request.call_count == 1
-    assert zdo_f.device.request.mock_calls[0].kwargs["cluster"] == 0x0021
+    rsp = await getattr(zdo_f, method)(cluster)
 
-
-async def test_unbind(zdo_f):
-    cluster = MagicMock()
-    cluster.endpoint.endpoint_id = 1
-    cluster.cluster_id = 1026
-    await zdo_f.unbind(cluster)
-    assert zdo_f.device.request.call_count == 1
-    assert zdo_f.device.request.mock_calls[0].kwargs["cluster"] == 0x0022
+    assert rsp == response(status=zdo_types.Status.SUCCESS)
+    assert len(zdo_f.device.request.mock_calls) == 1
+    assert zdo_f.device.request.mock_calls[0].kwargs["cluster"] == command_id
 
 
 @pytest.mark.parametrize(
@@ -83,68 +257,122 @@ async def test_unbind(zdo_f):
 )
 async def test_leave(zdo_f, remove_children, rejoin, flags):
     """Test ZDO leave request options."""
-    with patch.object(zdo_f, "request", AsyncMock()) as req_mock:
-        await zdo_f.leave(remove_children, rejoin)
-    assert req_mock.await_count == 1
-    assert req_mock.await_args[0][0] == 0x0034
-    assert req_mock.await_args[0][1] == t.EUI64.convert("07:06:05:04:03:02:01:00")
-    assert req_mock.await_args[0][2] == flags
+    zdo_f.device.request.return_value = zdo_c.MgmtLeaveRsp(
+        status=zdo_types.Status.SUCCESS
+    )
+    await zdo_f.leave(remove_children, rejoin)
+
+    kwargs = zdo_f.device.request.mock_calls[0].kwargs
+    assert kwargs["cluster"] == zdo_types.ZDOCmd.Mgmt_Leave_req
+    assert kwargs["data"][1:] == (
+        zdo_c.MgmtLeaveReq(
+            device_address=t.EUI64.convert("07:06:05:04:03:02:01:00"), options=flags
+        ).serialize()
+    )
 
 
 async def test_permit(zdo_f):
+    zdo_f.device.request.return_value = zdo_c.MgmtPermitJoiningRsp(
+        status=zdo_types.Status.SUCCESS
+    )
     await zdo_f.permit()
-    assert zdo_f.device.request.call_count == 1
+    assert len(zdo_f.device.request.mock_calls) == 1
     assert zdo_f.device.request.mock_calls[0].kwargs["cluster"] == 0x0036
 
 
 async def test_broadcast(app):
-    await zigpy.zdo.broadcast(app, 0x0036, 0, 0, 60, 0)
+    await zigpy.zdo.broadcast(
+        app,
+        zdo_c.MgmtPermitJoiningReq(permit_duration=60, tc_significant=False),
+        0,
+        0,
+    )
 
-    assert app.send_packet.call_count == 1
+    assert len(app.send_packet.mock_calls) == 1
 
     packet = app.send_packet.mock_calls[0].args[0]
     assert packet.dst.addr_mode == t.AddrMode.Broadcast
     assert packet.cluster_id == 0x0036
+    assert packet.data.serialize()[1:] == b"\x3c\x00"
 
 
-def _handle_match_desc(zdo_f, profile):
-    zdo_f.reply = AsyncMock()
-    hdr = MagicMock()
-    hdr.command_id = zdo_types.ZDOCmd.Match_Desc_req
-    zdo_f.handle_message(5, 0x0006, hdr, [None, profile, [], []])
-    assert zdo_f.reply.call_count == 1
+@pytest.mark.parametrize(
+    ("profile", "match_list"),
+    [
+        (260, [1]),
+        (0, []),
+    ],
+)
+async def test_handle_match_desc(zdo_f, profile, match_list):
+    hdr = zdo_types.ZDOHeader(zdo_types.ZDOCmd.Match_Desc_req, tsn=0x12)
+    zdo_f.handle_message(
+        5,
+        0x0006,
+        hdr,
+        zdo_c.MatchDescReq(
+            nwk_addr_of_interest=0x0000,
+            profile_id=profile,
+            in_cluster_list=[],
+            out_cluster_list=[],
+        ),
+    )
+    await asyncio.sleep(0)
+
+    kwargs = zdo_f.device.request.mock_calls[0].kwargs
+    assert kwargs["cluster"] == zdo_types.ZDOCmd.Match_Desc_rsp
+    assert kwargs["sequence"] == 0x12
+    _, rsp = zdo_c.deserialize(kwargs["cluster"], kwargs["data"])
+    assert rsp.match_list == match_list
 
 
-async def test_handle_match_desc_zha(zdo_f):
-    _handle_match_desc(zdo_f, 260)
-    await asyncio.wait(asyncio.all_tasks(), return_when=asyncio.FIRST_COMPLETED)
-    assert zdo_f.reply.await_count == 1
-    assert zdo_f.reply.call_args[0][3]
+@pytest.mark.parametrize(
+    ("request_type", "num_assoc_dev"),
+    [
+        (zdo_types.AddrRequestType.Single, None),
+        (zdo_types.AddrRequestType.Extended, 0),
+    ],
+)
+async def test_handle_addr_reqs(zdo_f, request_type, num_assoc_dev):
+    node_info = zdo_f._device.application.state.node_info
 
+    zdo_f.handle_message(
+        5,
+        0x0000,
+        zdo_types.ZDOHeader(zdo_types.ZDOCmd.NWK_addr_req, tsn=0x10),
+        zdo_c.NwkAddrReq(
+            ieee_addr=node_info.ieee, request_type=request_type, start_index=0
+        ),
+    )
+    zdo_f.handle_message(
+        5,
+        0x0001,
+        zdo_types.ZDOHeader(zdo_types.ZDOCmd.IEEE_addr_req, tsn=0x11),
+        zdo_c.IeeeAddrReq(
+            nwk_addr_of_interest=node_info.nwk,
+            request_type=request_type,
+            start_index=0,
+        ),
+    )
+    await asyncio.sleep(0)
 
-async def test_handle_match_desc_generic(zdo_f):
-    _handle_match_desc(zdo_f, 0)
-    await asyncio.wait(asyncio.all_tasks(), return_when=asyncio.FIRST_COMPLETED)
-    assert zdo_f.reply.await_count == 1
-    assert not zdo_f.reply.call_args[0][3]
+    assert len(zdo_f.device.request.mock_calls) == 2
 
-
-async def test_handle_nwk_addr(zdo_f):
-    ieee = zdo_f._device.application.state.node_info.ieee
-    zdo_f.reply = MagicMock()
-    hdr = MagicMock()
-    hdr.command_id = zdo_types.ZDOCmd.NWK_addr_req
-    zdo_f.handle_message(5, 0x0000, hdr, [ieee, 0x00])
-    assert zdo_f.reply.call_count == 1
-
-
-async def test_handle_ieee_addr(zdo_f):
-    nwk = zdo_f._device.application.state.node_info.nwk
-    zdo_f.reply = MagicMock()
-    hdr = MagicMock()
-    hdr.command_id = zdo_types.ZDOCmd.IEEE_addr_req
-    zdo_f.handle_message(5, 0x0001, hdr, [nwk, 0x00])
-    assert zdo_f.reply.call_count == 1
+    for request_call, rsp_type, tsn in zip(
+        zdo_f.device.request.mock_calls,
+        [zdo_c.NwkAddrRsp, zdo_c.IeeeAddrRsp],
+        [0x10, 0x11],
+        strict=True,
+    ):
+        assert request_call.kwargs["sequence"] == tsn
+        _, rsp = zdo_c.deserialize(
+            request_call.kwargs["cluster"], request_call.kwargs["data"]
+        )
+        assert rsp == rsp_type(
+            status=zdo_types.Status.SUCCESS,
+            ieee_addr=node_info.ieee,
+            nwk_addr=node_info.nwk,
+            num_assoc_dev=num_assoc_dev,
+        )
 
 
 @pytest.mark.parametrize(
@@ -167,15 +395,29 @@ async def test_address_replies_retries(
             | zdo_types.NodeDescriptor.MACCapabilityFlags.RxOnWhenIdle
         )
     node_info = zdo_f._device.application.state.node_info
-    hdr = MagicMock()
+    hdr = zdo_types.ZDOHeader(zdo_types.ZDOCmd.NWK_addr_req, tsn=0x10)
 
-    zdo_f.handle_nwk_addr_req(hdr, node_info.ieee, 0x00)
-    zdo_f.handle_ieee_addr_req(hdr, node_info.nwk, 0x00)
+    zdo_f.handle_nwk_addr_req(
+        hdr,
+        zdo_c.NwkAddrReq(
+            ieee_addr=node_info.ieee,
+            request_type=zdo_types.AddrRequestType.Single,
+            start_index=0,
+        ),
+    )
+    zdo_f.handle_ieee_addr_req(
+        hdr,
+        zdo_c.IeeeAddrReq(
+            nwk_addr_of_interest=node_info.nwk,
+            request_type=zdo_types.AddrRequestType.Single,
+            start_index=0,
+        ),
+    )
     await asyncio.sleep(0)
 
-    assert zdo_f._device.request.await_count == 2
+    assert len(zdo_f._device.request.mock_calls) == 2
 
-    for request_call in zdo_f._device.request.await_args_list:
+    for request_call in zdo_f._device.request.mock_calls:
         assert request_call.kwargs["retries"] == expected_retries
 
 
@@ -185,93 +427,41 @@ def test_handle_announce(zdo_f):
     zdo_f.add_listener(listener)
 
     dev._application.devices.pop(dev.ieee)
-    hdr = MagicMock()
-    hdr.command_id = zdo_types.ZDOCmd.Device_annce
-    zdo_f.handle_message(5, 0x0013, hdr, [dev.nwk, dev.ieee, 0])
+    hdr = zdo_types.ZDOHeader(zdo_types.ZDOCmd.Device_annce, tsn=0x10)
+    command = zdo_c.DeviceAnnce(
+        nwk_addr=dev.nwk,
+        ieee_addr=dev.ieee,
+        capability=zdo_types.MACCapabilityFlags.NONE,
+    )
+    zdo_f.handle_message(5, 0x0013, hdr, command)
 
-    assert listener.device_announce.call_count == 1
-    assert listener.device_announce.call_args[0][0] is dev
-
-    assert listener.zdo_device_annce.call_count == 1
-    assert listener.zdo_device_annce.call_args[0][0] is dev
-    assert listener.zdo_device_annce.call_args[0][1] is None
-    assert listener.zdo_device_annce.call_args[0][2] is hdr
-    assert listener.zdo_device_annce.call_args[0][3] == [dev.nwk, dev.ieee, 0]
+    assert listener.device_announce.mock_calls == [((dev,),)]
+    assert listener.zdo_device_annce.mock_calls == [((dev, None, hdr, command),)]
 
 
 def test_handle_permit_join(zdo_f):
     listener = MagicMock()
     zdo_f.add_listener(listener)
-    hdr = MagicMock()
-    hdr.command_id = zdo_types.ZDOCmd.Mgmt_Permit_Joining_req
-    zdo_f.handle_message(5, 0x0036, hdr, [100, 1])
-    assert listener.permit_duration.call_count == 1
+    hdr = zdo_types.ZDOHeader(zdo_types.ZDOCmd.Mgmt_Permit_Joining_req, tsn=0x10)
+    zdo_f.handle_message(
+        5,
+        0x0036,
+        hdr,
+        zdo_c.MgmtPermitJoiningReq(permit_duration=100, tc_significant=True),
+    )
+    assert listener.permit_duration.mock_calls == [((100,),)]
 
 
 def test_handle_unsupported(zdo_f):
     listener = MagicMock()
     zdo_f.add_listener(listener)
-    hdr = MagicMock()
-    hdr.command_id = zdo_types.ZDOCmd(0xFFFF)
+    hdr = zdo_types.ZDOHeader(0xFFFF, tsn=0x10)
     assert hdr.command_id not in list(zdo_types.ZDOCmd)
-    zdo_f.request = MagicMock()
-    zdo_f.reply = MagicMock()
-    zdo_f.handle_message(5, 0xFFFF, hdr, [])
+    zdo_f.handle_message(5, 0xFFFF, hdr, None)
 
-    assert listener.zdo_undefined_0xffff.call_count == 1
-    assert zdo_f.request.call_count == 0
-    assert zdo_f.reply.call_count == 0
+    assert len(listener.zdo_undefined_0xffff.mock_calls) == 1
+    assert len(zdo_f.device.request.mock_calls) == 0
 
 
 def test_device_accessor(zdo_f):
     assert zdo_f.device.nwk == 65535
-
-
-async def test_reply(zdo_f):
-    zdo_f.device.request = AsyncMock()
-    await zdo_f.reply(0x0005)
-    assert zdo_f.device.request.call_count == 1
-
-
-@pytest.mark.parametrize("aps_encryption", [False, True])
-async def test_request_aps_encryption(zdo_f, aps_encryption):
-    await zdo_f.request(2, 65535, aps_encryption=aps_encryption)
-    assert zdo_f.device.request.mock_calls[0].kwargs["aps_encryption"] is aps_encryption
-
-
-@pytest.mark.parametrize("aps_encryption", [False, True])
-async def test_reply_aps_encryption(zdo_f, aps_encryption):
-    await zdo_f.reply(0x8002, aps_encryption=aps_encryption)
-    assert zdo_f.device.request.mock_calls[0].kwargs["aps_encryption"] is aps_encryption
-
-
-def test_get_attr_error(zdo_f):
-    with pytest.raises(AttributeError):
-        zdo_f.no_such_attribute()
-
-
-async def test_reply_tsn_override(zdo_f, monkeypatch):
-    clusters = MagicMock()
-    clusters.__getitem__.return_value = (
-        sentinel.param_names,
-        sentinel.scheam,
-    )
-    monkeypatch.setattr(zdo_types, "CLUSTERS", clusters)
-    mock_ser = MagicMock()
-    mock_ser.return_value = b"\xaa\x55"
-    monkeypatch.setattr(t, "serialize", mock_ser)
-    await zdo_f.reply(sentinel.cmd, sentinel.arg1, sentinel.arg2)
-    seq = zdo_f.device.request.mock_calls[0].kwargs["sequence"]
-    data = zdo_f.device.request.mock_calls[0].kwargs["data"]
-    assert seq == 1
-    assert data[0] == 1
-    assert data[1:3] == b"\xaa\x55"
-
-    # override tsn
-    tsn = 0x23
-    await zdo_f.reply(sentinel.cmd, sentinel.arg1, sentinel.arg2, tsn=tsn)
-    seq = zdo_f.device.request.mock_calls[1].kwargs["sequence"]
-    data = zdo_f.device.request.mock_calls[1].kwargs["data"]
-    assert seq == tsn
-    assert data[0] == tsn
-    assert data[1:3] == b"\xaa\x55"

@@ -15,9 +15,11 @@ from tests.conftest import (
     make_app,
     make_ieee,
     make_node_desc,
+    make_simple_desc_rsp,
     mock_attribute_reads,
     mock_attribute_report,
     mock_attribute_writes,
+    mock_zdo_requests,
 )
 from tests.test_backups import backup_factory  # noqa: F401
 from tests.zgp.conftest import (
@@ -59,7 +61,7 @@ from zigpy.zcl.clusters.measurement import TemperatureMeasurement
 from zigpy.zcl.clusters.security import IasZone
 from zigpy.zcl.clusters.smartenergy import Metering
 from zigpy.zcl.foundation import Array, DataTypeId, Status as ZCLStatus, ZCLAttributeDef
-from zigpy.zdo import types as zdo_t
+from zigpy.zdo import commands as zdo_c, types as zdo_t
 from zigpy.zgp.commands import (
     GPClusterReport,
     GPGenericSwitchConfiguration,
@@ -1654,17 +1656,24 @@ async def test_inactive_endpoints_round_trip(tmp_path) -> None:
     dev.node_desc = make_node_desc()
 
     # Endpoint 2 is listed as active but has no simple descriptor, zigpy/zigpy#1894
-    async def mock_active_ep_req(nwk):
-        return [zdo_t.Status.SUCCESS, nwk, [1, 2]]
+    async def mock_active_ep_req(command):
+        return zdo_c.ActiveEpRsp(
+            status=zdo_t.Status.SUCCESS,
+            nwk_addr_of_interest=command.nwk_addr_of_interest,
+            active_ep_list=[1, 2],
+        )
 
-    async def mock_simple_desc_req(nwk, endpoint_id):
-        if endpoint_id == 2:
-            return [zdo_t.Status.NOT_ACTIVE, nwk, None]
+    async def mock_simple_desc_req(command):
+        if command.endpoint == 2:
+            return zdo_c.SimpleDescRsp(
+                status=zdo_t.Status.NOT_ACTIVE,
+                nwk_addr_of_interest=command.nwk_addr_of_interest,
+                length=0,
+            )
 
-        return [
-            zdo_t.Status.SUCCESS,
-            nwk,
-            zdo_t.SizePrefixedSimpleDescriptor(
+        return make_simple_desc_rsp(
+            nwk=command.nwk_addr_of_interest,
+            descriptor=zdo_t.SimpleDescriptor(
                 endpoint=1,
                 profile=profiles.zha.PROFILE_ID,
                 device_type=profiles.zha.DeviceType.ON_OFF_SWITCH,
@@ -1672,10 +1681,15 @@ async def test_inactive_endpoints_round_trip(tmp_path) -> None:
                 input_clusters=[Basic.cluster_id],
                 output_clusters=[OnOff.cluster_id],
             ),
-        ]
+        )
 
-    dev.zdo.Active_EP_req = mock_active_ep_req
-    dev.zdo.Simple_Desc_req = mock_simple_desc_req
+    mock_zdo_requests(
+        dev,
+        {
+            zdo_c.ActiveEpReq: mock_active_ep_req,
+            zdo_c.SimpleDescReq: mock_simple_desc_req,
+        },
+    )
 
     with patch(
         "zigpy.endpoint.Endpoint.get_model_info",

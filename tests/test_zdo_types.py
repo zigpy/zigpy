@@ -1,7 +1,7 @@
 import pytest
 
 import zigpy.types as t
-from zigpy.zdo import types
+from zigpy.zdo import commands, types
 
 
 def test_multi_address_3():
@@ -264,52 +264,27 @@ def test_zdo_header_cmd_id():
     assert hdr.command_id == unk_cmd
 
 
-def test_nwkupdate():
-    """Test NwkUpdate class."""
-
+@pytest.mark.parametrize(
+    ("kwargs", "data"),
+    [
+        ({"scan_duration": 0x05, "scan_count": 0x04}, b"\x00\xf8\xff\x07\x05\x04"),
+        ({"scan_duration": 0xFE, "nwk_update_id": 0xAA}, b"\x00\xf8\xff\x07\xfe\xaa"),
+        (
+            {"scan_duration": 0xFF, "nwk_update_id": 0xAA, "nwk_manager_addr": 0x1234},
+            b"\x00\xf8\xff\x07\xff\xaa\x34\x12",
+        ),
+    ],
+)
+def test_mgmt_nwk_update_req(kwargs, data):
+    """Fields of Mgmt_NWK_Update_req depend on the scan duration."""
     extra = b"extra data\xaa\x55"
 
-    upd = types.NwkUpdate(t.Channels.ALL_CHANNELS, 0x05, 0x04, 0xAA, 0x1234)
-    data = upd.serialize()
-    assert data == b"\x00\xf8\xff\x07\x05\x04"
+    upd = commands.MgmtNwkUpdateReq(scan_channels=t.Channels.ALL_CHANNELS, **kwargs)
+    assert upd.serialize() == data
 
-    new, rest = types.NwkUpdate.deserialize(data + extra)
+    new, rest = commands.MgmtNwkUpdateReq.deserialize(data + extra)
     assert rest == extra
-    assert new.ScanChannels == t.Channels.ALL_CHANNELS
-    assert new.ScanDuration == 0x05
-    assert new.ScanCount == 0x04
-    assert new.nwkUpdateId is None
-    assert new.nwkManagerAddr is None
-
-
-def test_nwkupdate_nwk_update_id():
-    """Test NwkUpdate class."""
-
-    extra = b"extra data\xaa\x55"
-
-    upd = types.NwkUpdate(t.Channels.ALL_CHANNELS, 0xFE, 0x04, 0xAA, 0x1234)
-    data = upd.serialize()
-    assert data == b"\x00\xf8\xff\x07\xfe\xaa"
-
-    new, rest = types.NwkUpdate.deserialize(data + extra)
-    assert rest == extra
-    assert new.ScanChannels == t.Channels.ALL_CHANNELS
-    assert new.ScanDuration == 0xFE
-    assert new.ScanCount is None
-    assert new.nwkUpdateId == 0xAA
-    assert new.nwkManagerAddr is None
-
-    upd = types.NwkUpdate(t.Channels.ALL_CHANNELS, 0xFF, 0x04, 0xAA, 0x1234)
-    data = upd.serialize()
-    assert data == b"\x00\xf8\xff\x07\xff\xaa\x34\x12"
-
-    new, rest = types.NwkUpdate.deserialize(data + extra)
-    assert rest == extra
-    assert new.ScanChannels == t.Channels.ALL_CHANNELS
-    assert new.ScanDuration == 0xFF
-    assert new.ScanCount is None
-    assert new.nwkUpdateId == 0xAA
-    assert new.nwkManagerAddr == 0x1234
+    assert new == upd
 
 
 def test_status_enum():
@@ -361,8 +336,11 @@ def test_neighbors():
         b"\x01\x01F"
     )
     extra = b"\x55\xaaextra\x00"
-    neighbours, rest = types.Neighbors().deserialize(data + extra)
+    rsp, rest = commands.MgmtLqiRsp.deserialize(b"\x00" + data + extra)
     assert rest == extra
+    assert rsp.neighbor_table_entries == 5
+    assert rsp.start_index == 0
+    assert len(rsp.neighbor_table_list) == 3
 
 
 def test_neighbor():

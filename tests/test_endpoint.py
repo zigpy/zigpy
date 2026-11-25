@@ -8,7 +8,9 @@ import zigpy.device
 import zigpy.exceptions
 import zigpy.types as t
 from zigpy.zcl.foundation import GENERAL_COMMANDS, GeneralCommand, Status as ZCLStatus
-from zigpy.zdo import types
+from zigpy.zdo import commands as zdo_c, types
+
+from .conftest import make_simple_desc_rsp
 
 
 @pytest.fixture
@@ -20,16 +22,19 @@ def ep():
 
 
 async def _test_initialize(ep, profile):
-    async def mockrequest(*args, **kwargs):
-        sd = types.SimpleDescriptor()
-        sd.endpoint = 1
-        sd.profile = profile
-        sd.device_type = 0xFF
-        sd.input_clusters = [5]
-        sd.output_clusters = [6]
-        return [0, None, sd]
-
-    ep._device.zdo.Simple_Desc_req = mockrequest
+    ep._device.send_zdo_command = AsyncMock(
+        return_value=make_simple_desc_rsp(
+            nwk=0x1234,
+            descriptor=types.SimpleDescriptor(
+                endpoint=1,
+                profile=profile,
+                device_type=0xFF,
+                device_version=1,
+                input_clusters=[5],
+                output_clusters=[6],
+            ),
+        )
+    )
     await ep.initialize()
 
     assert ep.status > endpoint.Status.NEW
@@ -39,12 +44,11 @@ async def _test_initialize(ep, profile):
 
 @pytest.mark.parametrize("status", [types.Status.NOT_ACTIVE, types.Status.INVALID_EP])
 async def test_inactive_initialize(ep, status):
-    async def mockrequest(*args, **kwargs):
-        sd = types.SimpleDescriptor()
-        sd.endpoint = 2
-        return [status, None, sd]
-
-    ep._device.zdo.Simple_Desc_req = mockrequest
+    ep._device.send_zdo_command = AsyncMock(
+        return_value=zdo_c.SimpleDescRsp(
+            status=status, nwk_addr_of_interest=0x1234, length=0
+        )
+    )
     await ep.initialize()
     assert ep.status == endpoint.Status.ENDPOINT_INACTIVE
 
@@ -62,10 +66,11 @@ async def test_initialize_other(ep):
 
 
 async def test_initialize_fail(ep):
-    async def mockrequest(*args, **kwargs):
-        return [1, None, None]
-
-    ep._device.zdo.Simple_Desc_req = mockrequest
+    ep._device.send_zdo_command = AsyncMock(
+        return_value=zdo_c.SimpleDescRsp(
+            status=types.Status.DEVICE_NOT_FOUND, nwk_addr_of_interest=0x1234, length=0
+        )
+    )
 
     # The request succeeds but the response is invalid
     with pytest.raises(zigpy.exceptions.InvalidResponse):
