@@ -2045,6 +2045,71 @@ async def test_device_reinterviewed_finalization_failure_propagates(app):
         await app._device_reinterviewed(old_dev, shadow)
 
 
+@pytest.mark.parametrize("removed_meanwhile", [False, True])
+async def test_device_reinterviewed_remove_failure_keeps_old_device(
+    app, removed_meanwhile
+):
+    """A failed delete of the old device undoes the swap, so the old device stays."""
+    ieee = make_ieee()
+    nwk = t.NWK(0x1234)
+
+    old_dev = app.add_device(ieee=ieee, nwk=nwk)
+    old_dev.node_desc = make_node_desc()
+    old_ep = old_dev.add_endpoint(1)
+    old_ep.profile_id = 260
+    old_ep.device_type = 0x0100
+    old_ep.status = zigpy.endpoint.Status.ZDO_INIT
+
+    group = app.groups.add_group(10, "Group 10")
+    group.add_member(old_ep, suppress_event=True)
+
+    async def failing_remove(device):
+        if removed_meanwhile:
+            del app.devices[ieee]
+
+        raise RuntimeError("The database worker has stopped")
+
+    db_listener = MagicMock()
+    db_listener.shutdown = AsyncMock()
+    db_listener.remove_device = AsyncMock(side_effect=failing_remove)
+    app._dblistener = db_listener
+    old_dev.add_context_listener(db_listener)
+
+    # `reinterview()` registers the shadow while it discovers it
+    shadow = zigpy.device.Device(app, ieee, nwk)
+    shadow.node_desc = make_node_desc()
+    shadow.status = zigpy.device.Status.ENDPOINTS_INIT
+    new_ep = shadow.add_endpoint(1)
+    new_ep.profile_id = 260
+    new_ep.device_type = 0x0100
+    new_ep.status = zigpy.endpoint.Status.ZDO_INIT
+    app.devices[ieee] = shadow
+
+    with (
+        patch.object(shadow, "on_remove") as shadow_on_remove,
+        patch.object(old_dev, "on_remove") as old_on_remove,
+        pytest.raises(RuntimeError, match="worker has stopped"),
+    ):
+        await app._device_reinterviewed(old_dev, shadow)
+
+    if removed_meanwhile:
+        assert ieee not in app.devices
+    else:
+        assert app.devices[ieee] is old_dev
+
+    shadow_on_remove.assert_called_once_with()
+    old_on_remove.assert_not_called()
+
+    # The old device keeps its database listener and its group membership
+    assert [
+        (listener, include_context)
+        for listener, include_context in old_dev._listeners.values()
+        if listener is db_listener
+    ] == [(db_listener, True)]
+    assert group[old_ep.unique_id] is old_ep
+    assert old_ep.member_of == {10: group}
+
+
 async def test_device_reinterviewed_persists_relays(app):
     """Test that relays are re-persisted after reinterview."""
     ieee = make_ieee()

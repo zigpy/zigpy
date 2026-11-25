@@ -4466,8 +4466,20 @@ async def test_remove_device_waits_for_queued_work(tmp_path):
     async with asyncio.timeout(5):
         await remove_task
 
-    # The removal is committed by the time `remove_device` returns, along with the
-    # completed handler's write
+    # The delete has run by the time `remove_device` returns, but it is left for the
+    # next commit, like the completed handler's write
+    async with listener.execute(
+        f"SELECT COUNT(*) FROM devices{zigpy.appdb.DB_V} WHERE ieee = ?", (dev.ieee,)
+    ) as cursor:
+        assert (await cursor.fetchone())[0] == 0
+
+    assert await _read_count(db, "devices", **device_row) == 1
+    assert await _read_count(db, "devices", **other_row) == 0
+
+    listener.enqueue("_flush_commit")
+    async with asyncio.timeout(5):
+        await listener._callback_handlers.join()
+
     assert await _read_count(db, "devices", **device_row) == 0
     assert await _read_count(db, "devices", **other_row) == 1
 
@@ -4481,7 +4493,7 @@ async def test_remove_device_propagates_errors(tmp_path, caplog):
     app = await make_app_with_db(db)
     listener = app._dblistener
 
-    listener._remove_device = AsyncMock(side_effect=sqlite3.OperationalError("boom"))
+    listener._delete_device = AsyncMock(side_effect=sqlite3.OperationalError("boom"))
 
     with caplog.at_level(logging.DEBUG, logger="zigpy.appdb"):
         with pytest.raises(sqlite3.OperationalError, match="boom"):
@@ -4489,13 +4501,13 @@ async def test_remove_device_propagates_errors(tmp_path, caplog):
                 await listener.remove_device(MagicMock())
 
     # The caller gets the error, so the worker does not log it as well
-    assert not any("_remove_device" in record.getMessage() for record in caplog.records)
+    assert not any("_delete_device" in record.getMessage() for record in caplog.records)
 
     # The worker keeps processing other handlers
-    listener._remove_device = AsyncMock()
+    listener._delete_device = AsyncMock()
     async with asyncio.timeout(5):
         await listener.remove_device(MagicMock())
-    listener._remove_device.assert_awaited_once()
+    listener._delete_device.assert_awaited_once()
 
     await app.shutdown()
 
@@ -4514,7 +4526,7 @@ async def test_remove_device_cancelled_caller(tmp_path, caplog):
     listener._blocking_handler = _blocking_handler
     listener.enqueue("_blocking_handler")
 
-    listener._remove_device = AsyncMock()
+    listener._delete_device = AsyncMock()
     remove_task = asyncio.create_task(listener.remove_device(MagicMock()))
     await asyncio.sleep(0)
     remove_task.cancel()
@@ -4527,10 +4539,10 @@ async def test_remove_device_cancelled_caller(tmp_path, caplog):
         await listener._callback_handlers.join()
 
     # The removal still ran on the worker, which keeps processing new work
-    listener._remove_device.assert_awaited_once()
+    listener._delete_device.assert_awaited_once()
     async with asyncio.timeout(5):
         await listener.remove_device(MagicMock())
-    assert listener._remove_device.await_count == 2
+    assert listener._delete_device.await_count == 2
 
     del listener._blocking_handler
 
@@ -4579,7 +4591,7 @@ async def test_remove_device_cancelled_caller_error_is_logged(tmp_path, caplog):
     listener._blocking_handler = _blocking_handler
     listener.enqueue("_blocking_handler")
 
-    listener._remove_device = AsyncMock(side_effect=sqlite3.OperationalError("boom"))
+    listener._delete_device = AsyncMock(side_effect=sqlite3.OperationalError("boom"))
     remove_task = asyncio.create_task(listener.remove_device(MagicMock()))
     await asyncio.sleep(0)
     remove_task.cancel()
@@ -4592,7 +4604,7 @@ async def test_remove_device_cancelled_caller_error_is_logged(tmp_path, caplog):
         async with asyncio.timeout(5):
             await listener._callback_handlers.join()
 
-    assert "Error handling '_remove_device' event" in caplog.text
+    assert "Error handling '_delete_device' event" in caplog.text
 
     del listener._blocking_handler
     await app.shutdown()
@@ -4606,11 +4618,11 @@ async def test_remove_device_worker_stopped(tmp_path, caplog):
 
     handler_started = asyncio.Event()
 
-    async def _remove_device(device, rollback_on_failure=False):
+    async def _delete_device(device):
         handler_started.set()
         await asyncio.Event().wait()
 
-    listener._remove_device = _remove_device
+    listener._delete_device = _delete_device
     waiting = asyncio.create_task(listener.remove_device(MagicMock()))
     async with asyncio.timeout(5):
         await handler_started.wait()
@@ -4648,51 +4660,52 @@ async def test_remove_device_worker_stopped(tmp_path, caplog):
         listener._db.in_transaction  # noqa: B018
 
 
-async def test_remove_device_commit_failure_does_not_persist_delete(tmp_path):
-    """A failed commit of the delete is rolled back, not left for a later commit."""
+async def test_remove_device_does_not_commit_delete(tmp_path):
+    """The delete is left for the next commit, which a re-interview's save makes."""
     db = tmp_path / "test.db"
-    app = await make_app_with_db(db, commit_interval=0.05)
+    # Without a commit interval, even a deferred commit would happen right away
+    app = await make_app_with_db(db, commit_interval=0)
     listener = app._dblistener
 
     dev, _, _ = _add_joined_device(app)
     async with asyncio.timeout(5):
         await listener._callback_handlers.join()
     device_row = {"where": "WHERE ieee = ?", "params": (str(dev.ieee),)}
-    await _wait_for_count(
-        db, "devices", 1, **device_row, message="device was not committed"
-    )
-
-    real_commit = listener._db.commit
-    real_execute = listener._db.execute
-    delete_pending = False
-
-    def tracking_execute(sql, *args, **kwargs):
-        nonlocal delete_pending
-        delete_pending |= sql.lstrip().startswith("DELETE")
-        return real_execute(sql, *args, **kwargs)
-
-    async def failing_commit():
-        nonlocal delete_pending
-        # Fail the first commit that would persist the delete
-        if delete_pending:
-            delete_pending = False
-            raise sqlite3.OperationalError("disk I/O error")
-        await real_commit()
-
-    with (
-        patch.object(listener._db, "execute", tracking_execute),
-        patch.object(listener._db, "commit", failing_commit),
-    ):
-        with pytest.raises(sqlite3.OperationalError):
-            await listener.remove_device(dev)
-
-        # A later successful flush must not delete the device
-        await asyncio.sleep(0.3)
-        async with asyncio.timeout(5):
-            await listener._callback_handlers.join()
-
-    assert not listener._db.in_transaction
     assert await _read_count(db, "devices", **device_row) == 1
 
+    async with asyncio.timeout(5):
+        await listener.remove_device(dev)
+
+    assert listener._db.in_transaction
+    assert await _read_count(db, "devices", **device_row) == 1
+
+    # If nothing commits it, as when the process stops, the device is kept
+    await listener._db.rollback()
+    await app.shutdown()
+    assert await _read_count(db, "devices", **device_row) == 1
+
+
+async def test_remove_device_failed_delete_is_not_persisted(tmp_path):
+    """A delete that fails is raised and not left for a later commit to persist."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    listener = app._dblistener
+
+    dev, _, _ = _add_joined_device(app)
+    async with asyncio.timeout(5):
+        await listener._callback_handlers.join()
+    device_row = {"where": "WHERE ieee = ?", "params": (str(dev.ieee),)}
+    assert await _read_count(db, "devices", **device_row) == 1
+
+    await listener.execute(
+        f"CREATE TEMP TRIGGER fail_delete BEFORE DELETE ON devices{zigpy.appdb.DB_V}"
+        " BEGIN SELECT RAISE(ABORT, 'delete failed'); END"
+    )
+
+    with pytest.raises(sqlite3.Error, match="delete failed"):
+        async with asyncio.timeout(5):
+            await listener.remove_device(dev)
+
+    # Shutdown commits whatever is pending
     await app.shutdown()
     assert await _read_count(db, "devices", **device_row) == 1

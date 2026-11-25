@@ -723,12 +723,33 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
 
         # Remove old device data from DB (cascade deletes endpoints, clusters,
         # attribute cache, group members, and relays).  The delete runs on the DB
-        # worker, before the save that _finalize_device enqueues.  Unlike the
-        # fire-and-forget device_removed(), we wait for it, so that a failed delete
-        # aborts the re-interview instead of being logged and then saved over.
+        # worker, before the save that _finalize_device enqueues, which commits both.
+        # Unlike the fire-and-forget device_removed(), we wait for it, so that a failed
+        # delete aborts the re-interview instead of being logged and then saved over.
         if self._dblistener is not None:
             old_device.remove_listener(self._dblistener)
-            await self._dblistener.remove_device(old_device)
+
+            try:
+                await self._dblistener.remove_device(old_device)
+            except Exception:
+                # Nothing has been swapped yet, so keep the old device, as the failed
+                # re-interview reports
+                old_device.add_context_listener(self._dblistener)
+
+                for ep_id, group_ids in old_group_memberships.items():
+                    for group_id in group_ids:
+                        group = self.groups.get(group_id)
+                        if group is not None:
+                            group.add_member(
+                                old_device.endpoints[ep_id], suppress_event=True
+                            )
+
+                # Unless the device was removed in the meantime
+                if self.devices.get(old_device.ieee) is shadow:
+                    self.devices[old_device.ieee] = old_device
+
+                shadow.on_remove()
+                raise
 
         # Clean up old device's callbacks and tasks
         old_device.on_remove()

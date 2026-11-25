@@ -559,9 +559,11 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         """Remove a device from the database and wait until it is deleted.
 
         Unlike the `device_removed` event, this raises any error from the delete, and
-        `RuntimeError` if the database worker is not running.
+        `RuntimeError` if the database worker is not running. The delete is not
+        committed: the next commit persists it, so that a device saved right after it
+        (a re-interview) lands in the same transaction.
         """
-        await self._enqueue_and_wait("_remove_device", device, True)
+        await self._enqueue_and_wait("_delete_device", device)
 
     async def _save_device_ieee(self, ieee: t.EUI64) -> None:
         # `INSERT OR REPLACE` would delete the existing row and cascade
@@ -570,33 +572,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             (ieee,),
         )
 
-    async def _remove_device(
-        self, device: Device, rollback_on_failure: bool = False
-    ) -> None:
-        if not rollback_on_failure:
-            # Fire-and-forget: a failed commit is retried by the commit timer
-            await self.execute(
-                f"DELETE FROM devices{DB_V} WHERE ieee = ?", (device.ieee,)
-            )
-            await self._commit(force=True)
-            return
-
-        # Persist earlier batched writes first, so that a failed delete can be rolled
-        # back without discarding them
+    async def _remove_device(self, device: Device) -> None:
+        await self._delete_device(device)
         await self._commit(force=True)
 
-        try:
-            await self.execute(
-                f"DELETE FROM devices{DB_V} WHERE ieee = ?", (device.ieee,)
-            )
-            await self._commit(force=True)
-        except Exception:
-            # The caller (a re-interview) is told the delete failed, so it must not
-            # stay pending for a later successful commit to persist
-            if self._db.in_transaction:
-                await self._db.rollback()
-
-            raise
+    async def _delete_device(self, device: Device) -> None:
+        await self.execute(f"DELETE FROM devices{DB_V} WHERE ieee = ?", (device.ieee,))
 
     def raw_device_initialized(self, device: Device) -> None:
         if isinstance(device, GreenPowerDevice):
