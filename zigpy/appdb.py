@@ -560,8 +560,8 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         Unlike the `device_removed` event, this raises any error from the delete, and
         `RuntimeError` if the database worker is not running. The delete is not
-        committed: the next commit persists it, so that a device saved right after it
-        (a re-interview) lands in the same transaction.
+        committed: the next commit persists it, which for a re-interview is normally
+        the forced commit of the new device's save, queued right after it.
         """
         await self._enqueue_and_wait("_delete_device", device)
 

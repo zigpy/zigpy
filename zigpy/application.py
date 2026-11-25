@@ -733,19 +733,18 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
                 await self._dblistener.remove_device(old_device)
             except Exception:
                 # Nothing has been swapped yet, so keep the old device, as the failed
-                # re-interview reports
-                old_device.add_context_listener(self._dblistener)
-
-                for ep_id, group_ids in old_group_memberships.items():
-                    for group_id in group_ids:
-                        group = self.groups.get(group_id)
-                        if group is not None:
-                            group.add_member(
-                                old_device.endpoints[ep_id], suppress_event=True
-                            )
-
-                # Unless the device was removed in the meantime
+                # re-interview reports, unless the device was removed meanwhile
                 if self.devices.get(old_device.ieee) is shadow:
+                    old_device.add_context_listener(self._dblistener)
+
+                    for ep_id, group_ids in old_group_memberships.items():
+                        for group_id in group_ids:
+                            group = self.groups.get(group_id)
+                            if group is not None:
+                                group.add_member(
+                                    old_device.endpoints[ep_id], suppress_event=True
+                                )
+
                     self.devices[old_device.ieee] = old_device
 
                 shadow.on_remove()

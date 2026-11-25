@@ -3381,7 +3381,7 @@ async def test_reinterview_does_not_commit_mid_handler(tmp_path):
     assert await _read_count(db, "endpoints", **old_ep_row) == 1
     assert await _read_count(db, "endpoints", **new_ep_row) == 0
 
-    # Once the handler finishes, the delete is committed, then the new device
+    # Once the handler finishes, the delete is committed with the new device
     handler_may_finish.set()
     async with asyncio.timeout(5):
         await reinterview
@@ -4658,6 +4658,45 @@ async def test_remove_device_worker_stopped(tmp_path, caplog):
 
     with pytest.raises(ValueError, match="no active connection"):
         listener._db.in_transaction  # noqa: B018
+
+
+async def test_reinterview_commits_delete_with_new_device(tmp_path):
+    """No commit of a re-interview persists the delete without the new device."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db, commit_interval=10.0)
+    listener = app._dblistener
+
+    old_dev, _, _ = _add_joined_device(app)
+    async with asyncio.timeout(5):
+        await listener._callback_handlers.join()
+
+    real_commit = listener._db.commit
+    committed_counts = []
+
+    async def tracking_commit():
+        await real_commit()
+        async with listener.execute(
+            f"SELECT COUNT(*) FROM devices{zigpy.appdb.DB_V} WHERE ieee = ?",
+            (old_dev.ieee,),
+        ) as cursor:
+            committed_counts.append((await cursor.fetchone())[0])
+
+    shadow = Device(app, old_dev.ieee, old_dev.nwk)
+    shadow.node_desc = make_node_desc()
+    shadow.status = Status.ENDPOINTS_INIT
+    ep = shadow.add_endpoint(2)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+
+    with patch.object(listener._db, "commit", tracking_commit):
+        async with asyncio.timeout(5):
+            await app._device_reinterviewed(old_dev, shadow)
+            await listener._callback_handlers.join()
+
+    # The delete and the save were committed together
+    assert committed_counts == [1]
+    await app.shutdown()
 
 
 async def test_remove_device_does_not_commit_delete(tmp_path):

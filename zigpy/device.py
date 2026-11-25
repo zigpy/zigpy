@@ -1005,8 +1005,9 @@ class ZigbeeDevice(BaseDevice):
                 raise
 
             # Discovery succeeded — swap the old device for the new one.
-            # If this somehow fails, the state may be partially swapped; attempting
-            # to undo would likely make things worse.
+            # If the delete of the old device fails, the swap is undone. A later
+            # failure may leave the state partially swapped; attempting to undo it
+            # would likely make things worse.
             await self._application._device_reinterviewed(self, shadow)
         except Exception:  # noqa: BLE001
             self.warning(

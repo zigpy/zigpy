@@ -2100,14 +2100,22 @@ async def test_device_reinterviewed_remove_failure_keeps_old_device(
     shadow_on_remove.assert_called_once_with()
     old_on_remove.assert_not_called()
 
-    # The old device keeps its database listener and its group membership
-    assert [
+    db_listeners = [
         (listener, include_context)
         for listener, include_context in old_dev._listeners.values()
         if listener is db_listener
-    ] == [(db_listener, True)]
-    assert group[old_ep.unique_id] is old_ep
-    assert old_ep.member_of == {10: group}
+    ]
+
+    if removed_meanwhile:
+        # A removed device is not brought back into its groups
+        assert db_listeners == []
+        assert old_ep.unique_id not in group
+        assert not old_ep.member_of
+    else:
+        # The old device keeps its database listener and its group membership
+        assert db_listeners == [(db_listener, True)]
+        assert group[old_ep.unique_id] is old_ep
+        assert old_ep.member_of == {10: group}
 
 
 async def test_device_reinterviewed_persists_relays(app):
