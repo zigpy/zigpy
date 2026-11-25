@@ -1743,6 +1743,8 @@ async def test_reinterview_changed_signature_round_trip(tmp_path) -> None:
     ep3.device_type = profiles.zha.DeviceType.PUMP
     ep3.add_input_cluster(Basic.cluster_id)
 
+    app2.devices[ieee] = shadow
+
     await app2._device_reinterviewed(old_dev, shadow)
     await app2.shutdown()
 
@@ -3365,6 +3367,8 @@ async def test_reinterview_does_not_commit_mid_handler(tmp_path):
     ep.device_type = profiles.zha.DeviceType.PUMP
     ep.add_input_cluster(Basic.cluster_id)
 
+    app.devices[old_dev.ieee] = shadow
+
     async with asyncio.timeout(5):
         await app._device_reinterviewed(old_dev, shadow)
 
@@ -3946,6 +3950,8 @@ async def test_device_store_survives_reinterview(tmp_path) -> None:
     ep2.device_type = profiles.zha.DeviceType.PUMP
     ep2.add_input_cluster(Basic.cluster_id)
 
+    app2.devices[ieee] = shadow
+
     await app2._device_reinterviewed(old_dev, shadow)
     new_dev = app2.get_device(ieee)
     assert new_dev is not old_dev
@@ -3957,6 +3963,160 @@ async def test_device_store_survives_reinterview(tmp_path) -> None:
     app3 = await make_app_with_db(db)
     assert app3.get_device(ieee).store[STORE_COUNT] == 3
     await app3.shutdown()
+
+
+def _add_reinterview_device(app, ieee, nwk):
+    """Add an initialized device with a single endpoint, as a re-interview finds it."""
+    dev = app.add_device(nwk=nwk, ieee=ieee)
+    dev.node_desc = make_node_desc()
+    ep1 = dev.add_endpoint(1)
+    ep1.status = zigpy.endpoint.Status.ZDO_INIT
+    ep1.profile_id = 260
+    ep1.device_type = profiles.zha.DeviceType.PUMP
+    ep1.add_input_cluster(Basic.cluster_id)
+    app.device_initialized(dev)
+
+    return dev
+
+
+def _discover_like(shadow):
+    """Fill in a shadow the way a successful discovery of the device above would."""
+    shadow.node_desc = make_node_desc()
+    shadow.status = Status.ENDPOINTS_INIT
+    ep = shadow.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ep.add_input_cluster(Basic.cluster_id)
+
+
+async def _wait_for_removal(app, ieee):
+    for _ in range(100):
+        if ieee not in app.devices:
+            return
+        await asyncio.sleep(0)
+    pytest.fail("The removed device was never unregistered")
+
+
+@pytest.mark.parametrize("order", ["discovery_first", "leave_first", "discovery_fails"])
+async def test_reinterview_device_removed_with_leave_pending(tmp_path, order):
+    """A device removed during re-interview stays removed, whenever its leave completes.
+
+    `remove()` keeps the shadow registered until the leave request completes, so a
+    discovery that finishes first must not save the device to the database again, and
+    one that fails must not restore the old device.
+    """
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    ieee = t.EUI64.convert("aa:bb:cc:dd:11:22:33:44")
+    dev = _add_reinterview_device(app, ieee, t.NWK(0x1234))
+
+    discovery_started = asyncio.Event()
+    finish_discovery = asyncio.Event()
+    finish_leave = asyncio.Event()
+
+    async def mock_discover(shadow):
+        discovery_started.set()
+        await finish_discovery.wait()
+
+        if order == "discovery_fails":
+            raise TimeoutError
+
+        _discover_like(shadow)
+
+    async def mock_leave(*args, **kwargs):
+        await finish_leave.wait()
+
+    with (
+        patch.object(Device, "_discover", mock_discover),
+        patch("zigpy.zdo.ZDO.leave", mock_leave),
+        patch.object(app, "listener_event", wraps=app.listener_event),
+    ):
+        reinterview = asyncio.create_task(dev.reinterview())
+        await discovery_started.wait()
+
+        await app.remove(ieee)
+
+        if order == "leave_first":
+            finish_leave.set()
+            await _wait_for_removal(app, ieee)
+            finish_discovery.set()
+            await reinterview
+        else:
+            finish_discovery.set()
+            await reinterview
+
+            # The old device is not registered again while the leave is pending
+            assert app.devices.get(ieee) is not dev
+
+            finish_leave.set()
+            await _wait_for_removal(app, ieee)
+
+        events = [c.args[0] for c in app.listener_event.mock_calls]
+        assert "device_reinterviewed" not in events
+        assert call("device_reinterview_failure", dev) in app.listener_event.mock_calls
+
+    assert ieee not in app.devices
+    await app.shutdown()
+
+    # The removed device does not come back from the database
+    app2 = await make_app_with_db(db)
+    assert ieee not in app2.devices
+    await app2.shutdown()
+
+
+async def test_reinterview_device_removed_during_db_delete(tmp_path):
+    """A removal that starts while the old device is deleted from the DB wins.
+
+    The shadow is still registered then, and stays so until the leave completes.
+    """
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    ieee = t.EUI64.convert("aa:bb:cc:dd:11:22:33:44")
+    dev = _add_reinterview_device(app, ieee, t.NWK(0x1234))
+
+    finish_leave = asyncio.Event()
+
+    async def mock_discover(shadow):
+        _discover_like(shadow)
+
+    async def mock_leave(*args, **kwargs):
+        await finish_leave.wait()
+
+    remove_device = app._dblistener._remove_device
+    removing = False
+
+    async def remove_during_delete(device, **kwargs):
+        nonlocal removing
+        await remove_device(device, **kwargs)
+
+        # Only the re-interview's delete: the removal queues one of its own
+        if not removing:
+            removing = True
+            await app.remove(ieee)
+
+    with (
+        patch.object(Device, "_discover", mock_discover),
+        patch("zigpy.zdo.ZDO.leave", mock_leave),
+        patch.object(app._dblistener, "_remove_device", remove_during_delete),
+        patch.object(app, "listener_event", wraps=app.listener_event),
+    ):
+        await dev.reinterview()
+
+        finish_leave.set()
+        await _wait_for_removal(app, ieee)
+
+        events = [c.args[0] for c in app.listener_event.mock_calls]
+        assert "device_reinterviewed" not in events
+        assert call("device_reinterview_failure", dev) in app.listener_event.mock_calls
+
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    assert ieee not in app2.devices
+    await app2.shutdown()
 
 
 @patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))

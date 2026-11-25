@@ -968,6 +968,18 @@ class ZigbeeDevice(BaseDevice):
         elif attr_def == Basic.AttributeDefs.model:
             self.model = value
 
+    def _shadow_removed(self, shadow: ZigbeeDevice) -> bool:
+        """Whether the device was removed while `shadow` was registered for it.
+
+        `remove()` closes the device's store right away but leaves the shadow
+        registered until the leave request completes, so a closed store marks a
+        removal that is still in progress.
+        """
+        return (
+            self._application.devices.get(self._ieee) is not shadow
+            or shadow.store.closed
+        )
+
     async def reinterview(self) -> None:
         """Re-interview this device using a shadow device for safety.
 
@@ -1003,10 +1015,26 @@ class ZigbeeDevice(BaseDevice):
                 ):
                     await shadow._discover()
             except Exception:
-                # Discovery failed — restore old device, clean up shadow
-                self._application.devices[self._ieee] = self
                 shadow.on_remove()
+
+                if self._shadow_removed(shadow):
+                    # The device was removed while the shadow was being interviewed
+                    self.info(
+                        "Device was removed during re-interview, discarding shadow"
+                    )
+                    self._application.listener_event("device_reinterview_failure", self)
+                    return
+
+                # Discovery failed — restore old device
+                self._application.devices[self._ieee] = self
                 raise
+
+            if self._shadow_removed(shadow):
+                # The device was removed while the shadow was being interviewed
+                self.info("Device was removed during re-interview, discarding shadow")
+                shadow.on_remove()
+                self._application.listener_event("device_reinterview_failure", self)
+                return
 
             # Discovery succeeded — swap the old device for the new one.
             # If this somehow fails, the state may be partially swapped; attempting
@@ -1020,6 +1048,13 @@ class ZigbeeDevice(BaseDevice):
             self._application.listener_event("device_reinterview_failure", self)
         finally:
             self._reinterview_in_progress = False
+
+            if self._application.devices.get(self._ieee) is not self:
+                # This device object is no longer registered: it was swapped out (already
+                # torn down by `_device_reinterviewed`, a no-op here) or removed while the
+                # shadow was registered in its place, in which case `remove()` only tore
+                # down the shadow
+                self.on_remove()
 
     async def get_node_descriptor(self) -> zdo_t.NodeDescriptor:
         self.info("Requesting 'Node Descriptor'")
