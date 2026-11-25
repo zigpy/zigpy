@@ -1888,7 +1888,8 @@ async def test_device_reinterviewed_with_db(app):
 
     # Set up a mock DB listener
     db_listener = MagicMock()
-    db_listener._remove_device = AsyncMock()
+    db_listener.shutdown = AsyncMock()
+    db_listener.remove_device = AsyncMock()
     app._dblistener = db_listener
     old_dev.add_context_listener(db_listener)
 
@@ -1903,7 +1904,7 @@ async def test_device_reinterviewed_with_db(app):
     await app._device_reinterviewed(old_dev, shadow)
 
     # DB removal should have been called for the old device
-    db_listener._remove_device.assert_awaited_once_with(old_dev, force_commit=False)
+    db_listener.remove_device.assert_awaited_once_with(old_dev)
 
 
 async def test_reinterview_device_public_api(app):
@@ -1973,7 +1974,7 @@ async def test_device_reinterviewed_preserves_groups(app):
 
 
 async def test_device_reinterviewed_skips_group_removed_during_swap(app):
-    """If a group is removed while `_remove_device` is awaiting, restoration skips it
+    """If a group is removed while `remove_device` is awaiting, restoration skips it
     instead of raising and aborting the reinterview.
     """
     ieee = make_ieee()
@@ -1991,15 +1992,16 @@ async def test_device_reinterviewed_skips_group_removed_during_swap(app):
     surviving.add_member(old_ep, suppress_event=True)
     doomed.add_member(old_ep, suppress_event=True)
 
-    # Simulate the race: between `_remove_device` returning and group restoration
+    # Simulate the race: between `remove_device` returning and group restoration
     # running, group 20 is removed. We trigger this by patching the dblistener's
-    # `_remove_device` to drop the group as a side effect.
+    # `remove_device` to drop the group as a side effect.
     db_listener = MagicMock()
+    db_listener.shutdown = AsyncMock()
 
-    async def fake_remove(_dev, **kwargs):
+    async def fake_remove(_dev):
         app.groups.pop(20, None)
 
-    db_listener._remove_device = AsyncMock(side_effect=fake_remove)
+    db_listener.remove_device = AsyncMock(side_effect=fake_remove)
     app._dblistener = db_listener
     old_dev.add_context_listener(db_listener)
 
@@ -2043,6 +2045,79 @@ async def test_device_reinterviewed_finalization_failure_propagates(app):
         await app._device_reinterviewed(old_dev, shadow)
 
 
+@pytest.mark.parametrize("removed_meanwhile", [False, True])
+async def test_device_reinterviewed_remove_failure_keeps_old_device(
+    app, removed_meanwhile
+):
+    """A failed delete of the old device undoes the swap, so the old device stays."""
+    ieee = make_ieee()
+    nwk = t.NWK(0x1234)
+
+    old_dev = app.add_device(ieee=ieee, nwk=nwk)
+    old_dev.node_desc = make_node_desc()
+    old_ep = old_dev.add_endpoint(1)
+    old_ep.profile_id = 260
+    old_ep.device_type = 0x0100
+    old_ep.status = zigpy.endpoint.Status.ZDO_INIT
+
+    group = app.groups.add_group(10, "Group 10")
+    group.add_member(old_ep, suppress_event=True)
+
+    async def failing_remove(device):
+        if removed_meanwhile:
+            del app.devices[ieee]
+
+        raise RuntimeError("The database worker has stopped")
+
+    db_listener = MagicMock()
+    db_listener.shutdown = AsyncMock()
+    db_listener.remove_device = AsyncMock(side_effect=failing_remove)
+    app._dblistener = db_listener
+    old_dev.add_context_listener(db_listener)
+
+    # `reinterview()` registers the shadow while it discovers it
+    shadow = zigpy.device.Device(app, ieee, nwk)
+    shadow.node_desc = make_node_desc()
+    shadow.status = zigpy.device.Status.ENDPOINTS_INIT
+    new_ep = shadow.add_endpoint(1)
+    new_ep.profile_id = 260
+    new_ep.device_type = 0x0100
+    new_ep.status = zigpy.endpoint.Status.ZDO_INIT
+    app.devices[ieee] = shadow
+
+    with (
+        patch.object(shadow, "on_remove") as shadow_on_remove,
+        patch.object(old_dev, "on_remove") as old_on_remove,
+        pytest.raises(RuntimeError, match="worker has stopped"),
+    ):
+        await app._device_reinterviewed(old_dev, shadow)
+
+    if removed_meanwhile:
+        assert ieee not in app.devices
+    else:
+        assert app.devices[ieee] is old_dev
+
+    shadow_on_remove.assert_called_once_with()
+    old_on_remove.assert_not_called()
+
+    db_listeners = [
+        (listener, include_context)
+        for listener, include_context in old_dev._listeners.values()
+        if listener is db_listener
+    ]
+
+    if removed_meanwhile:
+        # A removed device is not brought back into its groups
+        assert db_listeners == []
+        assert old_ep.unique_id not in group
+        assert not old_ep.member_of
+    else:
+        # The old device keeps its database listener and its group membership
+        assert db_listeners == [(db_listener, True)]
+        assert group[old_ep.unique_id] is old_ep
+        assert old_ep.member_of == {10: group}
+
+
 async def test_device_reinterviewed_persists_relays(app):
     """Test that relays are re-persisted after reinterview."""
     ieee = make_ieee()
@@ -2053,7 +2128,8 @@ async def test_device_reinterviewed_persists_relays(app):
     old_dev._relays = t.Relays([t.NWK(0xAAAA)])
 
     db_listener = MagicMock()
-    db_listener._remove_device = AsyncMock()
+    db_listener.shutdown = AsyncMock()
+    db_listener.remove_device = AsyncMock()
     app._dblistener = db_listener
     old_dev.add_context_listener(db_listener)
 
