@@ -1532,12 +1532,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         """Attempt to parse an incoming packet as ZDO, to extract useful notifications."""
 
         try:
-            _, command = zdo_commands.deserialize(
+            frame = zdo_commands.ZDOCommand.deserialize(
                 cluster_id=packet.cluster_id, data=packet.data.serialize()
             )
         except ValueError:
             LOGGER.debug("Could not parse ZDO message from packet")
             return
+
+        command = frame.command
 
         # Interpret useful global ZDO responses and notifications
         if isinstance(command, zdo_commands.DeviceAnnce):

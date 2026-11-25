@@ -1572,6 +1572,34 @@ async def test_request_exception_propagation(dev):
     assert type(exc.value.__cause__) is RuntimeError
 
 
+async def test_zdo_request_parsing_error_propagation(dev):
+    """A ZDO response with an invalid payload fails the pending request."""
+    tsn = 0x12
+    dev.get_sequence = MagicMock(return_value=tsn)
+
+    asyncio.get_running_loop().call_soon(
+        dev.packet_received,
+        t.ZigbeePacket(
+            profile_id=0x0000,
+            cluster_id=zdo_t.ZDOCmd.Active_EP_rsp,
+            src_ep=0,
+            dst_ep=0,
+            # Only the TSN and the status, the rest of the payload is missing
+            data=t.SerializableBytes(bytes([tsn, zdo_t.Status.SUCCESS])),
+            src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+        ),
+    )
+
+    with pytest.raises(zigpy.exceptions.ParsingError) as exc:
+        await dev.send_zdo_command(
+            zdo_c.ActiveEpReq(nwk_addr_of_interest=dev.nwk),
+            response_type=zdo_c.ActiveEpRsp,
+        )
+
+    assert type(exc.value.__cause__) is ValueError
+
+
 async def test_debouncing(dev):
     """Test that request debouncing filters out duplicate packets."""
 

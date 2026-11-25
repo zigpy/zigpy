@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import logging
 from typing import ClassVar, TypeVar
 
@@ -19,24 +20,23 @@ from zigpy.zdo.types import (
     SizePrefixedSimpleDescriptor,
     Status,
     ZDOCmd,
-    ZDOHeader,
 )
 
 LOGGER = logging.getLogger(__name__)
 
 
-class ZDOCommand(t.Struct):
+class ZDOPayload(t.Struct):
     command_id: ClassVar[ZDOCmd]
 
 
-ZDOCommandT = TypeVar("ZDOCommandT", bound=ZDOCommand)
+ZDOPayloadT = TypeVar("ZDOPayloadT", bound=ZDOPayload)
 
 
-ZDO_COMMANDS: dict[ZDOCmd, type[ZDOCommand]] = {}
+ZDO_COMMANDS: dict[ZDOCmd, type[ZDOPayload]] = {}
 
 
 def command(cmd_id: ZDOCmd):
-    def decorator(cls: type[ZDOCommandT]) -> type[ZDOCommandT]:
+    def decorator(cls: type[ZDOPayloadT]) -> type[ZDOPayloadT]:
         cls.command_id = cmd_id
         ZDO_COMMANDS[cmd_id] = cls
         return cls
@@ -44,58 +44,85 @@ def command(cmd_id: ZDOCmd):
     return decorator
 
 
-def deserialize(cluster_id: t.uint16_t, data: bytes) -> tuple[ZDOHeader, ZDOCommand]:
-    """Deserialize a ZDO frame, including its header."""
-    if cluster_id not in ZDO_COMMANDS:
-        raise ValueError(f"Invalid ZDO cluster ID: 0x{cluster_id:04X}")
+class UnknownCommand(t.Struct):
+    """Payload of a ZDO command without a schema."""
 
-    hdr, data = ZDOHeader.deserialize(cluster_id, data)
-    command, data = ZDO_COMMANDS[hdr.command_id].deserialize(data)
+    data: t.Bytes
 
-    if data:
-        LOGGER.warning("Data remains after deserializing ZDO frame: %r", data)
 
-    return hdr, command
+@dataclasses.dataclass(frozen=True)
+class ZDOCommand:
+    """A ZDO frame. Its command ID is carried by the APS cluster ID, not the payload."""
+
+    command_id: ZDOCmd
+    tsn: t.uint8_t
+    command: ZDOPayload | UnknownCommand
+
+    def __post_init__(self) -> None:
+        assert isinstance(self.command, UnknownCommand) or (
+            self.command_id == self.command.command_id
+        )
+
+    @classmethod
+    def deserialize(cls, cluster_id: t.uint16_t, data: bytes) -> ZDOCommand:
+        command_id = ZDOCmd(cluster_id)
+        tsn, data = t.uint8_t.deserialize(data)
+
+        command: ZDOPayload | UnknownCommand
+
+        if command_id in ZDO_COMMANDS:
+            command, data = ZDO_COMMANDS[command_id].deserialize(data)
+        else:
+            command, data = UnknownCommand.deserialize(data)
+
+        if data:
+            LOGGER.warning("Data remains after deserializing ZDO frame: %r", data)
+
+        return cls(command_id=command_id, tsn=tsn, command=command)
+
+    def serialize(self) -> bytes:
+        return self.tsn.serialize() + self.command.serialize()
 
 
 # Device and Service Discovery Server Requests
 @command(ZDOCmd.NWK_addr_req)
-class NwkAddrReq(ZDOCommand):
+class NwkAddrReq(ZDOPayload):
     ieee_addr: t.EUI64
     request_type: AddrRequestType
     start_index: t.uint8_t
 
 
 @command(ZDOCmd.IEEE_addr_req)
-class IeeeAddrReq(ZDOCommand):
+class IeeeAddrReq(ZDOPayload):
     nwk_addr_of_interest: t.NWK
     request_type: AddrRequestType
     start_index: t.uint8_t
 
 
 @command(ZDOCmd.Node_Desc_req)
-class NodeDescReq(ZDOCommand):
+class NodeDescReq(ZDOPayload):
+    # TODO: R23 appends a list of TLVs
     nwk_addr_of_interest: t.NWK
 
 
 @command(ZDOCmd.Power_Desc_req)
-class PowerDescReq(ZDOCommand):
+class PowerDescReq(ZDOPayload):
     nwk_addr_of_interest: t.NWK
 
 
 @command(ZDOCmd.Simple_Desc_req)
-class SimpleDescReq(ZDOCommand):
+class SimpleDescReq(ZDOPayload):
     nwk_addr_of_interest: t.NWK
     endpoint: t.uint8_t
 
 
 @command(ZDOCmd.Active_EP_req)
-class ActiveEpReq(ZDOCommand):
+class ActiveEpReq(ZDOPayload):
     nwk_addr_of_interest: t.NWK
 
 
 @command(ZDOCmd.Match_Desc_req)
-class MatchDescReq(ZDOCommand):
+class MatchDescReq(ZDOPayload):
     nwk_addr_of_interest: t.NWK
     profile_id: t.uint16_t
     in_cluster_list: t.LVList[t.uint16_t, t.uint8_t]
@@ -103,36 +130,36 @@ class MatchDescReq(ZDOCommand):
 
 
 @command(ZDOCmd.User_Desc_req)
-class UserDescReq(ZDOCommand):
+class UserDescReq(ZDOPayload):
     nwk_addr_of_interest: t.NWK
 
 
 @command(ZDOCmd.Discovery_Cache_req)
-class DiscoveryCacheReq(ZDOCommand):
+class DiscoveryCacheReq(ZDOPayload):
     nwk_addr: t.NWK
     ieee_addr: t.EUI64
 
 
 @command(ZDOCmd.Device_annce)
-class DeviceAnnce(ZDOCommand):
+class DeviceAnnce(ZDOPayload):
     nwk_addr: t.NWK
     ieee_addr: t.EUI64
     capability: MACCapabilityFlags
 
 
 @command(ZDOCmd.User_Desc_set)
-class UserDescSet(ZDOCommand):
+class UserDescSet(ZDOPayload):
     nwk_addr_of_interest: t.NWK
     user_descriptor: t.CharacterString
 
 
 @command(ZDOCmd.System_Server_Discovery_req)
-class SystemServerDiscoveryReq(ZDOCommand):
+class SystemServerDiscoveryReq(ZDOPayload):
     server_mask: t.uint16_t
 
 
 @command(ZDOCmd.Discovery_store_req)
-class DiscoveryStoreReq(ZDOCommand):
+class DiscoveryStoreReq(ZDOPayload):
     nwk_addr: t.NWK
     ieee_addr: t.EUI64
     node_desc_size: t.uint8_t
@@ -142,59 +169,59 @@ class DiscoveryStoreReq(ZDOCommand):
 
 
 @command(ZDOCmd.Node_Desc_store_req)
-class NodeDescStoreReq(ZDOCommand):
+class NodeDescStoreReq(ZDOPayload):
     nwk_addr: t.NWK
     ieee_addr: t.EUI64
     node_descriptor: NodeDescriptor
 
 
 @command(ZDOCmd.Active_EP_store_req)
-class ActiveEpStoreReq(ZDOCommand):
+class ActiveEpStoreReq(ZDOPayload):
     nwk_addr: t.NWK
     ieee_addr: t.EUI64
     active_ep_list: t.LVList[t.uint8_t, t.uint8_t]
 
 
 @command(ZDOCmd.Simple_Desc_store_req)
-class SimpleDescStoreReq(ZDOCommand):
+class SimpleDescStoreReq(ZDOPayload):
     nwk_addr: t.NWK
     ieee_addr: t.EUI64
     simple_descriptor: SizePrefixedSimpleDescriptor
 
 
 @command(ZDOCmd.Remove_node_cache_req)
-class RemoveNodeCacheReq(ZDOCommand):
+class RemoveNodeCacheReq(ZDOPayload):
     nwk_addr: t.NWK
     ieee_addr: t.EUI64
 
 
 @command(ZDOCmd.Find_node_cache_req)
-class FindNodeCacheReq(ZDOCommand):
+class FindNodeCacheReq(ZDOPayload):
     nwk_addr: t.NWK
     ieee_addr: t.EUI64
 
 
 @command(ZDOCmd.Extended_Simple_Desc_req)
-class ExtendedSimpleDescReq(ZDOCommand):
+class ExtendedSimpleDescReq(ZDOPayload):
     nwk_addr_of_interest: t.NWK
     endpoint: t.uint8_t
     start_index: t.uint8_t
 
 
 @command(ZDOCmd.Extended_Active_EP_req)
-class ExtendedActiveEpReq(ZDOCommand):
+class ExtendedActiveEpReq(ZDOPayload):
     nwk_addr_of_interest: t.NWK
     start_index: t.uint8_t
 
 
 @command(ZDOCmd.Parent_annce)
-class ParentAnnce(ZDOCommand):
+class ParentAnnce(ZDOPayload):
     children: t.LVList[t.EUI64, t.uint8_t]
 
 
 # Bind Management Server Services Requests
 @command(ZDOCmd.End_Device_Bind_req)
-class EndDeviceBindReq(ZDOCommand):
+class EndDeviceBindReq(ZDOPayload):
     binding_target: t.uint16_t
     src_address: t.EUI64
     src_endpoint: t.uint8_t
@@ -204,7 +231,7 @@ class EndDeviceBindReq(ZDOCommand):
 
 
 @command(ZDOCmd.Bind_req)
-class BindReq(ZDOCommand):
+class BindReq(ZDOPayload):
     src_address: t.EUI64
     src_endpoint: t.uint8_t
     cluster_id: t.uint16_t
@@ -212,7 +239,7 @@ class BindReq(ZDOCommand):
 
 
 @command(ZDOCmd.Unbind_req)
-class UnbindReq(ZDOCommand):
+class UnbindReq(ZDOPayload):
     src_address: t.EUI64
     src_endpoint: t.uint8_t
     cluster_id: t.uint16_t
@@ -221,17 +248,17 @@ class UnbindReq(ZDOCommand):
 
 # Network Management Server Services Requests
 @command(ZDOCmd.Mgmt_Lqi_req)
-class MgmtLqiReq(ZDOCommand):
+class MgmtLqiReq(ZDOPayload):
     start_index: t.uint8_t
 
 
 @command(ZDOCmd.Mgmt_Rtg_req)
-class MgmtRtgReq(ZDOCommand):
+class MgmtRtgReq(ZDOPayload):
     start_index: t.uint8_t
 
 
 @command(ZDOCmd.Mgmt_Bind_req)
-class MgmtBindReq(ZDOCommand):
+class MgmtBindReq(ZDOPayload):
     start_index: t.uint8_t
 
 
@@ -244,19 +271,20 @@ class LeaveOptions(t.bitmap8):
 
 
 @command(ZDOCmd.Mgmt_Leave_req)
-class MgmtLeaveReq(ZDOCommand):
+class MgmtLeaveReq(ZDOPayload):
     device_address: t.EUI64
     options: LeaveOptions
 
 
 @command(ZDOCmd.Mgmt_Permit_Joining_req)
-class MgmtPermitJoiningReq(ZDOCommand):
+class MgmtPermitJoiningReq(ZDOPayload):
+    # TODO: R23 appends a list of TLVs
     permit_duration: t.uint8_t
     tc_significant: t.Bool
 
 
 @command(ZDOCmd.Mgmt_NWK_Update_req)
-class MgmtNwkUpdateReq(ZDOCommand):
+class MgmtNwkUpdateReq(ZDOPayload):
     scan_channels: t.Channels
     scan_duration: t.uint8_t
     scan_count: t.uint8_t = t.StructField(requires=lambda s: s.scan_duration <= 0x05)
@@ -271,7 +299,7 @@ class MgmtNwkUpdateReq(ZDOCommand):
 
 # Device and Service Discovery Server Responses
 @command(ZDOCmd.NWK_addr_rsp)
-class NwkAddrRsp(ZDOCommand):
+class NwkAddrRsp(ZDOPayload):
     status: Status
     ieee_addr: t.EUI64
     nwk_addr: t.NWK
@@ -287,7 +315,7 @@ class NwkAddrRsp(ZDOCommand):
 
 
 @command(ZDOCmd.IEEE_addr_rsp)
-class IeeeAddrRsp(ZDOCommand):
+class IeeeAddrRsp(ZDOPayload):
     status: Status
     ieee_addr: t.EUI64
     nwk_addr: t.NWK
@@ -303,7 +331,8 @@ class IeeeAddrRsp(ZDOCommand):
 
 
 @command(ZDOCmd.Node_Desc_rsp)
-class NodeDescRsp(ZDOCommand):
+class NodeDescRsp(ZDOPayload):
+    # TODO: R23 appends a list of TLVs
     status: Status
     nwk_addr_of_interest: t.NWK
     node_descriptor: NodeDescriptor = t.StructField(
@@ -312,7 +341,7 @@ class NodeDescRsp(ZDOCommand):
 
 
 @command(ZDOCmd.Power_Desc_rsp)
-class PowerDescRsp(ZDOCommand):
+class PowerDescRsp(ZDOPayload):
     status: Status
     nwk_addr_of_interest: t.NWK
     power_descriptor: PowerDescriptor = t.StructField(
@@ -321,7 +350,7 @@ class PowerDescRsp(ZDOCommand):
 
 
 @command(ZDOCmd.Simple_Desc_rsp)
-class SimpleDescRsp(ZDOCommand):
+class SimpleDescRsp(ZDOPayload):
     status: Status
     nwk_addr_of_interest: t.NWK
     length: t.uint8_t
@@ -331,84 +360,84 @@ class SimpleDescRsp(ZDOCommand):
 
 
 @command(ZDOCmd.Active_EP_rsp)
-class ActiveEpRsp(ZDOCommand):
+class ActiveEpRsp(ZDOPayload):
     status: Status
     nwk_addr_of_interest: t.NWK
     active_ep_list: t.LVList[t.uint8_t, t.uint8_t]
 
 
 @command(ZDOCmd.Match_Desc_rsp)
-class MatchDescRsp(ZDOCommand):
+class MatchDescRsp(ZDOPayload):
     status: Status
     nwk_addr_of_interest: t.NWK
     match_list: t.LVList[t.uint8_t, t.uint8_t]
 
 
 @command(ZDOCmd.User_Desc_rsp)
-class UserDescRsp(ZDOCommand):
+class UserDescRsp(ZDOPayload):
     status: Status
     nwk_addr_of_interest: t.NWK
     user_descriptor: t.CharacterString
 
 
 @command(ZDOCmd.Discovery_Cache_rsp)
-class DiscoveryCacheRsp(ZDOCommand):
+class DiscoveryCacheRsp(ZDOPayload):
     status: Status
 
 
 @command(ZDOCmd.User_Desc_conf)
-class UserDescConf(ZDOCommand):
+class UserDescConf(ZDOPayload):
     status: Status
     nwk_addr_of_interest: t.NWK
 
 
 @command(ZDOCmd.System_Server_Discovery_rsp)
-class SystemServerDiscoveryRsp(ZDOCommand):
+class SystemServerDiscoveryRsp(ZDOPayload):
     status: Status
     server_mask: t.uint16_t
 
 
 @command(ZDOCmd.Discovery_Store_rsp)
-class DiscoveryStoreRsp(ZDOCommand):
+class DiscoveryStoreRsp(ZDOPayload):
     status: Status
 
 
 @command(ZDOCmd.Node_Desc_store_rsp)
-class NodeDescStoreRsp(ZDOCommand):
+class NodeDescStoreRsp(ZDOPayload):
     status: Status
 
 
 @command(ZDOCmd.Power_Desc_store_rsp)
-class PowerDescStoreRsp(ZDOCommand):
+class PowerDescStoreRsp(ZDOPayload):
     status: Status
     ieee_addr: t.EUI64
     power_descriptor: PowerDescriptor
 
 
 @command(ZDOCmd.Active_EP_store_rsp)
-class ActiveEpStoreRsp(ZDOCommand):
+class ActiveEpStoreRsp(ZDOPayload):
     status: Status
 
 
 @command(ZDOCmd.Simple_Desc_store_rsp)
-class SimpleDescStoreRsp(ZDOCommand):
+class SimpleDescStoreRsp(ZDOPayload):
     status: Status
 
 
 @command(ZDOCmd.Remove_node_cache_rsp)
-class RemoveNodeCacheRsp(ZDOCommand):
+class RemoveNodeCacheRsp(ZDOPayload):
     status: Status
 
 
 @command(ZDOCmd.Find_node_cache_rsp)
-class FindNodeCacheRsp(ZDOCommand):
+class FindNodeCacheRsp(ZDOPayload):
     cache_nwk_addr: t.EUI64
     nwk_addr: t.NWK
     ieee_addr: t.EUI64
 
 
 @command(ZDOCmd.Extended_Simple_Desc_rsp)
-class ExtendedSimpleDescRsp(ZDOCommand):
+class ExtendedSimpleDescRsp(ZDOPayload):
     status: Status
     nwk_addr: t.NWK
     endpoint: t.uint8_t
@@ -421,7 +450,7 @@ class ExtendedSimpleDescRsp(ZDOCommand):
 
 
 @command(ZDOCmd.Extended_Active_EP_rsp)
-class ExtendedActiveEpRsp(ZDOCommand):
+class ExtendedActiveEpRsp(ZDOPayload):
     status: Status
     nwk_addr_of_interest: t.NWK
     active_ep_count: t.uint8_t
@@ -430,30 +459,30 @@ class ExtendedActiveEpRsp(ZDOCommand):
 
 
 @command(ZDOCmd.Parent_annce_rsp)
-class ParentAnnceRsp(ZDOCommand):
+class ParentAnnceRsp(ZDOPayload):
     status: Status
     children: t.LVList[t.EUI64, t.uint8_t]
 
 
 # Bind Management Server Services Responses
 @command(ZDOCmd.End_Device_Bind_rsp)
-class EndDeviceBindRsp(ZDOCommand):
+class EndDeviceBindRsp(ZDOPayload):
     status: Status
 
 
 @command(ZDOCmd.Bind_rsp)
-class BindRsp(ZDOCommand):
+class BindRsp(ZDOPayload):
     status: Status
 
 
 @command(ZDOCmd.Unbind_rsp)
-class UnbindRsp(ZDOCommand):
+class UnbindRsp(ZDOPayload):
     status: Status
 
 
 # Network Management Server Services Responses
 @command(ZDOCmd.Mgmt_Lqi_rsp)
-class MgmtLqiRsp(ZDOCommand):
+class MgmtLqiRsp(ZDOPayload):
     status: Status
     neighbor_table_entries: t.uint8_t = t.StructField(
         requires=lambda s: s.status == Status.SUCCESS
@@ -467,7 +496,7 @@ class MgmtLqiRsp(ZDOCommand):
 
 
 @command(ZDOCmd.Mgmt_Rtg_rsp)
-class MgmtRtgRsp(ZDOCommand):
+class MgmtRtgRsp(ZDOPayload):
     status: Status
     routing_table_entries: t.uint8_t = t.StructField(
         requires=lambda s: s.status == Status.SUCCESS
@@ -481,7 +510,7 @@ class MgmtRtgRsp(ZDOCommand):
 
 
 @command(ZDOCmd.Mgmt_Bind_rsp)
-class MgmtBindRsp(ZDOCommand):
+class MgmtBindRsp(ZDOPayload):
     status: Status
     binding_table_entries: t.uint8_t = t.StructField(
         requires=lambda s: s.status == Status.SUCCESS
@@ -495,17 +524,17 @@ class MgmtBindRsp(ZDOCommand):
 
 
 @command(ZDOCmd.Mgmt_Leave_rsp)
-class MgmtLeaveRsp(ZDOCommand):
+class MgmtLeaveRsp(ZDOPayload):
     status: Status
 
 
 @command(ZDOCmd.Mgmt_Permit_Joining_rsp)
-class MgmtPermitJoiningRsp(ZDOCommand):
+class MgmtPermitJoiningRsp(ZDOPayload):
     status: Status
 
 
 @command(ZDOCmd.Mgmt_NWK_Update_rsp)
-class MgmtNwkUpdateRsp(ZDOCommand):
+class MgmtNwkUpdateRsp(ZDOPayload):
     status: Status
     scanned_channels: t.Channels
     total_transmissions: t.uint16_t

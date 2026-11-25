@@ -20,33 +20,28 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
         self._device = device
         self._listeners = {}
 
-    def handle_message(
-        self,
-        profile: int,
-        cluster: int,
-        hdr: types.ZDOHeader,
-        command: commands.ZDOCommand,
-    ) -> None:
-        self.debug("ZDO request %s: %s", hdr.command_id, command)
+    def handle_message(self, frame: commands.ZDOCommand) -> None:
+        self.debug("ZDO request %s: %s", frame.command_id, frame.command)
 
-        handler = getattr(self, f"handle_{hdr.command_id.name.lower()}", None)
+        handler = getattr(self, f"handle_{frame.command_id.name.lower()}", None)
         if handler is not None:
-            handler(hdr, command)
+            handler(frame)
         else:
-            self.debug("No handler for ZDO request:%s(%s)", hdr.command_id, command)
+            self.debug(
+                "No handler for ZDO request:%s(%s)", frame.command_id, frame.command
+            )
 
         self.listener_event(
-            f"zdo_{hdr.command_id.name.lower()}",
+            f"zdo_{frame.command_id.name.lower()}",
             self._device,
             None,  # was `dst_addressing` but this was never set
-            hdr,
-            command,
+            frame,
         )
 
-    def handle_nwk_addr_req(
-        self, hdr: types.ZDOHeader, command: commands.NwkAddrReq
-    ) -> None:
+    def handle_nwk_addr_req(self, frame: commands.ZDOCommand) -> None:
         """Handle ZDO NWK Address request."""
+        command = frame.command
+        assert isinstance(command, commands.NwkAddrReq)
 
         app = self._device.application
         if command.ieee_addr == app.state.node_info.ieee:
@@ -62,16 +57,16 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
                             else None
                         ),
                     ),
-                    tsn=hdr.tsn,
+                    tsn=frame.tsn,
                     priority=t.PacketPriority.LOW,
                     retries=self._device.reply_retries,
                 )
             )
 
-    def handle_ieee_addr_req(
-        self, hdr: types.ZDOHeader, command: commands.IeeeAddrReq
-    ) -> None:
+    def handle_ieee_addr_req(self, frame: commands.ZDOCommand) -> None:
         """Handle ZDO IEEE Address request."""
+        command = frame.command
+        assert isinstance(command, commands.IeeeAddrReq)
 
         app = self._device.application
         if command.nwk_addr_of_interest in (
@@ -92,29 +87,27 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
                             else None
                         ),
                     ),
-                    tsn=hdr.tsn,
+                    tsn=frame.tsn,
                     priority=t.PacketPriority.LOW,
                     retries=self._device.reply_retries,
                 )
             )
 
-    def handle_device_annce(
-        self, hdr: types.ZDOHeader, command: commands.DeviceAnnce
-    ) -> None:
+    def handle_device_annce(self, frame: commands.ZDOCommand) -> None:
         """Handle ZDO device announcement request."""
         self.listener_event("device_announce", self._device)
 
-    def handle_mgmt_permit_joining_req(
-        self, hdr: types.ZDOHeader, command: commands.MgmtPermitJoiningReq
-    ) -> None:
+    def handle_mgmt_permit_joining_req(self, frame: commands.ZDOCommand) -> None:
         """Handle ZDO permit joining request."""
+        command = frame.command
+        assert isinstance(command, commands.MgmtPermitJoiningReq)
 
         self.listener_event("permit_duration", command.permit_duration)
 
-    def handle_match_desc_req(
-        self, hdr: types.ZDOHeader, command: commands.MatchDescReq
-    ) -> None:
+    def handle_match_desc_req(self, frame: commands.ZDOCommand) -> None:
         """Handle ZDO Match_desc_req request."""
+        command = frame.command
+        assert isinstance(command, commands.MatchDescReq)
 
         if command.profile_id == zigpy.profiles.zha.PROFILE_ID:
             match_list = [t.uint8_t(1)]
@@ -128,7 +121,7 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
                     nwk_addr_of_interest=self._device.application.state.node_info.nwk,
                     match_list=match_list,
                 ),
-                tsn=hdr.tsn,
+                tsn=frame.tsn,
                 priority=t.PacketPriority.CRITICAL,
             )
         )
@@ -192,14 +185,16 @@ class ZDO(zigpy.util.CatchingTaskMixin, zigpy.util.ListenableMixin):
 
 def broadcast(
     app,
-    command: commands.ZDOCommand,
+    command: commands.ZDOPayload,
     grpid,
     radius,
     *,
     broadcast_address=t.BroadcastAddress.RX_ON_WHEN_IDLE,
 ):
     sequence = app.get_sequence()
-    data = bytes([sequence]) + command.serialize()
+    data = commands.ZDOCommand(
+        command_id=command.command_id, tsn=t.uint8_t(sequence), command=command
+    ).serialize()
 
     return zigpy.device.broadcast(
         app,

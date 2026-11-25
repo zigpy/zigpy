@@ -90,7 +90,7 @@ def patch_device_tables(
 
 
 def sent_requests(
-    device: zigpy.device.Device, request_type: type[zdo_c.ZDOCommand]
+    device: zigpy.device.Device, request_type: type[zdo_c.ZDOPayload]
 ) -> list[mock._Call]:
     return [
         c

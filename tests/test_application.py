@@ -498,7 +498,14 @@ def test_props(app):
     assert app.state.network_info.nwk_update_id is not None
 
 
-async def test_remove_parent_devices(app, make_initialized_device):
+@pytest.mark.parametrize(
+    ("rejoin", "options"),
+    [
+        (False, zdo_c.LeaveOptions.RemoveChildren),
+        (True, zdo_c.LeaveOptions.RemoveChildren | zdo_c.LeaveOptions.Rejoin),
+    ],
+)
+async def test_remove_parent_devices(app, make_initialized_device, rejoin, options):
     """Test removing an end device with parents."""
 
     end_device = make_initialized_device(app)
@@ -537,7 +544,7 @@ async def test_remove_parent_devices(app, make_initialized_device):
     p8 = patch.object(router_2, "send_zdo_command", AsyncMock())
 
     with p1, p2, p3, p4, p5, p6, p7, p8:
-        await app.remove(end_device.ieee)
+        await app.remove(end_device.ieee, rejoin=rejoin)
         for _i in range(1, 60):
             await asyncio.sleep(0)
 
@@ -550,10 +557,7 @@ async def test_remove_parent_devices(app, make_initialized_device):
         assert parent.zdo.leave.await_count == 0
         assert parent.send_zdo_command.mock_calls == [
             call(
-                zdo_c.MgmtLeaveReq(
-                    device_address=end_device.ieee,
-                    options=zdo_c.LeaveOptions.RemoveChildren,
-                ),
+                zdo_c.MgmtLeaveReq(device_address=end_device.ieee, options=options),
                 response_type=zdo_c.MgmtLeaveRsp,
             )
         ]
@@ -1259,8 +1263,8 @@ async def test_packet_received_new_device_discovery(app, device, zdo_packet):
         if packet.dst_ep != 0x00 or packet.cluster_id != zdo_t.ZDOCmd.IEEE_addr_req:
             return
 
-        _, command = zdo_c.deserialize(packet.cluster_id, packet.data.serialize())
-        assert command == zdo_c.IeeeAddrReq(
+        frame = zdo_c.ZDOCommand.deserialize(packet.cluster_id, packet.data.serialize())
+        assert frame.command == zdo_c.IeeeAddrReq(
             nwk_addr_of_interest=device.nwk,
             request_type=zdo_t.AddrRequestType.Single,
             start_index=0,

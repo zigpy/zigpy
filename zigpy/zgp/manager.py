@@ -733,14 +733,15 @@ class GreenPowerManager(CreateTaskMixin):
             capability |= zdo_types.MACCapabilityFlags.SecurityCapable
 
         tsn = t.uint8_t(0)
-        data = (
-            tsn.serialize()
-            + zdo_commands.DeviceAnnce(
+        data = zdo_commands.ZDOCommand(
+            command_id=zdo_types.ZDOCmd.Device_annce,
+            tsn=tsn,
+            command=zdo_commands.DeviceAnnce(
                 nwk_addr=device.nwk,
                 ieee_addr=t.EUI64.convert("ff:ff:ff:ff:ff:ff:ff:ff"),
                 capability=capability,
-            ).serialize()
-        )
+            ),
+        ).serialize()
         packet = t.ZigbeePacket(
             dst=t.AddrModeAddress(
                 addr_mode=t.AddrMode.Broadcast,

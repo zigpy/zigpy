@@ -7,7 +7,7 @@ import logging
 import typing
 
 from zigpy.zcl import foundation
-import zigpy.zdo.types as zdo_t
+import zigpy.zdo.commands as zdo_c
 
 LOGGER = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class BaseRequestListener:
 
     def resolve(
         self,
-        hdr: foundation.ZCLHeader | zdo_t.ZDOHeader,
+        hdr: foundation.ZCLHeader | zdo_c.ZDOCommand,
         command: foundation.CommandSchema,
     ) -> bool:
         """Attempts to resolve the listener with a given response. Can be called with any
@@ -40,7 +40,7 @@ class BaseRequestListener:
 
             if is_matcher_cmd and isinstance(command, foundation.CommandSchema):
                 match = command.matches(matcher)
-            elif is_matcher_cmd and isinstance(hdr, zdo_t.ZDOHeader):
+            elif is_matcher_cmd and isinstance(hdr, zdo_c.ZDOCommand):
                 # FIXME: ZDO does not use command schemas and cannot be matched
                 pass
             elif callable(matcher):
@@ -60,7 +60,7 @@ class BaseRequestListener:
 
     def _resolve(
         self,
-        hdr: foundation.ZCLHeader | zdo_t.ZDOHeader,
+        hdr: foundation.ZCLHeader | zdo_c.ZDOCommand,
         command: foundation.CommandSchema,
     ) -> bool:
         """Implemented by subclasses to handle matched commands.
@@ -86,7 +86,7 @@ class FutureListener(BaseRequestListener):
 
     def _resolve(
         self,
-        hdr: foundation.ZCLHeader | zdo_t.ZDOHeader,
+        hdr: foundation.ZCLHeader | zdo_c.ZDOCommand,
         command: foundation.CommandSchema,
     ) -> bool:
         if self.future.done():
@@ -103,12 +103,12 @@ class FutureListener(BaseRequestListener):
 @dataclasses.dataclass(frozen=True)
 class CallbackListener(BaseRequestListener):
     callback: typing.Callable[
-        [foundation.ZCLHeader | zdo_t.ZDOHeader, foundation.CommandSchema], typing.Any
+        [foundation.ZCLHeader | zdo_c.ZDOCommand, foundation.CommandSchema], typing.Any
     ]
 
     def _resolve(
         self,
-        hdr: foundation.ZCLHeader | zdo_t.ZDOHeader,
+        hdr: foundation.ZCLHeader | zdo_c.ZDOCommand,
         command: foundation.CommandSchema,
     ) -> bool:
         self.callback(hdr, command)
@@ -122,7 +122,7 @@ class CallbackListener(BaseRequestListener):
 
 MatcherFuncType = typing.Callable[
     [
-        foundation.ZCLHeader | zdo_t.ZDOHeader,
+        foundation.ZCLHeader | zdo_c.ZDOCommand,
         foundation.CommandSchema,
     ],
     bool,

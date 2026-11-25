@@ -198,8 +198,8 @@ def make_simple_desc_rsp(
 def mock_zdo_requests(
     dev,
     handlers: dict[
-        type[zdo_c.ZDOCommand],
-        typing.Callable[[typing.Any], typing.Awaitable[zdo_c.ZDOCommand]],
+        type[zdo_c.ZDOPayload],
+        typing.Callable[[typing.Any], typing.Awaitable[zdo_c.ZDOPayload]],
     ],
 ) -> AsyncMock:
     """Answer ZDO requests of the given types with handlers, send all others.
