@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from asyncio import timeout as asyncio_timeout
 from collections import defaultdict
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import AsyncGenerator, Callable, Mapping, Sequence
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -117,6 +117,74 @@ class ResponseKey:
     cluster_id: int
     direction: foundation.Direction | None
     tsn: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class SendPolicy(t.BaseDataclassMixin):
+    """How requests are sent to one node. Requests not made by a device clone it."""
+
+    timeout: float
+    extended_timeout: bool
+    retries: int = DEFAULT_REQUEST_RETRIES
+    retry_delay: float = DEFAULT_REQUEST_RETRY_DELAY
+    limiter: zigpy.datastructures.RequestLimiter | None = None
+
+    @classmethod
+    def from_node_descriptor(
+        cls,
+        node_desc: zdo_t.NodeDescriptor | None,
+        *,
+        limiter: zigpy.datastructures.RequestLimiter | None = None,
+    ) -> SendPolicy:
+        # A node without a descriptor may be a sleepy end device
+        extended = node_desc is None or bool(node_desc.is_end_device)
+
+        return cls(
+            timeout=APS_REPLY_TIMEOUT_EXTENDED if extended else APS_REPLY_TIMEOUT,
+            extended_timeout=extended,
+            limiter=limiter,
+        )
+
+
+@contextlib.asynccontextmanager
+async def limit_concurrency(
+    limiter: zigpy.datastructures.RequestLimiter | None, priority: int
+) -> AsyncGenerator[None, None]:
+    """Limit request concurrency to one node."""
+    if limiter is None:
+        yield
+        return
+
+    start_time = time.monotonic()
+    manager: contextlib.AbstractAsyncContextManager
+
+    if priority >= t.PacketPriority.CRITICAL:
+        LOGGER.debug(
+            "Critical priority request received (%s), skipping queue with %d requests",
+            priority,
+            limiter.waiting_requests,
+        )
+        manager = contextlib.nullcontext()
+        was_locked = False
+    else:
+        manager = limiter(priority=priority)
+        was_locked = limiter.locked(priority=priority)
+
+    if was_locked:
+        LOGGER.debug(
+            "Device concurrency (%s) reached, delaying request (%s enqueued)",
+            limiter.active_requests,
+            limiter.waiting_requests,
+        )
+
+    async with manager:
+        if was_locked:
+            LOGGER.debug(
+                "Previously delayed device request is now running, delayed by %0.2fs",
+                time.monotonic() - start_time,
+            )
+
+        yield
 
 
 @dataclass(kw_only=True, frozen=True)
@@ -800,7 +868,6 @@ class ZigbeeDevice(BaseDevice):
         self._requests: dict[ResponseKey, asyncio.Future] = {}
         self._relays: t.Relays | None = None
         self._skip_configuration: bool = False
-        self._send_sequence: int = 0
 
         self._fast_polling = False
 
@@ -825,47 +892,15 @@ class ZigbeeDevice(BaseDevice):
             )
         )
 
-    @contextlib.asynccontextmanager
-    async def _limit_concurrency(self, *, priority: int | None = None):
-        """Async context manager to limit device request concurrency."""
-        # Defer to the current app-level priority if not specified
-        if priority is None:
-            priority = self._application._packet_priority_var.get()
-
-        start_time = time.monotonic()
-        manager: contextlib.AbstractAsyncContextManager
-
-        if priority >= t.PacketPriority.CRITICAL:
-            LOGGER.debug(
-                "Critical priority request received (%s), skipping queue with %d requests",
-                priority,
-                self._concurrent_requests_semaphore.waiting_requests,
-            )
-            manager = contextlib.nullcontext()
-            was_locked = False
-        else:
-            manager = self._concurrent_requests_semaphore(priority=priority)
-            was_locked = self._concurrent_requests_semaphore.locked(priority=priority)
-
-        if was_locked:
-            LOGGER.debug(
-                "Device concurrency (%s) reached, delaying request (%s enqueued)",
-                self._concurrent_requests_semaphore.active_requests,
-                self._concurrent_requests_semaphore.waiting_requests,
-            )
-
-        async with manager:
-            if was_locked:
-                LOGGER.debug(
-                    "Previously delayed device request is now running, delayed by %0.2fs",
-                    time.monotonic() - start_time,
-                )
-
-            yield
+    @property
+    def send_policy(self) -> SendPolicy:
+        return SendPolicy.from_node_descriptor(
+            self.node_desc, limiter=self._concurrent_requests_semaphore
+        )
 
     def get_sequence(self) -> int:
-        self._send_sequence = (self._send_sequence + 1) % 256
-        return self._send_sequence
+        # Shared with every other sender to this NWK
+        return self._application.get_sequence(self.nwk)
 
     @property
     def name(self) -> str:
@@ -1321,7 +1356,10 @@ class ZigbeeDevice(BaseDevice):
         response_type: type[zdo_c.ZDOPayloadT],
         *,
         tsn: int | None = None,
-        **kwargs: Any,
+        priority: int | None = None,
+        retries: int | None = None,
+        retry_delay: float | None = None,
+        aps_encryption: bool = False,
     ) -> zdo_c.ZDOPayloadT: ...
 
     @typing.overload
@@ -1331,7 +1369,10 @@ class ZigbeeDevice(BaseDevice):
         response_type: None = None,
         *,
         tsn: int | None = None,
-        **kwargs: Any,
+        priority: int | None = None,
+        retries: int | None = None,
+        retry_delay: float | None = None,
+        aps_encryption: bool = False,
     ) -> None: ...
 
     async def send_zdo_command(
@@ -1340,30 +1381,32 @@ class ZigbeeDevice(BaseDevice):
         response_type: type[zdo_c.ZDOPayloadT] | None = None,
         *,
         tsn: int | None = None,
-        **kwargs: Any,
+        priority: int | None = None,
+        retries: int | None = None,
+        retry_delay: float | None = None,
+        aps_encryption: bool = False,
     ) -> zdo_c.ZDOPayloadT | None:
         """Send a ZDO command and wait for its response, if a response type is given."""
         if tsn is None:
             tsn = self.get_sequence()
 
-        response = await self.request(
-            profile=0x0000,
-            cluster=command.command_id,
-            src_ep=zdo.ZDO_ENDPOINT,
-            dst_ep=zdo.ZDO_ENDPOINT,
-            sequence=tsn,
-            data=zdo_c.ZDOCommand(
-                command_id=command.command_id, tsn=t.uint8_t(tsn), command=command
-            ).serialize(),
-            expect_reply=response_type is not None,
-            **kwargs,
+        policy = self.send_policy
+
+        if retries is not None:
+            policy = policy.replace(retries=retries)
+
+        if retry_delay is not None:
+            policy = policy.replace(retry_delay=retry_delay)
+
+        return await self._application.send_zdo_command(
+            self.nwk,
+            command,
+            response_type,
+            policy=policy,
+            tsn=tsn,
+            priority=priority,
+            aps_encryption=aps_encryption,
         )
-
-        if response_type is None:
-            return None
-
-        assert isinstance(response, response_type)
-        return response
 
     async def bind(self, cluster: Cluster, **kwargs: Any) -> zdo_c.BindRsp:
         return await self.send_zdo_command(
@@ -1431,36 +1474,30 @@ class ZigbeeDevice(BaseDevice):
         retry_delay: float | None = None,
         **kwargs,
     ):
-        if retries is None:
-            retries = DEFAULT_REQUEST_RETRIES
+        # ZDO requests are matched by the application, see `send_zdo_command`
+        assert dst_ep != zdo.ZDO_ENDPOINT
 
-        if retry_delay is None:
-            retry_delay = DEFAULT_REQUEST_RETRY_DELAY
+        policy = self.send_policy
 
-        extended_timeout = False
-
-        if self.node_desc is None or self.node_desc.is_end_device:
+        if not policy.extended_timeout:
+            policy = policy.replace(timeout=timeout)
+        else:
             self.debug("Extending timeout for 0x%02x request", sequence)
-            timeout = APS_REPLY_TIMEOUT_EXTENDED
-            extended_timeout = True
+
+        if retries is not None:
+            policy = policy.replace(retries=retries)
+
+        if retry_delay is not None:
+            policy = policy.replace(retry_delay=retry_delay)
 
         if expect_reply:
-            if dst_ep == zdo.ZDO_ENDPOINT:
-                rsp_key = ResponseKey(
-                    endpoint_id=dst_ep,
-                    # e.g. Node_Desc_req = 0x0002 corresponds to Node_Desc_rsp = 0x8002
-                    cluster_id=cluster ^ 0x8000,
-                    direction=None,
-                    tsn=sequence,
-                )
-            else:
-                zcl_hdr, _ = foundation.ZCLHeader.deserialize(data)
-                rsp_key = ResponseKey(
-                    endpoint_id=dst_ep,
-                    cluster_id=cluster,
-                    direction=zcl_hdr.frame_control.direction.flip(),
-                    tsn=sequence,
-                )
+            zcl_hdr, _ = foundation.ZCLHeader.deserialize(data)
+            rsp_key = ResponseKey(
+                endpoint_id=dst_ep,
+                cluster_id=cluster,
+                direction=zcl_hdr.frame_control.direction.flip(),
+                tsn=sequence,
+            )
 
             if rsp_key in self._requests:
                 self.debug(
@@ -1474,72 +1511,47 @@ class ZigbeeDevice(BaseDevice):
         else:
             rsp_key = None
 
-        max_attempts = retries + 1
+        async def attempt(number: int) -> Any:
+            send = self._application.request(
+                device=self,
+                profile=profile,
+                cluster=cluster,
+                src_ep=src_ep,
+                dst_ep=dst_ep,
+                sequence=sequence,
+                data=data,
+                expect_reply=expect_reply,
+                use_ieee=use_ieee,
+                extended_timeout=policy.extended_timeout,
+                ask_for_ack=ask_for_ack,
+                priority=priority,
+                force_route_discovery=(number > 0),
+                **kwargs,
+            )
 
-        # Use a lambda so we don't leave the coroutine unawaited in case of an exception
-        send_request = lambda attempt: self._application.request(  # noqa: E731
-            device=self,
-            profile=profile,
-            cluster=cluster,
-            src_ep=src_ep,
-            dst_ep=dst_ep,
-            sequence=sequence,
-            data=data,
-            expect_reply=expect_reply,
-            use_ieee=use_ieee,
-            extended_timeout=extended_timeout,
-            ask_for_ack=ask_for_ack,
-            priority=priority,
-            force_route_discovery=(attempt > 0),
-            **kwargs,
-        )
+            if not expect_reply:
+                await send
+                return None
 
-        for attempt in range(max_attempts):
-            slot_acquired = False
+            assert rsp_key is not None
+
+            future: asyncio.Future[list[Any] | foundation.CommandSchema] = (
+                asyncio.Future()
+            )
+            self._requests[rsp_key] = future
 
             try:
-                async with self._limit_concurrency(priority=priority):
-                    slot_acquired = True
+                await send
+                async with asyncio_timeout(policy.timeout):
+                    return await future
+            finally:
+                if not future.done():
+                    future.cancel()
+                self._requests.pop(rsp_key, None)
 
-                    if not expect_reply:
-                        await send_request(attempt=attempt)
-                        return None
-
-                    assert rsp_key is not None
-
-                    future: asyncio.Future[list[Any] | foundation.CommandSchema] = (
-                        asyncio.Future()
-                    )
-                    self._requests[rsp_key] = future
-
-                    try:
-                        await send_request(attempt=attempt)
-                        async with asyncio_timeout(timeout):
-                            return await future
-                    finally:
-                        if not future.done():
-                            future.cancel()
-                        self._requests.pop(rsp_key, None)
-            except zigpy.exceptions.ParsingError:
-                raise
-            except Exception:
-                if not slot_acquired:
-                    # Failed while waiting in the queue, e.g. `cancel_waiting()` when
-                    # the device left or re-joined. Retrying would only re-queue it.
-                    raise
-
-                LOGGER.debug(
-                    "Failed to send request, attempt %d of %d",
-                    attempt + 1,
-                    max_attempts,
-                    exc_info=True,
-                )
-
-                if attempt >= max_attempts - 1:
-                    raise
-
-                await asyncio.sleep(retry_delay)
-                continue
+        return await self._application._request_with_retries(
+            policy, priority=priority, attempt=attempt
+        )
 
     def handle_message(
         self,
@@ -1725,8 +1737,8 @@ class ZigbeeDevice(BaseDevice):
             self.debug("Filtering duplicate packet")
             return
 
+        # ZDO frames are matched and answered by the application
         if packet.src_ep == zdo.ZDO_ENDPOINT:
-            self._zdo_packet_received(packet)
             return
 
         # Parse packet header and create response key
@@ -1772,101 +1784,6 @@ class ZigbeeDevice(BaseDevice):
 
         # Finally, pass it off to the cluster message handler. This will be removed.
         zcl_cluster.handle_message(hdr, cmd)
-
-    def _zdo_packet_received(self, packet: t.ZigbeePacket) -> None:
-        data = packet.data.serialize()
-
-        # The TSN is needed to fail a pending request even if the payload is invalid
-        tsn, _ = t.uint8_t.deserialize(data)
-        rsp_key = ResponseKey(
-            endpoint_id=zdo.ZDO_ENDPOINT,
-            cluster_id=packet.cluster_id,
-            direction=None,
-            tsn=tsn,
-        )
-
-        try:
-            frame = zdo_c.ZDOCommand.deserialize(packet.cluster_id, data)
-        except Exception as exc:  # noqa: BLE001
-            error = zigpy.exceptions.ParsingError()
-            error.__cause__ = exc
-            self.debug("Failed to parse packet %r", packet, exc_info=error)
-            self._maybe_match_response(rsp_key, None, error)
-            return
-
-        if self._maybe_match_response(rsp_key, frame.command, None):
-            return
-
-        self._handle_zdo_request(frame)
-
-    def _handle_zdo_request(self, frame: zdo_c.ZDOCommand) -> None:
-        """Answer ZDO requests sent by this device to the coordinator."""
-        node_info = self.application.state.node_info
-
-        match frame.command:
-            case zdo_c.NwkAddrReq(ieee_addr=ieee, request_type=request_type):
-                if ieee != node_info.ieee:
-                    return
-
-                reply: zdo_c.ZDOPayload = zdo_c.NwkAddrRsp(
-                    status=zdo_t.Status.SUCCESS,
-                    ieee_addr=node_info.ieee,
-                    nwk_addr=node_info.nwk,
-                    num_assoc_dev=self._num_assoc_dev(request_type),
-                )
-                priority = t.PacketPriority.LOW
-                retries = self.reply_retries
-
-            case zdo_c.IeeeAddrReq(nwk_addr_of_interest=nwk, request_type=request_type):
-                if nwk not in (
-                    t.BroadcastAddress.ALL_DEVICES,
-                    t.BroadcastAddress.RX_ON_WHEN_IDLE,
-                    t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
-                    node_info.nwk,
-                ):
-                    return
-
-                reply = zdo_c.IeeeAddrRsp(
-                    status=zdo_t.Status.SUCCESS,
-                    ieee_addr=node_info.ieee,
-                    nwk_addr=node_info.nwk,
-                    num_assoc_dev=self._num_assoc_dev(request_type),
-                )
-                priority = t.PacketPriority.LOW
-                retries = self.reply_retries
-
-            case zdo_c.MatchDescReq(profile_id=profile_id):
-                reply = zdo_c.MatchDescRsp(
-                    status=zdo_t.Status.SUCCESS,
-                    nwk_addr_of_interest=node_info.nwk,
-                    match_list=[t.uint8_t(1)] if profile_id == zha.PROFILE_ID else [],
-                )
-                priority = t.PacketPriority.CRITICAL
-                retries = None
-
-            case _:
-                self.debug("No handler for ZDO request %s", frame)
-                return
-
-        self.create_task(
-            self._send_zdo_reply(
-                reply, tsn=frame.tsn, priority=priority, retries=retries
-            ),
-            name=f"zdo_reply_{type(reply).__name__}",
-        )
-
-    @staticmethod
-    def _num_assoc_dev(request_type: zdo_t.AddrRequestType) -> int | None:
-        # Only an extended request gets the associated devices, we have none
-        return 0 if request_type == zdo_t.AddrRequestType.Extended else None
-
-    async def _send_zdo_reply(
-        self, command: zdo_c.ZDOPayload, *, tsn: t.uint8_t, **kwargs: Any
-    ) -> None:
-        try:
-            await self.send_zdo_command(command, tsn=tsn, **kwargs)
-        except (TimeoutError, zigpy.exceptions.ZigbeeException) as exc:
-            self.debug("Failed to send ZDO reply %s: %r", command, exc)
 
     async def reply(
         self,

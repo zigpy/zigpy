@@ -28,6 +28,7 @@ class RawFrame:
     """A packet that is neither ZDO nor ZCL, or that failed to parse."""
 
     packet: t.ZigbeePacket
+    error: Exception | None = dataclasses.field(default=None, compare=False)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -56,9 +57,9 @@ def parse_frame(packet: t.ZigbeePacket) -> Frame:
     if zigpy.zdo.ZDO_ENDPOINT in (packet.src_ep, packet.dst_ep):
         try:
             zdo_command = zdo_c.ZDOCommand.deserialize(packet.cluster_id, data)
-        except ValueError:
+        except ValueError as exc:
             LOGGER.debug("Could not parse ZDO frame from packet %r", packet)
-            return RawFrame(packet=packet)
+            return RawFrame(packet=packet, error=exc)
 
         return ZDOFrame(packet=packet, command=zdo_command)
 
@@ -67,9 +68,9 @@ def parse_frame(packet: t.ZigbeePacket) -> Frame:
 
     try:
         header, data = foundation.ZCLHeader.deserialize(data)
-    except ValueError:
+    except ValueError as exc:
         LOGGER.debug("Could not parse ZCL header from packet %r", packet)
-        return RawFrame(packet=packet)
+        return RawFrame(packet=packet, error=exc)
 
     if (
         header.frame_control.frame_type != foundation.FrameType.GLOBAL_COMMAND

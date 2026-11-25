@@ -282,12 +282,9 @@ async def test_remove_tears_down_device_after_leave_response(app, ieee):
     for _i in range(1, 20):
         await asyncio.sleep(0)
 
-    # The leave response re-scheduled initialization, which sent one request before
-    # the device was torn down together with its tasks
-    assert [p.cluster_id for p in sent] == [
-        zdo_t.ZDOCmd.Mgmt_Leave_req,
-        zdo_t.ZDOCmd.Node_Desc_req,
-    ]
+    # The leave request consumed its response, so the device never saw it and did
+    # not schedule its initialization before it was torn down
+    assert [p.cluster_id for p in sent] == [zdo_t.ZDOCmd.Mgmt_Leave_req]
     assert ieee not in app.devices
     assert not dev.initializing
     assert not dev._tasks
