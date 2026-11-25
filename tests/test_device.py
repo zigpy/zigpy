@@ -2173,8 +2173,9 @@ async def test_device_cluster_direction_flipping(
     ) as spy:
         dev.packet_received(packet)
 
-    assert spy.call_count == 1
-    assert len(captured_result) == 1
+    # Once to parse the frame, once to handle it: both pick the same cluster
+    assert spy.call_count == 2
+    assert captured_result[0] == captured_result[1]
 
     _, returned_cluster = captured_result[0]
 

@@ -1705,20 +1705,20 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             tsn=tsn,
             command_id=command_def.id,
         )
-        data = header.serialize() + command.serialize()
+        data = foundation.ZCLCommand(header=header, command=command).serialize()
 
         def is_response(rsp: zigpy.frames.Frame) -> bool:
             return (
                 isinstance(rsp, zigpy.frames.ZCLFrame)
                 and rsp.packet.src_ep == endpoint
                 and rsp.packet.cluster_id == cluster_id
-                and rsp.header.tsn == header.tsn
-                and rsp.header.direction == direction.flip()
+                and rsp.command.header.tsn == header.tsn
+                and rsp.command.header.direction == direction.flip()
                 # Attribute reports often collide with responses
                 and not (
-                    rsp.header.frame_control.frame_type
+                    rsp.command.header.frame_control.frame_type
                     == foundation.FrameType.GLOBAL_COMMAND
-                    and rsp.header.command_id
+                    and rsp.command.header.command_id
                     == foundation.GeneralCommand.Report_Attributes
                 )
             )
@@ -1755,34 +1755,32 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
                     rsp = await future
 
             assert isinstance(rsp, zigpy.frames.ZCLFrame)
+            rsp_header = rsp.command.header
+            rsp_command = rsp.command.command
 
-            if isinstance(rsp.command, foundation.DefaultResponse | response_type):
-                return rsp.command
+            if isinstance(rsp_command, foundation.MalformedCommand):
+                raise zigpy.exceptions.ParsingError(
+                    f"Failed to parse ZCL response {rsp.packet!r}"
+                ) from rsp_command.error
 
-            is_general = (
-                rsp.header.frame_control.frame_type
-                == foundation.FrameType.GLOBAL_COMMAND
-            )
+            if isinstance(rsp_command, foundation.DefaultResponse | response_type):
+                return rsp_command
 
+            # Only a cluster-specific command without a definition is left to parse
             if (
-                not isinstance(rsp.command, bytes)
-                or rsp.header.command_id != response_type.command.id
-                or is_general
-                != (response_type.command in foundation.GENERAL_COMMANDS.values())
+                not isinstance(rsp_command, foundation.UnknownCommand)
+                or rsp_header.command_id != response_type.command.id
+                or rsp_header.frame_control.frame_type
+                != foundation.FrameType.CLUSTER_COMMAND
+                or response_type.command in foundation.GENERAL_COMMANDS.values()
             ):
                 raise zigpy.exceptions.InvalidResponse(
                     f"Expected a {response_type.__name__} response: {rsp.packet!r}"
                 )
 
-            # The expected general command was left unparsed: it is malformed
-            if is_general:
-                raise zigpy.exceptions.ParsingError(
-                    f"Failed to parse ZCL response {rsp.packet!r}"
-                )
-
             # Cluster-specific responses are parsed with the expected type
             try:
-                response, _ = response_type.deserialize(rsp.command)
+                response, _ = response_type.deserialize(rsp_command.data)
             except ValueError as exc:
                 raise zigpy.exceptions.ParsingError(
                     f"Failed to parse ZCL response {rsp.packet!r}"
@@ -2055,6 +2053,24 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         except (TimeoutError, zigpy.exceptions.ZigbeeException) as exc:
             LOGGER.debug("Failed to send ZDO reply %s to %s: %r", reply, nwk, exc)
 
+    def _parse_frame(self, packet: t.ZigbeePacket) -> zigpy.frames.Frame:
+        """Parse a packet with the definitions of its device, if it is known."""
+        assert packet.src is not None
+
+        # ZDO is never device-specific
+        if zigpy.zdo.ZDO_ENDPOINT in (packet.src_ep, packet.dst_ep):
+            return zigpy.frames.parse_frame(packet)
+
+        try:
+            device = self.get_device_with_address(packet.src)
+        except KeyError:
+            return zigpy.frames.parse_frame(packet)
+
+        if not isinstance(device, ZigbeeDevice):
+            return zigpy.frames.parse_frame(packet)
+
+        return device.parse_frame(packet)
+
     def packet_received(self, packet: t.ZigbeePacket) -> None:
         """Notify zigpy of a received Zigbee packet."""
 
@@ -2077,7 +2093,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
 
             return None
 
-        frame = zigpy.frames.parse_frame(packet)
+        frame = self._parse_frame(packet)
 
         # Peek into ZDO packets to handle possible ZDO notifications
         if isinstance(frame, zigpy.frames.ZDOFrame):
@@ -2148,7 +2164,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         )
 
         if device.is_initialized:
-            return device.packet_received(packet)
+            return device.frame_received(frame)
 
         LOGGER.debug(
             "Received frame on uninitialized device %s"
@@ -2181,7 +2197,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             if not device.initializing:
                 device.schedule_initialize()
 
-            return device.packet_received(packet)
+            return device.frame_received(frame)
 
         # Give the consumer a chance to fast-initialize the device (e.g. Xiaomi).
         if self._uninitialized_packet_handler is not None:

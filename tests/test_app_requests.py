@@ -6,7 +6,7 @@ import zigpy.device
 import zigpy.exceptions
 import zigpy.types as t
 from zigpy.zcl import foundation
-from zigpy.zcl.clusters.general import Basic, Ota, PollControl
+from zigpy.zcl.clusters.general import Basic, Groups, Ota, PollControl
 import zigpy.zdo.commands as zdo_c
 import zigpy.zdo.types as zdo_t
 
@@ -268,20 +268,30 @@ async def test_cluster_command_server_to_client(app):
     assert header.frame_control.disable_default_response
 
 
-CHECKIN_RESPONSE = PollControl.ServerCommandDefs.checkin_response
+VIEW = Groups.ServerCommandDefs.view
+VIEW_RESPONSE = Groups.ClientCommandDefs.view_response
+
+
+def view_response_packet(tsn: int, *, command_id: int, payload: bytes, general=False):
+    return zcl_packet(
+        tsn=tsn,
+        cluster_id=Groups.cluster_id,
+        general=general,
+        command_id=command_id,
+        payload=payload,
+    )
 
 
 async def test_cluster_response(app):
-    """Cluster-specific responses are parsed with the expected type."""
+    """Cluster-specific responses are parsed with the cluster's definitions."""
+    view_response = VIEW_RESPONSE.schema(
+        status=foundation.Status.SUCCESS, group_id=0x0002, group_name="Group"
+    )
     respond(
         app,
         lambda tsn: [
-            zcl_packet(
-                tsn=tsn,
-                cluster_id=PollControl.cluster_id,
-                general=False,
-                command_id=CHECKIN_RESPONSE.id,
-                payload=b"\x01\x28\x00",
+            view_response_packet(
+                tsn, command_id=VIEW_RESPONSE.id, payload=view_response.serialize()
             )
         ],
     )
@@ -289,27 +299,63 @@ async def test_cluster_response(app):
     rsp = await app.send_zcl_command(
         NWK,
         1,
-        PollControl.cluster_id,
-        PollControl.ServerCommandDefs.fast_poll_stop.schema(),
-        CHECKIN_RESPONSE.schema,
+        Groups.cluster_id,
+        VIEW.schema(group_id=0x0002),
+        VIEW_RESPONSE.schema,
         policy=POLICY,
     )
 
-    assert rsp == CHECKIN_RESPONSE.schema(start_fast_polling=True, fast_poll_timeout=40)
+    assert rsp == view_response
+
+
+async def test_unknown_cluster_response(app):
+    """Responses without a definition are parsed with the expected type."""
+    respond(
+        app,
+        lambda tsn: [
+            zcl_packet(
+                tsn=tsn,
+                cluster_id=0xFC00,
+                general=False,
+                command_id=VIEW_RESPONSE.id,
+                payload=VIEW_RESPONSE.schema(
+                    status=foundation.Status.SUCCESS, group_id=0x0002, group_name=""
+                ).serialize(),
+            )
+        ],
+    )
+
+    rsp = await app.send_zcl_command(
+        NWK,
+        1,
+        0xFC00,
+        VIEW.schema(group_id=0x0002),
+        VIEW_RESPONSE.schema,
+        policy=POLICY,
+    )
+
+    assert rsp == VIEW_RESPONSE.schema(
+        status=foundation.Status.SUCCESS, group_id=0x0002, group_name=""
+    )
 
 
 @pytest.mark.parametrize(
     ("general", "command_id", "payload", "error"),
     [
-        # Malformed cluster-specific response
-        (False, CHECKIN_RESPONSE.id, b"\x01", zigpy.exceptions.ParsingError),
+        # Malformed response
+        (False, VIEW_RESPONSE.id, b"\x00", zigpy.exceptions.ParsingError),
         # Another cluster-specific command
-        (False, 0x01, b"", zigpy.exceptions.InvalidResponse),
+        (
+            False,
+            Groups.ClientCommandDefs.add_response.id,
+            b"\x00\x02\x00",
+            zigpy.exceptions.InvalidResponse,
+        ),
         # A general command with the same ID
         (
             True,
-            CHECKIN_RESPONSE.id,
-            foundation.ReadAttributes(attribute_ids=[]).serialize(),
+            VIEW_RESPONSE.id,
+            READ_ATTRIBUTES_RSP.serialize(),
             zigpy.exceptions.InvalidResponse,
         ),
     ],
@@ -318,12 +364,8 @@ async def test_cluster_response_errors(app, general, command_id, payload, error)
     respond(
         app,
         lambda tsn: [
-            zcl_packet(
-                tsn=tsn,
-                cluster_id=PollControl.cluster_id,
-                general=general,
-                command_id=command_id,
-                payload=payload,
+            view_response_packet(
+                tsn, command_id=command_id, payload=payload, general=general
             )
         ],
     )
@@ -332,9 +374,9 @@ async def test_cluster_response_errors(app, general, command_id, payload, error)
         await app.send_zcl_command(
             NWK,
             1,
-            PollControl.cluster_id,
-            PollControl.ServerCommandDefs.fast_poll_stop.schema(),
-            CHECKIN_RESPONSE.schema,
+            Groups.cluster_id,
+            VIEW.schema(group_id=0x0002),
+            VIEW_RESPONSE.schema,
             policy=POLICY,
         )
 

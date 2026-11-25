@@ -417,7 +417,7 @@ async def test_handle_message_uninitialized_dev(is_init_mock, app, ieee):
     app.register_uninitialized_packet_handler(uninitialized_packet_handler)
 
     dev = app.add_device(ieee, 0x1234)
-    dev.packet_received = MagicMock()
+    dev.frame_received = MagicMock()
     is_init_mock.return_value = False
 
     assert not dev.initializing
@@ -445,7 +445,7 @@ async def test_handle_message_uninitialized_dev(is_init_mock, app, ieee):
     app.packet_received(
         make_packet(profile_id=260, cluster_id=0x0001, src_ep=1, dst_ep=1, data=b"test")
     )
-    assert dev.packet_received.call_count == 0
+    assert dev.frame_received.call_count == 0
     assert uninitialized_packet_handler.call_count == 1
 
     # Device should be completing initialization
@@ -455,20 +455,20 @@ async def test_handle_message_uninitialized_dev(is_init_mock, app, ieee):
     app.packet_received(
         make_packet(profile_id=260, cluster_id=0x0000, src_ep=0, dst_ep=0, data=b"test")
     )
-    assert dev.packet_received.call_count == 1
+    assert dev.frame_received.call_count == 1
 
     # Endpoint is uninitialized but Basic attribute read responses still work
     ep = dev.add_endpoint(1)
     app.packet_received(
         make_packet(profile_id=260, cluster_id=0x0000, src_ep=1, dst_ep=1, data=b"test")
     )
-    assert dev.packet_received.call_count == 2
+    assert dev.frame_received.call_count == 2
 
     # Others still do not
     app.packet_received(
         make_packet(profile_id=260, cluster_id=0x0001, src_ep=1, dst_ep=1, data=b"test")
     )
-    assert dev.packet_received.call_count == 2
+    assert dev.frame_received.call_count == 2
     assert uninitialized_packet_handler.call_count == 2
 
     # They work after the endpoint is initialized
@@ -476,7 +476,7 @@ async def test_handle_message_uninitialized_dev(is_init_mock, app, ieee):
     app.packet_received(
         make_packet(profile_id=260, cluster_id=0x0001, src_ep=1, dst_ep=1, data=b"test")
     )
-    assert dev.packet_received.call_count == 3
+    assert dev.frame_received.call_count == 3
     assert uninitialized_packet_handler.call_count == 2
 
 
@@ -1375,7 +1375,7 @@ async def test_bad_zdo_packet_received(app, device):
 
     app.packet_received(bogus_zdo_packet)
 
-    assert len(device.packet_received.mock_calls) == 1
+    assert len(device.frame_received.mock_calls) == 1
 
 
 def test_get_device_with_address_nwk(app, device):
@@ -2472,7 +2472,7 @@ async def test_blocked_device_nwk_rediscovered_other_device(blocking_app):
 async def test_blocked_known_device_nwk_changed(blocking_app):
     """A device that joined before it was blocked keeps its address current."""
     dev = blocking_app.add_device(BLOCKED_IEEE, 0x1234)
-    dev.packet_received = MagicMock()
+    dev.frame_received = MagicMock()
     blocking_app._discover_unknown_device = AsyncMock(
         spec_set=blocking_app._discover_unknown_device
     )
@@ -2485,7 +2485,7 @@ async def test_blocked_known_device_nwk_changed(blocking_app):
 
     assert dev.nwk == 0x9999
     assert blocking_app._discover_unknown_device.call_count == 0
-    assert dev.packet_received.call_count == 0
+    assert dev.frame_received.call_count == 0
     assert len(_leave_requests(blocking_app)) == 1
 
     # A known device keeps its store
@@ -2511,7 +2511,7 @@ async def test_blocked_coordinator_ignored():
     """The coordinator's own IEEE address is never blocked."""
     app = make_app({conf.CONF_BLOCKED_DEVICES: [str(NCP_IEEE)]})
     coordinator = app.add_device(NCP_IEEE, 0x0000)
-    coordinator.packet_received = MagicMock()
+    coordinator.frame_received = MagicMock()
 
     with patch.object(
         type(coordinator),
@@ -2523,7 +2523,7 @@ async def test_blocked_coordinator_ignored():
     app.handle_join(nwk=0x0000, ieee=NCP_IEEE, parent_nwk=None)
     await _settle()
 
-    assert coordinator.packet_received.call_count == 1
+    assert coordinator.frame_received.call_count == 1
     assert app.devices[NCP_IEEE] is coordinator
     assert _leave_requests(app) == []
 
@@ -2560,14 +2560,14 @@ async def test_blocked_device_nwk_reused(blocking_app):
     assert 0x1234 not in blocking_app._blocked_device_nwks
 
     dev = blocking_app.get_device(ieee=ieee)
-    dev.packet_received = MagicMock()
+    dev.frame_received = MagicMock()
 
     with patch.object(
         type(dev), "is_initialized", new_callable=PropertyMock, return_value=True
     ):
         blocking_app.packet_received(_make_packet(0x1234))
 
-    assert dev.packet_received.call_count == 1
+    assert dev.frame_received.call_count == 1
 
 
 async def test_blocked_device_nwk_changed(blocking_app):
@@ -2581,7 +2581,7 @@ async def test_blocked_device_nwk_changed(blocking_app):
 async def test_blocked_device_already_joined(blocking_app):
     """A device blocked after it joined stays known but is ignored and asked to leave."""
     dev = blocking_app.add_device(BLOCKED_IEEE, 0x1234)
-    dev.packet_received = MagicMock()
+    dev.frame_received = MagicMock()
     listener = MagicMock()
     blocking_app.add_listener(listener)
 
@@ -2594,7 +2594,7 @@ async def test_blocked_device_already_joined(blocking_app):
     assert listener.device_removed.call_count == 0
     assert listener.device_joined.call_count == 0
     assert listener.handle_message.call_count == 0
-    assert dev.packet_received.call_count == 0
+    assert dev.frame_received.call_count == 0
     assert len(_leave_requests(blocking_app)) == 1
     assert list(blocking_app._blocked_device_nwks) == [0x1234]
 
@@ -2602,10 +2602,10 @@ async def test_blocked_device_already_joined(blocking_app):
 async def test_blocked_known_device_takes_stale_address(blocking_app):
     """An already-known blocked device using an address another device has stored."""
     stale = blocking_app.add_device(make_ieee(0x40), 0x9999)
-    stale.packet_received = MagicMock()
+    stale.frame_received = MagicMock()
     stale.relays = [0x1111]
     dev = blocking_app.add_device(BLOCKED_IEEE, 0x1234)
-    dev.packet_received = MagicMock()
+    dev.frame_received = MagicMock()
     listener = MagicMock()
     blocking_app.add_listener(listener)
 
@@ -2623,8 +2623,8 @@ async def test_blocked_known_device_takes_stale_address(blocking_app):
     await _settle()
 
     assert list(blocking_app._blocked_device_nwks) == [0x9999]
-    assert stale.packet_received.call_count == 0
-    assert dev.packet_received.call_count == 0
+    assert stale.frame_received.call_count == 0
+    assert dev.frame_received.call_count == 0
     assert listener.handle_message.call_count == 0
     assert stale.relays == [0x1111]
 
@@ -2742,7 +2742,7 @@ async def test_blocked_coordinator_startup_warning(caplog):
 async def test_blocked_device_takes_stale_address(blocking_app):
     """A blocked device using an address another device still has stored is dropped."""
     stale = blocking_app.add_device(make_ieee(0x40), 0x1234)
-    stale.packet_received = MagicMock()
+    stale.frame_received = MagicMock()
     stale.relays = [0x1111]
     listener = MagicMock()
     blocking_app.add_listener(listener)
@@ -2756,12 +2756,12 @@ async def test_blocked_device_takes_stale_address(blocking_app):
     blocking_app.handle_relays(nwk=0x1234, relays=[0x5678])
     await _settle()
 
-    assert stale.packet_received.call_count == 0
+    assert stale.frame_received.call_count == 0
     assert listener.handle_message.call_count == 0
     assert stale.relays == [0x1111]
 
     # Once the stored device announces itself with the address again, it is its own
-    stale.packet_received.reset_mock()
+    stale.frame_received.reset_mock()
     blocking_app.handle_join(nwk=0x1234, ieee=stale.ieee, parent_nwk=None)
     assert blocking_app._blocked_device_nwks == {}
 
@@ -2770,7 +2770,7 @@ async def test_blocked_device_takes_stale_address(blocking_app):
     ):
         blocking_app.packet_received(_make_packet(0x1234))
 
-    assert stale.packet_received.call_count == 1
+    assert stale.frame_received.call_count == 1
 
 
 async def test_blocked_device_coordinator_address(blocking_app):

@@ -3,9 +3,12 @@ import logging
 
 import pytest
 
+import zigpy.device
+import zigpy.exceptions
 import zigpy.frames
 import zigpy.types as t
 from zigpy.zcl import foundation
+from zigpy.zcl.clusters.general import OnOff, PollControl
 import zigpy.zdo.commands as zdo_c
 import zigpy.zdo.types as zdo_t
 
@@ -62,6 +65,23 @@ def any_frame(frame: zigpy.frames.Frame) -> bool:
     return True
 
 
+def zcl_frame(
+    packet: t.ZigbeePacket,
+    header: bytes,
+    command: foundation.CommandSchema | bytes,
+) -> zigpy.frames.ZCLFrame:
+    """A ZCL frame, `bytes` are the payload of an unknown command."""
+    if isinstance(command, bytes):
+        command = foundation.UnknownCommand(data=command)
+
+    return zigpy.frames.ZCLFrame(
+        packet=packet,
+        command=foundation.ZCLCommand(
+            header=foundation.ZCLHeader.deserialize(header)[0], command=command
+        ),
+    )
+
+
 @pytest.mark.parametrize(
     ("packet", "expected"),
     [
@@ -86,12 +106,10 @@ def any_frame(frame: zigpy.frames.Frame) -> bool:
         ),
         (
             make_packet(data=READ_ATTRIBUTES_RSP),
-            lambda p: zigpy.frames.ZCLFrame(
-                packet=p,
-                header=foundation.ZCLHeader.deserialize(READ_ATTRIBUTES_RSP)[0],
-                command=foundation.GENERAL_COMMANDS[
-                    foundation.GeneralCommand.Read_Attributes_rsp
-                ].schema(
+            lambda p: zcl_frame(
+                p,
+                READ_ATTRIBUTES_RSP[:3],
+                foundation.ReadAttributesResponse(
                     status_records=[
                         foundation.ReadAttributeRecord(
                             attrid=0x0004,
@@ -105,37 +123,66 @@ def any_frame(frame: zigpy.frames.Frame) -> bool:
                 ),
             ),
         ),
-        # Cluster-specific commands need the device's clusters, they stay raw
+        # Cluster-specific commands are parsed with the standard cluster definitions
         (
-            make_packet(cluster_id=0x0006, data=b"\x01\x05\x01\xaa"),
-            lambda p: zigpy.frames.ZCLFrame(
-                packet=p,
-                header=foundation.ZCLHeader.deserialize(b"\x01\x05\x01")[0],
-                command=b"\xaa",
+            make_packet(cluster_id=OnOff.cluster_id, data=b"\x01\x05\x01"),
+            lambda p: zcl_frame(
+                p, b"\x01\x05\x01", OnOff.ServerCommandDefs.on.schema()
             ),
+        ),
+        # The direction picks the definitions: the client receives a check-in
+        (
+            make_packet(cluster_id=PollControl.cluster_id, data=b"\x19\x05\x00"),
+            lambda p: zcl_frame(
+                p, b"\x19\x05\x00", PollControl.ClientCommandDefs.checkin.schema()
+            ),
+        ),
+        # Unknown cluster-specific command
+        (
+            make_packet(cluster_id=OnOff.cluster_id, data=b"\x01\x05\xf0\xaa"),
+            lambda p: zcl_frame(p, b"\x01\x05\xf0", b"\xaa"),
+        ),
+        # Unknown cluster: only general commands are known
+        (
+            make_packet(cluster_id=0xFC00, data=b"\x01\x05\x01\xaa"),
+            lambda p: zcl_frame(p, b"\x01\x05\x01", b"\xaa"),
+        ),
+        # Malformed cluster-specific command
+        (
+            make_packet(cluster_id=PollControl.cluster_id, data=b"\x01\x05\x00\x01"),
+            lambda p: zcl_frame(p, b"\x01\x05\x00", b"\x01"),
         ),
         # Unknown general command
         (
             make_packet(data=b"\x18\x01\x1f\xaa"),
-            lambda p: zigpy.frames.ZCLFrame(
-                packet=p,
-                header=foundation.ZCLHeader.deserialize(b"\x18\x01\x1f")[0],
-                command=b"\xaa",
-            ),
+            lambda p: zcl_frame(p, b"\x18\x01\x1f", b"\xaa"),
         ),
         # Malformed general command
         (
             make_packet(data=b"\x18\x01\x01\x04"),
-            lambda p: zigpy.frames.ZCLFrame(
-                packet=p,
-                header=foundation.ZCLHeader.deserialize(b"\x18\x01\x01")[0],
-                command=b"\x04",
-            ),
+            lambda p: zcl_frame(p, b"\x18\x01\x01", b"\x04"),
         ),
     ],
 )
 def test_parse_frame(packet, expected):
     assert zigpy.frames.parse_frame(packet) == expected(packet)
+
+
+@pytest.mark.parametrize(
+    "packet",
+    [
+        make_packet(cluster_id=PollControl.cluster_id, data=b"\x01\x05\x00\x01"),
+        make_packet(data=b"\x18\x01\x01\x04"),
+    ],
+)
+def test_parse_frame_malformed(packet):
+    """A payload its definition fails to parse keeps the parsing error."""
+    frame = zigpy.frames.parse_frame(packet)
+
+    assert isinstance(frame, zigpy.frames.ZCLFrame)
+    assert isinstance(frame.command.command, foundation.MalformedCommand)
+    assert frame.command.command.data == packet.data.serialize()[3:]
+    assert isinstance(frame.command.command.error, ValueError)
 
 
 async def test_subscribe_by_nwk(app):
@@ -209,7 +256,7 @@ async def test_wait_for_consumes(app):
     packet = make_packet(data=READ_ATTRIBUTES_RSP)
 
     with (
-        patch.object(dev, "packet_received") as device_packet_received,
+        patch.object(dev, "frame_received") as device_frame_received,
         app.frame_listeners.wait_for(NWK, any_frame) as first,
         app.frame_listeners.wait_for(NWK, any_frame) as second,
     ):
@@ -219,13 +266,13 @@ async def test_wait_for_consumes(app):
         assert not second.done()
 
     assert len(callback.mock_calls) == 1
-    assert device_packet_received.mock_calls == []
+    assert device_frame_received.mock_calls == []
 
     # The listeners are gone, the next frame reaches the device
-    with patch.object(dev, "packet_received") as device_packet_received:
+    with patch.object(dev, "frame_received") as device_frame_received:
         app.packet_received(packet)
 
-    assert device_packet_received.mock_calls == [call(packet)]
+    assert device_frame_received.mock_calls == [call(dev.parse_frame(packet))]
 
 
 async def test_wait_for_skips_done_future(app):
@@ -288,3 +335,86 @@ async def test_register_packet_callback_deprecated(app, filter_address, triggere
     app.packet_received(packet)
 
     assert callback.mock_calls == ([call(packet)] if triggered else [])
+
+
+class CustomOnOff(OnOff):
+    """A quirk cluster that parses an unknown command and rejects another."""
+
+    def deserialize(self, data):
+        hdr, payload = foundation.ZCLHeader.deserialize(data)
+
+        if hdr.command_id == 0xF0:
+            return hdr, OnOff.ServerCommandDefs.on.schema()
+
+        if hdr.command_id == 0xF1:
+            raise ValueError("Malformed")
+
+        return super().deserialize(data)
+
+
+@pytest.fixture
+def quirked_dev(app):
+    dev = add_initialized_device(app, nwk=NWK, ieee=make_ieee(1))
+    ep = dev.endpoints[1]
+    ep.add_input_cluster(OnOff.cluster_id, CustomOnOff(ep))
+
+    return dev
+
+
+async def test_device_definitions_parse_frames(app, quirked_dev):
+    """Frames from a known device are parsed with its quirk's definitions."""
+    callback = MagicMock()
+    app.frame_listeners.subscribe(NWK, any_frame, callback)
+
+    # Without the device, the command is unknown
+    packet = make_packet(cluster_id=OnOff.cluster_id, data=b"\x01\x05\xf0")
+    assert zigpy.frames.parse_frame(packet) == zcl_frame(packet, b"\x01\x05\xf0", b"")
+
+    app.packet_received(packet)
+
+    assert callback.mock_calls == [
+        call(zcl_frame(packet, b"\x01\x05\xf0", OnOff.ServerCommandDefs.on.schema()))
+    ]
+
+
+async def test_device_definition_parsing_error(app, quirked_dev):
+    """A response the device's definition fails to parse raises a parsing error."""
+
+    async def send_packet(packet):
+        hdr, _ = foundation.ZCLHeader.deserialize(packet.data.serialize())
+        response = make_packet(
+            cluster_id=OnOff.cluster_id, data=bytes([0x09, hdr.tsn, 0xF1])
+        )
+        asyncio.get_running_loop().call_soon(app.packet_received, response)
+
+    app.send_packet.side_effect = send_packet
+
+    with pytest.raises(zigpy.exceptions.ParsingError) as exc:
+        await app.send_zcl_command(
+            NWK,
+            1,
+            OnOff.cluster_id,
+            OnOff.ServerCommandDefs.on.schema(),
+            foundation.ReadAttributesResponse,
+            policy=zigpy.device.SendPolicy(
+                timeout=1, extended_timeout=False, retries=0, retry_delay=0
+            ),
+        )
+
+    assert type(exc.value.__cause__) is ValueError
+
+
+def test_device_parse_frame_zdo(app, quirked_dev):
+    """ZDO frames are parsed the same with or without a device."""
+    packet = make_zdo_packet(DEVICE_ANNCE)
+
+    assert quirked_dev.parse_frame(packet) == zigpy.frames.parse_frame(packet)
+
+
+def test_zcl_command_serialize_unknown():
+    header = foundation.ZCLHeader.deserialize(b"\x01\x05\xf0")[0]
+    command = foundation.ZCLCommand(
+        header=header, command=foundation.UnknownCommand(data=b"\xaa")
+    )
+
+    assert command.serialize() == b"\x01\x05\xf0\xaa"

@@ -16,6 +16,7 @@ import typing
 
 from zigpy.profiles import zha, zll
 import zigpy.types as t
+import zigpy.zcl
 from zigpy.zcl import foundation
 import zigpy.zdo
 import zigpy.zdo.commands as zdo_c
@@ -40,9 +41,7 @@ class ZDOFrame:
 @dataclasses.dataclass(frozen=True)
 class ZCLFrame:
     packet: t.ZigbeePacket
-    header: foundation.ZCLHeader
-    # General commands are parsed, cluster-specific commands are left as raw bytes
-    command: foundation.CommandSchema | bytes
+    command: foundation.ZCLCommand
 
 
 Frame = RawFrame | ZDOFrame | ZCLFrame
@@ -50,8 +49,28 @@ FramePredicate = Callable[[Frame], bool]
 FrameCallback = Callable[[Frame], typing.Any]
 
 
+def parse_standard_zcl(
+    cluster_id: int, header: foundation.ZCLHeader, payload: bytes
+) -> foundation.ZCLCommand:
+    """Parse a ZCL payload with the standard definitions of its cluster."""
+    cluster_cls = zigpy.zcl.Cluster.class_for_id(cluster_id)
+    command: foundation.CommandSchema
+
+    try:
+        command = cluster_cls.parse_command(header, payload)
+    except ValueError as exc:
+        LOGGER.debug("Could not parse ZCL payload %r", payload, exc_info=True)
+        command = foundation.MalformedCommand(data=payload)
+        command.error = exc
+
+    return foundation.ZCLCommand(header=header, command=command)
+
+
 def parse_frame(packet: t.ZigbeePacket) -> Frame:
-    """Parse a packet as far as is possible without a device object."""
+    """Parse a packet with the standard definitions, without a device object.
+
+    The application parses ZCL with a device's definitions when it knows the device.
+    """
     data = packet.data.serialize()
 
     if zigpy.zdo.ZDO_ENDPOINT in (packet.src_ep, packet.dst_ep):
@@ -67,28 +86,15 @@ def parse_frame(packet: t.ZigbeePacket) -> Frame:
         return RawFrame(packet=packet)
 
     try:
-        header, data = foundation.ZCLHeader.deserialize(data)
+        header, payload = foundation.ZCLHeader.deserialize(data)
     except ValueError as exc:
         LOGGER.debug("Could not parse ZCL header from packet %r", packet)
         return RawFrame(packet=packet, error=exc)
 
-    if (
-        header.frame_control.frame_type != foundation.FrameType.GLOBAL_COMMAND
-        or header.command_id not in foundation.GENERAL_COMMANDS
-    ):
-        return ZCLFrame(packet=packet, header=header, command=data)
-
-    schema = foundation.GENERAL_COMMANDS[
-        foundation.GeneralCommand(header.command_id)
-    ].schema
-
-    try:
-        command, _ = schema.deserialize(data)
-    except ValueError:
-        LOGGER.debug("Could not parse general ZCL command from packet %r", packet)
-        return ZCLFrame(packet=packet, header=header, command=data)
-
-    return ZCLFrame(packet=packet, header=header, command=command)
+    return ZCLFrame(
+        packet=packet,
+        command=parse_standard_zcl(packet.cluster_id, header, payload),
+    )
 
 
 @dataclasses.dataclass(frozen=True)

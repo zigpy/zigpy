@@ -707,21 +707,28 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         cls, endpoint: BaseEndpoint, cluster_id: int, is_server: bool = True
     ) -> Cluster:
         cluster_id = t.ClusterId(cluster_id)
+        cluster_cls = cls.class_for_id(cluster_id)
 
-        if cluster_id in cls._registry:
-            return cls._registry[cluster_id](endpoint, is_server)
+        if cluster_cls is cls:
+            LOGGER.debug("Unknown cluster 0x%04X", cluster_id)
 
-        for (start, end), cluster in cls._registry_range.items():
-            if start <= cluster_id <= end:
-                cluster = cluster(endpoint, is_server)
-                cluster.cluster_id = cluster_id
-                return cluster
+        cluster = cluster_cls(endpoint, is_server)
 
-        LOGGER.debug("Unknown cluster 0x%04X", cluster_id)
-
-        cluster = cls(endpoint, is_server)
+        # Classes for a range of IDs and the base class do not know their ID
         cluster.cluster_id = cluster_id
         return cluster
+
+    @classmethod
+    def class_for_id(cls, cluster_id: int) -> type[Cluster]:
+        """The standard cluster class for an ID, or the base class if it is unknown."""
+        if cluster_id in cls._registry:
+            return cls._registry[cluster_id]
+
+        for (start, end), cluster_cls in cls._registry_range.items():
+            if start <= cluster_id <= end:
+                return cluster_cls
+
+        return cls
 
     def deserialize(
         self, data: bytes
@@ -731,39 +738,50 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         hdr, data = foundation.ZCLHeader.deserialize(data)
         self.debug("Decoded ZCL frame header: %r", hdr)
 
+        response = self.parse_command(hdr, data)
+        self.debug("Decoded ZCL frame: %s:%r", type(self).__name__, response)
+
+        # Commands without a definition have always been returned as bytes
+        if isinstance(response, foundation.UnknownCommand):
+            return hdr, response.data
+
+        return hdr, response
+
+    @classmethod
+    def parse_command(cls, hdr: foundation.ZCLHeader, data: bytes) -> CommandSchema:
+        """Parse a ZCL payload with this cluster's definitions, without an instance."""
         if hdr.frame_control.frame_type == foundation.FrameType.CLUSTER_COMMAND:
-            # Cluster command
             if hdr.direction == foundation.Direction.Server_to_Client:
-                commands = self.client_commands
+                commands = cls.client_commands
             else:
-                commands = self.server_commands
+                commands = cls.server_commands
 
             if hdr.command_id not in commands:
-                self.debug(
+                LOGGER.debug(
                     "Unknown cluster command %s %r", hdr.command_id, data.hex(" ")
                 )
-                return hdr, data
+                return foundation.UnknownCommand(data=data)
 
             command = commands[hdr.command_id]
         else:
-            # General command
             if hdr.command_id not in foundation.GENERAL_COMMANDS:
-                self.debug(
+                LOGGER.debug(
                     "Unknown foundation command %s %r", hdr.command_id, data.hex(" ")
                 )
-                return hdr, data
+                return foundation.UnknownCommand(data=data)
 
-            command_id = foundation.GeneralCommand(hdr.command_id)
-            command = foundation.GENERAL_COMMANDS[command_id]
+            command = foundation.GENERAL_COMMANDS[
+                foundation.GeneralCommand(hdr.command_id)
+            ]
 
         response, data = command.schema.deserialize(data)
 
-        self.debug("Decoded ZCL frame: %s:%r", type(self).__name__, response)
-
         if data:
-            self.debug("Data remains after deserializing ZCL frame: %r", data.hex(" "))
+            LOGGER.debug(
+                "Data remains after deserializing ZCL frame: %r", data.hex(" ")
+            )
 
-        return hdr, response
+        return response
 
     def _create_request(
         self,

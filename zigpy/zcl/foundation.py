@@ -1333,6 +1333,31 @@ class WriteAttributesStructuredResponse(CommandSchema):
     status_records: WriteAttributesStructuredResponseRecords
 
 
+class UnknownCommand(CommandSchema):
+    """Payload of a ZCL command without a definition, or that failed to parse."""
+
+    # There is no `command` definition, the command ID is only in the header
+    data: t.Bytes
+
+
+class MalformedCommand(UnknownCommand):
+    """Payload of a ZCL command that its definition failed to parse."""
+
+    # Not a field, it is neither serialized nor compared
+    error: Exception | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class ZCLCommand:
+    """A ZCL frame: a header and its payload."""
+
+    header: ZCLHeader
+    command: CommandSchema
+
+    def serialize(self) -> bytes:
+        return self.header.serialize() + self.command.serialize()
+
+
 # Kept for backwards compatibility
 WriteAttributesResponseSchema = WriteAttributesResponse
 ConfigureReportingResponseSchema = ConfigureReportingResponse

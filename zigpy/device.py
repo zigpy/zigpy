@@ -36,6 +36,7 @@ import zigpy.endpoint
 from zigpy.event import EventBase
 import zigpy.exceptions
 from zigpy.exceptions import DeliveryError
+import zigpy.frames
 import zigpy.listeners
 from zigpy.ota.manager import update_firmware
 from zigpy.profiles import zha, zll
@@ -1683,14 +1684,6 @@ class ZigbeeDevice(BaseDevice):
         else:
             return endpoint, zcl_cluster
 
-    def _parse_packet_command(
-        self, packet: t.ZigbeePacket, endpoint: typing.Any, zcl_cluster: Cluster
-    ) -> typing.Any:
-        """Deserialize packet data."""
-        _, cmd = zcl_cluster.deserialize(packet.data.serialize())
-
-        return cmd
-
     def _maybe_match_response(
         self, rsp_key: ResponseKey, cmd: typing.Any | None, error: Exception | None
     ) -> bool:
@@ -1722,8 +1715,63 @@ class ZigbeeDevice(BaseDevice):
 
         return True
 
+    def parse_frame(self, packet: t.ZigbeePacket) -> zigpy.frames.Frame:
+        """Parse a packet with this device's definitions, including its quirk's."""
+        if packet.src_ep == zdo.ZDO_ENDPOINT:
+            return zigpy.frames.parse_frame(packet)
+
+        try:
+            hdr, _ = self._parse_packet_header(packet)
+        except ValueError as exc:
+            self.debug("Failed to parse ZCL header of packet %r", packet)
+            return zigpy.frames.RawFrame(packet=packet, error=exc)
+
+        if hdr is None:
+            return zigpy.frames.RawFrame(packet=packet)
+
+        data = packet.data.serialize()
+        _, zcl_cluster = self._match_packet_endpoint_cluster(packet, hdr)
+
+        if zcl_cluster is None:
+            # Not a cluster of this device, parse it with the standard definitions
+            _, payload = foundation.ZCLHeader.deserialize(data)
+
+            return zigpy.frames.ZCLFrame(
+                packet=packet,
+                command=zigpy.frames.parse_standard_zcl(
+                    packet.cluster_id, hdr, payload
+                ),
+            )
+
+        try:
+            _, cmd = zcl_cluster.deserialize(data)
+        except Exception as exc:  # noqa: BLE001
+            self.debug("Failed to parse packet %r", packet, exc_info=exc)
+
+            _, payload = foundation.ZCLHeader.deserialize(data)
+            malformed = foundation.MalformedCommand(data=payload)
+            malformed.error = exc
+
+            return zigpy.frames.ZCLFrame(
+                packet=packet,
+                command=foundation.ZCLCommand(header=hdr, command=malformed),
+            )
+
+        # `Cluster.deserialize` returns commands without a definition as bytes
+        if isinstance(cmd, bytes):
+            cmd = foundation.UnknownCommand(data=cmd)
+
+        return zigpy.frames.ZCLFrame(
+            packet=packet, command=foundation.ZCLCommand(header=hdr, command=cmd)
+        )
+
     def packet_received(self, packet: t.ZigbeePacket) -> None:
         """Process received packet through the device's packet handling pipeline."""
+        self.frame_received(self.parse_frame(packet))
+
+    def frame_received(self, frame: zigpy.frames.Frame) -> None:
+        """Handle a frame from `parse_frame`."""
+        packet = frame.packet
         self.last_seen = packet.timestamp
 
         if packet.lqi is not None:
@@ -1738,30 +1786,36 @@ class ZigbeeDevice(BaseDevice):
             return
 
         # ZDO frames are matched and answered by the application
-        if packet.src_ep == zdo.ZDO_ENDPOINT:
+        if isinstance(frame, zigpy.frames.ZDOFrame):
             return
 
-        # Parse packet header and create response key
+        if isinstance(frame, zigpy.frames.RawFrame):
+            # A frame with an error is malformed, not of a custom profile
+            if frame.error is None:
+                self.custom_profile_packet_received(packet)
+
+            return
+
         hdr, rsp_key = self._parse_packet_header(packet)
-        if hdr is None:
-            self.custom_profile_packet_received(packet)
+        assert hdr is not None
+        assert rsp_key is not None
+
+        # Only frames for this device's clusters are handled
+        _, zcl_cluster = self._match_packet_endpoint_cluster(packet, hdr)
+
+        if zcl_cluster is None:
             return
 
-        # Validate packet routing and find target endpoint/cluster
-        endpoint, zcl_cluster = self._match_packet_endpoint_cluster(packet, hdr)
-        if endpoint is None:
-            return
+        cmd: typing.Any = frame.command.command
+        error = None
 
-        # Deserialize packet data
-        try:
-            cmd = self._parse_packet_command(packet, endpoint, zcl_cluster)
-        except Exception as exc:  # noqa: BLE001
-            cmd = None
+        if isinstance(cmd, foundation.MalformedCommand):
             error = zigpy.exceptions.ParsingError()
-            error.__cause__ = exc
-            self.debug("Failed to parse packet %r", packet, exc_info=error)
-        else:
-            error = None
+            error.__cause__ = cmd.error
+            cmd = None
+        elif isinstance(cmd, foundation.UnknownCommand):
+            # Handlers have always received commands without a definition as bytes
+            cmd = cmd.data
 
         # Handle response matching for pending requests
         if self._maybe_match_response(rsp_key, cmd, error):
