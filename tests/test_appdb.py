@@ -3950,6 +3950,8 @@ async def test_device_store_survives_reinterview(tmp_path) -> None:
     ep2.device_type = profiles.zha.DeviceType.PUMP
     ep2.add_input_cluster(Basic.cluster_id)
 
+    app2.devices[ieee] = shadow
+
     await app2._device_reinterviewed(old_dev, shadow)
     new_dev = app2.get_device(ieee)
     assert new_dev is not old_dev
