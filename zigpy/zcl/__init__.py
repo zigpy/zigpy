@@ -1176,26 +1176,11 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         return self._get_effective_manufacturer_code(attr_def)
 
     def migrate_attribute_cache_row(self, row: AttributeCacheRow, value: Any) -> bool:
-        """Migrate the stored value of an attribute this cluster no longer defines.
+        """Migrate the cached value of an attribute this cluster no longer defines.
 
-        Quirks override this to carry the value of an attribute they used to invent
-        into the place that replaced it, such as the device's store. It is called once
-        per row while the database is loaded, only for devices a quirk was applied to,
-        once their store has been loaded, and only for rows that hold a value of an
-        attribute ID the cluster defines under no manufacturer code. `value` is decoded
-        with the row's stored data type, or as stored for rows from before data types
-        were stored; rows of a type that only the attribute definition can decode are
-        not offered.
-
-        It runs in the middle of the load: the attribute caches of other clusters and
-        devices may not be populated yet, groups and the rest of the network state are
-        not loaded, and the device is not initialized. Only the device's store should be
-        relied on. Store writes made here are written by the load, before the migrated
-        rows are deleted.
-
-        Return `True` if the row was migrated, which deletes it from the database, so
-        that a later quirk without the migration cannot load it as current. An
-        exception is logged and keeps the row.
+        Called while the database loads, only for quirked devices and only for rows of
+        attribute IDs the cluster does not define. Only the device's store should be
+        relied on. Return `True` if the row was migrated, which deletes it.
         """
         return False
 
@@ -1240,7 +1225,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         Returns the attribute definition and value, if the row is a known attribute.
         """
         new_row, loaded = self._read_attribute_cache_row(
-            row, existing_keys, result, migrate=migrate
+            row, existing_keys, migrate=migrate
         )
 
         if new_row != row:
@@ -1252,7 +1237,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         self,
         row: AttributeCacheRow,
         existing_keys: set[tuple],
-        result: AttributeCacheLoadResult,
         *,
         migrate: bool,
     ) -> tuple[AttributeCacheRow | None, tuple[foundation.ZCLAttributeDef, Any] | None]:
@@ -1317,7 +1301,6 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
                 and not self._defines_attribute_id(row.attr_id)
                 and self._migrate_attribute_cache_row(row, value)
             ):
-                result.migrated.append(row)
                 return None, None
 
             self._attr_cache.set_legacy_value(

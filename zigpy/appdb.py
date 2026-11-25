@@ -53,7 +53,6 @@ from zigpy.zcl.clusters.general import Ota
 from zigpy.zcl.foundation import Status
 from zigpy.zcl.helpers import (
     UNMIGRATED_MANUFACTURER_CODE,
-    AttributeCacheLoadResult,
     AttributeCacheRow,
     AttributeCacheRowChange,
 )
@@ -168,10 +167,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 self.on_network_store_value_deleted,
             ),
         ]
-
-        # Store writes held back from the worker while `load()` runs quirks, which it
-        # writes in its own transaction
-        self._held_store_writes: list[tuple[str, Any]] | None = None
 
     async def initialize_tables(self) -> None:
         async with self.execute("PRAGMA integrity_check") as cursor:
@@ -928,19 +923,10 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 rows,
             )
 
-    def _enqueue_store_write(self, cb_name: str, event: Any) -> None:
-        if self._held_store_writes is not None:
-            self._held_store_writes.append((cb_name, event))
-            return
-
-        self.enqueue(cb_name, event)
-
     def on_store_value_updated(self, event: StoreValueUpdatedEvent) -> None:
-        self._enqueue_store_write("_save_store_value", event)
+        self.enqueue("_save_store_value", event)
 
-    async def _save_store_value(
-        self, event: StoreValueUpdatedEvent, *, commit: bool = True
-    ) -> None:
+    async def _save_store_value(self, event: StoreValueUpdatedEvent) -> None:
         # A value can be set before its device is saved (during joining, by a quirk, or
         # for a device that never finishes initializing). There is no row to reference
         # yet, so the value is written by the device save instead.
@@ -972,30 +958,26 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 event.device_ieee,
             )
 
-        if commit:
-            await self._commit()
+        await self._commit()
 
     def on_store_value_deleted(self, event: StoreValueDeletedEvent) -> None:
-        self._enqueue_store_write("_delete_store_value", event)
+        self.enqueue("_delete_store_value", event)
 
-    async def _delete_store_value(
-        self, event: StoreValueDeletedEvent, *, commit: bool = True
-    ) -> None:
+    async def _delete_store_value(self, event: StoreValueDeletedEvent) -> None:
         await self.execute(
             f"DELETE FROM device_store{DB_V} WHERE ieee = ? AND namespace = ? AND key = ?",
             (event.device_ieee, event.namespace, event.key),
         )
 
-        if commit:
-            await self._commit()
+        await self._commit()
 
     def on_network_store_value_updated(
         self, event: NetworkStoreValueUpdatedEvent
     ) -> None:
-        self._enqueue_store_write("_save_network_store_value", event)
+        self.enqueue("_save_network_store_value", event)
 
     async def _save_network_store_value(
-        self, event: NetworkStoreValueUpdatedEvent, *, commit: bool = True
+        self, event: NetworkStoreValueUpdatedEvent
     ) -> None:
         await self.execute(
             f"""INSERT INTO network_store{DB_V}
@@ -1014,24 +996,22 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             ),
         )
 
-        if commit:
-            await self._commit()
+        await self._commit()
 
     def on_network_store_value_deleted(
         self, event: NetworkStoreValueDeletedEvent
     ) -> None:
-        self._enqueue_store_write("_delete_network_store_value", event)
+        self.enqueue("_delete_network_store_value", event)
 
     async def _delete_network_store_value(
-        self, event: NetworkStoreValueDeletedEvent, *, commit: bool = True
+        self, event: NetworkStoreValueDeletedEvent
     ) -> None:
         await self.execute(
             f"DELETE FROM network_store{DB_V} WHERE namespace = ? AND key = ?",
             (event.namespace, event.key),
         )
 
-        if commit:
-            await self._commit()
+        await self._commit()
 
     def register_gp_device_events(self, device: GreenPowerDevice) -> None:
         device.on_event(
@@ -1164,36 +1144,6 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         for ieee, rows in attribute_rows.items():
             self._application.get_device(ieee).load_attribute_cache(rows)
 
-        # Quirks and attribute row migrations below can write to the stores. Those
-        # writes are held back from the worker, whose commit could otherwise land in the
-        # middle of the transaction below, and are written by that transaction instead.
-        self._held_store_writes = []
-
-        try:
-            await self._resolve_and_load_attribute_cache(attribute_rows)
-        finally:
-            # Writes not written by the transaction are left to the worker
-            held, self._held_store_writes = self._held_store_writes, None
-
-            for cb_name, event in held:
-                self.enqueue(cb_name, event)
-
-        await self._load_groups()
-        await self._load_group_members()
-        await self._load_relays()
-        await self._load_neighbors()
-        await self._load_routes()
-        await self._load_network_backups()
-        await self._load_ota_query_cache()
-
-        await self._commit(force=True)
-
-        await self._register_device_listeners()
-
-    async def _resolve_and_load_attribute_cache(
-        self, attribute_rows: dict[t.EUI64, list[AttributeCacheRow]]
-    ) -> dict[t.EUI64, AttributeCacheLoadResult]:
-        """Apply quirks, load the final attribute caches and write the row changes."""
         # Devices a quirk was applied to
         quirked: set[t.EUI64] = set()
 
@@ -1218,92 +1168,31 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     cluster._attr_cache.clear()
 
         # Second pass: populate the caches of the final clusters. Only their attribute
-        # definitions decide how rows should be rewritten. Quirk clusters can migrate
-        # rows of attributes they no longer define; a device loaded without its quirk
-        # (no resolver, or a failing quirk) has no definitions to decide that by.
-        results = {
-            ieee: self._application.get_device(ieee).load_attribute_cache(
+        # definitions decide how rows should be rewritten. Only quirked devices can
+        # migrate rows of attributes they no longer define.
+        results = [
+            self._application.get_device(ieee).load_attribute_cache(
                 rows, migrate=ieee in quirked
             )
             for ieee, rows in attribute_rows.items()
-        }
+        ]
 
-        assert self._held_store_writes is not None
-        held, self._held_store_writes = self._held_store_writes, []
+        async with self._transaction():
+            for result in results:
+                for change in result.changes:
+                    await self._replace_attribute_cache_row(change)
 
-        try:
-            async with self._transaction():
-                # Migrated values are written before the rows they came from are
-                # deleted. If that fails, or a device's store is closed (it ignored the
-                # writes), the rows are kept and migrated again at the next start.
-                writes_failed = not await self._write_held_store_writes(held)
+        await self._load_groups()
+        await self._load_group_members()
+        await self._load_relays()
+        await self._load_neighbors()
+        await self._load_routes()
+        await self._load_network_backups()
+        await self._load_ota_query_cache()
 
-                if not self._db.in_transaction:
-                    # The failed write rolled back the whole transaction, with the
-                    # held writes before it. The worker writes them all after the
-                    # load instead, and a new transaction takes the row changes.
-                    LOGGER.warning(
-                        "The load transaction was rolled back, leaving %d store"
-                        " writes to the worker",
-                        len(held),
-                    )
-                    self._held_store_writes[:0] = held
-                    held = []
-                    await self.execute("BEGIN TRANSACTION")
+        await self._commit(force=True)
 
-                for ieee, result in results.items():
-                    keep_migrated = writes_failed or (
-                        bool(result.migrated) and self._store_closed(ieee)
-                    )
-
-                    for change in result.changes:
-                        if keep_migrated and change.old in result.migrated:
-                            continue
-
-                        await self._replace_attribute_cache_row(change)
-        except Exception:
-            self._held_store_writes[:0] = held
-            raise
-
-        return results
-
-    def _store_closed(self, ieee: t.EUI64) -> bool:
-        store = self._application.device_stores.get(ieee)
-
-        if store is None or not store.closed:
-            return False
-
-        LOGGER.warning(
-            "Keeping migrated attribute rows of %s, its store is closed", ieee
-        )
-        return True
-
-    async def _write_held_store_writes(self, held: list[tuple[str, Any]]) -> bool:
-        """Write held store writes in the open transaction. Returns whether all did.
-
-        Some SQLite errors (`SQLITE_FULL`, `SQLITE_IOERR`, ...) can roll back the whole
-        transaction instead of only the failed statement. The writes stop there: the
-        next one would silently start a new transaction for the rest.
-        """
-        ok = True
-
-        for cb_name, event in held:
-            try:
-                await getattr(self, cb_name)(event, commit=False)
-            except Exception:  # noqa: BLE001
-                LOGGER.warning(
-                    "Failed to write %s/%s to the database, keeping migrated attribute"
-                    " rows",
-                    event.namespace,
-                    event.key,
-                    exc_info=True,
-                )
-                ok = False
-
-                if not self._db.in_transaction:
-                    break
-
-        return ok
+        await self._register_device_listeners()
 
     def _get_zigbee_device(self, ieee: t.EUI64) -> Device:
         device = self._application.get_device(ieee)

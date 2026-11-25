@@ -4331,17 +4331,6 @@ class ManufacturerSpecificBasic(MigratingBasic):
         custom = ZCLAttributeDef(id=0x7777, type=t.uint16_t, manufacturer_code=0x1234)
 
 
-class ClosingMigrationBasic(Basic):
-    """A migration whose store is closed, so its write is ignored."""
-
-    _skip_registry = True
-
-    def migrate_attribute_cache_row(self, row, value) -> bool:
-        self.endpoint.device.store.close()
-        self.endpoint.device.store[MIGRATED_VALUE] = value
-        return True
-
-
 class FailingMigrationBasic(Basic):
     _skip_registry = True
 
@@ -4409,11 +4398,10 @@ async def test_attribute_row_migrated(
     assert dev2.store[MIGRATED_VALUE] == 5
     assert dev2.endpoints[1].basic._attr_cache.get(0x7777) is None
 
-    # The load commits the store row and the deletion together
+    await app2.shutdown()
+
     assert _count_store_rows(db, dev.ieee) == 1
     assert _read_attr_row(db, Basic.cluster_id, 0x7777) is None
-
-    await app2.shutdown()
 
     # Loading without the quirk, as after a downgrade, does not bring the row back
     app3 = await make_app_with_db(db)
@@ -4509,11 +4497,8 @@ async def test_attribute_row_migration_error(tmp_path, caplog) -> None:
     assert _read_attr_row(db, Basic.cluster_id, 0x7777) == (5, None)
 
 
-@pytest.mark.parametrize("commit_interval", [None, 0])
-async def test_attribute_row_migration_in_load_transaction(
-    tmp_path, commit_interval
-) -> None:
-    """Migrated values are written by the load itself, not queued for the worker."""
+async def test_attribute_rows_migrated(tmp_path) -> None:
+    """Several rows of a device migrate in one load."""
     db = tmp_path / "test.db"
     app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
     await app.shutdown()
@@ -4521,28 +4506,14 @@ async def test_attribute_row_migration_in_load_transaction(
     _insert_attr_row(db, 0x7777, 5)
     _insert_attr_row(db, 0x7776, 6)
 
-    enqueued = []
-    enqueue = zigpy.appdb.PersistingListener.enqueue
+    app2 = await make_app_with_db(db, device_resolver=_quirk_resolver(MigratingBasic))
 
-    def spy(listener, cb_name, *args):
-        enqueued.append(cb_name)
-        enqueue(listener, cb_name, *args)
+    app2.get_device(dev.ieee).store[MIGRATED_VALUE] = 7
+    await app2.shutdown()
 
-    with patch.object(zigpy.appdb.PersistingListener, "enqueue", spy):
-        app2 = await make_app_with_db(
-            db,
-            device_resolver=_quirk_resolver(MigratingBasic),
-            commit_interval=commit_interval,
-        )
-
-    assert "_save_store_value" not in enqueued
     assert _count_store_rows(db, dev.ieee) == 2
     assert _read_attr_row(db, Basic.cluster_id, 0x7777) is None
     assert _read_attr_row(db, Basic.cluster_id, 0x7776) is None
-
-    # Writes after the load reach the database through the worker again
-    app2.get_device(dev.ieee).store[MIGRATED_VALUE] = 7
-    await app2.shutdown()
 
     app3 = await make_app_with_db(db)
     dev3 = app3.get_device(dev.ieee)
@@ -4568,143 +4539,3 @@ async def test_attribute_row_not_offered_if_defined_under_other_code(
     await app2.shutdown()
 
     assert _read_attr_row(db, Basic.cluster_id, 0x7777) == (5, None)
-
-
-async def test_attribute_row_migration_load_transaction_fails(tmp_path) -> None:
-    """A failed load keeps the row and leaves the held store writes to the worker."""
-    db = tmp_path / "test.db"
-    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
-    await app.shutdown()
-
-    _insert_attr_row(db, 0x7777, 5)
-
-    app2 = make_app({conf.CONF_DATABASE: str(db)})
-    app2.register_device_resolver(_quirk_resolver(MigratingBasic))
-
-    with (
-        patch.object(
-            zigpy.appdb.PersistingListener,
-            "_replace_attribute_cache_row",
-            side_effect=sqlite3.OperationalError("Broken"),
-        ),
-        pytest.raises(sqlite3.OperationalError, match="Broken"),
-    ):
-        await app2._load_db()
-
-    # The transaction was rolled back, so the migrated value is written by the worker
-    await app2.shutdown()
-
-    assert _read_attr_row(db, Basic.cluster_id, 0x7777) == (5, None)
-    assert _count_store_rows(db, dev.ieee) == 1
-
-
-@pytest.mark.parametrize("failure", ["write", "closed"])
-async def test_attribute_row_kept_if_value_not_saved(tmp_path, caplog, failure) -> None:
-    """Rows are kept, to be migrated again, if their value does not reach the database."""
-    db = tmp_path / "test.db"
-    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
-    await app.shutdown()
-
-    _insert_attr_row(db, 0x7777, 5)
-
-    if failure == "write":
-        resolver = _quirk_resolver(MigratingBasic)
-        save = patch.object(
-            zigpy.appdb.PersistingListener,
-            "_save_store_value",
-            side_effect=sqlite3.OperationalError("Broken"),
-        )
-        message = "Failed to write quirk:test/migrated"
-    else:
-        resolver = _quirk_resolver(ClosingMigrationBasic)
-        save = contextlib.nullcontext()
-        message = "its store is closed"
-
-    with save, caplog.at_level(logging.WARNING):
-        app2 = await make_app_with_db(db, device_resolver=resolver)
-
-    assert message in caplog.text
-    assert _read_attr_row(db, Basic.cluster_id, 0x7777) == (5, None)
-    assert _count_store_rows(db, dev.ieee) == 0
-
-    await app2.shutdown()
-
-
-NETWORK_MIGRATED_VALUE = StoredValue(namespace="quirk:test", key="network", type=str)
-
-
-class NetworkMigratingBasic(MigratingBasic):
-    """Also moves attribute 0x7775 to the network store."""
-
-    def migrate_attribute_cache_row(self, row, value) -> bool:
-        if row.attr_id != 0x7775:
-            return super().migrate_attribute_cache_row(row, value)
-
-        network_store = self.endpoint.device.application.network_store
-        network_store[NETWORK_MIGRATED_VALUE] = "x" * 200_000
-        return True
-
-
-async def test_attribute_row_migration_transaction_rolled_back(
-    tmp_path, caplog
-) -> None:
-    """A write error that rolls back the whole load transaction does not fail the load.
-
-    A full database rolls back the whole transaction when a single-row upsert, like the
-    network store's, fails. The held writes go to the worker and the rows are kept.
-    """
-    db = tmp_path / "test.db"
-    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
-    await app.shutdown()
-
-    _insert_attr_row(db, 0x7777, 5)
-    _insert_attr_row(db, 0x7775, 6)
-
-    save_network_value = zigpy.appdb.PersistingListener._save_network_store_value
-    in_transaction = []
-
-    async def save_with_full_database(listener, event, **kwargs):
-        if in_transaction:
-            # The worker's write later succeeds
-            await save_network_value(listener, event, **kwargs)
-            return
-
-        # No page can be added while the value is written
-        async with listener.execute("PRAGMA page_count") as cursor:
-            (page_count,) = await cursor.fetchone()
-
-        await listener.execute(f"PRAGMA max_page_count = {page_count}")
-
-        try:
-            await save_network_value(listener, event, **kwargs)
-        finally:
-            in_transaction.append(listener._db.in_transaction)
-            await listener.execute("PRAGMA max_page_count = 1073741823")
-
-    with (
-        patch.object(
-            zigpy.appdb.PersistingListener,
-            "_save_network_store_value",
-            save_with_full_database,
-        ),
-        caplog.at_level(logging.WARNING),
-    ):
-        app2 = await make_app_with_db(
-            db, device_resolver=_quirk_resolver(NetworkMigratingBasic)
-        )
-
-        # The write during the load rolled back the transaction. SQLite does so for a
-        # single-row upsert, which it runs without a statement journal.
-        assert in_transaction == [False]
-        assert "database or disk is full" in caplog.text
-        assert "The load transaction was rolled back" in caplog.text
-
-        # Both rows are kept, to be migrated again
-        assert _read_attr_row(db, Basic.cluster_id, 0x7777) == (5, None)
-        assert _read_attr_row(db, Basic.cluster_id, 0x7775) == (6, None)
-
-        # The worker writes the held writes, the rolled back device store value too
-        await app2.shutdown()
-
-    assert _count_store_rows(db, dev.ieee) == 1
-    assert len(_network_store_rows(db)) == 1

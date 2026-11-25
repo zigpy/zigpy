@@ -66,9 +66,6 @@ class AttributeCacheLoadResult:
 
     changes: list[AttributeCacheRowChange] = field(default_factory=list)
 
-    # Rows of undefined attributes that a cluster migrated, deleted through `changes`
-    migrated: list[AttributeCacheRow] = field(default_factory=list)
-
 
 def _convert_attribute_value(attr_def: ZCLAttributeDef, type_value: TypeValue) -> Any:
     """Convert a received attribute value into the attribute's declared type."""
