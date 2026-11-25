@@ -49,16 +49,16 @@ def ieee():
 
 async def test_permit(app, ieee):
     app.devices[ieee] = MagicMock()
-    app.devices[ieee].zdo.permit = AsyncMock()
+    app.devices[ieee].permit = AsyncMock()
     app.permit_ncp = AsyncMock()
     await app.permit(node=(1, 1, 1, 1, 1, 1, 1, 1))
-    assert app.devices[ieee].zdo.permit.call_count == 0
+    assert app.devices[ieee].permit.call_count == 0
     assert app.permit_ncp.call_count == 0
     await app.permit(node=ieee)
-    assert app.devices[ieee].zdo.permit.call_count == 1
+    assert app.devices[ieee].permit.call_count == 1
     assert app.permit_ncp.call_count == 0
     await app.permit(node=NCP_IEEE)
-    assert app.devices[ieee].zdo.permit.call_count == 1
+    assert app.devices[ieee].permit.call_count == 1
     assert app.permit_ncp.call_count == 1
 
 
@@ -90,7 +90,7 @@ async def test_permit_delivery_failure(app, ieee):
         raise DeliveryError("Failed")
 
     app.devices[ieee] = MagicMock()
-    app.devices[ieee].zdo.permit = zdo_permit
+    app.devices[ieee].permit = zdo_permit
     app.permit_ncp = AsyncMock()
     await app.permit(node=ieee)
     assert app.permit_ncp.call_count == 0
@@ -120,7 +120,7 @@ async def test_handle_join_green_power_alias(app):
 async def test_permit_opens_gp_window(app, node):
     """GP commissioning is network-wide, even when joining is limited to one node."""
     app.devices[make_ieee()] = MagicMock()
-    app.devices[make_ieee()].zdo.permit = AsyncMock()
+    app.devices[make_ieee()].permit = AsyncMock()
     app.permit_ncp = AsyncMock()
     app.send_packet = AsyncMock()
 
@@ -184,8 +184,7 @@ async def _remove(
     device = MagicMock(spec=zigpy.device.ZigbeeDevice)
     device.ieee = ieee
     device.nwk = 0x1234
-    device.zdo = MagicMock()
-    device.zdo.leave.side_effect = leave
+    device.leave = AsyncMock(side_effect=leave)
 
     if has_node_desc:
         device.node_desc = zdo_t.NodeDescriptor(1, 64, 142, 4388, 82, 255, 0, 255, 0)
@@ -316,7 +315,7 @@ async def test_remove_tears_down_replacement_device(app, ieee):
         await leave_finished.wait()
         return [zdo_t.Status.SUCCESS]
 
-    old_dev.zdo.leave = AsyncMock(side_effect=leave)
+    old_dev.leave = AsyncMock(side_effect=leave)
 
     await app.remove(ieee)
     await leave_started.wait()
@@ -505,7 +504,10 @@ def test_props(app):
         (True, zdo_c.LeaveOptions.RemoveChildren | zdo_c.LeaveOptions.Rejoin),
     ],
 )
-async def test_remove_parent_devices(app, make_initialized_device, rejoin, options):
+@pytest.mark.parametrize("parent_error", [None, DeliveryError("Failed")])
+async def test_remove_parent_devices(
+    app, make_initialized_device, rejoin, options, parent_error
+):
     """Test removing an end device with parents."""
 
     end_device = make_initialized_device(app)
@@ -534,13 +536,13 @@ async def test_remove_parent_devices(app, make_initialized_device, rejoin, optio
         make_neighbor(ieee=make_ieee(123), nwk=0x9876),
     ]
 
-    p1 = patch.object(end_device.zdo, "leave", AsyncMock())
+    p1 = patch.object(end_device, "leave", AsyncMock())
     p2 = patch.object(end_device, "send_zdo_command", AsyncMock())
-    p3 = patch.object(parent.zdo, "leave", AsyncMock())
-    p4 = patch.object(parent, "send_zdo_command", AsyncMock())
-    p5 = patch.object(router_1.zdo, "leave", AsyncMock())
+    p3 = patch.object(parent, "leave", AsyncMock())
+    p4 = patch.object(parent, "send_zdo_command", AsyncMock(side_effect=parent_error))
+    p5 = patch.object(router_1, "leave", AsyncMock())
     p6 = patch.object(router_1, "send_zdo_command", AsyncMock())
-    p7 = patch.object(router_2.zdo, "leave", AsyncMock())
+    p7 = patch.object(router_2, "leave", AsyncMock())
     p8 = patch.object(router_2, "send_zdo_command", AsyncMock())
 
     with p1, p2, p3, p4, p5, p6, p7, p8:
@@ -548,13 +550,13 @@ async def test_remove_parent_devices(app, make_initialized_device, rejoin, optio
         for _i in range(1, 60):
             await asyncio.sleep(0)
 
-        assert end_device.zdo.leave.await_count == 1
+        assert end_device.leave.await_count == 1
         assert end_device.send_zdo_command.await_count == 0
-        assert router_1.zdo.leave.await_count == 0
+        assert router_1.leave.await_count == 0
         assert router_1.send_zdo_command.await_count == 0
-        assert router_2.zdo.leave.await_count == 0
+        assert router_2.leave.await_count == 0
         assert router_2.send_zdo_command.await_count == 0
-        assert parent.zdo.leave.await_count == 0
+        assert parent.leave.await_count == 0
         assert parent.send_zdo_command.mock_calls == [
             call(
                 zdo_c.MgmtLeaveReq(device_address=end_device.ieee, options=options),

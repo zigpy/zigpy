@@ -557,7 +557,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             await self._save_node_descriptor(device)
 
         await self._save_endpoints(device)
-        for ep in device.non_zdo_endpoints:
+        for ep in device.endpoints.values():
             await self._save_clusters(ep)
             await self._save_attribute_cache(ep)
             await self._save_unsupported_attributes(ep)
@@ -574,7 +574,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                 ep.device_type,
                 ep.status,
             )
-            for ep in device.non_zdo_endpoints
+            for ep in device.endpoints.values()
         ]
 
         q = f"""INSERT INTO endpoints{DB_V} VALUES (?, ?, ?, ?, ?)
@@ -699,7 +699,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
     async def _save_ota_query_cache(self, device: Device) -> None:
         rows = []
-        for ep in device.non_zdo_endpoints:
+        for ep in device.endpoints.values():
             for cluster in ep.clusters:
                 if isinstance(cluster, Ota) and cluster.last_query_cmd is not None:
                     cmd = cluster.last_query_cmd
@@ -1160,7 +1160,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
 
         # Clear the attribute cache to ensure the quirked state is correct
         for device in self._application.devices.values():
-            for ep in device.non_zdo_endpoints:
+            for ep in device.endpoints.values():
                 for cluster in ep.in_clusters.values():
                     cluster._attr_cache.clear()
 

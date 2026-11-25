@@ -720,7 +720,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
 
         # Collect group memberships and remove old endpoints from groups
         old_group_memberships: dict[int, set[int]] = {}
-        for ep in old_device.non_zdo_endpoints:
+        for ep in old_device.endpoints.values():
             if ep.member_of:
                 old_group_memberships[ep.endpoint_id] = set(ep.member_of)
                 for group in list(ep.member_of.values()):
@@ -849,16 +849,26 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
                 opts = zdo_commands.LeaveOptions.RemoveChildren
                 if rejoin:
                     opts |= zdo_commands.LeaveOptions.Rejoin
-                parent.zdo.create_catching_task(
-                    parent.send_zdo_command(
-                        zdo_commands.MgmtLeaveReq(
-                            device_address=dev.ieee, options=opts
-                        ),
-                        response_type=zdo_commands.MgmtLeaveRsp,
-                    )
+                parent.create_task(
+                    self._ask_parent_to_remove_child(parent, dev.ieee, opts),
+                    name=f"remove_child_{dev.ieee}_from_parent_{parent.ieee}",
                 )
 
         self.listener_event("device_removed", dev)
+
+    async def _ask_parent_to_remove_child(
+        self,
+        parent: ZigbeeDevice,
+        ieee: t.EUI64,
+        options: zdo_commands.LeaveOptions,
+    ) -> None:
+        try:
+            await parent.send_zdo_command(
+                zdo_commands.MgmtLeaveReq(device_address=ieee, options=options),
+                response_type=zdo_commands.MgmtLeaveRsp,
+            )
+        except (TimeoutError, zigpy.exceptions.ZigbeeException) as exc:
+            LOGGER.debug("Parent %s failed to remove %s: %r", parent, ieee, exc)
 
     async def _remove_device(
         self,
@@ -873,7 +883,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
                 if device.node_desc is not None and device.node_desc.is_end_device
                 else 7
             ):
-                await device.zdo.leave(remove_children=remove_children, rejoin=rejoin)
+                await device.leave(remove_children=remove_children, rejoin=rejoin)
         except (TimeoutError, zigpy.exceptions.DeliveryError) as ex:
             LOGGER.debug("Sending 'zdo_leave_req' failed: %s", ex)
 
@@ -1660,7 +1670,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             packet.dst_ep == 0
             or device.all_endpoints_init
             or (
-                device.has_non_zdo_endpoints
+                device.endpoints
                 and packet.cluster_id
                 in (
                     zigpy.zcl.clusters.general.Basic.cluster_id,
@@ -2106,7 +2116,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             if node != self.state.node_info.ieee:
                 try:
                     dev = self.get_device(ieee=node)
-                    r = await dev.zdo.permit(time_s)
+                    r = await dev.permit(time_s)
                     LOGGER.debug("Sent 'mgmt_permit_joining_req' to %s: %s", node, r)
                 except KeyError:
                     LOGGER.warning("Device '%s' not found", node)

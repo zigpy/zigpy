@@ -221,7 +221,7 @@ async def test_migration_bad_attributes(test_db, corrupt_device):
 
     assert len(app.devices) == num_devices_before_migration
     assert (
-        sum(len(d.non_zdo_endpoints) for d in app.devices.values())
+        sum(len(d.endpoints.values()) for d in app.devices.values())
         == num_ep_before_migration - deleted_eps
     )
 
@@ -231,7 +231,7 @@ async def test_migration_bad_attributes(test_db, corrupt_device):
     # All devices still exist
     assert len(app2.devices) == num_devices_before_migration
     assert (
-        sum(len(d.non_zdo_endpoints) for d in app2.devices.values())
+        sum(len(d.endpoints.values()) for d in app2.devices.values())
         == num_ep_before_migration - deleted_eps
     )
 
@@ -606,7 +606,7 @@ async def test_manufacturer_code_migration_uses_device_manufacturer_id(test_db):
             return device
 
         new = device.clone()
-        for ep in new.non_zdo_endpoints:
+        for ep in new.endpoints.values():
             old = ep.in_clusters.pop(TestCluster.cluster_id, None)
             if old is None:
                 continue
@@ -704,7 +704,7 @@ async def test_data_migration_ambiguous_attributes(tmp_path):
             return device
 
         new = device.clone()
-        for ep in new.non_zdo_endpoints:
+        for ep in new.endpoints.values():
             for custom_cls in (DisambiguatedCluster, AmbiguousCluster):
                 old = ep.in_clusters.pop(custom_cls.cluster_id, None)
                 if old is None:

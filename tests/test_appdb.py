@@ -263,7 +263,7 @@ async def test_database(tmp_path):
     async def mockleave(*args, **kwargs):
         return [0]
 
-    app3.devices[ieee].zdo.leave = mockleave
+    app3.devices[ieee].leave = mockleave
     await app3.remove(ieee)
     for _i in range(1, 20):
         await asyncio.sleep(0)
@@ -1511,7 +1511,7 @@ async def test_appdb_custom_device_subclass_round_trip(tmp_path) -> None:
             self.manufacturer = replaces.manufacturer
             self.model = replaces.model
 
-            for endpoint in replaces.non_zdo_endpoints:
+            for endpoint in replaces.endpoints.values():
                 new_ep = self.add_endpoint(endpoint.endpoint_id)
                 new_ep.status = endpoint.status
                 new_ep.profile_id = endpoint.profile_id
@@ -3407,7 +3407,7 @@ async def test_reinterview_does_not_commit_mid_handler(tmp_path):
     # The re-interviewed device replaced the old one
     app2 = await make_app_with_db(db)
     dev2 = app2.get_device(old_dev.ieee)
-    assert list(dev2.non_zdo_endpoints) == [dev2.endpoints[2]]
+    assert list(dev2.endpoints.values()) == [dev2.endpoints[2]]
     assert Basic.cluster_id in dev2.endpoints[2].in_clusters
     await app2.shutdown()
 
@@ -4044,7 +4044,7 @@ async def test_reinterview_device_removed_with_leave_pending(tmp_path, order):
 
     with (
         patch.object(Device, "_discover", mock_discover),
-        patch("zigpy.zdo.ZDO.leave", mock_leave),
+        patch("zigpy.device.ZigbeeDevice.leave", mock_leave),
         patch.object(app, "listener_event", wraps=app.listener_event),
     ):
         reinterview = asyncio.create_task(dev.reinterview())
@@ -4113,7 +4113,7 @@ async def test_reinterview_device_removed_during_db_delete(tmp_path):
 
     with (
         patch.object(Device, "_discover", mock_discover),
-        patch("zigpy.zdo.ZDO.leave", mock_leave),
+        patch("zigpy.device.ZigbeeDevice.leave", mock_leave),
         patch.object(app._dblistener, "_remove_device", remove_during_delete),
         patch.object(app, "listener_event", wraps=app.listener_event),
     ):
@@ -4145,7 +4145,7 @@ async def test_device_store_closed_on_remove(tmp_path):
     await app._dblistener._callback_handlers.join()
     assert _count_store_rows(db, dev.ieee) == 1
 
-    dev.zdo.leave = AsyncMock()
+    dev.leave = AsyncMock()
     await app.remove(dev.ieee)
 
     # Written while the leave request is still pending
@@ -4230,7 +4230,7 @@ async def test_device_store_not_inherited_after_rejoin(tmp_path, used_before_rem
     if used_before_removal:
         dev.store[STORE_COUNT] = 1
 
-    dev.zdo.leave = AsyncMock()
+    dev.leave = AsyncMock()
     await app.remove(dev.ieee)
 
     # The first write may only happen while the leave request is pending
@@ -4334,7 +4334,7 @@ async def test_device_store_bound_at_construction(tmp_path):
     dev, _, _ = _add_joined_device(app)
     untouched = Device(app, dev.ieee, dev.nwk)
 
-    dev.zdo.leave = AsyncMock()
+    dev.leave = AsyncMock()
     await app.remove(dev.ieee)
     await asyncio.sleep(0)
     await asyncio.sleep(0)

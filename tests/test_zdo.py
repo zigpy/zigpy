@@ -6,6 +6,7 @@ import pytest
 from tests.conftest import make_node_desc
 from zigpy import zdo
 import zigpy.device
+import zigpy.exceptions
 import zigpy.types as t
 from zigpy.zdo import commands as zdo_c
 import zigpy.zdo.types as zdo_types
@@ -29,14 +30,28 @@ def test_commands():
 
 
 @pytest.fixture
-def zdo_f(app):
+def dev(app):
     ieee = t.EUI64(map(t.uint8_t, [0, 1, 2, 3, 4, 5, 6, 7]))
     dev = zigpy.device.Device(app, ieee, 65535)
     dev.request = AsyncMock()
 
     app.devices[dev.ieee] = dev
 
-    return zdo.ZDO(dev)
+    return dev
+
+
+def receive(dev: zigpy.device.ZigbeeDevice, frame: zdo_c.ZDOCommand) -> None:
+    dev.packet_received(
+        t.ZigbeePacket(
+            src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+            src_ep=zdo.ZDO_ENDPOINT,
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+            dst_ep=zdo.ZDO_ENDPOINT,
+            profile_id=0x0000,
+            cluster_id=frame.command_id,
+            data=t.SerializableBytes(frame.serialize()),
+        )
+    )
 
 
 def test_deserialize(caplog):
@@ -204,36 +219,36 @@ def test_response_round_trip(cluster_id, data, expected):
     assert frame.serialize() == bytes.fromhex("05" + data)
 
 
-async def test_send_zdo_command(zdo_f):
+async def test_send_zdo_command(dev):
     rsp = zdo_c.NodeDescRsp(
         status=zdo_types.Status.SUCCESS,
         nwk_addr_of_interest=0x1234,
         node_descriptor=make_node_desc(),
     )
-    zdo_f.device.request.return_value = rsp
+    dev.request.return_value = rsp
 
-    result = await zdo_f.device.send_zdo_command(
+    result = await dev.send_zdo_command(
         zdo_c.NodeDescReq(nwk_addr_of_interest=0x1234),
         response_type=zdo_c.NodeDescRsp,
     )
 
     assert result is rsp
-    assert len(zdo_f.device.request.mock_calls) == 1
+    assert len(dev.request.mock_calls) == 1
 
-    kwargs = zdo_f.device.request.mock_calls[0].kwargs
+    kwargs = dev.request.mock_calls[0].kwargs
     assert kwargs["cluster"] == zdo_types.ZDOCmd.Node_Desc_req
     assert kwargs["expect_reply"] is True
     assert kwargs["data"] == bytes([kwargs["sequence"]]) + b"\x34\x12"
 
 
-async def test_send_zdo_command_no_response(zdo_f):
-    result = await zdo_f.device.send_zdo_command(
+async def test_send_zdo_command_no_response(dev):
+    result = await dev.send_zdo_command(
         zdo_c.MgmtLeaveRsp(status=zdo_types.Status.SUCCESS), tsn=0x23
     )
 
     assert result is None
 
-    kwargs = zdo_f.device.request.mock_calls[0].kwargs
+    kwargs = dev.request.mock_calls[0].kwargs
     assert kwargs["cluster"] == zdo_types.ZDOCmd.Mgmt_Leave_rsp
     assert kwargs["expect_reply"] is False
     assert kwargs["sequence"] == 0x23
@@ -241,12 +256,12 @@ async def test_send_zdo_command_no_response(zdo_f):
 
 
 @pytest.mark.parametrize("aps_encryption", [False, True])
-async def test_send_zdo_command_aps_encryption(zdo_f, aps_encryption):
-    await zdo_f.device.send_zdo_command(
+async def test_send_zdo_command_aps_encryption(dev, aps_encryption):
+    await dev.send_zdo_command(
         zdo_c.MgmtLeaveRsp(status=zdo_types.Status.SUCCESS),
         aps_encryption=aps_encryption,
     )
-    assert zdo_f.device.request.mock_calls[0].kwargs["aps_encryption"] is aps_encryption
+    assert dev.request.mock_calls[0].kwargs["aps_encryption"] is aps_encryption
 
 
 @pytest.mark.parametrize(
@@ -256,17 +271,17 @@ async def test_send_zdo_command_aps_encryption(zdo_f, aps_encryption):
         ("unbind", zdo_types.ZDOCmd.Unbind_req, zdo_c.UnbindRsp),
     ],
 )
-async def test_bind_unbind(zdo_f, method, command_id, response):
-    zdo_f.device.request.return_value = response(status=zdo_types.Status.SUCCESS)
+async def test_bind_unbind(dev, method, command_id, response):
+    dev.request.return_value = response(status=zdo_types.Status.SUCCESS)
 
     cluster = MagicMock()
     cluster.endpoint.endpoint_id = 1
     cluster.cluster_id = 1026
-    rsp = await getattr(zdo_f, method)(cluster)
+    rsp = await getattr(dev, method)(cluster)
 
     assert rsp == response(status=zdo_types.Status.SUCCESS)
-    assert len(zdo_f.device.request.mock_calls) == 1
-    assert zdo_f.device.request.mock_calls[0].kwargs["cluster"] == command_id
+    assert len(dev.request.mock_calls) == 1
+    assert dev.request.mock_calls[0].kwargs["cluster"] == command_id
 
 
 @pytest.mark.parametrize(
@@ -278,14 +293,12 @@ async def test_bind_unbind(zdo_f, method, command_id, response):
         (True, True, 0xC0),
     ],
 )
-async def test_leave(zdo_f, remove_children, rejoin, flags):
+async def test_leave(dev, remove_children, rejoin, flags):
     """Test ZDO leave request options."""
-    zdo_f.device.request.return_value = zdo_c.MgmtLeaveRsp(
-        status=zdo_types.Status.SUCCESS
-    )
-    await zdo_f.leave(remove_children, rejoin)
+    dev.request.return_value = zdo_c.MgmtLeaveRsp(status=zdo_types.Status.SUCCESS)
+    await dev.leave(remove_children, rejoin)
 
-    kwargs = zdo_f.device.request.mock_calls[0].kwargs
+    kwargs = dev.request.mock_calls[0].kwargs
     assert kwargs["cluster"] == zdo_types.ZDOCmd.Mgmt_Leave_req
     assert kwargs["data"][1:] == (
         zdo_c.MgmtLeaveReq(
@@ -294,13 +307,13 @@ async def test_leave(zdo_f, remove_children, rejoin, flags):
     )
 
 
-async def test_permit(zdo_f):
-    zdo_f.device.request.return_value = zdo_c.MgmtPermitJoiningRsp(
+async def test_permit(dev):
+    dev.request.return_value = zdo_c.MgmtPermitJoiningRsp(
         status=zdo_types.Status.SUCCESS
     )
-    await zdo_f.permit()
-    assert len(zdo_f.device.request.mock_calls) == 1
-    assert zdo_f.device.request.mock_calls[0].kwargs["cluster"] == 0x0036
+    await dev.permit()
+    assert len(dev.request.mock_calls) == 1
+    assert dev.request.mock_calls[0].kwargs["cluster"] == 0x0036
 
 
 async def test_broadcast(app):
@@ -326,8 +339,9 @@ async def test_broadcast(app):
         (0, []),
     ],
 )
-async def test_handle_match_desc(zdo_f, profile, match_list):
-    zdo_f.handle_message(
+async def test_handle_match_desc(dev, profile, match_list):
+    receive(
+        dev,
         make_frame(
             zdo_c.MatchDescReq(
                 nwk_addr_of_interest=0x0000,
@@ -336,11 +350,11 @@ async def test_handle_match_desc(zdo_f, profile, match_list):
                 out_cluster_list=[],
             ),
             tsn=0x12,
-        )
+        ),
     )
     await asyncio.sleep(0)
 
-    kwargs = zdo_f.device.request.mock_calls[0].kwargs
+    kwargs = dev.request.mock_calls[0].kwargs
     assert kwargs["cluster"] == zdo_types.ZDOCmd.Match_Desc_rsp
     assert kwargs["sequence"] == 0x12
     rsp = zdo_c.ZDOCommand.deserialize(kwargs["cluster"], kwargs["data"])
@@ -354,18 +368,20 @@ async def test_handle_match_desc(zdo_f, profile, match_list):
         (zdo_types.AddrRequestType.Extended, 0),
     ],
 )
-async def test_handle_addr_reqs(zdo_f, request_type, num_assoc_dev):
-    node_info = zdo_f._device.application.state.node_info
+async def test_handle_addr_reqs(dev, request_type, num_assoc_dev):
+    node_info = dev.application.state.node_info
 
-    zdo_f.handle_message(
+    receive(
+        dev,
         make_frame(
             zdo_c.NwkAddrReq(
                 ieee_addr=node_info.ieee, request_type=request_type, start_index=0
             ),
             tsn=0x10,
-        )
+        ),
     )
-    zdo_f.handle_message(
+    receive(
+        dev,
         make_frame(
             zdo_c.IeeeAddrReq(
                 nwk_addr_of_interest=node_info.nwk,
@@ -373,14 +389,14 @@ async def test_handle_addr_reqs(zdo_f, request_type, num_assoc_dev):
                 start_index=0,
             ),
             tsn=0x11,
-        )
+        ),
     )
     await asyncio.sleep(0)
 
-    assert len(zdo_f.device.request.mock_calls) == 2
+    assert len(dev.request.mock_calls) == 2
 
     for request_call, rsp_type, tsn in zip(
-        zdo_f.device.request.mock_calls,
+        dev.request.mock_calls,
         [zdo_c.NwkAddrRsp, zdo_c.IeeeAddrRsp],
         [0x10, 0x11],
         strict=True,
@@ -406,40 +422,42 @@ async def test_handle_addr_reqs(zdo_f, request_type, num_assoc_dev):
     ],
 )
 async def test_address_replies_retries(
-    zdo_f, logical_type, rx_on_when_idle, expected_retries
+    dev, logical_type, rx_on_when_idle, expected_retries
 ):
     """Address replies are not retried for devices that may be asleep."""
-    zdo_f._device.node_desc = make_node_desc(logical_type=logical_type)
+    dev.node_desc = make_node_desc(logical_type=logical_type)
     if rx_on_when_idle:
-        node_desc = zdo_f._device.node_desc
-        zdo_f._device.node_desc = node_desc.replace(
+        node_desc = dev.node_desc
+        dev.node_desc = node_desc.replace(
             mac_capability_flags=node_desc.mac_capability_flags
             | zdo_types.NodeDescriptor.MACCapabilityFlags.RxOnWhenIdle
         )
-    node_info = zdo_f._device.application.state.node_info
-    zdo_f.handle_nwk_addr_req(
+    node_info = dev.application.state.node_info
+    receive(
+        dev,
         make_frame(
             zdo_c.NwkAddrReq(
                 ieee_addr=node_info.ieee,
                 request_type=zdo_types.AddrRequestType.Single,
                 start_index=0,
             )
-        )
+        ),
     )
-    zdo_f.handle_ieee_addr_req(
+    receive(
+        dev,
         make_frame(
             zdo_c.IeeeAddrReq(
                 nwk_addr_of_interest=node_info.nwk,
                 request_type=zdo_types.AddrRequestType.Single,
                 start_index=0,
             )
-        )
+        ),
     )
     await asyncio.sleep(0)
 
-    assert len(zdo_f._device.request.mock_calls) == 2
+    assert len(dev.request.mock_calls) == 2
 
-    for request_call in zdo_f._device.request.mock_calls:
+    for request_call in dev.request.mock_calls:
         assert request_call.kwargs["retries"] == expected_retries
 
 
@@ -457,15 +475,48 @@ async def test_address_replies_retries(
             zdo_c.MgmtPermitJoiningReq(permit_duration=100, tc_significant=True)
         ),
         zdo_c.ZDOCommand.deserialize(0xFFFF, b"\x10\xaa"),
+        # Address requests for another node
+        make_frame(
+            zdo_c.NwkAddrReq(
+                ieee_addr=t.EUI64.convert(IEEE),
+                request_type=zdo_types.AddrRequestType.Single,
+                start_index=0,
+            )
+        ),
+        make_frame(
+            zdo_c.IeeeAddrReq(
+                nwk_addr_of_interest=0x1234,
+                request_type=zdo_types.AddrRequestType.Single,
+                start_index=0,
+            )
+        ),
     ],
 )
-async def test_handle_without_handler(zdo_f, frame):
-    """Frames without a handler are not answered."""
-    zdo_f.handle_message(frame)
+async def test_unanswered_requests(dev, frame):
+    """Frames without a handler, or not addressed to us, are not answered."""
+    receive(dev, frame)
     await asyncio.sleep(0)
 
-    assert len(zdo_f.device.request.mock_calls) == 0
+    assert len(dev.request.mock_calls) == 0
 
 
-def test_device_accessor(zdo_f):
-    assert zdo_f.device.nwk == 65535
+async def test_reply_failure(dev, caplog):
+    """A reply that cannot be delivered is logged, not raised."""
+    dev.request.side_effect = zigpy.exceptions.DeliveryError("Failed")
+
+    with caplog.at_level(logging.DEBUG):
+        receive(
+            dev,
+            make_frame(
+                zdo_c.MatchDescReq(
+                    nwk_addr_of_interest=0x0000,
+                    profile_id=260,
+                    in_cluster_list=[],
+                    out_cluster_list=[],
+                )
+            ),
+        )
+        await asyncio.sleep(0)
+
+    assert len(dev.request.mock_calls) == 1
+    assert "Failed to send ZDO reply" in caplog.text

@@ -85,7 +85,7 @@ async def test_initialize(monkeypatch, dev):
     mock_zdo_requests(dev, {zdo_c.ActiveEpReq: mockrequest})
     await dev.initialize()
 
-    assert dev.endpoints[0] is dev.zdo
+    assert 0 not in dev.endpoints
     assert 1 in dev.endpoints
     assert 2 in dev.endpoints
     assert 3 in dev.endpoints
@@ -218,7 +218,24 @@ async def test_initialize_fail(dev):
     await dev.initialize()
 
     assert not dev.is_initialized
-    assert not dev.has_non_zdo_endpoints
+    assert not dev.endpoints
+
+
+def test_non_zdo_endpoints_deprecated(dev):
+    """The ZDO endpoint is gone, the old accessors return all endpoints."""
+    with pytest.warns(DeprecationWarning, match="no longer contains ZDO"):
+        assert dev.non_zdo_endpoints == []
+
+    with pytest.warns(DeprecationWarning, match="no longer contains ZDO"):
+        assert dev.has_non_zdo_endpoints is False
+
+    ep = dev.add_endpoint(1)
+
+    with pytest.warns(DeprecationWarning, match="no longer contains ZDO"):
+        assert dev.non_zdo_endpoints == [ep]
+
+    with pytest.warns(DeprecationWarning, match="no longer contains ZDO"):
+        assert dev.has_non_zdo_endpoints is True
 
 
 @patch("zigpy.device.Device.get_node_descriptor", AsyncMock())
@@ -307,8 +324,8 @@ async def test_initialize_removes_inactive_endpoints(
     await dev.initialize()
 
     assert dev.is_initialized
-    assert [ep.endpoint_id for ep in dev.non_zdo_endpoints] == active_eps
-    assert all(ep.status == endpoint.Status.ZDO_INIT for ep in dev.non_zdo_endpoints)
+    assert [ep.endpoint_id for ep in dev.endpoints.values()] == active_eps
+    assert all(ep.status == endpoint.Status.ZDO_INIT for ep in dev.endpoints.values())
 
 
 async def test_failed_request(dev):
@@ -2450,7 +2467,7 @@ async def test_reinterview_invalid_ep(
     new_dev = app.devices[ieee]
     assert new_dev is not old_dev
     assert new_dev.is_initialized
-    assert [ep.endpoint_id for ep in new_dev.non_zdo_endpoints] == [9]
+    assert [ep.endpoint_id for ep in new_dev.endpoints.values()] == [9]
     app.listener_event.assert_any_call("device_reinterviewed", new_dev)
 
 

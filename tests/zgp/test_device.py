@@ -914,7 +914,7 @@ def test_endpoint(app) -> None:
     device.client_cluster_ids = [OnOff.cluster_id]
     device.add_clusters()
 
-    (endpoint,) = device.non_zdo_endpoints
+    (endpoint,) = device.endpoints.values()
 
     assert endpoint is device.endpoints[None]
     assert endpoint.device is device
