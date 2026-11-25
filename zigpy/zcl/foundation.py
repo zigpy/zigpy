@@ -702,7 +702,7 @@ class WriteAttributesStatusRecord(t.Struct):
     )
 
 
-class WriteAttributesResponse(list):
+class WriteAttributesResponseRecords(list):
     """Write Attributes response list.
 
     Response to Write Attributes request should contain only success status, in
@@ -711,7 +711,7 @@ class WriteAttributesResponse(list):
     """
 
     @classmethod
-    def deserialize(cls, data: bytes) -> tuple[WriteAttributesResponse, bytes]:
+    def deserialize(cls, data: bytes) -> tuple[WriteAttributesResponseRecords, bytes]:
         record, data = WriteAttributesStatusRecord.deserialize(data)
         r = cls([record])
         if record.status == Status.SUCCESS:
@@ -896,7 +896,7 @@ class ConfigureReportingResponseRecord(t.Struct):
         return r
 
 
-class ConfigureReportingResponse(t.List[ConfigureReportingResponseRecord]):
+class ConfigureReportingResponseRecords(t.List[ConfigureReportingResponseRecord]):
     # In the case of successful configuration of all attributes, only a single
     # attribute status record SHALL be included in the command, with the status
     # field set to SUCCESS and the direction and attribute identifier fields omitted
@@ -972,7 +972,7 @@ class WriteAttributesStructuredStatusRecord(t.Struct):
     selector: Selector = t.StructField(requires=lambda s: s.status != Status.SUCCESS)
 
 
-class WriteAttributesStructuredResponse(list):
+class WriteAttributesStructuredResponseRecords(list):
     """Write Attributes Structured response list.
 
     Response to Write Attributes Structured request should contain only success status,
@@ -1262,21 +1262,111 @@ class CommandSchema(t.Struct, tuple):  # noqa: SLOT001, PLW1641
         return super().__eq__(other)
 
 
+class ReadAttributes(CommandSchema):
+    attribute_ids: t.List[t.uint16_t]
+
+
 class ReadAttributesResponse(CommandSchema):
     status_records: t.List[ReadAttributeRecord]
 
 
-class WriteAttributesResponseSchema(CommandSchema):
-    status_records: WriteAttributesResponse
+class WriteAttributes(CommandSchema):
+    attributes: t.List[Attribute]
 
 
-class WriteAttributesStructuredResponseSchema(CommandSchema):
-    status_records: WriteAttributesStructuredResponse
+class WriteAttributesUndivided(CommandSchema):
+    attributes: t.List[Attribute]
+
+
+class WriteAttributesResponse(CommandSchema):
+    status_records: WriteAttributesResponseRecords
+
+
+class WriteAttributesNoResponse(CommandSchema):
+    attributes: t.List[Attribute]
+
+
+class ConfigureReporting(CommandSchema):
+    config_records: t.List[AttributeReportingConfig]
+
+
+class ConfigureReportingResponse(CommandSchema):
+    status_records: ConfigureReportingResponseRecords
+
+
+class ReadReportingConfiguration(CommandSchema):
+    attribute_records: t.List[ReadReportingConfigRecord]
+
+
+class ReadReportingConfigurationResponse(CommandSchema):
+    attribute_configs: t.List[AttributeReportingConfigWithStatus]
+
+
+class ReportAttributes(CommandSchema):
+    attribute_reports: t.List[Attribute]
 
 
 class DefaultResponse(CommandSchema):
     command_id: t.uint8_t
     status: Status
+
+
+class DiscoverAttributes(CommandSchema):
+    start_attribute_id: t.uint16_t
+    max_attribute_ids: t.uint8_t
+
+
+class DiscoverAttributesResponse(CommandSchema):
+    discovery_complete: t.Bool
+    attribute_info: t.List[DiscoverAttributesResponseRecord]
+
+
+class ReadAttributesStructured(CommandSchema):
+    attributes: t.List[ReadAttributeStructured]
+
+
+class WriteAttributesStructured(CommandSchema):
+    attributes: t.List[WriteAttributeStructured]
+
+
+class WriteAttributesStructuredResponse(CommandSchema):
+    status_records: WriteAttributesStructuredResponseRecords
+
+
+# Kept for backwards compatibility
+WriteAttributesResponseSchema = WriteAttributesResponse
+ConfigureReportingResponseSchema = ConfigureReportingResponse
+WriteAttributesStructuredResponseSchema = WriteAttributesStructuredResponse
+
+
+class DiscoverCommandsReceived(CommandSchema):
+    start_command_id: t.uint8_t
+    max_command_ids: t.uint8_t
+
+
+class DiscoverCommandsReceivedResponse(CommandSchema):
+    discovery_complete: t.Bool
+    command_ids: t.List[t.uint8_t]
+
+
+class DiscoverCommandsGenerated(CommandSchema):
+    start_command_id: t.uint8_t
+    max_command_ids: t.uint8_t
+
+
+class DiscoverCommandsGeneratedResponse(CommandSchema):
+    discovery_complete: t.Bool
+    command_ids: t.List[t.uint8_t]
+
+
+class DiscoverAttributesExtended(CommandSchema):
+    start_attribute_id: t.uint16_t
+    max_attribute_ids: t.uint8_t
+
+
+class DiscoverAttributesExtendedResponse(CommandSchema):
+    discovery_complete: t.Bool
+    extended_attr_info: t.List[DiscoverAttributesExtendedResponseRecord]
 
 
 class ZCLAttributeAccess(enum.Flag):
@@ -1428,98 +1518,76 @@ class GeneralCommand(t.enum8):
 
 GENERAL_COMMANDS = COMMANDS = {
     GeneralCommand.Read_Attributes: ZCLCommandDef(
-        schema={"attribute_ids": t.List[t.uint16_t]},
-        direction=Direction.Client_to_Server,
+        schema=ReadAttributes, direction=Direction.Client_to_Server
     ),
     GeneralCommand.Read_Attributes_rsp: ZCLCommandDef(
-        schema=ReadAttributesResponse,
-        direction=Direction.Server_to_Client,
+        schema=ReadAttributesResponse, direction=Direction.Server_to_Client
     ),
     GeneralCommand.Write_Attributes: ZCLCommandDef(
-        schema={"attributes": t.List[Attribute]}, direction=Direction.Client_to_Server
+        schema=WriteAttributes, direction=Direction.Client_to_Server
     ),
     GeneralCommand.Write_Attributes_Undivided: ZCLCommandDef(
-        schema={"attributes": t.List[Attribute]}, direction=Direction.Client_to_Server
+        schema=WriteAttributesUndivided, direction=Direction.Client_to_Server
     ),
     GeneralCommand.Write_Attributes_rsp: ZCLCommandDef(
-        schema=WriteAttributesResponseSchema,
-        direction=Direction.Server_to_Client,
+        schema=WriteAttributesResponse, direction=Direction.Server_to_Client
     ),
     GeneralCommand.Write_Attributes_No_Response: ZCLCommandDef(
-        schema={"attributes": t.List[Attribute]}, direction=Direction.Client_to_Server
+        schema=WriteAttributesNoResponse, direction=Direction.Client_to_Server
     ),
     GeneralCommand.Configure_Reporting: ZCLCommandDef(
-        schema={"config_records": t.List[AttributeReportingConfig]},
-        direction=Direction.Client_to_Server,
+        schema=ConfigureReporting, direction=Direction.Client_to_Server
     ),
     GeneralCommand.Configure_Reporting_rsp: ZCLCommandDef(
-        schema={"status_records": ConfigureReportingResponse},
-        direction=Direction.Server_to_Client,
+        schema=ConfigureReportingResponse, direction=Direction.Server_to_Client
     ),
     GeneralCommand.Read_Reporting_Configuration: ZCLCommandDef(
-        schema={"attribute_records": t.List[ReadReportingConfigRecord]},
-        direction=Direction.Client_to_Server,
+        schema=ReadReportingConfiguration, direction=Direction.Client_to_Server
     ),
     GeneralCommand.Read_Reporting_Configuration_rsp: ZCLCommandDef(
-        schema={"attribute_configs": t.List[AttributeReportingConfigWithStatus]},
+        schema=ReadReportingConfigurationResponse,
         direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Report_Attributes: ZCLCommandDef(
-        schema={"attribute_reports": t.List[Attribute]},
-        direction=Direction.Client_to_Server,
+        schema=ReportAttributes, direction=Direction.Client_to_Server
     ),
     GeneralCommand.Default_Response: ZCLCommandDef(
-        schema=DefaultResponse,
-        direction=Direction.Server_to_Client,
+        schema=DefaultResponse, direction=Direction.Server_to_Client
     ),
     GeneralCommand.Discover_Attributes: ZCLCommandDef(
-        schema={"start_attribute_id": t.uint16_t, "max_attribute_ids": t.uint8_t},
-        direction=Direction.Client_to_Server,
+        schema=DiscoverAttributes, direction=Direction.Client_to_Server
     ),
     GeneralCommand.Discover_Attributes_rsp: ZCLCommandDef(
-        schema={
-            "discovery_complete": t.Bool,
-            "attribute_info": t.List[DiscoverAttributesResponseRecord],
-        },
-        direction=Direction.Server_to_Client,
+        schema=DiscoverAttributesResponse, direction=Direction.Server_to_Client
     ),
     GeneralCommand.Read_Attributes_Structured: ZCLCommandDef(
-        schema={"attributes": t.List[ReadAttributeStructured]},
-        direction=Direction.Client_to_Server,
+        schema=ReadAttributesStructured, direction=Direction.Client_to_Server
     ),
     GeneralCommand.Write_Attributes_Structured: ZCLCommandDef(
-        schema={"attributes": t.List[WriteAttributeStructured]},
-        direction=Direction.Client_to_Server,
+        schema=WriteAttributesStructured, direction=Direction.Client_to_Server
     ),
     GeneralCommand.Write_Attributes_Structured_rsp: ZCLCommandDef(
-        schema=WriteAttributesStructuredResponseSchema,
+        schema=WriteAttributesStructuredResponse,
         direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Discover_Commands_Received: ZCLCommandDef(
-        schema={"start_command_id": t.uint8_t, "max_command_ids": t.uint8_t},
-        direction=Direction.Client_to_Server,
+        schema=DiscoverCommandsReceived, direction=Direction.Client_to_Server
     ),
     GeneralCommand.Discover_Commands_Received_rsp: ZCLCommandDef(
-        schema={"discovery_complete": t.Bool, "command_ids": t.List[t.uint8_t]},
-        direction=Direction.Server_to_Client,
+        schema=DiscoverCommandsReceivedResponse, direction=Direction.Server_to_Client
     ),
     GeneralCommand.Discover_Commands_Generated: ZCLCommandDef(
-        schema={"start_command_id": t.uint8_t, "max_command_ids": t.uint8_t},
-        direction=Direction.Client_to_Server,
+        schema=DiscoverCommandsGenerated, direction=Direction.Client_to_Server
     ),
     GeneralCommand.Discover_Commands_Generated_rsp: ZCLCommandDef(
-        schema={"discovery_complete": t.Bool, "command_ids": t.List[t.uint8_t]},
+        schema=DiscoverCommandsGeneratedResponse,
         direction=Direction.Server_to_Client,
     ),
     GeneralCommand.Discover_Attribute_Extended: ZCLCommandDef(
-        schema={"start_attribute_id": t.uint16_t, "max_attribute_ids": t.uint8_t},
-        direction=Direction.Client_to_Server,
+        schema=DiscoverAttributesExtended, direction=Direction.Client_to_Server
     ),
     GeneralCommand.Discover_Attribute_Extended_rsp: ZCLCommandDef(
-        schema={
-            "discovery_complete": t.Bool,
-            "extended_attr_info": t.List[DiscoverAttributesExtendedResponseRecord],
-        },
+        schema=DiscoverAttributesExtendedResponse,
         direction=Direction.Server_to_Client,
     ),
 }

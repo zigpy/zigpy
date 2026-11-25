@@ -728,7 +728,7 @@ async def test_write_attributes_cache_failure(cluster, attributes, result, faile
     event_listener = MagicMock()
     cluster.on_event(AttributeWrittenEvent.event_type, event_listener)
 
-    rsp_type = foundation.WriteAttributesResponse
+    rsp_type = foundation.WriteAttributesResponseRecords
     write_mock = AsyncMock(return_value=[rsp_type.deserialize(result)[0]])
 
     with patch.object(cluster, "_write_attributes", write_mock):
@@ -1038,7 +1038,7 @@ async def test_send_default_rsp_retries(
 
 
 async def test_configure_reporting_multiple(cluster):
-    cfg_response = zcl.foundation.ConfigureReportingResponse(
+    cfg_response = zcl.foundation.ConfigureReportingResponseRecords(
         [zcl.foundation.ConfigureReportingResponseRecord(zcl.foundation.Status.SUCCESS)]
     )
     cluster.endpoint.request.return_value = [cfg_response]
@@ -1090,7 +1090,7 @@ async def test_configure_reporting_multiple_def_rsp(cluster):
 
 def _mk_cfg_rsp(responses: dict[int, zcl.foundation.Status]):
     """A helper to create a configure response record."""
-    cfg_response = zcl.foundation.ConfigureReportingResponse()
+    cfg_response = zcl.foundation.ConfigureReportingResponseRecords()
     for attrid, status in responses.items():
         cfg_response.append(
             zcl.foundation.ConfigureReportingResponseRecord(
@@ -1102,7 +1102,7 @@ def _mk_cfg_rsp(responses: dict[int, zcl.foundation.Status]):
 
 async def test_configure_reporting_multiple_single_success(cluster):
     """Configure reporting returned a single global success response."""
-    cfg_response = zcl.foundation.ConfigureReportingResponse(
+    cfg_response = zcl.foundation.ConfigureReportingResponseRecords(
         [zcl.foundation.ConfigureReportingResponseRecord(zcl.foundation.Status.SUCCESS)]
     )
     cluster.endpoint.request.return_value = [cfg_response]
@@ -2786,10 +2786,10 @@ async def test_configure_reporting_multiple_manufacturer_groups(app_mock) -> Non
     cluster = TestCluster(dev.endpoints[1])
     dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
 
-    cfg_success = zcl.foundation.ConfigureReportingResponse(
+    cfg_success = zcl.foundation.ConfigureReportingResponseRecords(
         [zcl.foundation.ConfigureReportingResponseRecord(zcl.foundation.Status.SUCCESS)]
     )
-    cfg_fail = zcl.foundation.ConfigureReportingResponse(
+    cfg_fail = zcl.foundation.ConfigureReportingResponseRecords(
         [
             zcl.foundation.ConfigureReportingResponseRecord(
                 zcl.foundation.Status.UNSUPPORTED_ATTRIBUTE,
@@ -2872,7 +2872,7 @@ async def test_configure_reporting_multiple_chunked_by_size(app_mock) -> None:
     cluster = TestCluster(dev.endpoints[1])
     dev.endpoints[1].add_input_cluster(TestCluster.cluster_id, cluster)
 
-    cfg_success = zcl.foundation.ConfigureReportingResponse(
+    cfg_success = zcl.foundation.ConfigureReportingResponseRecords(
         [zcl.foundation.ConfigureReportingResponseRecord(zcl.foundation.Status.SUCCESS)]
     )
 
@@ -3731,7 +3731,7 @@ async def test_read_attributes_structured_raw(cluster):
 async def test_write_attributes_structured_raw(cluster):
     """Test write_attributes_structured_raw sends the correct request."""
     mock_response = [
-        foundation.WriteAttributesStructuredResponse(
+        foundation.WriteAttributesStructuredResponseRecords(
             [
                 foundation.WriteAttributesStructuredStatusRecord(
                     status=foundation.Status.SUCCESS,

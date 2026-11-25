@@ -542,7 +542,7 @@ def mock_attribute_writes(
 
         return foundation.GENERAL_COMMANDS[
             foundation.GeneralCommand.Write_Attributes_rsp
-        ].schema(status_records=foundation.WriteAttributesResponse(records))
+        ].schema(status_records=foundation.WriteAttributesResponseRecords(records))
 
     with patch.object(
         cluster, "_write_attributes", autospec=True, side_effect=write_attributes_raw

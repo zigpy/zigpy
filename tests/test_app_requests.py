@@ -17,10 +17,7 @@ POLICY = zigpy.device.SendPolicy(
     timeout=0.05, extended_timeout=False, retries=0, retry_delay=0
 )
 
-READ_ATTRIBUTES = foundation.GENERAL_COMMANDS[foundation.GeneralCommand.Read_Attributes]
-READ_ATTRIBUTES_RSP = foundation.GENERAL_COMMANDS[
-    foundation.GeneralCommand.Read_Attributes_rsp
-].schema(
+READ_ATTRIBUTES_RSP = foundation.ReadAttributesResponse(
     status_records=[
         foundation.ReadAttributeRecord(
             attrid=0x0004,
@@ -100,8 +97,8 @@ async def test_read_attributes(app, manufacturer):
         NWK,
         1,
         Basic.cluster_id,
-        READ_ATTRIBUTES,
-        attribute_ids=[0x0004],
+        foundation.ReadAttributes(attribute_ids=[0x0004]),
+        foundation.ReadAttributesResponse,
         policy=POLICY,
         manufacturer=manufacturer,
     )
@@ -160,17 +157,15 @@ async def test_read_attributes_ignores_other_frames(app):
             NWK,
             1,
             Basic.cluster_id,
-            READ_ATTRIBUTES,
-            attribute_ids=[0x0004],
+            foundation.ReadAttributes(attribute_ids=[0x0004]),
+            foundation.ReadAttributesResponse,
             policy=POLICY,
         )
 
 
 async def test_read_attributes_default_response(app):
     """A rejected request returns the Default Response."""
-    default_rsp = foundation.GENERAL_COMMANDS[
-        foundation.GeneralCommand.Default_Response
-    ].schema(
+    default_rsp = foundation.DefaultResponse(
         command_id=foundation.GeneralCommand.Read_Attributes,
         status=foundation.Status.UNSUP_GENERAL_COMMAND,
     )
@@ -189,8 +184,8 @@ async def test_read_attributes_default_response(app):
         NWK,
         1,
         Basic.cluster_id,
-        READ_ATTRIBUTES,
-        attribute_ids=[0x0004],
+        foundation.ReadAttributes(attribute_ids=[0x0004]),
+        foundation.ReadAttributesResponse,
         policy=POLICY,
     )
 
@@ -214,8 +209,8 @@ async def test_read_attributes_parsing_error(app):
             NWK,
             1,
             Basic.cluster_id,
-            READ_ATTRIBUTES,
-            attribute_ids=[0x0004],
+            foundation.ReadAttributes(attribute_ids=[0x0004]),
+            foundation.ReadAttributesResponse,
             policy=POLICY,
         )
 
@@ -226,12 +221,11 @@ async def test_cluster_command_without_reply(app):
         NWK,
         1,
         PollControl.cluster_id,
-        PollControl.ServerCommandDefs.checkin_response,
-        start_fast_polling=True,
-        fast_poll_timeout=40,
+        PollControl.ServerCommandDefs.checkin_response.schema(
+            start_fast_polling=True, fast_poll_timeout=40
+        ),
         policy=POLICY,
         tsn=0x42,
-        expect_reply=False,
     )
 
     assert rsp is None
@@ -258,12 +252,12 @@ async def test_cluster_command_server_to_client(app):
         NWK,
         1,
         Ota.cluster_id,
-        Ota.ClientCommandDefs.image_notify,
-        payload_type=Ota.ImageNotifyCommand.PayloadType.QueryJitter,
-        query_jitter=100,
+        Ota.ClientCommandDefs.image_notify.schema(
+            payload_type=Ota.ImageNotifyCommand.PayloadType.QueryJitter,
+            query_jitter=100,
+        ),
         policy=POLICY,
         direction=foundation.Direction.Server_to_Client,
-        expect_reply=False,
     )
 
     [(_, header, _)] = sent_zcl(app)
@@ -274,20 +268,11 @@ async def test_cluster_command_server_to_client(app):
     assert header.frame_control.disable_default_response
 
 
-@pytest.mark.parametrize(
-    ("response_schema", "expected"),
-    [
-        (None, b"\x01\x28\x00"),
-        (
-            PollControl.ServerCommandDefs.checkin_response.schema,
-            PollControl.ServerCommandDefs.checkin_response.schema(
-                start_fast_polling=True, fast_poll_timeout=40
-            ),
-        ),
-    ],
-)
-async def test_cluster_response(app, response_schema, expected):
-    """Cluster-specific responses are raw bytes unless a schema is given."""
+CHECKIN_RESPONSE = PollControl.ServerCommandDefs.checkin_response
+
+
+async def test_cluster_response(app):
+    """Cluster-specific responses are parsed with the expected type."""
     respond(
         app,
         lambda tsn: [
@@ -295,7 +280,7 @@ async def test_cluster_response(app, response_schema, expected):
                 tsn=tsn,
                 cluster_id=PollControl.cluster_id,
                 general=False,
-                command_id=0x00,
+                command_id=CHECKIN_RESPONSE.id,
                 payload=b"\x01\x28\x00",
             )
         ],
@@ -305,36 +290,76 @@ async def test_cluster_response(app, response_schema, expected):
         NWK,
         1,
         PollControl.cluster_id,
-        PollControl.ServerCommandDefs.fast_poll_stop,
+        PollControl.ServerCommandDefs.fast_poll_stop.schema(),
+        CHECKIN_RESPONSE.schema,
         policy=POLICY,
-        response_schema=response_schema,
     )
 
-    assert rsp == expected
+    assert rsp == CHECKIN_RESPONSE.schema(start_fast_polling=True, fast_poll_timeout=40)
 
 
-async def test_cluster_response_parsing_error(app):
+@pytest.mark.parametrize(
+    ("general", "command_id", "payload", "error"),
+    [
+        # Malformed cluster-specific response
+        (False, CHECKIN_RESPONSE.id, b"\x01", zigpy.exceptions.ParsingError),
+        # Another cluster-specific command
+        (False, 0x01, b"", zigpy.exceptions.InvalidResponse),
+        # A general command with the same ID
+        (
+            True,
+            CHECKIN_RESPONSE.id,
+            foundation.ReadAttributes(attribute_ids=[]).serialize(),
+            zigpy.exceptions.InvalidResponse,
+        ),
+    ],
+)
+async def test_cluster_response_errors(app, general, command_id, payload, error):
     respond(
         app,
         lambda tsn: [
             zcl_packet(
                 tsn=tsn,
                 cluster_id=PollControl.cluster_id,
-                general=False,
-                command_id=0x00,
-                payload=b"\x01",
+                general=general,
+                command_id=command_id,
+                payload=payload,
             )
         ],
     )
 
-    with pytest.raises(zigpy.exceptions.ParsingError):
+    with pytest.raises(error):
         await app.send_zcl_command(
             NWK,
             1,
             PollControl.cluster_id,
-            PollControl.ServerCommandDefs.fast_poll_stop,
+            PollControl.ServerCommandDefs.fast_poll_stop.schema(),
+            CHECKIN_RESPONSE.schema,
             policy=POLICY,
-            response_schema=PollControl.ServerCommandDefs.checkin_response.schema,
+        )
+
+
+async def test_unexpected_general_response(app):
+    """A general response of another type than expected is invalid."""
+    respond(
+        app,
+        lambda tsn: [
+            zcl_packet(
+                tsn=tsn,
+                command_id=foundation.GeneralCommand.Write_Attributes_rsp,
+                payload=b"\x00",
+            )
+        ],
+    )
+
+    with pytest.raises(zigpy.exceptions.InvalidResponse):
+        await app.send_zcl_command(
+            NWK,
+            1,
+            Basic.cluster_id,
+            foundation.ReadAttributes(attribute_ids=[0x0004]),
+            foundation.ReadAttributesResponse,
+            policy=POLICY,
         )
 
 

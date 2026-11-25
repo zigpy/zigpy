@@ -52,6 +52,9 @@ DEFAULT_ENDPOINT_ID = 1
 LOGGER = logging.getLogger(__name__)
 
 _R = typing.TypeVar("_R")
+_CommandSchemaT = typing.TypeVar(
+    "_CommandSchemaT", bound="zigpy.zcl.foundation.CommandSchema"
+)
 
 # Minimum time between two leave requests sent to the same blocked device
 BLOCKED_DEVICE_LEAVE_INTERVAL = 30
@@ -1615,13 +1618,50 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             policy, priority=priority, attempt=attempt
         )
 
+    @typing.overload
     async def send_zcl_command(
         self,
         nwk: t.NWK,
         endpoint: int,
         cluster_id: int,
-        command: zigpy.zcl.foundation.ZCLCommandDef,
-        *args: typing.Any,
+        command: zigpy.zcl.foundation.CommandSchema,
+        response_type: type[_CommandSchemaT],
+        *,
+        policy: zigpy.device.SendPolicy,
+        direction: zigpy.zcl.foundation.Direction = ...,
+        manufacturer: int | None = None,
+        profile_id: int = ...,
+        tsn: int | None = None,
+        disable_default_response: bool | None = None,
+        priority: int | None = None,
+    ) -> _CommandSchemaT | zigpy.zcl.foundation.DefaultResponse: ...
+
+    @typing.overload
+    async def send_zcl_command(
+        self,
+        nwk: t.NWK,
+        endpoint: int,
+        cluster_id: int,
+        command: zigpy.zcl.foundation.CommandSchema,
+        response_type: None = None,
+        *,
+        policy: zigpy.device.SendPolicy,
+        direction: zigpy.zcl.foundation.Direction = ...,
+        manufacturer: int | None = None,
+        profile_id: int = ...,
+        tsn: int | None = None,
+        disable_default_response: bool | None = None,
+        priority: int | None = None,
+    ) -> None: ...
+
+    async def send_zcl_command(
+        self,
+        nwk: t.NWK,
+        endpoint: int,
+        cluster_id: int,
+        command: zigpy.zcl.foundation.CommandSchema,
+        response_type: type[_CommandSchemaT] | None = None,
+        *,
         policy: zigpy.device.SendPolicy,
         direction: zigpy.zcl.foundation.Direction = (
             zigpy.zcl.foundation.Direction.Client_to_Server
@@ -1629,21 +1669,17 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         manufacturer: int | None = None,
         profile_id: int = zigpy.profiles.zha.PROFILE_ID,
         tsn: int | None = None,
-        expect_reply: bool = True,
-        response_schema: type[zigpy.zcl.foundation.CommandSchema] | None = None,
         disable_default_response: bool | None = None,
         priority: int | None = None,
-        **kwargs: typing.Any,
-    ) -> zigpy.zcl.foundation.CommandSchema | bytes | None:
+    ) -> _CommandSchemaT | zigpy.zcl.foundation.DefaultResponse | None:
         """Send a general or cluster-specific ZCL command to a NWK without a device or
-        cluster object, and wait for its response if `expect_reply`.
+        cluster object, and wait for its response if a response type is given.
 
-        `command` is a definition from `foundation.GENERAL_COMMANDS` or from a cluster
-        class. A general response is returned parsed. A cluster-specific response is
-        parsed with `response_schema` if given, otherwise returned as bytes.
+        A device may answer any command with a Default Response instead.
         """
         foundation = zigpy.zcl.foundation
-        general = command in foundation.GENERAL_COMMANDS.values()
+        command_def = type(command).command
+        general = command_def in foundation.GENERAL_COMMANDS.values()
 
         if tsn is None:
             tsn = self.get_zcl_sequence(nwk)
@@ -1667,9 +1703,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             ),
             manufacturer=manufacturer,
             tsn=tsn,
-            command_id=command.id,
+            command_id=command_def.id,
         )
-        data = header.serialize() + command.schema(*args, **kwargs).serialize()
+        data = header.serialize() + command.serialize()
 
         def is_response(rsp: zigpy.frames.Frame) -> bool:
             return (
@@ -1689,7 +1725,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
 
         async def attempt(
             number: int,
-        ) -> zigpy.zcl.foundation.CommandSchema | bytes | None:
+        ) -> _CommandSchemaT | zigpy.zcl.foundation.DefaultResponse | None:
             send = self._send_unicast(
                 dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=nwk),
                 profile=t.uint16_t(profile_id),
@@ -1698,7 +1734,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
                 dst_ep=t.uint8_t(endpoint),
                 sequence=header.tsn,
                 data=data,
-                expect_reply=expect_reply,
+                expect_reply=response_type is not None,
                 extended_timeout=policy.extended_timeout,
                 ask_for_ack=None,
                 priority=(
@@ -1708,7 +1744,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
                 aps_encryption=False,
             )
 
-            if not expect_reply:
+            if response_type is None:
                 await send
                 return None
 
@@ -1720,22 +1756,33 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
 
             assert isinstance(rsp, zigpy.frames.ZCLFrame)
 
-            if not isinstance(rsp.command, bytes):
+            if isinstance(rsp.command, foundation.DefaultResponse | response_type):
                 return rsp.command
 
-            if (
+            is_general = (
                 rsp.header.frame_control.frame_type
                 == foundation.FrameType.GLOBAL_COMMAND
+            )
+
+            if (
+                not isinstance(rsp.command, bytes)
+                or rsp.header.command_id != response_type.command.id
+                or is_general
+                != (response_type.command in foundation.GENERAL_COMMANDS.values())
             ):
+                raise zigpy.exceptions.InvalidResponse(
+                    f"Expected a {response_type.__name__} response: {rsp.packet!r}"
+                )
+
+            # The expected general command was left unparsed: it is malformed
+            if is_general:
                 raise zigpy.exceptions.ParsingError(
                     f"Failed to parse ZCL response {rsp.packet!r}"
                 )
 
-            if response_schema is None:
-                return rsp.command
-
+            # Cluster-specific responses are parsed with the expected type
             try:
-                response, _ = response_schema.deserialize(rsp.command)
+                response, _ = response_type.deserialize(rsp.command)
             except ValueError as exc:
                 raise zigpy.exceptions.ParsingError(
                     f"Failed to parse ZCL response {rsp.packet!r}"

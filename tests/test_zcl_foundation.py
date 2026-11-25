@@ -511,13 +511,13 @@ def test_write_attrs_response_deserialize():
 
     data = b"\x00"
     extra = b"\xaa\x55"
-    r, rest = foundation.WriteAttributesResponse.deserialize(data + extra)
+    r, rest = foundation.WriteAttributesResponseRecords.deserialize(data + extra)
     assert len(r) == 1
     assert r[0].status == foundation.Status.SUCCESS
     assert rest == extra
 
     data = b"\x86\x34\x12\x87\x35\x12"
-    r, rest = foundation.WriteAttributesResponse.deserialize(data + extra)
+    r, rest = foundation.WriteAttributesResponseRecords.deserialize(data + extra)
     assert len(r) == 2
     assert rest == extra
     assert r[0].status == foundation.Status.UNSUPPORTED_ATTRIBUTE
@@ -538,7 +538,7 @@ def test_write_attrs_response_deserialize():
 def test_write_attrs_response_serialize(attributes, data):
     """Test WriteAttributes Response serialization."""
 
-    r = foundation.WriteAttributesResponse()
+    r = foundation.WriteAttributesResponseRecords()
     for attr_id, status in attributes.items():
         rec = foundation.WriteAttributesStatusRecord()
         rec.status = status
@@ -552,7 +552,7 @@ def test_configure_reporting_response_deserialize():
     """Test deserialization."""
 
     data = b"\x00"
-    r, rest = foundation.ConfigureReportingResponse.deserialize(data)
+    r, rest = foundation.ConfigureReportingResponseRecords.deserialize(data)
     assert len(r) == 1
     assert r[0].status == foundation.Status.SUCCESS
     assert r[0].direction is None
@@ -561,7 +561,7 @@ def test_configure_reporting_response_deserialize():
 
     data = b"\x00"
     extra = b"\x01\xaa\x55"
-    r, rest = foundation.ConfigureReportingResponse.deserialize(data + extra)
+    r, rest = foundation.ConfigureReportingResponseRecords.deserialize(data + extra)
     assert len(r) == 1
     assert r[0].status == foundation.Status.SUCCESS
     assert r[0].direction == foundation.ReportingDirection.ReceiveReports
@@ -569,7 +569,7 @@ def test_configure_reporting_response_deserialize():
     assert rest == b""
 
     data = b"\x86\x01\x34\x12\x87\x01\x35\x12"
-    r, rest = foundation.ConfigureReportingResponse.deserialize(data)
+    r, rest = foundation.ConfigureReportingResponseRecords.deserialize(data)
     assert len(r) == 2
     assert rest == b""
     assert r[0].status == foundation.Status.UNSUPPORTED_ATTRIBUTE
@@ -578,11 +578,11 @@ def test_configure_reporting_response_deserialize():
     assert r[1].attrid == 0x1235
 
     with pytest.raises(ValueError):
-        foundation.ConfigureReportingResponse.deserialize(data + extra)
+        foundation.ConfigureReportingResponseRecords.deserialize(data + extra)
 
 
 def test_configure_reporting_response_serialize_empty():
-    r = foundation.ConfigureReportingResponse()
+    r = foundation.ConfigureReportingResponseRecords()
 
     # An empty configure reporting response doesn't make sense
     with pytest.raises(ValueError):
@@ -604,7 +604,7 @@ def test_configure_reporting_response_serialize_empty():
 def test_configure_reporting_response_serialize(attributes, data):
     """Test ConfigureReporting Response serialization."""
 
-    r = foundation.ConfigureReportingResponse()
+    r = foundation.ConfigureReportingResponseRecords()
     for attr_id, status in attributes.items():
         rec = foundation.ConfigureReportingResponseRecord()
         rec.status = status
@@ -897,11 +897,13 @@ def test_selector_deserialize(data, depth, op, indexes):
 
 
 def test_write_attrs_structured_response_deserialize():
-    """Test WriteAttributesStructuredResponse deserialization."""
+    """Test WriteAttributesStructuredResponseRecords deserialization."""
 
     # All success: single status byte
     extra = b"\xaa\x55"
-    r, rest = foundation.WriteAttributesStructuredResponse.deserialize(b"\x00" + extra)
+    r, rest = foundation.WriteAttributesStructuredResponseRecords.deserialize(
+        b"\x00" + extra
+    )
     assert len(r) == 1
     assert r[0].status == foundation.Status.SUCCESS
     assert rest == extra
@@ -915,7 +917,9 @@ def test_write_attrs_structured_response_deserialize():
         b"\x35\x12"  # attrid=0x1235
         b"\x01\xab\xcd"  # selector: depth=1, op=Write, index=0xCDAB
     )
-    r, rest = foundation.WriteAttributesStructuredResponse.deserialize(data + extra)
+    r, rest = foundation.WriteAttributesStructuredResponseRecords.deserialize(
+        data + extra
+    )
     assert len(r) == 2
     assert rest == extra
     assert r[0].status == foundation.Status.UNSUPPORTED_ATTRIBUTE
@@ -967,6 +971,6 @@ def test_write_attrs_structured_response_deserialize():
     ],
 )
 def test_write_attrs_structured_response_serialize(records, data):
-    """Test WriteAttributesStructuredResponse serialization."""
-    r = foundation.WriteAttributesStructuredResponse(records)
+    """Test WriteAttributesStructuredResponseRecords serialization."""
+    r = foundation.WriteAttributesStructuredResponseRecords(records)
     assert r.serialize() == data
