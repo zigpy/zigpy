@@ -24,7 +24,11 @@ UNMIGRATED_MANUFACTURER_CODE = -1
 
 
 class AttributeCacheRow(NamedTuple):
-    """A row from the attribute cache table. This format is internal and will change."""
+    """A row from the attribute cache table.
+
+    Quirks receive rows in `Cluster.migrate_attribute_cache_row` and may read their
+    fields. Fields may be added, and the format of `value` follows the database schema.
+    """
 
     ieee: t.EUI64
     endpoint_id: int
