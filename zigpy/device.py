@@ -964,6 +964,18 @@ class ZigbeeDevice(BaseDevice):
         elif attr_def == Basic.AttributeDefs.model:
             self.model = value
 
+    def _shadow_removed(self, shadow: ZigbeeDevice) -> bool:
+        """Whether the device was removed while `shadow` was registered for it.
+
+        `remove()` closes the device's store right away but leaves the shadow
+        registered until the leave request completes, so a closed store marks a
+        removal that is still in progress.
+        """
+        return (
+            self._application.devices.get(self._ieee) is not shadow
+            or shadow.store.closed
+        )
+
     async def reinterview(self) -> None:
         """Re-interview this device using a shadow device for safety.
 
@@ -1001,7 +1013,7 @@ class ZigbeeDevice(BaseDevice):
             except Exception:
                 shadow.on_remove()
 
-                if self._application.devices.get(self._ieee) is not shadow:
+                if self._shadow_removed(shadow):
                     # The device was removed while the shadow was being interviewed
                     self.info(
                         "Device was removed during re-interview, discarding shadow"
@@ -1013,7 +1025,7 @@ class ZigbeeDevice(BaseDevice):
                 self._application.devices[self._ieee] = self
                 raise
 
-            if self._application.devices.get(self._ieee) is not shadow:
+            if self._shadow_removed(shadow):
                 # The device was removed while the shadow was being interviewed
                 self.info("Device was removed during re-interview, discarding shadow")
                 shadow.on_remove()
