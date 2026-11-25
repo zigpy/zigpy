@@ -12,6 +12,7 @@ from tests.conftest import (
     add_initialized_device,
     make_app,
     make_ieee,
+    make_node_desc,
     mock_attribute_reads,
     mock_attribute_report,
     mock_attribute_writes,
@@ -34,6 +35,7 @@ from zigpy.zcl.clusters.general import Basic, OnOff, Ota
 from zigpy.zcl.clusters.measurement import OccupancySensing
 from zigpy.zcl.clusters.smartenergy import Metering
 from zigpy.zcl.helpers import ReportingConfig
+from zigpy.zdo import types as zdo_t
 
 DEFAULT_TSN = 123
 
@@ -364,6 +366,57 @@ def test_attribute_report_manufacturer_specific_does_not_update_zcl_attribute(
     # The value should only be stored in the legacy cache (keyed by raw attr ID)
     assert 0x0302 in metering._attr_cache._legacy_cache
     assert metering._attr_cache._legacy_cache[0x0302].value == 0x0200
+
+
+@pytest.mark.parametrize(
+    "bad_value",
+    [
+        foundation.TypeValue(
+            type=foundation.DataTypeId.string, value=t.CharacterString("abc")
+        ),
+        foundation.TypeValue(type=foundation.DataTypeId.int64, value=t.int64s(-1)),
+        foundation.TypeValue(
+            type=foundation.DataTypeId.data16, value=t.data16([0x01, 0x02])
+        ),
+        foundation.TypeValue(type=foundation.DataTypeId.array, value=[1]),
+    ],
+)
+def test_attribute_report_unconvertible_value(app_mock, bad_value) -> None:
+    """A reported value that does not fit its attribute's type is dropped alone."""
+    dev = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    metering = Metering(dev.endpoints[1])
+    dev.endpoints[1].add_input_cluster(Metering.cluster_id, metering)
+
+    events = []
+    metering.on_event(AttributeReportedEvent.event_type, events.append)
+
+    hdr = foundation.ZCLHeader.general(
+        tsn=1,
+        command_id=foundation.GeneralCommand.Report_Attributes,
+        direction=foundation.Direction.Server_to_Client,
+    )
+    report = foundation.GENERAL_COMMANDS[foundation.GeneralCommand.Report_Attributes]
+    metering.handle_message(
+        hdr,
+        report.schema(
+            [
+                foundation.Attribute(
+                    attrid=Metering.AttributeDefs.current_summ_delivered.id,
+                    value=bad_value,
+                ),
+                foundation.Attribute(
+                    attrid=Metering.AttributeDefs.divisor.id,
+                    value=foundation.TypeValue(
+                        type=foundation.DataTypeId.uint24, value=t.uint24_t(1000)
+                    ),
+                ),
+            ]
+        ),
+    )
+
+    assert [(e.attribute_name, e.value) for e in events] == [("divisor", 1000)]
+    assert metering.get(Metering.AttributeDefs.divisor) == 1000
+    assert metering.get(Metering.AttributeDefs.current_summ_delivered) is None
 
 
 def test_handle_request_unknown(cluster):
@@ -913,6 +966,25 @@ async def test_handle_cluster_general_request_disable_default_rsp(endpoint):
         assert general_cmd_mock.call_args[1]["tsn"] == hdr.tsn
 
 
+async def test_handle_cluster_general_request_default_rsp_not_answered(cluster):
+    """A received Default Response must not be answered with a Default Response.
+
+    ZCL R8 2.5.12.2: "the Default Response command SHALL not be generated in response
+    to reception of another Default Response command."
+    """
+    # `00 20 0b 05 01`: DefaultResponse(command_id=5, status=FAILURE), TSN 32, as sent
+    # by a real device mid-OTA with the Disable Default Response bit cleared.
+    hdr, values = cluster.deserialize(b"\x00\x20\x0b\x05\x01")
+
+    assert hdr.command_id == foundation.GeneralCommand.Default_Response
+    assert not hdr.frame_control.disable_default_response
+
+    with patch.object(cluster, "general_command") as general_cmd_mock:
+        cluster.handle_cluster_general_request(hdr, values)
+        await asyncio.sleep(0)
+        assert general_cmd_mock.call_count == 0
+
+
 async def test_handle_cluster_general_request_not_attr_report(cluster):
     hdr = foundation.ZCLHeader.general(1, foundation.GeneralCommand.Write_Attributes)
     with (
@@ -929,8 +1001,42 @@ async def test_handle_cluster_general_request_not_attr_report(cluster):
                 foundation.Status.SUCCESS,
                 tsn=mock.ANY,
                 priority=t.PacketPriority.LOW,
+                retries=cluster.endpoint.device.reply_retries,
             )
         ]
+
+
+@pytest.mark.parametrize(
+    ("logical_type", "rx_on_when_idle", "expected_retries"),
+    [
+        (zdo_t.LogicalType.EndDevice, False, 0),
+        (zdo_t.LogicalType.EndDevice, True, None),
+        (zdo_t.LogicalType.Router, False, None),
+    ],
+)
+async def test_send_default_rsp_retries(
+    logical_type, rx_on_when_idle, expected_retries
+) -> None:
+    """Default responses are not retried for devices that may be asleep."""
+    app = make_app({})
+    dev = add_initialized_device(
+        app, nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77")
+    )
+    dev.node_desc = make_node_desc(logical_type=logical_type)
+    if rx_on_when_idle:
+        node_desc = dev.node_desc
+        dev.node_desc = node_desc.replace(
+            mac_capability_flags=node_desc.mac_capability_flags
+            | zdo_t.NodeDescriptor.MACCapabilityFlags.RxOnWhenIdle
+        )
+    cluster = dev.endpoints[1].add_input_cluster(Basic.cluster_id)
+    hdr = foundation.ZCLHeader.general(1, foundation.GeneralCommand.Report_Attributes)
+
+    with patch.object(cluster, "general_command") as general_cmd_mock:
+        cluster.send_default_rsp(hdr)
+        await asyncio.sleep(0)
+
+    assert general_cmd_mock.mock_calls[0].kwargs["retries"] == expected_retries
 
 
 async def test_configure_reporting_multiple(cluster):
@@ -2309,6 +2415,7 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
             attribute_id=DoublingCluster.AttributeDefs.passthrough_attr.id,
             manufacturer_code=None,
             raw_value=99,
+            data_type=foundation.DataTypeId.uint8,
             value=99,
         ),
         # No AttributeUpdatedEvent for passthrough_attr since value wasn't transformed
@@ -2333,6 +2440,7 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
             attribute_id=MOTION_ATTRIBUTE,
             manufacturer_code=None,
             raw_value=1,
+            data_type=foundation.DataTypeId.uint8,
             value=1,
         ),
     ]
@@ -2402,6 +2510,7 @@ async def test_report_attributes_quirk_transforms_value(app_mock):
             attribute_id=DoublingCluster.AttributeDefs.passthrough_attr.id,
             manufacturer_code=None,
             raw_value=77,
+            data_type=foundation.DataTypeId.uint8,
             value=77,
         ),
         # No AttributeUpdatedEvent for passthrough_attr since value wasn't transformed
@@ -2949,6 +3058,7 @@ async def test_read_attributes_insufficient_space_retry_success(app_mock) -> Non
             attribute_id=TestCluster.AttributeDefs.attr_0.id,
             manufacturer_code=None,
             raw_value=10,
+            data_type=foundation.DataTypeId.uint8,
             value=10,
         ),
         AttributeReadEvent(
@@ -2960,6 +3070,7 @@ async def test_read_attributes_insufficient_space_retry_success(app_mock) -> Non
             attribute_id=TestCluster.AttributeDefs.attr_2.id,
             manufacturer_code=None,
             raw_value=30,
+            data_type=foundation.DataTypeId.uint8,
             value=30,
         ),
         # No event for attr_1's INSUFFICIENT_SPACE record; the solo re-read then emits
@@ -2974,6 +3085,7 @@ async def test_read_attributes_insufficient_space_retry_success(app_mock) -> Non
             attribute_id=TestCluster.AttributeDefs.attr_1.id,
             manufacturer_code=None,
             raw_value=20,
+            data_type=foundation.DataTypeId.uint8,
             value=20,
         ),
     ]
@@ -3483,6 +3595,7 @@ async def test_quirk_manufacturer_code_context_isolation(app_mock) -> None:
         attribute_id=TestCluster.AttributeDefs.manuf_attr.id,
         manufacturer_code=0x1234,
         raw_value=42,
+        data_type=foundation.DataTypeId.uint8,
         value=42,
     )
 

@@ -15,22 +15,27 @@ import zigpy.endpoint
 from zigpy.ota import OTA, OtaImagesResult
 from zigpy.time import TimeSnapshot, utc_periods
 from zigpy.zcl import OtaImageAvailableEvent, OtaQueryCacheUpdatedEvent, foundation
+from zigpy.zcl.clusters.closures import DoorLock
 from zigpy.zcl.clusters.general import (
     Basic,
+    Commissioning,
     CoordinateSystem,
     GetLocationDataFlags,
     KeepAlive,
     LocationMethod,
     LocationType,
+    MultistateInput,
     Ota,
     Partition,
     PartitionAckOptions,
     PartitionFragmentationOptions,
     PowerProfile,
+    ResetStartupParametersOptions,
     RSSILocation,
+    Scenes,
     Time,
 )
-from zigpy.zcl.clusters.protocol import BacnetProtocolTunnel
+from zigpy.zcl.clusters.protocol import BacnetProtocolTunnel, BinaryInputRegular
 import zigpy.zcl.clusters.security as sec
 from zigpy.zcl.clusters.wwah import WorksWithAllHubs
 from zigpy.zdo import types as zdo_t
@@ -56,6 +61,7 @@ def test_attributes():
             assert attr.id == attrid
             assert attr.name
             assert attr.type
+            assert attr.zcl_type != foundation.DataTypeId.unk
             assert callable(attr.type.deserialize)
             assert callable(attr.type.serialize)
 
@@ -186,6 +192,148 @@ async def test_keepalive_cluster() -> None:
             type=foundation.DataTypeId.uint16,
             value=300,
         ),
+    )
+
+
+@pytest.mark.parametrize(
+    "command",
+    [Scenes.ServerCommandDefs.add, Scenes.ServerCommandDefs.enhanced_add],
+)
+def test_scenes_add_extension_field_sets(command: foundation.ZCLCommandDef) -> None:
+    """Add Scene and Enhanced Add Scene carry trailing extension field sets."""
+    header = (
+        b"\x34\x12"  # Group ID
+        b"\x05"  # Scene ID
+        b"\x0a\x00"  # Transition time
+        b"\x02ab"  # Scene name
+    )
+    field_sets = (
+        b"\x06\x00\x01\x01"  # On/Off: on_off=1
+        b"\x08\x00\x01\x80"  # Level control: current_level=0x80
+        b"\x00\x03\x00"  # Color control: empty field set
+    )
+
+    cmd, rest = command.schema.deserialize(header + field_sets)
+    assert rest == b""
+    assert cmd.group_id == 0x1234
+    assert cmd.scene_id == 5
+    assert cmd.transition_time == 10
+    assert cmd.scene_name == "ab"
+    assert cmd.extension_field_sets == [
+        Scenes.ExtensionFieldSet(cluster_id=0x0006, extension=b"\x01"),
+        Scenes.ExtensionFieldSet(cluster_id=0x0008, extension=b"\x80"),
+        Scenes.ExtensionFieldSet(cluster_id=0x0300, extension=b""),
+    ]
+    assert cmd.serialize() == header + field_sets
+
+    # Extension field sets may be omitted entirely
+    cmd, rest = command.schema.deserialize(header)
+    assert rest == b""
+    assert cmd.extension_field_sets is None
+
+    kwargs = {
+        "group_id": 0x1234,
+        "scene_id": 5,
+        "transition_time": 10,
+        "scene_name": "ab",
+    }
+    assert command.schema(**kwargs).serialize() == header
+
+    # An empty list of field sets adds no bytes
+    assert command.schema(**kwargs, extension_field_sets=[]).serialize() == header
+
+    # A truncated field set is rejected
+    with pytest.raises(ValueError):
+        command.schema.deserialize(header + b"\x06\x00\x02\x01")
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        Scenes.ClientCommandDefs.view_response,
+        Scenes.ClientCommandDefs.enhanced_view_response,
+    ],
+)
+def test_scenes_view_response_extension_field_sets(
+    command: foundation.ZCLCommandDef,
+) -> None:
+    """View Scene responses carry extension field sets on success only."""
+    header = b"\x34\x12" + b"\x05"  # Group ID, Scene ID
+    success = (
+        b"\x00"  # Status
+        + header
+        + b"\x0a\x00"  # Transition time
+        + b"\x02ab"  # Scene name
+    )
+    field_sets = b"\x06\x00\x01\x01" + b"\x02\x01\x02\xff\x00"
+
+    cmd, rest = command.schema.deserialize(success + field_sets)
+    assert rest == b""
+    assert cmd.status == foundation.Status.SUCCESS
+    assert cmd.transition_time == 10
+    assert cmd.scene_name == "ab"
+    assert cmd.extension_field_sets == [
+        Scenes.ExtensionFieldSet(cluster_id=0x0006, extension=b"\x01"),
+        Scenes.ExtensionFieldSet(cluster_id=0x0102, extension=b"\xff\x00"),
+    ]
+    assert cmd.serialize() == success + field_sets
+
+    # A successful response with a scene that has no field sets
+    cmd, rest = command.schema.deserialize(success)
+    assert rest == b""
+    assert cmd.extension_field_sets is None
+    assert cmd.serialize() == success
+
+    # Any other status omits all trailing fields
+    failure = b"\x8b" + header
+    cmd, rest = command.schema.deserialize(failure)
+    assert rest == b""
+    assert cmd.status == foundation.Status.NOT_FOUND
+    assert cmd.transition_time is None
+    assert cmd.scene_name is None
+    assert cmd.extension_field_sets is None
+    assert cmd.serialize() == failure
+
+
+@pytest.mark.parametrize(
+    ("raw_mode", "mode"),
+    [
+        (0x00, Scenes.CopyMode(0)),
+        (0x01, Scenes.CopyMode.Copy_All_Scenes),
+        # Reserved bits are kept
+        (0x81, Scenes.CopyMode.Copy_All_Scenes | Scenes.CopyMode(0x80)),
+    ],
+)
+def test_scenes_copy_mode(raw_mode: int, mode: Scenes.CopyMode) -> None:
+    """The Copy Scene mode field is a map8 with a Copy All Scenes bit."""
+    data = (
+        bytes([raw_mode])
+        + b"\x34\x12"  # Group identifier from
+        + b"\x05"  # Scene identifier from
+        + b"\x78\x56"  # Group identifier to
+        + b"\x06"  # Scene identifier to
+    )
+    schema = Scenes.ServerCommandDefs.copy.schema
+
+    cmd, rest = schema.deserialize(data)
+    assert rest == b""
+    assert type(cmd.mode) is Scenes.CopyMode
+    assert cmd.mode == mode
+    assert cmd.group_id_from == 0x1234
+    assert cmd.scene_id_from == 5
+    assert cmd.group_id_to == 0x5678
+    assert cmd.scene_id_to == 6
+
+    # Plain integers keep working
+    assert (
+        schema(
+            mode=raw_mode,
+            group_id_from=0x1234,
+            scene_id_from=5,
+            group_id_to=0x5678,
+            scene_id_to=6,
+        ).serialize()
+        == data
     )
 
 
@@ -908,6 +1056,24 @@ def test_hvac_thermostat_system_type():
     assert sys_type.heating_fuel_source == hvac.HeatingFuelSource.Gas
     assert sys_type.heating_system_type == hvac.HeatingSystemType.Heat_Pump
 
+    # ZCL R8 Table 6-12: the stage sub-fields are 2-bit values, 0b10 is Stage 3
+    sys_type = hvac.Thermostat.SystemType(0x0A)
+    assert sys_type.cooling_system_stage == hvac.CoolingSystemStage.Cool_Stage_3
+    assert sys_type.heating_system_stage == hvac.HeatingSystemStage.Heat_Stage_3
+    assert sys_type == hvac.Thermostat.SystemType(
+        cooling_system_stage=hvac.CoolingSystemStage.Cool_Stage_3,
+        heating_system_stage=hvac.HeatingSystemStage.Heat_Stage_3,
+        heating_system_type=hvac.HeatingSystemType.Conventional,
+        heating_fuel_source=hvac.HeatingFuelSource.Electric,
+        _reserved=0,
+    )
+    assert sys_type.serialize() == b"\x0a"
+
+    # Reserved bits are kept
+    sys_type = hvac.Thermostat.SystemType(0xFF)
+    assert sys_type._reserved == 0b11
+    assert sys_type.serialize() == b"\xff"
+
 
 @patch("zigpy.zcl.Cluster.send_default_rsp")
 async def test_ias_zone(send_rsp_mock):
@@ -992,6 +1158,134 @@ def test_ias_zone_enum_subclass_zcl_type():
     """Test `IasZone.zone_type` is an enum16, not a uint16."""
 
     assert sec.IasZone.AttributeDefs.zone_type.zcl_type == foundation.DataTypeId.enum16
+
+
+def test_thermostat_system_type_zcl_type() -> None:
+    """`Thermostat.system_type_config` is a `map8` on the wire, per ZCL R8 Table 6-12."""
+
+    attr = zcl.clusters.hvac.Thermostat.AttributeDefs.system_type_config
+    assert attr.zcl_type == foundation.DataTypeId.map8
+
+
+async def test_thermostat_system_type_read() -> None:
+    """A `map8` read of `system_type_config` decodes into `SystemType` fields."""
+
+    hvac = zcl.clusters.hvac
+    cluster = hvac.Thermostat(MagicMock())
+
+    # Read_Attributes_rsp: attribute 0x0009, SUCCESS, map8, 0x3A
+    hdr, rsp = cluster.deserialize(bytes.fromhex("18010109000018" + "3a"))
+
+    with patch.object(cluster, "_read_attributes", new=AsyncMock(return_value=rsp)):
+        success, failure = await cluster.read_attributes(["system_type_config"])
+
+    assert not failure
+    value = success["system_type_config"]
+    assert type(value) is hvac.SystemType
+    assert value.cooling_system_stage == hvac.CoolingSystemStage.Cool_Stage_3
+    assert value.heating_system_stage == hvac.HeatingSystemStage.Heat_Stage_3
+    assert value.heating_system_type == hvac.HeatingSystemType.Heat_Pump
+    assert value.heating_fuel_source == hvac.HeatingFuelSource.Gas
+    assert cluster.get("system_type_config") == value
+
+
+async def test_thermostat_system_type_write() -> None:
+    """Writing `system_type_config` serializes a `map8` with the spec bit layout."""
+
+    hvac = zcl.clusters.hvac
+    cluster = hvac.Thermostat(MagicMock())
+    success_response = [
+        [foundation.WriteAttributesStatusRecord(status=foundation.Status.SUCCESS)]
+    ]
+
+    write_mock = AsyncMock(return_value=success_response)
+
+    with patch.object(cluster, "_write_attributes", new=write_mock):
+        await cluster.write_attributes(
+            {
+                "system_type_config": hvac.SystemType(
+                    cooling_system_stage=hvac.CoolingSystemStage.Cool_Stage_2,
+                    heating_system_stage=hvac.HeatingSystemStage.Heat_Stage_3,
+                    heating_system_type=hvac.HeatingSystemType.Heat_Pump,
+                    heating_fuel_source=hvac.HeatingFuelSource.Electric,
+                    _reserved=0,
+                )
+            }
+        )
+
+    (records,) = write_mock.call_args.args
+    # Attribute 0x0009, map8, 0b0001_1001
+    assert b"".join(r.serialize() for r in records) == bytes.fromhex("090018" + "19")
+
+
+@pytest.mark.parametrize(
+    ("command_id", "command_name"),
+    [(0x05, "set_pin_code_response"), (0x16, "set_rfid_code_response")],
+)
+@pytest.mark.parametrize(
+    ("raw", "status"),
+    [
+        (0x00, DoorLock.SetPinOrIdStatus.Success),
+        (0x01, DoorLock.SetPinOrIdStatus.GeneralFailure),
+        (0x02, DoorLock.SetPinOrIdStatus.MemoryFull),
+        (0x03, DoorLock.SetPinOrIdStatus.DuplicateCodeError),
+    ],
+)
+def test_door_lock_set_pin_or_id_status(
+    command_id: int,
+    command_name: str,
+    raw: int,
+    status: DoorLock.SetPinOrIdStatus,
+) -> None:
+    """Set PIN/RFID Code responses carry cluster-specific status values.
+
+    ZCL R8 7.3.2.16.6 and 7.3.2.16.23: 0 Success, 1 General failure, 2 Memory full,
+    3 Duplicate code/ID error. These are not ZCL `Status` values.
+    """
+
+    cluster = DoorLock(MagicMock())
+    data = bytes([0x19, 0x01, command_id, raw])
+
+    hdr, args = cluster.deserialize(data)
+    assert hdr.command_id == command_id
+    assert cluster.client_commands[command_id].name == command_name
+    assert type(args.status) is DoorLock.SetPinOrIdStatus
+    assert args.status == status
+    assert args.status.name == status.name
+
+    schema = cluster.client_commands[command_id].schema
+    assert schema(status=status).serialize() == bytes([raw])
+
+
+@pytest.mark.parametrize(
+    ("raw", "options"),
+    [
+        (0x00, ResetStartupParametersOptions(0)),
+        (0x01, ResetStartupParametersOptions.Reset_current),
+        (0x02, ResetStartupParametersOptions.Reset_all),
+        (
+            0x06,
+            ResetStartupParametersOptions.Reset_all
+            | ResetStartupParametersOptions.Erase_index,
+        ),
+    ],
+)
+def test_commissioning_reset_startup_parameters_options(
+    raw: int, options: ResetStartupParametersOptions
+) -> None:
+    """Reset Startup Parameters options are defined bits, per ZCL R8 Figure 13-6."""
+
+    cluster = Commissioning(MagicMock())
+    data = bytes([0x01, 0x01, 0x03, raw, 0x02])
+
+    hdr, args = cluster.deserialize(data)
+    assert hdr.command_id == 0x03
+    assert type(args.options) is ResetStartupParametersOptions
+    assert args.options == options
+    assert args.index == 0x02
+
+    schema = Commissioning.ServerCommandDefs.reset_startup_parameters.schema
+    assert schema(options=options, index=0x02).serialize() == data[3:]
 
 
 @pytest.mark.parametrize(
@@ -1367,4 +1661,59 @@ def test_rssi_location_type_report() -> None:
         two_dimensional=1,
         coordinate_system=CoordinateSystem.Rectangular,
         _reserved=0,
+    )
+
+
+@pytest.mark.parametrize(
+    ("cluster_type", "attr_def", "report", "value"),
+    [
+        (
+            MultistateInput,
+            MultistateInput.AttributeDefs.state_text,
+            # Array of two strings
+            "0e00" + "48" + "42" + "0200" + "0161" + "0162",
+            foundation.Array(
+                type=foundation.DataTypeId.string,
+                value=types.LVList[types.CharacterString, types.uint16_t](["a", "b"]),
+            ),
+        ),
+        (
+            BinaryInputRegular,
+            BinaryInputRegular.AttributeDefs.change_of_state_time,
+            # Structure of a date and a time of day
+            "1000" + "4c" + "0200" + "e1" + "7c0b0f03" + "e0" + "0c1e2d00",
+            foundation.ZCLStructure(
+                [
+                    foundation.TypeValue(
+                        type=foundation.DataTypeId.date,
+                        value=types.Date(
+                            years_since_1900=124, month=11, day=15, day_of_week=3
+                        ),
+                    ),
+                    foundation.TypeValue(
+                        type=foundation.DataTypeId.ToD,
+                        value=types.TimeOfDay(
+                            hours=12, minutes=30, seconds=45, hundredths=0
+                        ),
+                    ),
+                ]
+            ),
+        ),
+    ],
+)
+def test_array_and_structure_attribute_report(
+    cluster_type, attr_def, report, value
+) -> None:
+    """Array and structure attributes are read and written in their ZCL format."""
+    cluster = cluster_type(MagicMock())
+
+    hdr, args = cluster.deserialize(bytes.fromhex("18010a" + report))
+    cluster.handle_message(hdr, args)
+
+    assert cluster.get(attr_def.name) == value
+    assert (
+        foundation.TypeValue(type=attr_def.zcl_type, value=attr_def.type(value))
+        .serialize()
+        .hex()
+        == report[4:]
     )

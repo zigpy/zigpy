@@ -229,10 +229,19 @@ async def test_initialize_ep_failed(monkeypatch, dev):
         # Aqara H1 remote, zigpy/zigpy#1894
         ([1, 2, 3, 4], [5, 6]),
         ([1, 3], [2]),
+        # SALUS ST100ZB lists endpoint 242 but rejects it with INVALID_EP
+        ([9], [242]),
     ],
 )
+@pytest.mark.parametrize(
+    "inactive_status", [zdo_t.Status.NOT_ACTIVE, zdo_t.Status.INVALID_EP]
+)
 async def test_initialize_removes_inactive_endpoints(
-    monkeypatch, dev, active_eps: list[int], inactive_eps: list[int]
+    monkeypatch,
+    dev,
+    active_eps: list[int],
+    inactive_eps: list[int],
+    inactive_status: zdo_t.Status,
 ) -> None:
     """Endpoints listed as active but without a simple descriptor are removed."""
 
@@ -241,7 +250,7 @@ async def test_initialize_removes_inactive_endpoints(
 
     async def mock_simple_desc_req(nwk, endpoint_id):
         if endpoint_id in inactive_eps:
-            return [zdo_t.Status.NOT_ACTIVE, nwk, None]
+            return [inactive_status, nwk, None]
 
         return [
             zdo_t.Status.SUCCESS,
@@ -956,7 +965,8 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     assert dev.application.send_packet.await_count == 0
     assert progress_callback.call_count == 0
     assert "OTA image_notify handler exception" in caplog.text
-    assert result != foundation.Status.SUCCESS
+    # The device never requested the image after the failed notify
+    assert result == foundation.Status.TIMEOUT
     cluster.image_notify = image_notify
     caplog.clear()
 
@@ -1346,7 +1356,8 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     assert dev.application.send_packet.await_count == 0
     assert progress_callback.call_count == 0
     assert "OTA image_notify handler exception" in caplog.text
-    assert result != foundation.Status.SUCCESS
+    # The device never requested the image after the failed notify
+    assert result == foundation.Status.TIMEOUT
     cluster.image_notify = image_notify
     caplog.clear()
 
@@ -2282,6 +2293,67 @@ async def test_reinterview_end_to_end(
     assert len(device_initialized_calls) == 0
 
 
+async def test_reinterview_invalid_ep(
+    monkeypatch,
+    app: zigpy.application.ControllerApplication,
+):
+    """Reinterview succeeds when an active endpoint is rejected with INVALID_EP."""
+    ieee = t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11")
+    node_desc = zdo_t.NodeDescriptor(1, 1, 1, 4, 5, 6, 7, 8)
+
+    async def mock_get_node_descriptor(self):
+        self.node_desc = node_desc
+        return node_desc
+
+    # SALUS ST100ZB: endpoint 242 is listed as active, its descriptor is not
+    async def mock_active_ep_req(nwk):
+        return [zdo_t.Status.SUCCESS, nwk, [9, 242]]
+
+    async def mock_simple_desc_req(nwk, endpoint_id):
+        if endpoint_id == 242:
+            return [zdo_t.Status.INVALID_EP, nwk, None]
+
+        return [
+            zdo_t.Status.SUCCESS,
+            nwk,
+            zdo_t.SizePrefixedSimpleDescriptor(
+                endpoint=endpoint_id,
+                profile=zha.PROFILE_ID,
+                device_type=zha.DeviceType.THERMOSTAT,
+                device_version=1,
+                input_clusters=[Basic.cluster_id],
+                output_clusters=[],
+            ),
+        ]
+
+    async def mock_ep_get_model_info(self):
+        return "ST100ZB", "SALUS"
+
+    original_init = device.Device.__init__
+
+    def patched_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        self.zdo.Active_EP_req = mock_active_ep_req
+        self.zdo.Simple_Desc_req = mock_simple_desc_req
+
+    monkeypatch.setattr(device.Device, "get_node_descriptor", mock_get_node_descriptor)
+    monkeypatch.setattr(device.Device, "__init__", patched_init)
+    monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
+
+    old_dev = app.add_device(ieee=ieee, nwk=t.NWK(0xDED6))
+    await old_dev.initialize()
+    assert old_dev.is_initialized
+
+    app.listener_event.reset_mock()
+    await old_dev.reinterview()
+
+    new_dev = app.devices[ieee]
+    assert new_dev is not old_dev
+    assert new_dev.is_initialized
+    assert [ep.endpoint_id for ep in new_dev.non_zdo_endpoints] == [9]
+    app.listener_event.assert_any_call("device_reinterviewed", new_dev)
+
+
 @pytest.mark.parametrize(
     "exception",
     [TimeoutError, RuntimeError("unexpected")],
@@ -2677,6 +2749,54 @@ async def test_request_retry_delay_releases_concurrency(app) -> None:
         # Tear down the still-pending requests so the task group can exit
         for task in tasks:
             task.cancel()
+
+
+async def test_request_cancelled_while_waiting_is_not_retried(app) -> None:
+    """A request dropped from the queue by `cancel_waiting` must not re-queue itself."""
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"))
+
+    # Occupy the only slot of the `LOW` tier so that requests have to wait
+    async with AsyncExitStack() as stack:
+        await stack.enter_async_context(
+            dev._concurrent_requests_semaphore(priority=t.PacketPriority.LOW)
+        )
+
+        tasks = [
+            asyncio.create_task(
+                dev.request(
+                    profile=0x1234,
+                    cluster=0x0006,
+                    src_ep=1,
+                    dst_ep=1,
+                    sequence=seq,
+                    data=b"",
+                    expect_reply=False,
+                    priority=t.PacketPriority.LOW,
+                    retry_delay=0,
+                )
+            )
+            for seq in range(5)
+        ]
+
+        async with asyncio.timeout(1):
+            while dev._concurrent_requests_semaphore.waiting_requests < len(tasks):
+                await asyncio.sleep(0)
+
+        dev._concurrent_requests_semaphore.cancel_waiting(
+            zigpy.exceptions.DeliveryError("Device has re-joined the network")
+        )
+
+        results = await asyncio.wait_for(
+            asyncio.gather(*tasks, return_exceptions=True), timeout=1
+        )
+
+        # Let any (unwanted) retry enqueue itself
+        await asyncio.sleep(0.01)
+
+        assert all(isinstance(r, zigpy.exceptions.DeliveryError) for r in results)
+        assert dev._concurrent_requests_semaphore.waiting_requests == 0
+
+    assert app.send_packet.mock_calls == []
 
 
 async def test_radio_details_deprecated(dev) -> None:

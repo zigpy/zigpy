@@ -7,16 +7,13 @@ from typing import Final
 import zigpy.types as t
 from zigpy.zcl import Cluster
 from zigpy.zcl.foundation import (
+    Array,
     BaseAttributeDefs,
     BaseCommandDefs,
     ZCLAttributeDef,
     ZCLCommandDef,
+    ZCLStructure,
 )
-
-
-class DateTime(t.Struct):
-    date: t.uint32_t
-    time: t.uint32_t
 
 
 class BACnetEventState(t.enum8):
@@ -242,14 +239,14 @@ class BinaryInputRegular(Cluster):
 
     class AttributeDefs(BaseAttributeDefs):
         change_of_state_count: Final = ZCLAttributeDef(id=0x000F, type=t.uint32_t)
-        change_of_state_time: Final = ZCLAttributeDef(id=0x0010, type=DateTime)
+        change_of_state_time: Final = ZCLAttributeDef(id=0x0010, type=ZCLStructure)
         device_type: Final = ZCLAttributeDef(id=0x001F, type=t.CharacterString)
         elapsed_active_time: Final = ZCLAttributeDef(id=0x0021, type=t.uint32_t)
         object_id: Final = ZCLAttributeDef(id=0x004B, type=t.uint32_t)
         object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=BACnetObjectType)
-        time_of_at_reset: Final = ZCLAttributeDef(id=0x0072, type=DateTime)
-        time_of_sc_reset: Final = ZCLAttributeDef(id=0x0073, type=DateTime)
+        time_of_at_reset: Final = ZCLAttributeDef(id=0x0072, type=ZCLStructure)
+        time_of_sc_reset: Final = ZCLAttributeDef(id=0x0073, type=ZCLStructure)
         profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
 
 
@@ -277,15 +274,15 @@ class BinaryOutputRegular(Cluster):
 
     class AttributeDefs(BaseAttributeDefs):
         change_of_state_count: Final = ZCLAttributeDef(id=0x000F, type=t.uint32_t)
-        change_of_state_time: Final = ZCLAttributeDef(id=0x0010, type=DateTime)
+        change_of_state_time: Final = ZCLAttributeDef(id=0x0010, type=ZCLStructure)
         device_type: Final = ZCLAttributeDef(id=0x001F, type=t.CharacterString)
         elapsed_active_time: Final = ZCLAttributeDef(id=0x0021, type=t.uint32_t)
         feed_back_value: Final = ZCLAttributeDef(id=0x0028, type=BACnetFeedBackValue)
         object_id: Final = ZCLAttributeDef(id=0x004B, type=t.uint32_t)
         object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=BACnetObjectType)
-        time_of_at_reset: Final = ZCLAttributeDef(id=0x0072, type=DateTime)
-        time_of_sc_reset: Final = ZCLAttributeDef(id=0x0073, type=DateTime)
+        time_of_at_reset: Final = ZCLAttributeDef(id=0x0072, type=ZCLStructure)
+        time_of_sc_reset: Final = ZCLAttributeDef(id=0x0073, type=ZCLStructure)
         profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
 
 
@@ -312,13 +309,13 @@ class BinaryValueRegular(Cluster):
 
     class AttributeDefs(BaseAttributeDefs):
         change_of_state_count: Final = ZCLAttributeDef(id=0x000F, type=t.uint32_t)
-        change_of_state_time: Final = ZCLAttributeDef(id=0x0010, type=DateTime)
+        change_of_state_time: Final = ZCLAttributeDef(id=0x0010, type=ZCLStructure)
         elapsed_active_time: Final = ZCLAttributeDef(id=0x0021, type=t.uint32_t)
         object_id: Final = ZCLAttributeDef(id=0x004B, type=t.uint32_t)
         object_name: Final = ZCLAttributeDef(id=0x004D, type=t.CharacterString)
         object_type: Final = ZCLAttributeDef(id=0x004F, type=BACnetObjectType)
-        time_of_at_reset: Final = ZCLAttributeDef(id=0x0072, type=DateTime)
-        time_of_sc_reset: Final = ZCLAttributeDef(id=0x0073, type=DateTime)
+        time_of_at_reset: Final = ZCLAttributeDef(id=0x0072, type=ZCLStructure)
+        time_of_sc_reset: Final = ZCLAttributeDef(id=0x0073, type=ZCLStructure)
         profile_name: Final = ZCLAttributeDef(id=0x00A8, type=t.CharacterString)
 
 
@@ -450,9 +447,7 @@ class IEEEProtocolTunnel11073(Cluster):
     ep_attribute: Final = "ieee11073_tunnel"
 
     class AttributeDefs(BaseAttributeDefs):
-        device_id_list: Final = ZCLAttributeDef(
-            id=0x0000, type=t.List[t.uint16_t], access="r"
-        )
+        device_id_list: Final = ZCLAttributeDef(id=0x0000, type=Array, access="r")
         manager_target: Final = ZCLAttributeDef(id=0x0001, type=t.EUI64, access="r")
         manager_endpoint: Final = ZCLAttributeDef(id=0x0002, type=t.uint8_t, access="r")
         connected: Final = ZCLAttributeDef(id=0x0003, type=t.Bool, access="r")

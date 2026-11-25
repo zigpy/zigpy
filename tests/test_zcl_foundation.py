@@ -463,19 +463,37 @@ def test_ptype_to_datatype_lvlist():
         == foundation.DataType.struct
     )
 
-    class _Similar(t.LVList, item_type=foundation.TypeValue, length_type=t.uint16_t):
-        pass
 
-    assert foundation.DataType.from_python_type(_Similar) == foundation.DataType.unk
+class _Similar(t.LVList, item_type=foundation.TypeValue, length_type=t.uint16_t):
+    pass
 
 
-def test_ptype_to_datatype_notype():
-    """Test pytype for NoData."""
+class _ZigpyUnknown:
+    pass
 
-    class ZigpyUnknown:
-        pass
 
-    assert foundation.DataType.from_python_type(ZigpyUnknown) == foundation.DataType.unk
+@pytest.mark.parametrize(
+    "python_type",
+    [
+        _Similar,
+        _ZigpyUnknown,
+        t.LVList[t.uint8_t],
+        t.LVList[t.uint8_t, t.uint16_t],
+        t.List[t.uint8_t],
+    ],
+)
+def test_ptype_to_datatype_no_zcl_type(python_type) -> None:
+    """A type without a ZCL data type cannot be used without an explicit one."""
+    with pytest.raises(ValueError, match="has no ZCL data type"):
+        foundation.DataType.from_python_type(python_type)
+
+    with pytest.raises(ValueError, match="set `zcl_type` explicitly"):
+        foundation.ZCLAttributeDef(id=0x0000, type=python_type)
+
+    attr_def = foundation.ZCLAttributeDef(
+        id=0x0000, type=python_type, zcl_type=foundation.DataTypeId.octstr
+    )
+    assert attr_def.zcl_type == foundation.DataTypeId.octstr
 
 
 def test_datatype_from_unknown_type_id():
@@ -627,6 +645,15 @@ def test_status_enum():
     assert status.name not in aps_names
     assert status.name not in nwk_names
     assert status.name in mac_names
+
+    # ZCL LIMIT_REACHED shadows the APS/NWK NWK_STARTUP_FAILURE (also 0xC4)
+    status = foundation.Status(0xC4)
+    assert status is foundation.Status.LIMIT_REACHED
+    assert status.name == "LIMIT_REACHED"
+    assert foundation.Status.deserialize(b"\xc4") == (
+        foundation.Status.LIMIT_REACHED,
+        b"",
+    )
 
     status = foundation.Status(0xFF)
     assert status.name not in status_names
@@ -831,15 +858,18 @@ def test_array():
         foundation.ReadAttributeRecord(
             attrid=0x0001,
             status=foundation.Status.SUCCESS,
-            value=foundation.Array(
-                type=foundation.DataTypeId.octstr,
-                value=t.LVList[t.LVBytes, t.uint16_t](
-                    [
-                        b"\x00\r\x01\x06\x00\x02",
-                        b"\x01\r\x02\x06\x00\x02",
-                        b"\x02\r\x03\x06\x00\x02",
-                        b"\x03\r\x04\x06\x00\x02",
-                    ]
+            value=foundation.TypeValue(
+                type=foundation.DataTypeId.array,
+                value=foundation.Array(
+                    type=foundation.DataTypeId.octstr,
+                    value=t.LVList[t.LVBytes, t.uint16_t](
+                        [
+                            b"\x00\r\x01\x06\x00\x02",
+                            b"\x01\r\x02\x06\x00\x02",
+                            b"\x02\r\x03\x06\x00\x02",
+                            b"\x03\r\x04\x06\x00\x02",
+                        ]
+                    ),
                 ),
             ),
         )
