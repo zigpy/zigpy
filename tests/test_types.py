@@ -1,5 +1,5 @@
 import dataclasses
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import itertools
 import logging
 import math
@@ -421,6 +421,63 @@ def test_limited_char_string():
         t.LimitedCharString(5)("123456").serialize()
 
 
+@pytest.mark.parametrize(
+    ("string_type", "prefix_length"),
+    [
+        (t.CharacterString, 1),
+        (t.LongCharacterString, 2),
+        (t.LimitedCharString(16), 1),
+    ],
+)
+def test_char_string_multibyte(string_type, prefix_length):
+    """The length prefix counts UTF-8 octets, not characters."""
+    text = "é1€😀"  # 2 + 1 + 3 + 4 octets in 4 characters
+    encoded = b"\xc3\xa91\xe2\x82\xac\xf0\x9f\x98\x80"
+    serialized = (10).to_bytes(prefix_length, "little") + encoded
+
+    assert string_type(text).serialize() == serialized
+
+    d, rest = string_type.deserialize(serialized + b"rest")
+    assert d == text
+    assert d.raw == encoded
+    assert rest == b"rest"
+    assert d.serialize() == serialized
+
+
+def test_char_string_multibyte_too_long():
+    # 127 characters, but 254 octets: the largest valid character string
+    assert len(t.CharacterString("é" * 127).serialize()) == 1 + 254
+
+    # 128 characters, but 256 octets
+    with pytest.raises(ValueError, match="too long"):
+        t.CharacterString("é" * 128).serialize()
+
+
+def test_limited_char_string_multibyte():
+    # The limit is in characters (e.g. "0 to 16 characters" for scene names), while
+    # the length prefix counts octets
+    assert t.LimitedCharString(2)("éé").serialize() == b"\x04\xc3\xa9\xc3\xa9"
+
+    with pytest.raises(ValueError, match="too long"):
+        t.LimitedCharString(2)("ééé").serialize()
+
+
+def test_long_char_string_invalid():
+    # The non-value of a long character string is 0xFFFF, not 0x00FF
+    r, rest = t.LongCharacterString.deserialize(b"\xff\xffabcd")
+    assert r == ""
+    assert r.invalid is True
+    assert rest == b"abcd"
+
+    assert r.serialize() == b"\xff\xff"
+
+    # A 255-octet long character string is a regular value
+    r, rest = t.LongCharacterString.deserialize(b"\xff\x00" + b"a" * 255 + b"rest")
+    assert r == "a" * 255
+    assert r.invalid is False
+    assert rest == b"rest"
+
+
 def test_lvlist():
     d, r = t.LVList[t.uint8_t, t.uint8_t].deserialize(b"\x0412345")
     assert r == b"5"
@@ -737,6 +794,22 @@ def test_eui64_convert():
     assert t.EUI64.convert(None) is None
 
 
+@pytest.mark.parametrize(
+    ("cls", "value"),
+    [
+        (t.EUI64, ""),
+        (t.EUI64, "00"),
+        (t.EUI64, "aa:bb"),
+        (t.EUI64, "00:11:22:33:44:55:66:77:88"),
+        (t.KeyData, ""),
+        (t.KeyData, "00:01:02:03:04:05:06:07"),
+    ],
+)
+def test_convert_wrong_length(cls, value) -> None:
+    with pytest.raises(ValueError, match="bytes long"):
+        cls.convert(value)
+
+
 def test_keydata():
     data = b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"
     extra = b"extra"
@@ -1013,3 +1086,27 @@ def test_zigbee_packet_hash_timestamp() -> None:
 
     assert packet == later
     assert hash(packet) == hash(later)
+
+
+@pytest.mark.parametrize("cls", [t.UTCTime, t.StandardTime, t.LocalTime])
+@pytest.mark.parametrize(
+    ("delta", "expected"),
+    [
+        (timedelta(microseconds=-1), t.UTCTime.INVALID),
+        (timedelta(0), 0),
+        (timedelta(seconds=1, microseconds=999999), 1),
+        (timedelta(seconds=t.UTCTime.INVALID - 1), t.UTCTime.INVALID - 1),
+        (timedelta(seconds=t.UTCTime.INVALID), t.UTCTime.INVALID),
+    ],
+)
+def test_time_from_datetime(cls, delta, expected):
+    value = cls.from_datetime(datetime(2000, 1, 1, tzinfo=UTC) + delta)
+    assert value == expected
+    assert isinstance(value, cls)
+
+
+@pytest.mark.parametrize("seconds", [0, 1, 0x7FFFFFFF, t.UTCTime.INVALID - 1])
+def test_time_to_datetime(seconds):
+    value = t.UTCTime(seconds).to_datetime()
+    assert value.tzinfo is UTC
+    assert t.UTCTime.from_datetime(value) == seconds

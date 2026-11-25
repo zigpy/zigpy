@@ -23,7 +23,7 @@ class ShadeStatus(t.bitmap8):
 
 class ShadeMode(t.enum8):
     Normal = 0x00
-    Configure = 0x00
+    Configure = 0x01
     Unknown = 0xFF
 
 
@@ -51,7 +51,7 @@ class Shade(Cluster):
             id=0x0010, type=t.uint16_t, access="rw", mandatory=True
         )
         mode: Final = ZCLAttributeDef(
-            id=0x0012, type=ShadeMode, access="rw", mandatory=True
+            id=0x0011, type=ShadeMode, access="rw", mandatory=True
         )
 
 
@@ -262,6 +262,15 @@ class EventType(t.enum8):
     Alarm = 0x02
 
 
+class SetPinOrIdStatus(t.enum8):
+    """Status of the Set PIN Code and Set RFID Code responses."""
+
+    Success = 0x00
+    GeneralFailure = 0x01
+    MemoryFull = 0x02
+    DuplicateCodeError = 0x03
+
+
 class DoorLock(Cluster):
     """The door lock cluster provides an interface to a generic way to secure a door."""
 
@@ -287,6 +296,7 @@ class DoorLock(Cluster):
     UserType: Final = UserType
     DayMask: Final = DayMask
     EventType: Final = EventType
+    SetPinOrIdStatus: Final = SetPinOrIdStatus
 
     cluster_id: Final[t.uint16_t] = 0x0101
     name: Final = "Door Lock"
@@ -564,7 +574,7 @@ class DoorLock(Cluster):
         )
         set_pin_code_response: Final = ZCLCommandDef(
             id=0x05,
-            schema={"status": foundation.Status},
+            schema={"status": SetPinOrIdStatus},
         )
         get_pin_code_response: Final = ZCLCommandDef(
             id=0x06,
@@ -658,7 +668,7 @@ class DoorLock(Cluster):
         )
         set_rfid_code_response: Final = ZCLCommandDef(
             id=0x16,
-            schema={"status": foundation.Status},
+            schema={"status": SetPinOrIdStatus},
         )
         get_rfid_code_response: Final = ZCLCommandDef(
             id=0x17,
