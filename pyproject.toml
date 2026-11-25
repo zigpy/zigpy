@@ -27,7 +27,7 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-exclude = ["tests", "tests.*"]
+exclude = ["tests", "tests.*", "tools", "tools.*"]
 
 [tool.setuptools.package-data]
 "*" = ["appdb_schemas/schema_v*.sql"]
