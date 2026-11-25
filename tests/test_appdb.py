@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 from datetime import UTC, datetime, timedelta
 import logging
 import pathlib
@@ -43,17 +44,28 @@ from zigpy.device import Device, GreenPowerDevice, Status
 import zigpy.endpoint
 import zigpy.group
 import zigpy.ota
+from zigpy.store import StoredValue
 import zigpy.types as t
 import zigpy.zcl
 from zigpy.zcl import (
     OtaQueryCacheClearedEvent,
     OtaQueryCacheUpdatedEvent,
     UnsupportedAttribute,
+    foundation,
 )
 from zigpy.zcl.clusters.general import Basic, Identify, MultistateInput, OnOff, Ota
-from zigpy.zcl.foundation import Status as ZCLStatus, ZCLAttributeDef
+from zigpy.zcl.clusters.homeautomation import ElectricalMeasurement
+from zigpy.zcl.clusters.measurement import TemperatureMeasurement
+from zigpy.zcl.clusters.security import IasZone
+from zigpy.zcl.clusters.smartenergy import Metering
+from zigpy.zcl.foundation import Array, DataTypeId, Status as ZCLStatus, ZCLAttributeDef
 from zigpy.zdo import types as zdo_t
-from zigpy.zgp.commands import GPGenericSwitchConfiguration
+from zigpy.zgp.commands import (
+    GPClusterReport,
+    GPGenericSwitchConfiguration,
+    GPManufacturerSpecificAttributeReportingPayload,
+    GPManufacturerSpecificMultiClusterReportingPayload,
+)
 from zigpy.zgp.types import (
     GP_ENDPOINT,
     GP_GROUP_ID,
@@ -1397,14 +1409,18 @@ async def test_unstorable_attribute_values_not_persisted(tmp_path, caplog) -> No
     dev.model = "some model"
     dev.manufacturer = "some manufacturer"
 
-    # The device save stores the attribute cache in bulk
+    # The device save stores the attribute cache in bulk. A list is stored typed but
+    # one that does not fit its attribute's type cannot be stored at all.
     multistate = dev.endpoints[1].multistate_input
     multistate.update_attribute(MultistateInput.AttributeDefs.present_value, 2)
     multistate.update_attribute(
         MultistateInput.AttributeDefs.state_text,
-        t.LVList[t.CharacterString, t.uint16_t](["a", "b"]),
+        Array(
+            type=DataTypeId.string,
+            value=t.LVList[t.CharacterString, t.uint16_t](["a", "b"]),
+        ),
     )
-    multistate.update_attribute(MultistateInput.AttributeDefs.number_of_states, 2)
+    multistate.update_attribute(MultistateInput.AttributeDefs.number_of_states, ["x"])
     dev.endpoints[1].on_off.update_attribute(OnOff.AttributeDefs.on_off, 1)
     dev.endpoints[2].on_off.update_attribute(OnOff.AttributeDefs.on_off, 0)
 
@@ -1419,7 +1435,10 @@ async def test_unstorable_attribute_values_not_persisted(tmp_path, caplog) -> No
         with mock_attribute_reads(
             multistate,
             {
-                MultistateInput.AttributeDefs.state_text: ["c", "d"],
+                MultistateInput.AttributeDefs.state_text: Array(
+                    type=DataTypeId.string,
+                    value=t.LVList[t.CharacterString, t.uint16_t](["c", "d"]),
+                ),
                 MultistateInput.AttributeDefs.description: "some description",
             },
         ):
@@ -1430,10 +1449,11 @@ async def test_unstorable_attribute_values_not_persisted(tmp_path, caplog) -> No
                 ]
             )
 
+        multistate.update_attribute(MultistateInput.AttributeDefs.present_value, ["y"])
         await app._dblistener._callback_handlers.join()
 
     assert (
-        "[aa:bb:cc:dd:11:22:33:44:1:0x0012] Not persisting attribute 0x000e"
+        "[aa:bb:cc:dd:11:22:33:44:1:0x0012] Not persisting attribute 0x004a"
         in caplog.text
     )
     assert "Not persisting attribute event" in caplog.text
@@ -1447,16 +1467,19 @@ async def test_unstorable_attribute_values_not_persisted(tmp_path, caplog) -> No
     app2 = await make_app_with_db(db)
     dev2 = app2.get_device(ieee=dev.ieee)
 
-    # Everything but the unstorable value is persisted, including the second endpoint
+    # Everything but the unstorable values is persisted, including the second endpoint
     multistate2 = dev2.endpoints[1].multistate_input
     assert multistate2.get_cached_value("present_value") == 2
-    assert multistate2.get_cached_value("number_of_states") == 2
+    assert multistate2.get_cached_value("state_text") == Array(
+        type=DataTypeId.string,
+        value=t.LVList[t.CharacterString, t.uint16_t](["c", "d"]),
+    )
     assert multistate2.get_cached_value("description") == "some description"
     assert dev2.endpoints[1].on_off.get_cached_value("on_off") == 1
     assert dev2.endpoints[2].on_off.get_cached_value("on_off") == 0
 
     with pytest.raises(KeyError):
-        multistate2.get_cached_value("state_text")
+        multistate2.get_cached_value("number_of_states")
 
     await app2.shutdown()
 
@@ -1720,6 +1743,8 @@ async def test_reinterview_changed_signature_round_trip(tmp_path) -> None:
     ep3.device_type = profiles.zha.DeviceType.PUMP
     ep3.add_input_cluster(Basic.cluster_id)
 
+    app2.devices[ieee] = shadow
+
     await app2._device_reinterviewed(old_dev, shadow)
     await app2.shutdown()
 
@@ -1929,11 +1954,445 @@ async def test_attribute_cache_null_manufacturer_code_uniqueness(tmp_path):
 
         # And the value is the latest one
         cursor = await conn.execute(
-            f"SELECT value FROM attributes_cache{zigpy.appdb.DB_V} WHERE attr_id = :attr_id AND manufacturer_code IS NULL",
+            f"SELECT value, data_type FROM attributes_cache{zigpy.appdb.DB_V} WHERE attr_id = :attr_id AND manufacturer_code IS NULL",
             {"attr_id": Basic.AttributeDefs.model.id},
         )
         row = await cursor.fetchone()
-        assert row[0] == "Model 2"
+
+        # Values set by `update_attribute` have no wire representation
+        assert row == ("Model 2", None)
+
+
+async def _make_app_with_clusters(db, cluster_ids):
+    """Create an app with a single persisted device with input clusters on endpoint 1."""
+    app = await make_app_with_db(db)
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+
+    for cluster_id in cluster_ids:
+        ep.add_input_cluster(cluster_id)
+
+    app.device_initialized(dev)
+
+    return app, dev
+
+
+def _read_attr_row(db, cluster_id, attr_id):
+    with contextlib.closing(sqlite3.connect(db)) as conn:
+        return conn.execute(
+            f"SELECT value, data_type FROM attributes_cache{zigpy.appdb.DB_V}"
+            " WHERE cluster_id = ? AND attr_id = ?",
+            (cluster_id, attr_id),
+        ).fetchone()
+
+
+def _insert_typed_attr_row(db, ieee, cluster_id, attr_id, data_type, data) -> None:
+    with contextlib.closing(sqlite3.connect(db)) as conn, conn:
+        conn.execute(
+            f"INSERT INTO attributes_cache{zigpy.appdb.DB_V}"
+            " (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code,"
+            " status, value, data_type, last_updated)"
+            " VALUES (?, 1, 0, ?, ?, NULL, 0, ?, ?, 0)",
+            (str(ieee), cluster_id, attr_id, data, data_type),
+        )
+
+
+async def _update_attribute(cluster, attr_id, value) -> None:
+    cluster.update_attribute(attr_id, value)
+
+
+async def _read_attribute(cluster, attr_def, value) -> None:
+    with mock_attribute_reads(cluster, {attr_def: value}):
+        await cluster.read_attributes([attr_def])
+
+
+async def _report_attribute(cluster, attr_def, value) -> None:
+    await mock_attribute_report(cluster, {attr_def: value})
+
+
+async def _write_attribute(cluster, attr_def, value) -> None:
+    with mock_attribute_writes(cluster, {attr_def: ZCLStatus.SUCCESS}):
+        await cluster.write_attributes({attr_def: value})
+
+
+TYPED_ATTRIBUTE_VALUES = [
+    (OnOff, OnOff.AttributeDefs.start_up_on_off, OnOff.StartUpOnOff.Toggle),
+    (Basic, Basic.AttributeDefs.model, Basic.AttributeDefs.model.type("Model")),
+    (
+        IasZone,
+        IasZone.AttributeDefs.cie_addr,
+        t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"),
+    ),
+    (
+        MultistateInput,
+        MultistateInput.AttributeDefs.state_text,
+        Array(
+            type=DataTypeId.string,
+            value=t.LVList[t.CharacterString, t.uint16_t](["a", "b"]),
+        ),
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "receive", [_read_attribute, _report_attribute, _write_attribute]
+)
+@pytest.mark.parametrize(("cluster", "attr_def", "value"), TYPED_ATTRIBUTE_VALUES)
+async def test_attribute_values_stored_typed(
+    tmp_path, receive, cluster, attr_def, value
+) -> None:
+    """Values that went over the wire are stored as their ZCL data type."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [cluster.cluster_id])
+
+    await receive(dev.endpoints[1].in_clusters[cluster.cluster_id], attr_def, value)
+    await app.shutdown()
+
+    assert _read_attr_row(db, cluster.cluster_id, attr_def.id) == (
+        value.serialize(),
+        attr_def.zcl_type,
+    )
+
+    app2 = await make_app_with_db(db)
+    cluster2 = app2.get_device(dev.ieee).endpoints[1].in_clusters[cluster.cluster_id]
+    loaded = cluster2.get_cached_value(attr_def)
+
+    assert loaded == value
+    assert type(loaded) is type(value)
+
+    await app2.shutdown()
+
+
+@pytest.mark.parametrize(("cluster", "attr_def", "value"), TYPED_ATTRIBUTE_VALUES)
+async def test_attribute_values_stored_typed_on_device_save(
+    tmp_path, cluster, attr_def, value
+) -> None:
+    """The attribute cache is stored typed when a new device is saved in bulk."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ep.add_input_cluster(cluster.cluster_id)
+
+    # The device is not in the database yet, only the device save can store it
+    await _read_attribute(ep.in_clusters[cluster.cluster_id], attr_def, value)
+    app.device_initialized(dev)
+    await app.shutdown()
+
+    assert _read_attr_row(db, cluster.cluster_id, attr_def.id) == (
+        value.serialize(),
+        attr_def.zcl_type,
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        2150,
+        # A quirk-scaled value does not fit the attribute's type
+        21.5,
+    ],
+)
+async def test_updated_attribute_values_stored_untyped(tmp_path, value) -> None:
+    """Values set by quirks have no wire representation and are stored as-is."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [TemperatureMeasurement.cluster_id])
+
+    attr_def = TemperatureMeasurement.AttributeDefs.measured_value
+    dev.endpoints[1].temperature.update_attribute(attr_def, value)
+    await app.shutdown()
+
+    assert _read_attr_row(db, TemperatureMeasurement.cluster_id, attr_def.id) == (
+        value,
+        None,
+    )
+
+    app2 = await make_app_with_db(db)
+    loaded = (
+        app2.get_device(dev.ieee).endpoints[1].temperature.get_cached_value(attr_def)
+    )
+    assert loaded == value
+    assert type(loaded) is type(value)
+
+    await app2.shutdown()
+
+
+class LocalDataBasicCluster(Basic):
+    """Answers reads from its own cache, like zha-quirks' `LocalDataCluster`."""
+
+    _skip_registry = True
+
+    async def read_attributes_raw(self, attributes, manufacturer=None, **kwargs):
+        records = [
+            foundation.ReadAttributeRecord(
+                attr, ZCLStatus.SUCCESS, foundation.TypeValue()
+            )
+            for attr in attributes
+        ]
+
+        for record in records:
+            record.value.value = self._attr_cache.get(record.attrid)
+
+        return (records,)
+
+
+@pytest.mark.parametrize("value", [5, t.uint8_t(5)], ids=["int", "uint8_t"])
+async def test_local_data_cluster_reads_stored_untyped(tmp_path, value) -> None:
+    """Reads answered by a quirk without a data type are not wire data."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+
+    ep = dev.endpoints[1]
+    cluster = ep.add_input_cluster(Basic.cluster_id, LocalDataBasicCluster(ep))
+    attr_def = Basic.AttributeDefs.app_version
+    cluster._update_attribute(attr_def.id, value)
+
+    # The first read caches the converted value, the second one reads that back
+    for _ in range(2):
+        await cluster.read_attributes([attr_def], allow_cache=False)
+
+    await app.shutdown()
+
+    assert _read_attr_row(db, Basic.cluster_id, attr_def.id) == (5, None)
+
+    app2 = await make_app_with_db(db)
+    assert app2.get_device(dev.ieee).endpoints[1].basic.get(attr_def.name) == 5
+    await app2.shutdown()
+
+
+async def test_collection_read_from_wire_stored_typed(tmp_path) -> None:
+    """A collection read from a device is cached and stored as a collection."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [MultistateInput.cluster_id])
+
+    cluster = dev.endpoints[1].multistate_input
+    attr_def = MultistateInput.AttributeDefs.state_text
+    expected = Array(
+        type=DataTypeId.string,
+        value=t.LVList[t.CharacterString, t.uint16_t](["a", "b"]),
+    )
+
+    rsp, rest = foundation.GENERAL_COMMANDS[
+        foundation.GeneralCommand.Read_Attributes_rsp
+    ].schema.deserialize(
+        attr_def.id.serialize()
+        + ZCLStatus.SUCCESS.serialize()
+        + DataTypeId.array.serialize()
+        + expected.serialize()
+    )
+    assert rest == b""
+
+    with patch.object(cluster, "read_attributes_raw", AsyncMock(return_value=rsp)):
+        success, failure = await cluster.read_attributes([attr_def])
+
+    assert success == {attr_def: expected}
+    assert failure == {}
+    assert cluster.get(attr_def.name) == expected
+
+    await app.shutdown()
+
+    assert _read_attr_row(db, MultistateInput.cluster_id, attr_def.id) == (
+        expected.serialize(),
+        DataTypeId.array,
+    )
+
+    app2 = await make_app_with_db(db)
+    assert (
+        app2.get_device(dev.ieee).endpoints[1].multistate_input.get(attr_def.name)
+        == expected
+    )
+    await app2.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("cluster", "attr_def", "legacy_value", "loaded_value"),
+    [
+        (OnOff, OnOff.AttributeDefs.start_up_on_off, 2, 2),
+        (Basic, Basic.AttributeDefs.model, "Model", "Model"),
+        # The old SQLite adapter stored EUI64 values as strings
+        (
+            IasZone,
+            IasZone.AttributeDefs.cie_addr,
+            "aa:bb:cc:dd:11:22:33:44",
+            t.EUI64.convert("aa:bb:cc:dd:11:22:33:44"),
+        ),
+        # A string that is not an address was set by a quirk and is kept
+        (IasZone, IasZone.AttributeDefs.cie_addr, "unknown", "unknown"),
+        (IasZone, IasZone.AttributeDefs.cie_addr, "", ""),
+        (IasZone, IasZone.AttributeDefs.cie_addr, "aa:bb", "aa:bb"),
+        (
+            TemperatureMeasurement,
+            TemperatureMeasurement.AttributeDefs.measured_value,
+            21.5,
+            21.5,
+        ),
+    ],
+)
+async def test_legacy_attribute_values_loaded_untyped(
+    tmp_path, cluster, attr_def, legacy_value, loaded_value
+) -> None:
+    """Untyped rows from older databases load as-is and are not rewritten."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [cluster.cluster_id])
+    await app.shutdown()
+
+    with contextlib.closing(sqlite3.connect(db)) as conn, conn:
+        conn.execute(
+            f"INSERT INTO attributes_cache{zigpy.appdb.DB_V}"
+            " (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code,"
+            " status, value, last_updated) VALUES (?, 1, 0, ?, ?, NULL, 0, ?, 0)",
+            (str(dev.ieee), cluster.cluster_id, attr_def.id, legacy_value),
+        )
+
+    app2 = await make_app_with_db(db)
+    cluster2 = app2.get_device(dev.ieee).endpoints[1].in_clusters[cluster.cluster_id]
+    loaded = cluster2.get_cached_value(attr_def)
+
+    assert loaded == loaded_value
+    assert type(loaded) is type(loaded_value)
+
+    await app2.shutdown()
+
+    assert _read_attr_row(db, cluster.cluster_id, attr_def.id) == (legacy_value, None)
+
+
+@pytest.mark.parametrize(
+    "attr_id",
+    [
+        # A definition whose type changed, e.g. by a quirk, converts the stored value
+        Basic.AttributeDefs.zcl_version.id,
+        # An attribute without a definition is decoded with its stored type
+        0x7777,
+    ],
+)
+async def test_typed_attribute_value_type_mismatch(tmp_path, attr_id) -> None:
+    """Typed rows that do not match the current attribute definition still load."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+    await app.shutdown()
+
+    _insert_typed_attr_row(
+        db, dev.ieee, Basic.cluster_id, attr_id, DataTypeId.uint16, b"\x05\x00"
+    )
+
+    app2 = await make_app_with_db(db)
+    basic2 = app2.get_device(dev.ieee).endpoints[1].basic
+
+    # Attributes without a definition are only reachable through the legacy cache
+    assert basic2._attr_cache.get(attr_id) == 5
+
+    await app2.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("attr_id", "data_type", "data"),
+    [
+        # Out of range for `uint8`
+        (Basic.AttributeDefs.zcl_version.id, DataTypeId.uint16, b"\x2c\x01"),
+        (Basic.AttributeDefs.zcl_version.id, DataTypeId.string, b"\x03abc"),
+        # Too long for `uint8`
+        (Basic.AttributeDefs.zcl_version.id, DataTypeId.data16, b"\x01\x02"),
+        # Not a member of `t.Bool` or of an enum
+        (Basic.AttributeDefs.device_enabled.id, DataTypeId.string, b"\x03abc"),
+        (Basic.AttributeDefs.power_source.id, DataTypeId.string, b"\x03abc"),
+        # Written for a definition without a ZCL data type
+        (Basic.AttributeDefs.zcl_version.id, DataTypeId.unk, b"\x01\x02"),
+        (0x7777, DataTypeId.unk, b"\x01\x02"),
+    ],
+)
+async def test_typed_attribute_value_cannot_be_loaded(
+    tmp_path, attr_id, data_type, data
+) -> None:
+    """A stored value that cannot be loaded is deleted, the rest still load."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+    dev.endpoints[1].basic.update_attribute(Basic.AttributeDefs.model, "Model")
+    await app.shutdown()
+
+    _insert_typed_attr_row(db, dev.ieee, Basic.cluster_id, attr_id, data_type, data)
+
+    app2 = await make_app_with_db(db)
+    basic2 = app2.get_device(dev.ieee).endpoints[1].basic
+
+    # Attributes without a definition are only reachable through the legacy cache
+    assert basic2._attr_cache.get(attr_id) is None
+    assert basic2.get(Basic.AttributeDefs.model.name) == "Model"
+    await app2.shutdown()
+
+    assert _read_attr_row(db, Basic.cluster_id, attr_id) is None
+
+
+async def test_typed_attribute_value_fits_quirk_definition(tmp_path) -> None:
+    """A stored value that only fits a quirk's definition is loaded and kept."""
+
+    class WideBasicCluster(Basic):
+        _skip_registry = True
+
+        class AttributeDefs(Basic.AttributeDefs):
+            zcl_version = ZCLAttributeDef(id=0x0000, type=t.uint16_t)
+
+    def replace_basic(device):
+        ep = device.endpoints[1]
+        ep.add_input_cluster(Basic.cluster_id, WideBasicCluster(ep))
+        return device
+
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+    await app.shutdown()
+
+    attr_id = Basic.AttributeDefs.zcl_version.id
+    _insert_typed_attr_row(
+        db, dev.ieee, Basic.cluster_id, attr_id, DataTypeId.uint16, b"\x2c\x01"
+    )
+
+    # The bare cluster cannot convert the value but the quirk's cluster can
+    app2 = await make_app_with_db(db, device_resolver=replace_basic)
+    assert app2.get_device(dev.ieee).endpoints[1].basic.get("zcl_version") == 300
+    await app2.shutdown()
+
+    assert _read_attr_row(db, Basic.cluster_id, attr_id) == (
+        b"\x2c\x01",
+        DataTypeId.uint16,
+    )
+
+
+@pytest.mark.parametrize(
+    ("receive", "row"),
+    [
+        (
+            lambda basic: mock_attribute_report(basic, {0x7777: t.uint16_t(5)}),
+            (b"\x05\x00", DataTypeId.uint16),
+        ),
+        (lambda basic: _update_attribute(basic, 0x7777, 5), (5, None)),
+    ],
+)
+async def test_unknown_attribute_stored(tmp_path, receive, row) -> None:
+    """An unknown attribute is stored with its wire type, if it has one."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+
+    await receive(dev.endpoints[1].basic)
+    await app.shutdown()
+
+    assert _read_attr_row(db, Basic.cluster_id, 0x7777) == row
+
+    app2 = await make_app_with_db(db)
+    basic2 = app2.get_device(dev.ieee).endpoints[1].basic
+    assert basic2._attr_cache.get(0x7777) == 5
+
+    await app2.shutdown()
 
 
 async def test_device_signature_ignores_quirks(tmp_path) -> None:
@@ -2299,6 +2758,7 @@ GP_SOURCE_ID = SrcID(0x0040F4E4)
             "security_key_type": SecurityKeyType.IndividualKey,
             "security_level": SecurityLevel.FullFrameCounterAndMIC,
             "frame_counter": t.uint32_t(99),
+            "extra_commissioning_payload": b"qerh7pox@GP0001\xcb",
             "last_seen": datetime(2026, 10, 14, 12, 0, 0, tzinfo=UTC),
         },
     ],
@@ -2333,8 +2793,144 @@ async def test_gp_device_round_trip(tmp_path, attrs):
         "security_key_type",
         "security_level",
         "frame_counter",
+        "extra_commissioning_payload",
     ):
         assert getattr(restored, name) == getattr(device, name)
+
+    await app2.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("cluster", "is_server", "attr_def", "value"),
+    [
+        (
+            Metering,
+            True,
+            Metering.AttributeDefs.current_summ_delivered,
+            t.uint48_t(1234),
+        ),
+        (
+            ElectricalMeasurement,
+            True,
+            ElectricalMeasurement.AttributeDefs.rms_voltage,
+            t.uint16_t(230),
+        ),
+        (OnOff, False, OnOff.AttributeDefs.on_off, t.Bool.true),
+    ],
+)
+async def test_gp_device_attribute_round_trip(
+    tmp_path, cluster, is_server, attr_def, value
+):
+    """Attributes of a GPD's clusters are restored, under no endpoint."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
+    )
+
+    if is_server:
+        device.server_cluster_ids = [cluster.cluster_id]
+    else:
+        device.client_cluster_ids = [cluster.cluster_id]
+
+    device.add_clusters()
+    app.device_initialized(device)
+
+    clusters = (
+        device.endpoints[None].in_clusters
+        if is_server
+        else device.endpoints[None].out_clusters
+    )
+    # A GPD has no ZCL sequence number and cannot receive a Default Response
+    await mock_attribute_report(
+        clusters[cluster.cluster_id],
+        {attr_def: value},
+        tsn=0,
+        disable_default_response=True,
+    )
+    await app.shutdown()
+
+    with contextlib.closing(sqlite3.connect(db)) as conn:
+        assert conn.execute(
+            f"SELECT endpoint_id, value, data_type FROM attributes_cache{zigpy.appdb.DB_V}"
+        ).fetchall() == [(None, value.serialize(), attr_def.zcl_type)]
+
+    app2 = await make_app_with_db(db)
+    endpoint = app2.devices[device.ieee].endpoints[None]
+    clusters2 = endpoint.in_clusters if is_server else endpoint.out_clusters
+
+    assert clusters2[cluster.cluster_id].get_cached_value(attr_def) == value
+
+    await app2.shutdown()
+
+
+GP_VOLTAGE = foundation.Attribute(
+    attrid=ElectricalMeasurement.AttributeDefs.rms_voltage.id,
+    value=foundation.TypeValue(type=DataTypeId.uint16, value=t.uint16_t(230)),
+)
+
+
+@pytest.mark.parametrize(
+    ("command_id", "command"),
+    [
+        (
+            GPDCommandID.ManufacturerSpecificReporting,
+            GPManufacturerSpecificAttributeReportingPayload(
+                manufacturer_code=0x105E,
+                cluster_id=ElectricalMeasurement.cluster_id,
+                attributes=[GP_VOLTAGE],
+            ),
+        ),
+        (
+            GPDCommandID.ManufacturerSpecificMultiClusterReporting,
+            GPManufacturerSpecificMultiClusterReportingPayload(
+                manufacturer_code=0x105E,
+                reports=[
+                    GPClusterReport(
+                        cluster_id=ElectricalMeasurement.cluster_id,
+                        attribute=GP_VOLTAGE,
+                    )
+                ],
+            ),
+        ),
+    ],
+)
+async def test_gp_attribute_report_persists(tmp_path, command_id, command):
+    """A GPD attribute report is cached on its cluster and restored on restart."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    device = GreenPowerDevice(
+        app, application_id=ApplicationID.SrcID, src_id=GP_SOURCE_ID
+    )
+    device.server_cluster_ids = [ElectricalMeasurement.cluster_id]
+    device.add_clusters()
+    app.device_initialized(device)
+
+    app.gp_packet_received(
+        t.ZigbeeGpPacket(
+            application_id=ApplicationID.SrcID,
+            src_id=GP_SOURCE_ID,
+            command_id=command_id,
+            payload=t.SerializableBytes(command.serialize()),
+            frame_counter=t.uint32_t(1),
+            security_level=SecurityLevel.NoSecurity,
+            security_key_type=SecurityKeyType.NoKey,
+        )
+    )
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    cluster = (
+        app2.devices[device.ieee]
+        .endpoints[None]
+        .in_clusters[ElectricalMeasurement.cluster_id]
+    )
+
+    assert (
+        cluster.get_cached_value(ElectricalMeasurement.AttributeDefs.rms_voltage) == 230
+    )
 
     await app2.shutdown()
 
@@ -2750,9 +3346,8 @@ async def test_reinterview_does_not_commit_mid_handler(tmp_path):
 
     async def _two_statement_handler():
         await listener.execute(
-            f"INSERT INTO devices{zigpy.appdb.DB_V} (ieee, nwk, status, last_seen)"
-            " VALUES (?, ?, ?, ?)",
-            (other_ieee, 0x1234, 2, 0),
+            f"INSERT INTO devices{zigpy.appdb.DB_V} (ieee) VALUES (?)",
+            (other_ieee,),
         )
         handler_started.set()
         await handler_may_finish.wait()
@@ -2771,6 +3366,8 @@ async def test_reinterview_does_not_commit_mid_handler(tmp_path):
     ep.profile_id = 260
     ep.device_type = profiles.zha.DeviceType.PUMP
     ep.add_input_cluster(Basic.cluster_id)
+
+    app.devices[old_dev.ieee] = shadow
 
     async with asyncio.timeout(5):
         await app._device_reinterviewed(old_dev, shadow)
@@ -3175,3 +3772,930 @@ async def test_load_with_green_power_device(tmp_path):
     assert app.devices[gpd.ieee] is gpd
 
     await app.shutdown()
+
+
+STORE_COUNT = StoredValue(namespace="quirk:test", key="count", type=int)
+
+
+def _count_store_rows(db, ieee=None) -> int:
+    with sqlite3.connect(db) as conn:
+        if ieee is None:
+            cur = conn.execute(f"SELECT COUNT(*) FROM device_store{zigpy.appdb.DB_V}")
+        else:
+            cur = conn.execute(
+                f"SELECT COUNT(*) FROM device_store{zigpy.appdb.DB_V} WHERE ieee = ?",
+                (str(ieee),),
+            )
+        return cur.fetchone()[0]
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_round_trip(tmp_path):
+    """Store values set before and after initialization survive a reload."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee)
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ep.add_input_cluster(0)
+
+    # Set before the device is initialized, persisted by the full save
+    dev.store.namespace("tuya").set("1", {"a": [1, 2.5, None, "x"]}, version=3)
+    app.device_initialized(dev)
+
+    # Set after, persisted by the event
+    dev.store[STORE_COUNT] = 42
+    tuya_item = dev.store.namespace("tuya").item("1")
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    dev2 = app2.get_device(ieee)
+
+    assert dev2.store[STORE_COUNT] == 42
+    assert dev2.store.last_updated(STORE_COUNT).timestamp() == pytest.approx(
+        dev.store.last_updated(STORE_COUNT).timestamp()
+    )
+
+    item = dev2.store.namespace("tuya").item("1")
+    assert item.value == {"a": [1, 2.5, None, "x"]}
+    assert item.version == 3
+    assert item.last_updated.timestamp() == pytest.approx(
+        tuya_item.last_updated.timestamp()
+    )
+
+    # Update and delete persist as well
+    dev2.store[STORE_COUNT] = 43
+    del dev2.store.namespace("tuya")["1"]
+    await app2.shutdown()
+
+    app3 = await make_app_with_db(db)
+    dev3 = app3.get_device(ieee)
+
+    assert dev3.store[STORE_COUNT] == 43
+    assert "1" not in dev3.store.namespace("tuya")
+    assert _count_store_rows(db) == 1
+
+    await app3.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_removed_with_device(tmp_path):
+    """Removing a device drops its store rows and in-memory store."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev, _, _ = _add_joined_device(app)
+    dev.store[STORE_COUNT] = 1
+    await app._dblistener._callback_handlers.join()
+
+    assert _count_store_rows(db, dev.ieee) == 1
+
+    app._dblistener.device_removed(dev)
+    await app._dblistener._callback_handlers.join()
+
+    assert _count_store_rows(db, dev.ieee) == 0
+
+    await app.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_visible_to_resolver(tmp_path):
+    """Quirks resolving a device at load time can read its store."""
+    seen = []
+
+    def resolver(device):
+        seen.append(device.store.get(STORE_COUNT))
+        return device
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    dev, _, _ = _add_joined_device(app)
+    dev.store[STORE_COUNT] = 7
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db, device_resolver=resolver)
+
+    assert seen == [7]
+
+    await app2.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_set_before_device_saved(tmp_path, caplog):
+    """A value set before the device row exists is skipped quietly, then saved."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+    dev = app.get_device(ieee)
+
+    caplog.clear()
+
+    with caplog.at_level(logging.DEBUG, logger="zigpy.appdb"):
+        dev.store[STORE_COUNT] = 5
+        await app._dblistener._callback_handlers.join()
+
+    # SQL errors from the worker are only logged at debug level
+    assert not [r for r in caplog.records if r.name == "zigpy.appdb" and r.exc_info]
+    assert _count_store_rows(db, ieee) == 0
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ep.add_input_cluster(0)
+    app.device_initialized(dev)
+    await app.shutdown()
+
+    assert _count_store_rows(db, ieee) == 1
+
+    app2 = await make_app_with_db(db)
+    assert app2.get_device(ieee).store[STORE_COUNT] == 5
+    await app2.shutdown()
+
+
+async def test_device_store_survives_reinterview(tmp_path) -> None:
+    """A re-interview deletes the old device row, but its store is written back."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    ieee = t.EUI64.convert("aa:bb:cc:dd:11:22:33:44")
+    nwk = t.NWK(0x1234)
+    dev = app.add_device(nwk=nwk, ieee=ieee)
+    dev.node_desc = make_node_desc()
+    ep1 = dev.add_endpoint(1)
+    ep1.status = zigpy.endpoint.Status.ZDO_INIT
+    ep1.profile_id = 260
+    ep1.device_type = profiles.zha.DeviceType.PUMP
+    ep1.add_input_cluster(Basic.cluster_id)
+    app.device_initialized(dev)
+    dev.store[STORE_COUNT] = 3
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    old_dev = app2.get_device(ieee)
+    assert old_dev.store[STORE_COUNT] == 3
+
+    shadow = Device(app2, ieee, nwk)
+    shadow.node_desc = make_node_desc()
+    shadow.status = Status.ENDPOINTS_INIT
+    ep2 = shadow.add_endpoint(2)
+    ep2.status = zigpy.endpoint.Status.ZDO_INIT
+    ep2.profile_id = 260
+    ep2.device_type = profiles.zha.DeviceType.PUMP
+    ep2.add_input_cluster(Basic.cluster_id)
+
+    app2.devices[ieee] = shadow
+
+    await app2._device_reinterviewed(old_dev, shadow)
+    new_dev = app2.get_device(ieee)
+    assert new_dev is not old_dev
+    assert new_dev.store is old_dev.store
+    await app2.shutdown()
+
+    assert _count_store_rows(db, ieee) == 1
+
+    app3 = await make_app_with_db(db)
+    assert app3.get_device(ieee).store[STORE_COUNT] == 3
+    await app3.shutdown()
+
+
+def _add_reinterview_device(app, ieee, nwk):
+    """Add an initialized device with a single endpoint, as a re-interview finds it."""
+    dev = app.add_device(nwk=nwk, ieee=ieee)
+    dev.node_desc = make_node_desc()
+    ep1 = dev.add_endpoint(1)
+    ep1.status = zigpy.endpoint.Status.ZDO_INIT
+    ep1.profile_id = 260
+    ep1.device_type = profiles.zha.DeviceType.PUMP
+    ep1.add_input_cluster(Basic.cluster_id)
+    app.device_initialized(dev)
+
+    return dev
+
+
+def _discover_like(shadow):
+    """Fill in a shadow the way a successful discovery of the device above would."""
+    shadow.node_desc = make_node_desc()
+    shadow.status = Status.ENDPOINTS_INIT
+    ep = shadow.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ep.add_input_cluster(Basic.cluster_id)
+
+
+async def _wait_for_removal(app, ieee):
+    for _ in range(100):
+        if ieee not in app.devices:
+            return
+        await asyncio.sleep(0)
+    pytest.fail("The removed device was never unregistered")
+
+
+@pytest.mark.parametrize("order", ["discovery_first", "leave_first", "discovery_fails"])
+async def test_reinterview_device_removed_with_leave_pending(tmp_path, order):
+    """A device removed during re-interview stays removed, whenever its leave completes.
+
+    `remove()` keeps the shadow registered until the leave request completes, so a
+    discovery that finishes first must not save the device to the database again, and
+    one that fails must not restore the old device.
+    """
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    ieee = t.EUI64.convert("aa:bb:cc:dd:11:22:33:44")
+    dev = _add_reinterview_device(app, ieee, t.NWK(0x1234))
+
+    discovery_started = asyncio.Event()
+    finish_discovery = asyncio.Event()
+    finish_leave = asyncio.Event()
+
+    async def mock_discover(shadow):
+        discovery_started.set()
+        await finish_discovery.wait()
+
+        if order == "discovery_fails":
+            raise TimeoutError
+
+        _discover_like(shadow)
+
+    async def mock_leave(*args, **kwargs):
+        await finish_leave.wait()
+
+    with (
+        patch.object(Device, "_discover", mock_discover),
+        patch("zigpy.zdo.ZDO.leave", mock_leave),
+        patch.object(app, "listener_event", wraps=app.listener_event),
+    ):
+        reinterview = asyncio.create_task(dev.reinterview())
+        await discovery_started.wait()
+
+        await app.remove(ieee)
+
+        if order == "leave_first":
+            finish_leave.set()
+            await _wait_for_removal(app, ieee)
+            finish_discovery.set()
+            await reinterview
+        else:
+            finish_discovery.set()
+            await reinterview
+
+            # The old device is not registered again while the leave is pending
+            assert app.devices.get(ieee) is not dev
+
+            finish_leave.set()
+            await _wait_for_removal(app, ieee)
+
+        events = [c.args[0] for c in app.listener_event.mock_calls]
+        assert "device_reinterviewed" not in events
+        assert call("device_reinterview_failure", dev) in app.listener_event.mock_calls
+
+    assert ieee not in app.devices
+    await app.shutdown()
+
+    # The removed device does not come back from the database
+    app2 = await make_app_with_db(db)
+    assert ieee not in app2.devices
+    await app2.shutdown()
+
+
+async def test_reinterview_device_removed_during_db_delete(tmp_path):
+    """A removal that starts while the old device is deleted from the DB wins.
+
+    The shadow is still registered then, and stays so until the leave completes.
+    """
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    ieee = t.EUI64.convert("aa:bb:cc:dd:11:22:33:44")
+    dev = _add_reinterview_device(app, ieee, t.NWK(0x1234))
+
+    finish_leave = asyncio.Event()
+
+    async def mock_discover(shadow):
+        _discover_like(shadow)
+
+    async def mock_leave(*args, **kwargs):
+        await finish_leave.wait()
+
+    remove_device = app._dblistener._remove_device
+    removing = False
+
+    async def remove_during_delete(device, **kwargs):
+        nonlocal removing
+        await remove_device(device, **kwargs)
+
+        # Only the re-interview's delete: the removal queues one of its own
+        if not removing:
+            removing = True
+            await app.remove(ieee)
+
+    with (
+        patch.object(Device, "_discover", mock_discover),
+        patch("zigpy.zdo.ZDO.leave", mock_leave),
+        patch.object(app._dblistener, "_remove_device", remove_during_delete),
+        patch.object(app, "listener_event", wraps=app.listener_event),
+    ):
+        await dev.reinterview()
+
+        finish_leave.set()
+        await _wait_for_removal(app, ieee)
+
+        events = [c.args[0] for c in app.listener_event.mock_calls]
+        assert "device_reinterviewed" not in events
+        assert call("device_reinterview_failure", dev) in app.listener_event.mock_calls
+
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    assert ieee not in app2.devices
+    await app2.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_closed_on_remove(tmp_path):
+    """Removing a device deletes its rows, and later writes do not recreate them."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev, _, _ = _add_joined_device(app)
+    dev.store[STORE_COUNT] = 1
+    old_store = dev.store
+    await app._dblistener._callback_handlers.join()
+    assert _count_store_rows(db, dev.ieee) == 1
+
+    dev.zdo.leave = AsyncMock()
+    await app.remove(dev.ieee)
+
+    # Written while the leave request is still pending
+    dev.store[STORE_COUNT] = 2
+    assert dev.store[STORE_COUNT] == 1
+
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    assert dev.ieee not in app.devices
+    assert dev.ieee not in app.device_stores
+
+    # Written through a reference that outlived the device
+    old_store[STORE_COUNT] = 3
+    assert old_store.closed
+    assert STORE_COUNT not in old_store
+
+    await app.shutdown()
+    assert _count_store_rows(db, dev.ieee) == 0
+
+
+async def test_gp_device_store_round_trip(tmp_path):
+    """Green Power devices have a store, saved with the device and removed with it."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    # Set before commissioning saves the device row
+    gp_ieee = synthetic_ieee(GP_SOURCE_ID)
+    app.device_stores[gp_ieee][STORE_COUNT] = 1
+    await commission_with_key(app, KEY, frame_counter=1)
+    device = app.devices[gp_ieee]
+    assert device.store[STORE_COUNT] == 1
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    restored = app2.devices[gp_ieee]
+    assert isinstance(restored, GreenPowerDevice)
+    assert restored.store[STORE_COUNT] == 1
+
+    restored.store[STORE_COUNT] = 2
+    await app2._dblistener._callback_handlers.join()
+    await app2.shutdown()
+
+    app3 = await make_app_with_db(db)
+    assert app3.devices[gp_ieee].store[STORE_COUNT] == 2
+
+    app3.green_power.unpair = AsyncMock()
+    await app3.remove(gp_ieee)
+    assert gp_ieee not in app3.devices
+    assert app3.device_stores[gp_ieee].closed
+    await app3._dblistener._callback_handlers.join()
+    assert _count_store_rows(db, gp_ieee) == 0
+
+    # Commissioned again, the GPD gets a new, empty store, also in join listeners
+    joined_stores = []
+    listener = MagicMock()
+    listener.device_joined = lambda device: joined_stores.append(device.store)
+    app3.add_listener(listener)
+
+    await commission_with_key(app3, KEY, frame_counter=20)
+    recommissioned = app3.devices[gp_ieee]
+    assert joined_stores == [recommissioned.store]
+    assert not recommissioned.store.closed
+    assert STORE_COUNT not in recommissioned.store
+
+    recommissioned.store[STORE_COUNT] = 3
+    await app3.shutdown()
+
+    app4 = await make_app_with_db(db)
+    assert app4.devices[gp_ieee].store[STORE_COUNT] == 3
+    await app4.shutdown()
+
+
+@pytest.mark.parametrize("used_before_removal", [True, False])
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_not_inherited_after_rejoin(tmp_path, used_before_removal):
+    """Writes through a removed device never reach a device re-added with its IEEE."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev, _, _ = _add_joined_device(app)
+
+    if used_before_removal:
+        dev.store[STORE_COUNT] = 1
+
+    dev.zdo.leave = AsyncMock()
+    await app.remove(dev.ieee)
+
+    # The first write may only happen while the leave request is pending
+    dev.store[STORE_COUNT] = 2
+
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    assert dev.ieee not in app.devices
+
+    # A device object that never used its store before removal
+    stale = Device(app, dev.ieee, dev.nwk)
+    dev.store[STORE_COUNT] = 3
+    stale.store[STORE_COUNT] = 4
+    assert dev.store.closed
+    assert stale.store is dev.store
+    assert STORE_COUNT not in stale.store
+
+    # The same device joins again and gets an empty store
+    app.handle_join(dev.nwk, dev.ieee, 0)
+    new_dev = app.get_device(dev.ieee)
+    assert new_dev is not dev
+    assert not new_dev.store.closed
+    assert STORE_COUNT not in new_dev.store
+
+    # Old references still cannot write
+    dev.store[STORE_COUNT] = 5
+    stale.store[STORE_COUNT] = 6
+    assert STORE_COUNT not in new_dev.store
+
+    ep = new_dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = profiles.zha.DeviceType.PUMP
+    ep.add_input_cluster(0)
+    app.device_initialized(new_dev)
+    new_dev.store[STORE_COUNT] = 7
+    await app.shutdown()
+
+    with sqlite3.connect(db) as conn:
+        rows = conn.execute(
+            f"SELECT namespace, key, value FROM device_store{zigpy.appdb.DB_V}"
+            " WHERE ieee = ?",
+            (str(dev.ieee),),
+        ).fetchall()
+
+    assert rows == [("quirk:test", "count", "7")]
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_not_saved_for_removed_device(tmp_path):
+    """A device save queued after removal started does not write the closed store."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev, _, _ = _add_joined_device(app)
+    dev.store[STORE_COUNT] = 1
+    await app._dblistener._callback_handlers.join()
+
+    app.device_stores.close(dev.ieee)
+    app._dblistener.device_removed(dev)
+    app._dblistener.raw_device_initialized(dev)
+    await app._dblistener._callback_handlers.join()
+
+    assert _count_store_rows(db, dev.ieee) == 0
+
+    await app.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_undecodable_row_skipped(tmp_path, caplog):
+    """A row that is not valid JSON is skipped instead of failing the whole load."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    dev, _, _ = _add_joined_device(app)
+    dev.store[STORE_COUNT] = 1
+    dev.store.namespace("quirk:test")["other"] = 2
+    await app.shutdown()
+
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            f"UPDATE device_store{zigpy.appdb.DB_V} SET value = '{{' WHERE key = 'other'"
+        )
+
+    with caplog.at_level(logging.WARNING):
+        app2 = await make_app_with_db(db)
+
+    assert "Skipping undecodable store value quirk:test/other" in caplog.text
+    dev2 = app2.get_device(dev.ieee)
+    assert dev2.store[STORE_COUNT] == 1
+    assert "other" not in dev2.store.namespace("quirk:test")
+
+    await app2.shutdown()
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_device_store_bound_at_construction(tmp_path):
+    """A device object that never used its store keeps the one it was created with."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+
+    dev, _, _ = _add_joined_device(app)
+    untouched = Device(app, dev.ieee, dev.nwk)
+
+    dev.zdo.leave = AsyncMock()
+    await app.remove(dev.ieee)
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    app.handle_join(dev.nwk, dev.ieee, 0)
+    new_dev = app.get_device(dev.ieee)
+
+    # First access only after the device was added again
+    untouched.store[STORE_COUNT] = 1
+
+    assert untouched.store.closed
+    assert STORE_COUNT not in new_dev.store
+
+    await app.shutdown()
+
+
+GROUP_STATE = StoredValue(namespace="zigpy.groups", key="allocation", type=dict)
+
+
+def _network_store_rows(db) -> list[tuple]:
+    """Read the committed network store rows through a separate connection."""
+    with contextlib.closing(sqlite3.connect(db)) as conn:
+        return list(
+            conn.execute(
+                f"SELECT namespace, key, value, version FROM network_store{zigpy.appdb.DB_V}"
+                " ORDER BY namespace, key"
+            )
+        )
+
+
+@patch("zigpy.device.Device.schedule_initialize", new=mock_dev_init(True))
+async def test_network_store_round_trip(tmp_path):
+    """Network values survive a restart and are loaded before devices are resolved."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    dev, _, _ = _add_joined_device(app)
+
+    app.network_store[GROUP_STATE] = {"next": 5}
+    app.network_store.namespace("other").set("k", [1, None], version=3)
+    app.network_store.namespace("other")["gone"] = 1
+    del app.network_store.namespace("other")["gone"]
+    last_updated = app.network_store.last_updated(GROUP_STATE)
+
+    # Network values do not follow devices
+    app._dblistener.device_removed(dev)
+    await app.shutdown()
+
+    seen = []
+
+    def resolver(device):
+        seen.append(device.application.network_store.get(GROUP_STATE))
+        return device
+
+    app2 = await make_app_with_db(db, device_resolver=resolver)
+
+    # The device row was removed, so add one to see what its resolution can read
+    assert seen == []
+    assert app2.network_store[GROUP_STATE] == {"next": 5}
+    assert app2.network_store.last_updated(GROUP_STATE).timestamp() == pytest.approx(
+        last_updated.timestamp()
+    )
+
+    item = app2.network_store.namespace("other").item("k")
+    assert item.value == [1, None]
+    assert item.version == 3
+    assert "gone" not in app2.network_store.namespace("other")
+
+    _add_joined_device(app2)
+    app2.network_store[GROUP_STATE] = {"next": 6}
+    await app2.shutdown()
+
+    seen.clear()
+    app3 = await make_app_with_db(db, device_resolver=resolver)
+
+    assert seen == [{"next": 6}]
+    assert app3.network_store[GROUP_STATE] == {"next": 6}
+    assert _network_store_rows(db) == [
+        ("other", "k", "[1, null]", 3),
+        ("zigpy.groups", "allocation", '{"next": 6}', 1),
+    ]
+
+    await app3.shutdown()
+
+
+async def test_network_store_version_rules_persisted(tmp_path):
+    """A newer row is kept on disk, a stale one is dropped from it."""
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    ns = app.network_store.namespace("zigpy.groups")
+    ns.set("allocation", {"next": 1}, version=2)
+    ns.set("stale", 1, version=0)
+    await app.shutdown()
+
+    app2 = await make_app_with_db(db)
+    stale = StoredValue(namespace="zigpy.groups", key="stale", type=int)
+
+    assert GROUP_STATE not in app2.network_store
+    assert app2.network_store.get(stale) is None
+    await app2.shutdown()
+
+    assert _network_store_rows(db) == [
+        ("zigpy.groups", "allocation", '{"next": 1}', 2),
+    ]
+
+
+async def test_network_store_skips_undecodable_row(tmp_path, caplog):
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    app.network_store[GROUP_STATE] = {"next": 1}
+    await app.shutdown()
+
+    with contextlib.closing(sqlite3.connect(db)) as conn:
+        conn.execute(
+            f"INSERT INTO network_store{zigpy.appdb.DB_V} VALUES (?, ?, ?, ?, ?)",
+            ("zigpy.groups", "broken", "{", 1, 0.0),
+        )
+        conn.commit()
+
+    with caplog.at_level(logging.WARNING):
+        app2 = await make_app_with_db(db)
+
+    assert "Skipping undecodable store value zigpy.groups/broken of network" in (
+        caplog.text
+    )
+    assert app2.network_store[GROUP_STATE] == {"next": 1}
+    assert "broken" not in app2.network_store.namespace("zigpy.groups")
+
+    await app2.shutdown()
+
+
+async def test_network_store_without_database():
+    """Without a database the network store is in memory."""
+    app = make_app({})
+    await app._load_db()
+
+    assert app._dblistener is None
+
+    app.network_store[GROUP_STATE] = {"next": 1}
+
+    assert app.network_store[GROUP_STATE] == {"next": 1}
+
+
+MIGRATED_VALUE = StoredValue(namespace="quirk:test", key="migrated", type=int)
+OTHER_MIGRATED_VALUE = StoredValue(namespace="quirk:test", key="other", type=int)
+MIGRATING_IEEE = t.EUI64.convert("aa:bb:cc:dd:11:22:33:44")
+
+
+class MigratingBasic(Basic):
+    """A quirk's Basic cluster that moved attributes 0x7777 and 0x7776 to the store."""
+
+    _skip_registry = True
+
+    def migrate_attribute_cache_row(self, row, value) -> bool:
+        if row.attr_id == 0x7777:
+            self.endpoint.device.store[MIGRATED_VALUE] = value
+        elif row.attr_id == 0x7776:
+            self.endpoint.device.store[OTHER_MIGRATED_VALUE] = value
+        else:
+            return False
+
+        return True
+
+
+class ManufacturerSpecificBasic(MigratingBasic):
+    """Defines 0x7777, but as a manufacturer-specific attribute."""
+
+    class AttributeDefs(Basic.AttributeDefs):
+        custom = ZCLAttributeDef(id=0x7777, type=t.uint16_t, manufacturer_code=0x1234)
+
+
+class FailingMigrationBasic(Basic):
+    _skip_registry = True
+
+    def migrate_attribute_cache_row(self, row, value) -> bool:
+        raise RuntimeError("Broken migration")
+
+
+def _quirk_resolver(cluster_cls):
+    def resolver(device):
+        if device.ieee != MIGRATING_IEEE:
+            return device
+
+        new = device.clone()
+        ep = new.endpoints[1]
+        ep.add_input_cluster(Basic.cluster_id, cluster_cls(ep, is_server=True))
+        return new
+
+    return resolver
+
+
+def _insert_attr_row(
+    db, attr_id, value, data_type=None, *, manufacturer_code=None, status=0
+) -> None:
+    with contextlib.closing(sqlite3.connect(db)) as conn, conn:
+        conn.execute(
+            f"INSERT INTO attributes_cache{zigpy.appdb.DB_V}"
+            " (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code,"
+            " status, value, data_type, last_updated)"
+            " VALUES (?, 1, 0, ?, ?, ?, ?, ?, ?, 0)",
+            (
+                str(MIGRATING_IEEE),
+                Basic.cluster_id,
+                attr_id,
+                manufacturer_code,
+                status,
+                value,
+                data_type,
+            ),
+        )
+
+
+@pytest.mark.parametrize(
+    ("value", "data_type", "manufacturer_code"),
+    [
+        (b"\x05\x00", DataTypeId.uint16, None),
+        # Rows from before data types were stored
+        (5, None, None),
+        # Rows from before manufacturer codes were stored
+        (5, None, zigpy.zcl.helpers.UNMIGRATED_MANUFACTURER_CODE),
+    ],
+)
+async def test_attribute_row_migrated(
+    tmp_path, value, data_type, manufacturer_code
+) -> None:
+    """A quirk cluster moves the row of an attribute it no longer defines."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+    await app.shutdown()
+
+    _insert_attr_row(db, 0x7777, value, data_type, manufacturer_code=manufacturer_code)
+
+    app2 = await make_app_with_db(db, device_resolver=_quirk_resolver(MigratingBasic))
+    dev2 = app2.get_device(dev.ieee)
+
+    assert dev2.store[MIGRATED_VALUE] == 5
+    assert dev2.endpoints[1].basic._attr_cache.get(0x7777) is None
+
+    await app2.shutdown()
+
+    assert _count_store_rows(db, dev.ieee) == 1
+    assert _read_attr_row(db, Basic.cluster_id, 0x7777) is None
+
+    # Loading without the quirk, as after a downgrade, does not bring the row back
+    app3 = await make_app_with_db(db)
+    dev3 = app3.get_device(dev.ieee)
+
+    assert dev3.endpoints[1].basic._attr_cache.get(0x7777) is None
+    assert dev3.store[MIGRATED_VALUE] == 5
+
+    await app3.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("resolver", "migrated"),
+    [
+        (None, False),
+        # A resolver that keeps the device applied no quirk
+        (lambda device: device, False),
+        (_quirk_resolver(Basic), True),
+    ],
+)
+async def test_attribute_row_migration_only_for_quirked_devices(
+    tmp_path, resolver, migrated
+) -> None:
+    """Only quirk-replaced devices migrate, once, and only rows with values."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+    await app.shutdown()
+
+    # Defined attribute
+    _insert_attr_row(db, Basic.AttributeDefs.zcl_version.id, 3)
+    # Undefined attributes, the first with a value
+    _insert_attr_row(db, 0x7777, b"\x05\x00", DataTypeId.uint16)
+    _insert_attr_row(db, 0x7778, None, status=ZCLStatus.UNSUPPORTED_ATTRIBUTE)
+    _insert_attr_row(db, 0x7779, b"\x05", DataTypeId.unk)
+    # An empty `unk` value decodes, but only its lost definition could interpret it
+    _insert_attr_row(db, 0x777A, b"", DataTypeId.unk)
+
+    with patch.object(
+        zigpy.zcl.Cluster,
+        "migrate_attribute_cache_row",
+        autospec=True,
+        return_value=False,
+    ) as migrate:
+        app2 = await make_app_with_db(db, device_resolver=resolver)
+
+    basic2 = app2.get_device(dev.ieee).endpoints[1].basic
+
+    if migrated:
+        # Called on the quirked device's cluster in the second pass only
+        migrate.assert_called_once()
+        cluster, row, value = migrate.mock_calls[0].args
+        assert cluster is basic2
+        assert row.attr_id == 0x7777
+        assert value == 5
+    else:
+        migrate.assert_not_called()
+
+    # Rows that are not migrated load as before
+    assert basic2.get(Basic.AttributeDefs.zcl_version.name) == 3
+    assert basic2._attr_cache.get(0x7777) == 5
+
+    await app2.shutdown()
+
+    assert _read_attr_row(db, Basic.cluster_id, 0x7777) == (
+        b"\x05\x00",
+        DataTypeId.uint16,
+    )
+
+
+async def test_attribute_row_migration_error(tmp_path, caplog) -> None:
+    """A failing migration is logged and keeps the row."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+    await app.shutdown()
+
+    _insert_attr_row(db, Basic.AttributeDefs.zcl_version.id, 3)
+    _insert_attr_row(db, 0x7777, 5)
+
+    with caplog.at_level(logging.WARNING):
+        app2 = await make_app_with_db(
+            db, device_resolver=_quirk_resolver(FailingMigrationBasic)
+        )
+
+    assert "Failed to migrate attribute 0x7777" in caplog.text
+    assert "Broken migration" in caplog.text
+
+    basic2 = app2.get_device(dev.ieee).endpoints[1].basic
+    assert basic2.get(Basic.AttributeDefs.zcl_version.name) == 3
+    assert basic2._attr_cache.get(0x7777) == 5
+
+    await app2.shutdown()
+
+    assert _read_attr_row(db, Basic.cluster_id, 0x7777) == (5, None)
+
+
+async def test_attribute_rows_migrated(tmp_path) -> None:
+    """Several rows of a device migrate in one load."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+    await app.shutdown()
+
+    _insert_attr_row(db, 0x7777, 5)
+    _insert_attr_row(db, 0x7776, 6)
+
+    app2 = await make_app_with_db(db, device_resolver=_quirk_resolver(MigratingBasic))
+
+    app2.get_device(dev.ieee).store[MIGRATED_VALUE] = 7
+    await app2.shutdown()
+
+    assert _count_store_rows(db, dev.ieee) == 2
+    assert _read_attr_row(db, Basic.cluster_id, 0x7777) is None
+    assert _read_attr_row(db, Basic.cluster_id, 0x7776) is None
+
+    app3 = await make_app_with_db(db)
+    dev3 = app3.get_device(dev.ieee)
+    assert dev3.store[MIGRATED_VALUE] == 7
+    assert dev3.store[OTHER_MIGRATED_VALUE] == 6
+    await app3.shutdown()
+
+
+async def test_attribute_row_not_offered_if_defined_under_other_code(
+    tmp_path,
+) -> None:
+    """An attribute ID the cluster still defines is not migrated, whatever the code."""
+    db = tmp_path / "test.db"
+    app, dev = await _make_app_with_clusters(db, [Basic.cluster_id])
+    await app.shutdown()
+
+    _insert_attr_row(db, 0x7777, 5)
+
+    app2 = await make_app_with_db(
+        db, device_resolver=_quirk_resolver(ManufacturerSpecificBasic)
+    )
+    assert MIGRATED_VALUE not in app2.get_device(dev.ieee).store
+    await app2.shutdown()
+
+    assert _read_attr_row(db, Basic.cluster_id, 0x7777) == (5, None)

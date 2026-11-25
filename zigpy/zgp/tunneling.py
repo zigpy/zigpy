@@ -132,4 +132,7 @@ def gp_packet_from_zcl(packet: t.ZigbeePacket) -> t.ZigbeeGpPacket:
         gpp_short_addr=(
             None if command.gpp_short_addr is None else t.NWK(command.gpp_short_addr)
         ),
+        gpp_bidirectional_cap=bool(command.options.bidirectional_cap),
+        # A GP Commissioning Notification has no gpTxQueueFull sub-field (Figure 31)
+        gpp_tx_queue_full=bool(getattr(command.options, "tx_queue_full", 0)),
     )

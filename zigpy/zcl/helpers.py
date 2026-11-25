@@ -2,22 +2,105 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
-from .foundation import ZCLAttributeDef
+import zigpy.types as t
+
+from .foundation import DataTypeId, TypeValue, ZCLAttributeDef
 
 if TYPE_CHECKING:
     from . import Cluster
 
 CacheKey = tuple[int, int | None]  # attribute id, manufacturer code
 
+# The old attribute cache was a simple `attrid: value` mapping. This works 99.9% of the
+# time but unfortunately some devices reuse the same attribute ID on a standard cluster
+# for two separate purposes, using a manufacturer code to distinguish them. We migrate
+# attributes safely at runtime, once a device quirk has loaded and we can tell for sure
+# if the device has "colliding" attributes.
+UNMIGRATED_MANUFACTURER_CODE = -1
+
+
+class AttributeCacheRow(NamedTuple):
+    """A row from the attribute cache table.
+
+    Quirks receive rows in `Cluster.migrate_attribute_cache_row` and may read their
+    fields. Fields may be added, and the format of `value` follows the database schema.
+    """
+
+    ieee: t.EUI64
+    endpoint_id: int
+    cluster_type: int
+    cluster_id: int
+    attr_id: int
+    manufacturer_code: int | None
+    status: int
+    value: Any
+    data_type: DataTypeId | None
+    last_updated: float
+
+    @property
+    def key(self) -> tuple[t.EUI64, int, int, int, int, int | None]:
+        return (
+            self.ieee,
+            self.endpoint_id,
+            self.cluster_type,
+            self.cluster_id,
+            self.attr_id,
+            self.manufacturer_code,
+        )
+
+
+class AttributeCacheRowChange(NamedTuple):
+    """An attribute cache row to replace, or to delete if `new` is `None`."""
+
+    old: AttributeCacheRow
+    new: AttributeCacheRow | None
+
+
+@dataclass(kw_only=True)
+class AttributeCacheLoadResult:
+    """Database changes found while loading the attribute cache."""
+
+    changes: list[AttributeCacheRowChange] = field(default_factory=list)
+
+
+def _convert_attribute_value(attr_def: ZCLAttributeDef, type_value: TypeValue) -> Any:
+    """Convert a received attribute value into the attribute's declared type."""
+
+    # `dataN` values are untyped bytes, so they are re-read with the declared type
+    if isinstance(
+        type_value.value,
+        (
+            t.data8,
+            t.data16,
+            t.data24,
+            t.data32,
+            t.data40,
+            t.data48,
+            t.data56,
+            t.data64,
+        ),
+    ):
+        value, rest = attr_def.type.deserialize(type_value.value.serialize())
+
+        if rest:
+            raise ValueError(f"{type_value!r} does not fit {attr_def.type!r}")
+
+        return value
+
+    return attr_def.type(type_value.value)
+
 
 @dataclass(kw_only=True, frozen=True)
 class CacheItem:
     value: Any
     last_updated: datetime
+
+    # The value as received on the wire. Values set by quirks have none.
+    type_value: TypeValue | None = None
 
 
 class UnsupportedAttribute(Exception):
@@ -81,12 +164,14 @@ class AttributeCache:
         attr_def: ZCLAttributeDef,
         value: Any,
         *,
+        type_value: TypeValue | None = None,
         last_updated: datetime | None = None,
     ) -> None:
         self.remove_unsupported(attr_def)
         self._cache[self._cache_key(attr_def)] = CacheItem(
             value=value,
             last_updated=datetime.now(UTC) if last_updated is None else last_updated,
+            type_value=type_value,
         )
 
     def set_legacy_value(

@@ -115,6 +115,17 @@ class MeteringUnitofMeasure(t.enum8):
     Kvar_and_Kvarh_bcd = 0x8D
 
 
+class TemperatureUnitOfMeasure(t.enum8):
+    """Temperature unit of measure per SE 1.4a Table D-28."""
+
+    Kelvin_binary = 0x00
+    Celsius_binary = 0x01
+    Fahrenheit_binary = 0x02
+    Kelvin_bcd = 0x80
+    Celsius_bcd = 0x81
+    Fahrenheit_bcd = 0x82
+
+
 class NumberFormatting(t.IntStruct, t.uint8_t):
     """Number formatting."""
 
@@ -613,6 +624,7 @@ class Metering(Cluster):
     RegisteredTier: Final = RegisteredTier
     MeteringDeviceType: Final = MeteringDeviceType
     MeteringUnitofMeasure: Final = MeteringUnitofMeasure
+    TemperatureUnitOfMeasure: Final = TemperatureUnitOfMeasure
     NumberFormatting: Final = NumberFormatting
     MeteringStatus: Final = MeteringStatus
     CurrentBlock: Final = CurrentBlock
@@ -916,7 +928,7 @@ class Metering(Cluster):
             id=0x030B, zcl_type=DataTypeId.map8, type=NumberFormatting, access="r"
         )
         temperature_unit_of_measure: Final = ZCLAttributeDef(
-            id=0x030C, type=MeteringUnitofMeasure, access="r"
+            id=0x030C, type=TemperatureUnitOfMeasure, access="r"
         )
 
         # This attribute shall be used in relation with the following attributes:

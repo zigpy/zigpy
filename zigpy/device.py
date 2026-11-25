@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from asyncio import timeout as asyncio_timeout
-from collections.abc import Callable
+from collections import defaultdict
+from collections.abc import Callable, Sequence
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -38,16 +39,22 @@ from zigpy.exceptions import DeliveryError
 import zigpy.listeners
 from zigpy.ota.manager import update_firmware
 from zigpy.profiles import zha, zll
+import zigpy.store
 import zigpy.types as t
 import zigpy.util
 from zigpy.util import CreateTaskMixin
 from zigpy.zcl import Cluster, ClusterType, OtaQueryCacheClearedEvent, foundation
-from zigpy.zcl.clusters.general import Ota, PollControl, QueryNextImageCommand
+from zigpy.zcl.clusters.general import Basic, Ota, PollControl, QueryNextImageCommand
+from zigpy.zcl.helpers import AttributeCacheLoadResult, AttributeCacheRow
 import zigpy.zdo.types as zdo_t
 from zigpy.zgp.commands import (
     GPD_COMMAND_SCHEMAS,
+    GPAttributeReportingPayload,
     GPCommissioningPayload,
     GPGenericSwitchConfiguration,
+    GPManufacturerSpecificAttributeReportingPayload,
+    GPManufacturerSpecificMultiClusterReportingPayload,
+    GPMultiClusterReportingPayload,
 )
 from zigpy.zgp.crypto import build_gpdf_header, decrypt_payload
 from zigpy.zgp.types import (
@@ -59,14 +66,29 @@ from zigpy.zgp.types import (
     SecurityStatus,
     SrcID,
 )
-from zigpy.zgp.util import derive_alias, synthetic_ieee
+from zigpy.zgp.util import (
+    derive_alias,
+    is_gp_manufacturer_specific_attribute,
+    synthetic_ieee,
+)
 
 if typing.TYPE_CHECKING:
     from zigpy.application import ControllerApplication
     from zigpy.ota.providers import OtaImageWithMetadata
+    from zigpy.store import DeviceStore
 
 
 LOGGER = logging.getLogger(__name__)
+
+# GPD commands carrying ZCL attribute reports
+GPD_REPORTING_COMMANDS: Final = frozenset(
+    {
+        GPDCommandID.AttributeReporting,
+        GPDCommandID.ManufacturerSpecificReporting,
+        GPDCommandID.MultiClusterReporting,
+        GPDCommandID.ManufacturerSpecificMultiClusterReporting,
+    }
+)
 
 PACKET_DEBOUNCE_WINDOW = 10
 MAX_DEVICE_CONCURRENCY = 2
@@ -79,6 +101,11 @@ AFTER_OTA_ATTR_READ_DELAY = 10
 # zgpDuplicateTimeout: unprotected GPDFs repeating the last MAC sequence number
 # within this many seconds are duplicates
 GP_DUPLICATE_TIMEOUT = timedelta(seconds=2)
+
+
+def _decode_legacy_str(value: bytes) -> str:
+    """Old databases store string attributes as raw, possibly NUL-padded, bytes."""
+    return value.split(b"\x00", 1)[0].decode("utf-8")
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +128,7 @@ class GreenPowerCommandReceived:
     endpoint_id: int | None
     command_id: int
     command: t.Struct | None
+    rx_after_tx: bool | None = None
 
 
 class Status(enum.IntEnum):
@@ -119,6 +147,8 @@ class BaseDevice(
 ):
     """Base class shared by all device types, keyed on `ieee` and `nwk` addresses."""
 
+    _store: DeviceStore | None = None
+
     def __init__(
         self, application: ControllerApplication, ieee: t.EUI64, nwk: t.NWK
     ) -> None:
@@ -136,6 +166,28 @@ class BaseDevice(
 
         self._on_remove_callbacks: list[typing.Callable[[], None]] = []
         self._tasks: set[asyncio.Future[Any]] = set()
+
+        # Bound now, so that an object outliving its device's removal can never reach
+        # the store of a device added later under the same IEEE
+        stores = getattr(application, "device_stores", None)
+
+        if isinstance(stores, zigpy.store.DeviceStores):
+            self._store = stores[ieee]
+
+    @property
+    def store(self) -> DeviceStore:
+        """Persistent key/value store for device state that is not a ZCL attribute.
+
+        The store belongs to the application and is keyed by IEEE, so it is shared by
+        every object that represents this device (the raw device, a quirk replacement,
+        a re-interview shadow) and outlives each of them. A device object keeps the
+        store of the device it was created for, so once the device is removed, it
+        keeps a closed store even if a device with the same IEEE is added again.
+        """
+        if self._store is None:
+            self._store = self._application.device_stores[self.ieee]
+
+        return self._store
 
     def on_remove(self) -> None:
         """Call on remove callbacks."""
@@ -218,6 +270,54 @@ class BaseDevice(
     async def reinterview(self) -> None:
         raise NotImplementedError
 
+    @property
+    def non_zdo_endpoints(self) -> Sequence[zigpy.endpoint.BaseEndpoint]:
+        raise NotImplementedError
+
+    def load_attribute_cache(
+        self, rows: list[AttributeCacheRow], *, migrate: bool = False
+    ) -> AttributeCacheLoadResult:
+        """Populate cluster attribute caches from the device's database rows.
+
+        With `migrate`, clusters can migrate the rows of attributes they do not define
+        (see `Cluster.migrate_attribute_cache_row`).
+        """
+        result = AttributeCacheLoadResult()
+        existing_keys = {row.key for row in rows}
+        endpoints = {ep.endpoint_id: ep for ep in self.non_zdo_endpoints}
+
+        for row in rows:
+            self.debug("Loading attribute cache row %s", row)
+
+            if row.endpoint_id not in endpoints:
+                continue
+
+            ep = endpoints[row.endpoint_id]
+            clusters = (
+                ep.in_clusters
+                if row.cluster_type == ClusterType.Server
+                else ep.out_clusters
+            )
+
+            if row.cluster_id not in clusters:
+                self.debug("Unknown cluster 0x%04X, skipping", row.cluster_id)
+                continue
+
+            cluster = clusters[row.cluster_id]
+            loaded = cluster._load_attribute_cache_row(
+                row, existing_keys=existing_keys, result=result, migrate=migrate
+            )
+
+            if loaded is not None:
+                self._attribute_cache_loaded(cluster, *loaded)
+
+        return result
+
+    def _attribute_cache_loaded(
+        self, cluster: Cluster, attr_def: foundation.ZCLAttributeDef, value: Any
+    ) -> None:
+        """Handle an attribute value loaded from the database."""
+
 
 class GreenPowerDevice(BaseDevice):
     """A Green Power Device (GPD)."""
@@ -275,6 +375,17 @@ class GreenPowerDevice(BaseDevice):
         self.security_level: SecurityLevel | None = None
         self.frame_counter: t.uint32_t | None = None
 
+        # Opaque data trailing the `GPCommissioningPayload`
+        self.extra_commissioning_payload: bytes | None = None
+
+        # When each recent MAC sequence number of an unprotected GPD was accepted
+        self._mac_seq_num_timestamps: dict[int, datetime] = {}
+
+        # SrcID addressing has no endpoint
+        self.endpoints: dict[None, zigpy.endpoint.GreenPowerEndpoint] = {
+            None: zigpy.endpoint.GreenPowerEndpoint(self)
+        }
+
     @classmethod
     def from_commissioning(
         cls,
@@ -285,6 +396,7 @@ class GreenPowerDevice(BaseDevice):
         security_level: SecurityLevel,
         security_key_type: SecurityKeyType,
         security_key: t.KeyData | None,
+        extra_commissioning_payload: bytes | None = None,
     ) -> Self:
         """Create a GPD from its Commissioning GPDF (0xE0)."""
         assert packet.src_id is not None
@@ -300,6 +412,7 @@ class GreenPowerDevice(BaseDevice):
         ]
         device.server_cluster_ids = list(commissioning.server_clusters or [])
         device.client_cluster_ids = list(commissioning.client_clusters or [])
+        device.add_clusters()
 
         if commissioning.switch_information is not None:
             device.switch_configuration = commissioning.switch_information.configuration
@@ -312,6 +425,7 @@ class GreenPowerDevice(BaseDevice):
         device.security_key = security_key
         device.security_key_type = security_key_type
         device.security_level = security_level
+        device.extra_commissioning_payload = extra_commissioning_payload
         # An unprotected GPD has no security frame counter, the GPDF carries its MAC
         # sequence number instead. An outgoing counter it still sends is ignored
         # (A.4.2.1.1.3).
@@ -327,6 +441,20 @@ class GreenPowerDevice(BaseDevice):
         device.rssi = packet.rssi
 
         return device
+
+    @property
+    def non_zdo_endpoints(self) -> list[zigpy.endpoint.GreenPowerEndpoint]:
+        return list(self.endpoints.values())
+
+    def add_clusters(self) -> None:
+        """Create the clusters the GPD listed during commissioning."""
+        endpoint = self.endpoints[None]
+
+        for cluster_id in self.server_cluster_ids:
+            endpoint.add_input_cluster(cluster_id)
+
+        for cluster_id in self.client_cluster_ids:
+            endpoint.add_output_cluster(cluster_id)
 
     @property
     def src_id(self) -> SrcID | None:
@@ -357,6 +485,7 @@ class GreenPowerDevice(BaseDevice):
             "client_cluster_ids": list(self.client_cluster_ids),
             "switch_configuration": self.switch_configuration,
             "mac_seq_num_capability": self.mac_seq_num_capability,
+            "extra_commissioning_payload": self.extra_commissioning_payload,
         }
 
     @property
@@ -396,12 +525,11 @@ class GreenPowerDevice(BaseDevice):
             return packet.frame_counter <= self.frame_counter
 
         # Unprotected GPDFs carry the 8-bit MAC sequence number instead, which both
-        # wraps and may be random: only an identical value shortly after the last
-        # frame counts as the same GPDF forwarded again
-        return (
-            packet.frame_counter == self.frame_counter
-            and self._last_seen is not None
-            and ((packet.timestamp - self._last_seen) < GP_DUPLICATE_TIMEOUT)
+        # wraps and may be random: each value is remembered for gpDuplicateTimeout,
+        # so a GPDF forwarded again after a newer one is still filtered (A.3.6.1.2)
+        return packet.frame_counter in self._mac_seq_num_timestamps and (
+            packet.timestamp - self._mac_seq_num_timestamps[packet.frame_counter]
+            < GP_DUPLICATE_TIMEOUT
         )
 
     def _process_security(self, packet: t.ZigbeeGpPacket) -> t.ZigbeeGpPacket:
@@ -460,6 +588,15 @@ class GreenPowerDevice(BaseDevice):
             security_status=SecurityStatus.SecuritySuccess,
         )
 
+    async def send_gpdf(self, command_id: GPDCommandID, payload: bytes) -> None:
+        """Send a GPDF to this GPD, after its next GPDF with RxAfterTx.
+
+        Raises `DeliveryError` unless the GPD sent a GPDF with RxAfterTx within
+        `GP_DUPLICATE_TIMEOUT`. A radio sending the GPDF itself can wait up to
+        `GPDF_LIFETIME` for the GPD to listen.
+        """
+        await self._application.green_power.send_gpdf(self, command_id, payload)
+
     def packet_received(self, packet: t.ZigbeeGpPacket) -> None:
         """Process a decoded GPDF, decrypting it if the radio did not."""
 
@@ -495,6 +632,14 @@ class GreenPowerDevice(BaseDevice):
         # metrics, or the duplicate window itself
         if self._is_packet_duplicate(packet):
             self.debug("Filtering duplicate packet")
+
+            # Another instance of a GPDF is a TempMaster candidate for its election, if
+            # that election is still open (A.3.6.1.2)
+            if packet.rx_after_tx:
+                self._application.green_power.add_temp_master_candidate(
+                    self.ieee, packet
+                )
+
             return
 
         self.last_seen = packet.timestamp
@@ -507,6 +652,22 @@ class GreenPowerDevice(BaseDevice):
 
         if packet.frame_counter is not None:
             self.frame_counter = packet.frame_counter
+
+            if packet.security_level not in (
+                SecurityLevel.FullFrameCounterAndMIC,
+                SecurityLevel.Encrypted,
+            ):
+                self._mac_seq_num_timestamps = {
+                    seq_num: timestamp
+                    for seq_num, timestamp in self._mac_seq_num_timestamps.items()
+                    if packet.timestamp - timestamp < GP_DUPLICATE_TIMEOUT
+                }
+                self._mac_seq_num_timestamps[packet.frame_counter] = packet.timestamp
+
+        # Only a GPDF that passed the security and freshness checks above elects the
+        # node to reply to the GPD
+        if packet.rx_after_tx:
+            self._application.green_power.start_temp_master_election(self.ieee, packet)
 
         # A Decommissioning command is only acted upon once it passes the freshness and
         # security checks above (spec A.3.5.2.4)
@@ -536,6 +697,9 @@ class GreenPowerDevice(BaseDevice):
             )
             command = None
 
+        if command is not None and packet.command_id in GPD_REPORTING_COMMANDS:
+            self._handle_attribute_reports(command)
+
         self.emit(
             GreenPowerCommandReceived.event_type,
             GreenPowerCommandReceived(
@@ -543,8 +707,76 @@ class GreenPowerDevice(BaseDevice):
                 endpoint_id=packet.endpoint,
                 command_id=packet.command_id,
                 command=command,
+                rx_after_tx=packet.rx_after_tx,
             ),
         )
+
+    def _handle_attribute_reports(
+        self,
+        command: GPAttributeReportingPayload
+        | GPManufacturerSpecificAttributeReportingPayload
+        | GPMultiClusterReportingPayload
+        | GPManufacturerSpecificMultiClusterReportingPayload,
+    ) -> None:
+        """Pass GPD attribute reports to the reported clusters as ZCL reports."""
+        if isinstance(
+            command,
+            GPAttributeReportingPayload
+            | GPManufacturerSpecificAttributeReportingPayload,
+        ):
+            reports = [(command.cluster_id, attr) for attr in command.attributes]
+        else:
+            reports = [
+                (report.cluster_id, report.attribute) for report in command.reports
+            ]
+
+        if isinstance(
+            command,
+            GPManufacturerSpecificAttributeReportingPayload
+            | GPManufacturerSpecificMultiClusterReportingPayload,
+        ):
+            manufacturer_code = command.manufacturer_code
+        else:
+            manufacturer_code = None
+
+        # A ZCL report carries a single manufacturer code for all of its attributes
+        grouped: defaultdict[tuple[int, int | None], list[foundation.Attribute]] = (
+            defaultdict(list)
+        )
+
+        for cluster_id, attr in reports:
+            if not is_gp_manufacturer_specific_attribute(cluster_id, attr.attrid):
+                grouped[cluster_id, None].append(attr)
+            elif manufacturer_code is not None:
+                grouped[cluster_id, manufacturer_code].append(attr)
+            else:
+                self.debug(
+                    "Dropping manufacturer-specific attribute 0x%04X of cluster 0x%04X"
+                    " reported without a manufacturer code",
+                    attr.attrid,
+                    cluster_id,
+                )
+
+        clusters = self.endpoints[None].in_clusters
+
+        for (cluster_id, manufacturer), attributes in grouped.items():
+            # TODO: create the clusters mandated by the GPD's DeviceID, a GPD may leave
+            # them out of its Cluster List (spec A.4.2.1.1.9)
+            if cluster_id not in clusters:
+                self.debug("Dropping report for unknown cluster 0x%04X", cluster_id)
+                continue
+
+            clusters[cluster_id].handle_message(
+                foundation.ZCLHeader.general(
+                    tsn=0,
+                    command_id=foundation.GeneralCommand.Report_Attributes,
+                    manufacturer=manufacturer,
+                    direction=foundation.Direction.Server_to_Client,
+                ),
+                foundation.GENERAL_COMMANDS[
+                    foundation.GeneralCommand.Report_Attributes
+                ].schema(attribute_reports=attributes),
+            )
 
 
 class ZigbeeDevice(BaseDevice):
@@ -661,6 +893,20 @@ class ZigbeeDevice(BaseDevice):
     def is_initialized(self) -> bool:
         return self.node_desc is not None and self.all_endpoints_init
 
+    @property
+    def reply_retries(self) -> int | None:
+        """Retries for unsolicited replies: none if the device may be asleep."""
+        # A retry reaches a sleepy device after it has gone back to sleep. Routers and
+        # always-listening end devices keep the default, a retry also forces route
+        # discovery.
+        if self.node_desc is None:
+            return 0
+
+        if self.node_desc.is_end_device and not self.node_desc.is_receiver_on_when_idle:
+            return 0
+
+        return None
+
     def schedule_group_membership_scan(self) -> asyncio.Task:
         """Rescan device group's membership."""
         if self._group_scan_task and not self._group_scan_task.done():
@@ -711,6 +957,29 @@ class ZigbeeDevice(BaseDevice):
 
         return self._initialize_task
 
+    def _attribute_cache_loaded(
+        self, cluster: Cluster, attr_def: foundation.ZCLAttributeDef, value: Any
+    ) -> None:
+        if cluster.cluster_id != Basic.cluster_id:
+            return
+
+        if attr_def == Basic.AttributeDefs.manufacturer:
+            self.manufacturer = value
+        elif attr_def == Basic.AttributeDefs.model:
+            self.model = value
+
+    def _shadow_removed(self, shadow: ZigbeeDevice) -> bool:
+        """Whether the device was removed while `shadow` was registered for it.
+
+        `remove()` closes the device's store right away but leaves the shadow
+        registered until the leave request completes, so a closed store marks a
+        removal that is still in progress.
+        """
+        return (
+            self._application.devices.get(self._ieee) is not shadow
+            or shadow.store.closed
+        )
+
     async def reinterview(self) -> None:
         """Re-interview this device using a shadow device for safety.
 
@@ -745,11 +1014,35 @@ class ZigbeeDevice(BaseDevice):
                     t.PacketPriority.CRITICAL
                 ):
                     await shadow._discover()
-            except BaseException:
-                # Discovery failed or was cancelled — restore old device, drop shadow
-                self._application.devices[self._ieee] = self
+            except BaseException as exc:
+                # Discovery failed or was cancelled
                 shadow.on_remove()
+
+                if self._shadow_removed(shadow):
+                    # The device was removed while the shadow was being interviewed
+                    self.info(
+                        "Device was removed during re-interview, discarding shadow"
+                    )
+
+                    if isinstance(exc, Exception):
+                        self._application.listener_event(
+                            "device_reinterview_failure", self
+                        )
+                        return
+
+                    # A cancellation propagates
+                    raise
+
+                # Restore the old device
+                self._application.devices[self._ieee] = self
                 raise
+
+            if self._shadow_removed(shadow):
+                # The device was removed while the shadow was being interviewed
+                self.info("Device was removed during re-interview, discarding shadow")
+                shadow.on_remove()
+                self._application.listener_event("device_reinterview_failure", self)
+                return
 
             # Discovery succeeded — swap the old device for the new one.
             # If this somehow fails, the state may be partially swapped; attempting
@@ -763,6 +1056,13 @@ class ZigbeeDevice(BaseDevice):
             self._application.listener_event("device_reinterview_failure", self)
         finally:
             self._reinterview_in_progress = False
+
+            if self._application.devices.get(self._ieee) is not self:
+                # This device object is no longer registered: it was swapped out (already
+                # torn down by `_device_reinterviewed`, a no-op here) or removed while the
+                # shadow was registered in its place, in which case `remove()` only tore
+                # down the shadow
+                self.on_remove()
 
     async def get_node_descriptor(self) -> zdo_t.NodeDescriptor:
         self.info("Requesting 'Node Descriptor'")
@@ -1104,8 +1404,12 @@ class ZigbeeDevice(BaseDevice):
         )
 
         for attempt in range(max_attempts):
+            slot_acquired = False
+
             try:
                 async with self._limit_concurrency(priority=priority):
+                    slot_acquired = True
+
                     if not expect_reply:
                         await send_request(attempt=attempt)
                         return None
@@ -1128,6 +1432,11 @@ class ZigbeeDevice(BaseDevice):
             except zigpy.exceptions.ParsingError:
                 raise
             except Exception:
+                if not slot_acquired:
+                    # Failed while waiting in the queue, e.g. `cancel_waiting()` when
+                    # the device left or re-joined. Retrying would only re-queue it.
+                    raise
+
                 LOGGER.debug(
                     "Failed to send request, attempt %d of %d",
                     attempt + 1,
@@ -1513,6 +1822,9 @@ class ZigbeeDevice(BaseDevice):
 
     @manufacturer.setter
     def manufacturer(self, value) -> None:
+        if isinstance(value, bytes):
+            value = _decode_legacy_str(value)
+
         if isinstance(value, str):
             self._manufacturer = value
 
@@ -1532,6 +1844,9 @@ class ZigbeeDevice(BaseDevice):
 
     @model.setter
     def model(self, value) -> None:
+        if isinstance(value, bytes):
+            value = _decode_legacy_str(value)
+
         if isinstance(value, str):
             self._model = value
 

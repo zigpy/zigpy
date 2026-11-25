@@ -8,6 +8,7 @@ import voluptuous as vol
 
 import zigpy.config
 import zigpy.config.validators
+import zigpy.types as t
 
 
 @pytest.mark.parametrize(
@@ -266,3 +267,45 @@ def test_schema_db_commit_interval_invalid(value):
     """Test `database_commit_interval` rejects negative and NaN values."""
     with pytest.raises(vol.Invalid):
         zigpy.config.ZIGPY_SCHEMA({zigpy.config.CONF_DB_COMMIT_INTERVAL: value})
+
+
+def test_schema_blocked_devices_default():
+    """Test `blocked_devices` defaults to no blocked devices."""
+    config = zigpy.config.ZIGPY_SCHEMA({})
+    assert config[zigpy.config.CONF_BLOCKED_DEVICES] == frozenset()
+
+
+def test_schema_blocked_devices():
+    """Test `blocked_devices` accepts IEEE addresses in several forms."""
+    config = zigpy.config.ZIGPY_SCHEMA(
+        {
+            zigpy.config.CONF_BLOCKED_DEVICES: [
+                "00:11:22:33:44:55:66:77",
+                "aabbccddeeff0011",
+                t.EUI64.convert("00:11:22:33:44:55:66:77"),
+            ]
+        }
+    )
+    assert config[zigpy.config.CONF_BLOCKED_DEVICES] == frozenset(
+        {
+            t.EUI64.convert("00:11:22:33:44:55:66:77"),
+            t.EUI64.convert("AA:BB:CC:DD:EE:FF:00:11"),
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "00:11:22:33:44:55:66",
+        "00:11:22:33:44:55:66:77:88",
+        "not an address",
+        # YAML 1.1 can read an unquoted all-digit address as a sexagesimal integer
+        123456789,
+        None,
+    ],
+)
+def test_schema_blocked_devices_invalid(value):
+    """Test `blocked_devices` rejects anything that is not an IEEE address."""
+    with pytest.raises(vol.Invalid, match="invalid IEEE address"):
+        zigpy.config.ZIGPY_SCHEMA({zigpy.config.CONF_BLOCKED_DEVICES: [value]})

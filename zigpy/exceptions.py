@@ -46,6 +46,10 @@ class InvalidResponse(ZigbeeException):
     """A ZDO or ZCL response has an unsuccessful status code"""
 
 
+class OtaImageDownloadError(ZigbeeException):
+    """An OTA image could not be downloaded"""
+
+
 class RadioException(Exception):
     """Base exception class for radio exceptions"""
 

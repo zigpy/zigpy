@@ -7,7 +7,7 @@ import collections
 from collections.abc import AsyncGenerator, Callable
 import contextlib
 import contextvars
-from datetime import UTC, datetime, tzinfo
+from datetime import UTC, datetime, timedelta, tzinfo
 import errno
 import inspect
 import logging
@@ -32,6 +32,7 @@ import zigpy.listeners
 import zigpy.ota
 import zigpy.profiles
 import zigpy.state
+from zigpy.store import DeviceStores, NetworkStore
 import zigpy.topology
 import zigpy.types as t
 import zigpy.util
@@ -47,6 +48,9 @@ import zigpy.zgp.util
 
 DEFAULT_ENDPOINT_ID = 1
 LOGGER = logging.getLogger(__name__)
+
+# Minimum time between two leave requests sent to the same blocked device
+BLOCKED_DEVICE_LEAVE_INTERVAL = 30
 
 TRANSIENT_CONNECTION_ERRORS = {
     errno.ENETUNREACH,
@@ -79,9 +83,21 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
 
     def __init__(self, config: dict) -> None:
         self.devices: dict[t.EUI64, BaseDevice] = {}
+        self.device_stores = DeviceStores()
+        self.network_store = NetworkStore()
         self.state: zigpy.state.State = zigpy.state.State()
         self._listeners = {}
         self._config = self.SCHEMA(config)
+
+        # Blocked devices are not added to the network and are asked to leave when seen
+        self._blocked_devices: frozenset[t.EUI64] = self._config[
+            conf.CONF_BLOCKED_DEVICES
+        ]
+        # The last NWK address each blocked device not in `devices` used, with the time
+        # it was last confirmed: its packets are dropped without broadcasting an IEEE
+        # address request for every one of them
+        self._blocked_device_nwks: dict[t.NWK, tuple[t.EUI64, float]] = {}
+        self._blocked_device_last_leave: dict[t.EUI64, float] = {}
         self._dblistener = None
         self._groups = zigpy.group.Groups(self)
         self._send_sequence = 0
@@ -246,6 +262,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
 
         LOGGER.debug("Network info: %s", self.state.network_info)
         LOGGER.debug("Node info: %s", self.state.node_info)
+
+        if self.state.node_info.ieee in self._blocked_devices:
+            LOGGER.warning(
+                "Ignoring the coordinator's own IEEE address %s in the blocked devices",
+                self.state.node_info.ieee,
+            )
 
         new_state = self.backups.from_network_state()
 
@@ -619,12 +641,19 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         assert isinstance(ieee, t.EUI64)
         # TODO: Shut down existing device
 
+        self.device_stores.reopen(ieee)
         dev = ZigbeeDevice(self, ieee, nwk)
         self.devices[ieee] = dev
         return dev
 
     def _finalize_device(self, device: BaseDevice) -> BaseDevice:
         """Resolve a device, persist to DB, and register the device."""
+        if device.ieee not in self.devices:
+            # A device not created through `add_device` (Green Power devices are not)
+            # may hold the closed store of a device removed under the same IEEE
+            self.device_stores.reopen(device.ieee)
+            device._store = self.device_stores[device.ieee]
+
         self.listener_event("raw_device_initialized", device)
 
         # Ensure we propagate the original device signature
@@ -676,7 +705,9 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
 
         Preserves non-discovery state (last_seen, relays, lqi, rssi) and group
         memberships.  Exceptions propagate to ``reinterview()`` which logs them
-        and fires the ``device_reinterview_failure`` event.
+        and fires the ``device_reinterview_failure`` event.  If the device is removed
+        while the old one is being deleted from the DB, the shadow is discarded and
+        ``device_reinterview_failure`` is fired here instead.
         """
         # Copy non-discovery state from old device to shadow
         shadow._last_seen = old_device._last_seen
@@ -705,6 +736,16 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
 
         # Clean up old device's callbacks and tasks
         old_device.on_remove()
+
+        if self.devices.get(shadow.ieee) is not shadow or shadow.store.closed:
+            # The device was removed (and possibly re-added) while the old one was
+            # being deleted from the DB, or its removal is still waiting for the leave
+            # request (`remove()` closes the store at once): do not register the
+            # torn-down shadow again
+            LOGGER.debug("Device %s was removed during re-interview", shadow.ieee)
+            shadow.on_remove()
+            self.listener_event("device_reinterview_failure", old_device)
+            return
 
         # Apply quirks, persist to DB, and register the device — but do NOT
         # fire the device_initialized listener event.  Callers (and ZHA)
@@ -769,11 +810,16 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         if isinstance(dev, GreenPowerDevice):
             LOGGER.info("Removing device 0x%04x (%s)", dev.nwk, ieee)
             self.devices.pop(ieee, None)
+            self.device_stores.pop(ieee)
             self.listener_event("device_removed", dev)
             await self.green_power.unpair(dev)
             return
 
         dev.cancel_initialization()
+
+        # The device stays known until its leave request completes, but its store rows
+        # are deleted now, so nothing written in between may recreate them
+        self.device_stores.close(ieee)
 
         LOGGER.info("Removing device 0x%04x (%s)", dev.nwk, ieee)
         self.create_task(
@@ -823,7 +869,19 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         except (TimeoutError, zigpy.exceptions.DeliveryError) as ex:
             LOGGER.debug("Sending 'zdo_leave_req' failed: %s", ex)
 
-        self.devices.pop(device.ieee, None)
+        popped = self.devices.pop(device.ieee, None)
+        self.device_stores.pop(device.ieee)
+
+        # Tear down the removed device's tasks and callbacks. The leave exchange itself
+        # can re-schedule initialization of a not-yet-initialized device (its ZDO
+        # response arrives before the device is popped), so this must happen after the
+        # leave request completes, not only when removal starts.
+        device.on_remove()
+
+        # A different object may have been registered under the same IEEE while the
+        # leave request was in flight (e.g. a re-interview shadow): tear it down too
+        if popped is not None and popped is not device:
+            popped.on_remove()
 
     def deserialize(
         self,
@@ -852,6 +910,26 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             # address conflict check (A.2.6), not a join.
             LOGGER.debug("Ignoring announcement of Green Power alias 0x%04X", nwk)
             return
+
+        if self._is_blocked(ieee):
+            dev = self.devices.get(ieee)
+
+            # Keep the address of a device that joined before it was blocked current,
+            # so that its packets are still recognized
+            if isinstance(dev, ZigbeeDevice) and dev.nwk != nwk:
+                LOGGER.debug(
+                    "Blocked device %s changed id (0x%04x => 0x%04x)",
+                    ieee,
+                    dev.nwk,
+                    nwk,
+                )
+                dev.nwk = nwk
+
+            self._handle_blocked_device(ieee, nwk)
+            return
+
+        # A device that is not blocked now owns this address
+        self._blocked_device_nwks.pop(nwk, None)
 
         try:
             dev = self.get_device(ieee=ieee)
@@ -895,9 +973,129 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             # Rescan groups for devices that are not newly joining and initialized
             dev.schedule_group_membership_scan()
 
+    def _is_blocked(self, ieee: t.EUI64) -> bool:
+        """Return whether a device is blocked. The coordinator never is."""
+        return ieee in self._blocked_devices and ieee != self.state.node_info.ieee
+
+    def _blocked_device_leave_due(self, ieee: t.EUI64) -> bool:
+        """Return whether a blocked device may be asked to leave again."""
+        last_leave = self._blocked_device_last_leave.get(ieee)
+
+        return (
+            last_leave is None
+            or time.monotonic() - last_leave >= BLOCKED_DEVICE_LEAVE_INTERVAL
+        )
+
+    def _drop_blocked_nwk_packet(self, nwk: t.NWK) -> bool:
+        """Return whether to drop a packet from the NWK a blocked device last used.
+
+        The address may belong to another device by now, so its IEEE address is
+        rediscovered at most once per interval: the answer goes through `handle_join`,
+        which forgets the address if it belongs to a device that is not blocked.
+        """
+        entry = self._blocked_device_nwks.get(nwk)
+
+        if entry is None:
+            return False
+
+        ieee, last_confirmed = entry
+        now = time.monotonic()
+
+        # A device that is still in `devices` never reaches `_handle_blocked_device`
+        # from the packet path, so it is asked to leave again from here
+        if ieee in self.devices:
+            self._ask_blocked_device_to_leave_if_due(ieee, nwk)
+
+        if now - last_confirmed >= BLOCKED_DEVICE_LEAVE_INTERVAL:
+            self._blocked_device_nwks[nwk] = (ieee, now)
+            LOGGER.debug("Checking whether 0x%04x still belongs to %s", nwk, ieee)
+            self.create_task(
+                self._discover_unknown_device(nwk),
+                f"discover_blocked_device-nwk={nwk!r}",
+            )
+        else:
+            LOGGER.debug("Dropping packet from blocked device 0x%04x (%s)", nwk, ieee)
+
+        return True
+
+    def _forget_blocked_device_nwk(self, ieee: t.EUI64) -> None:
+        """Forget the NWK address a blocked device used."""
+        for nwk, (blocked_ieee, _) in list(self._blocked_device_nwks.items()):
+            if blocked_ieee == ieee:
+                del self._blocked_device_nwks[nwk]
+
+    def _handle_blocked_device(self, ieee: t.EUI64, nwk: t.NWK) -> None:
+        """Ask a blocked device that was seen on the network to leave."""
+
+        # Remembered for a device that joined before it was blocked too: another device
+        # may still have this address stored, and the device lookup would return it.
+        # Such a device stays in `devices`, removing it is left to the user: zigpy can't
+        # know whether its consumers are listening yet
+        self._forget_blocked_device_nwk(ieee)
+
+        # Never shadow the coordinator's own address, whatever a device claims
+        if nwk != self.state.node_info.nwk:
+            self._blocked_device_nwks[nwk] = (ieee, time.monotonic())
+
+        self._ask_blocked_device_to_leave_if_due(ieee, nwk)
+
+    def _ask_blocked_device_to_leave_if_due(self, ieee: t.EUI64, nwk: t.NWK) -> None:
+        """Ask a blocked device to leave, at most once per interval."""
+        if not self._blocked_device_leave_due(ieee):
+            LOGGER.debug("Ignoring packet from blocked device 0x%04x (%s)", nwk, ieee)
+            return
+
+        self._blocked_device_last_leave[ieee] = time.monotonic()
+
+        LOGGER.warning(
+            "Blocked device 0x%04x (%s) is on the network, asking it to leave%s",
+            nwk,
+            ieee,
+            (
+                " (it joined before it was blocked, remove it to delete it)"
+                if ieee in self.devices
+                else ""
+            ),
+        )
+        self.create_task(
+            self._ask_blocked_device_to_leave(ieee, nwk),
+            f"blocked_device_leave-nwk={nwk!r}-ieee={ieee!r}",
+        )
+
+    async def _ask_blocked_device_to_leave(self, ieee: t.EUI64, nwk: t.NWK) -> None:
+        """Send a leave request to a blocked device."""
+
+        # The device object below is only for sending the request. It must not leave
+        # a store behind for an IEEE that is not a device.
+        had_store = ieee in self.device_stores
+
+        # Without `RemoveChildren`: a blocked router's children may be our own devices
+        device = ZigbeeDevice(self, ieee, nwk)
+
+        try:
+            await device.zdo.request(
+                zdo_types.ZDOCmd.Mgmt_Leave_req,
+                ieee,
+                device.zdo.LeaveOptions.NONE,
+                # The reply would be dropped, the device being blocked
+                expect_reply=False,
+            )
+        except Exception as ex:  # noqa: BLE001
+            LOGGER.debug("Failed to send leave request to blocked device: %s", ex)
+        finally:
+            # Unregister the callbacks the device object registered on creation
+            device.on_remove()
+
+            if not had_store and ieee not in self.devices:
+                self.device_stores.discard(ieee)
+
     def handle_leave(self, nwk: t.NWK, ieee: t.EUI64):
         """Called when a device has left the network."""
         LOGGER.info("Device 0x%04x (%s) left the network", nwk, ieee)
+
+        if self._is_blocked(ieee):
+            # Its address is free again and may be given to another device
+            self._forget_blocked_device_nwk(ieee)
 
         try:
             dev = self.get_device(ieee=ieee)
@@ -916,6 +1114,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
 
     def handle_relays(self, nwk: t.NWK, relays: list[t.NWK]) -> None:
         """Called when a list of relaying devices is received."""
+        # Checked first: another device may still have the address stored
+        if self._drop_blocked_nwk_packet(nwk):
+            return
+
         try:
             device = self.get_device(nwk=nwk)
         except KeyError:
@@ -925,6 +1127,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
                 f"discover_unknown_device_from_relays-nwk={nwk!r}",
             )
         else:
+            # Not remembered yet (e.g. after a restart): the device was blocked later
+            if self._is_blocked(device.ieee):
+                self._handle_blocked_device(device.ieee, device.nwk)
+                return
+
             device.relays = zigpy.util.filter_relays(relays)
 
     @classmethod
@@ -1172,11 +1379,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             )
             dst = t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=device.nwk)
 
-        if self.config[conf.CONF_SOURCE_ROUTING]:
-            source_route = self.build_source_route_to(dest=device)
-        else:
-            source_route = None
-
         tx_options = t.TransmitOptions.NONE
 
         if ask_for_ack is not None:
@@ -1203,7 +1405,6 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
                 cluster_id=cluster,
                 data=t.SerializableBytes(data),
                 extended_timeout=extended_timeout,
-                source_route=source_route,
                 tx_options=tx_options,
                 priority=priority,
             )
@@ -1378,6 +1579,14 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         if zigpy.zdo.ZDO_ENDPOINT in (packet.src_ep, packet.dst_ep):
             self._maybe_parse_zdo(packet)
 
+        # A blocked device's last address is checked before the device lookup: another
+        # device may still have it stored. ZDO parsing above has already forgotten it if
+        # the packet announces a device that isn't blocked as its new owner.
+        if packet.src.addr_mode == t.AddrMode.NWK and self._drop_blocked_nwk_packet(
+            typing.cast(t.NWK, packet.src.address)
+        ):
+            return None
+
         try:
             device = self.get_device_with_address(packet.src)
         except KeyError:
@@ -1411,6 +1620,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             LOGGER.warning(
                 "Received a Zigbee packet from non-Zigbee device %s: %r", device, packet
             )
+            return None
+
+        if self._is_blocked(device.ieee):
+            self._handle_blocked_device(device.ieee, device.nwk)
             return None
 
         self.listener_event(
@@ -1837,6 +2050,37 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         self, group_id: t.Group, endpoint_id: int
     ) -> None:
         """Ask the coordinator firmware to unsubscribe from a group, if needed."""
+
+    async def send_gpdf(
+        self,
+        *,
+        target: zigpy.zgp.types.SrcID | tuple[t.EUI64, int] | None,
+        command_id: zigpy.zgp.types.GPDCommandID,
+        payload: bytes,
+        channel: int,
+        lifetime: timedelta,
+    ) -> None:
+        """Send a GPDF from the radio in its GPD's next receive window."""
+        await self._send_gpdf(
+            target=target,
+            command_id=command_id,
+            payload=payload,
+            channel=channel,
+            lifetime=lifetime,
+        )
+
+    # @abc.abstractmethod
+    async def _send_gpdf(
+        self,
+        *,
+        target: zigpy.zgp.types.SrcID | tuple[t.EUI64, int] | None,
+        command_id: zigpy.zgp.types.GPDCommandID,
+        payload: bytes,
+        channel: int,
+        lifetime: timedelta,
+    ) -> None:
+        """Send a GPDF from the radio once its GPD listens, internal."""
+        raise NotImplementedError
 
     async def permit(self, time_s: int = 60, node: t.EUI64 | str | None = None) -> None:
         """Permit joining on a specific node or all router nodes."""
