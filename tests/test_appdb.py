@@ -4696,6 +4696,9 @@ async def test_reinterview_commits_delete_with_new_device(tmp_path):
 
     # The delete and the save were committed together
     assert committed_counts == [1]
+    ep_where = "WHERE ieee = ? AND endpoint_id = ?"
+    assert await _read_count(db, "endpoints", ep_where, (str(old_dev.ieee), 1)) == 0
+    assert await _read_count(db, "endpoints", ep_where, (str(old_dev.ieee), 2)) == 1
     await app.shutdown()
 
 
