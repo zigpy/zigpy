@@ -2482,7 +2482,9 @@ async def test_reinterview_cancelled_keeps_old_device_working(monkeypatch, dev, 
             await block()
 
     monkeypatch.setattr(device.Device, "_discover", mock_discover)
-    dev._application._device_reinterviewed = AsyncMock(side_effect=block)
+    # The real swap runs, so the cancel hits it at its awaited DB delete
+    dev._application._dblistener = MagicMock()
+    dev._application._dblistener._remove_device = AsyncMock(side_effect=block)
 
     task = asyncio.create_task(dev.reinterview())
     await blocked.wait()
