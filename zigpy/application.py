@@ -742,7 +742,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             # being deleted from the DB, or its removal is still waiting for the leave
             # request (`remove()` closes the store at once): do not register the
             # torn-down shadow again
-            LOGGER.debug("Device %s was removed during re-interview", shadow.ieee)
+            LOGGER.info("Device %s was removed during re-interview", shadow.ieee)
             shadow.on_remove()
             self.listener_event("device_reinterview_failure", old_device)
             return
