@@ -1759,7 +1759,16 @@ class ZigbeeDevice(BaseDevice):
         if error is not None:
             return
 
-        self._notify_request_listeners(hdr, cmd)
+        # Pass the request off to a listener, if one is registered
+        for listener in itertools.chain(
+            self._application._req_listeners[zigpy.listeners.ANY_DEVICE],
+            self._application._req_listeners[self],
+        ):
+            # Resolve only until the first future listener
+            if listener.resolve(hdr, cmd) and isinstance(
+                listener, zigpy.listeners.FutureListener
+            ):
+                break
 
         # Finally, pass it off to the cluster message handler. This will be removed.
         zcl_cluster.handle_message(hdr, cmd)
@@ -1788,7 +1797,6 @@ class ZigbeeDevice(BaseDevice):
         if self._maybe_match_response(rsp_key, frame.command, None):
             return
 
-        self._notify_request_listeners(frame, frame.command)
         self._handle_zdo_request(frame)
 
     def _handle_zdo_request(self, frame: zdo_c.ZDOCommand) -> None:
@@ -1859,22 +1867,6 @@ class ZigbeeDevice(BaseDevice):
             await self.send_zdo_command(command, tsn=tsn, **kwargs)
         except (TimeoutError, zigpy.exceptions.ZigbeeException) as exc:
             self.debug("Failed to send ZDO reply %s: %r", command, exc)
-
-    def _notify_request_listeners(
-        self,
-        hdr: foundation.ZCLHeader | zdo_c.ZDOCommand,
-        command: typing.Any,
-    ) -> None:
-        """Pass the request off to a listener, if one is registered."""
-        for listener in itertools.chain(
-            self._application._req_listeners[zigpy.listeners.ANY_DEVICE],
-            self._application._req_listeners[self],
-        ):
-            # Resolve only until the first future listener
-            if listener.resolve(hdr, command) and isinstance(
-                listener, zigpy.listeners.FutureListener
-            ):
-                break
 
     async def reply(
         self,

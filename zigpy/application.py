@@ -27,6 +27,7 @@ import zigpy.device
 from zigpy.device import BaseDevice, GreenPowerDevice, ZigbeeDevice
 import zigpy.endpoint
 import zigpy.exceptions
+import zigpy.frames
 import zigpy.group
 import zigpy.listeners
 import zigpy.ota
@@ -125,10 +126,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             collections.deque[zigpy.listeners.BaseRequestListener],
         ] = collections.defaultdict(lambda: collections.deque([]))
 
-        # Add callback storage
-        self._packet_callbacks: collections.defaultdict[
-            t.AddrModeAddress | None, list[typing.Callable[[t.ZigbeePacket], None]]
-        ] = collections.defaultdict(list)
+        self.frame_listeners = zigpy.frames.FrameListeners(create_task=self.create_task)
 
         # Context variable for request priority context manager
         self._packet_priority_var = contextvars.ContextVar(
@@ -1558,20 +1556,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             radius=0,
         )
 
-    def _maybe_parse_zdo(self, packet: t.ZigbeePacket) -> None:
-        """Attempt to parse an incoming packet as ZDO, to extract useful notifications."""
-
-        try:
-            frame = zdo_commands.ZDOCommand.deserialize(
-                cluster_id=packet.cluster_id, data=packet.data.serialize()
-            )
-        except ValueError:
-            LOGGER.debug("Could not parse ZDO message from packet")
-            return
-
+    def _handle_zdo_notification(self, frame: zdo_commands.ZDOCommand) -> None:
+        """Interpret useful global ZDO responses and notifications."""
         command = frame.command
 
-        # Interpret useful global ZDO responses and notifications
         if isinstance(command, zdo_commands.DeviceAnnce):
             self.handle_join(
                 nwk=command.nwk_addr, ieee=command.ieee_addr, parent_nwk=None
@@ -1612,9 +1600,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
 
             return None
 
+        frame = zigpy.frames.parse_frame(packet)
+
         # Peek into ZDO packets to handle possible ZDO notifications
-        if zigpy.zdo.ZDO_ENDPOINT in (packet.src_ep, packet.dst_ep):
-            self._maybe_parse_zdo(packet)
+        if isinstance(frame, zigpy.frames.ZDOFrame):
+            self._handle_zdo_notification(frame.command)
 
         # A blocked device's last address is checked before the device lookup: another
         # device may still have it stored. ZDO parsing above has already forgotten it if
@@ -1622,6 +1612,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         if packet.src.addr_mode == t.AddrMode.NWK and self._drop_blocked_nwk_packet(
             typing.cast(t.NWK, packet.src.address)
         ):
+            return None
+
+        # A frame consumed by an application-level listener is kept from the device
+        if self.frame_listeners.dispatch(frame):
             return None
 
         try:
@@ -1820,53 +1814,23 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         else:
             raise ValueError(f"Invalid address: {address!r}")
 
+    @zigpy.util.deprecated("use `frame_listeners.subscribe` instead")
     def register_packet_callback(
         self,
         filter: t.AddrModeAddress | None,
         callback: typing.Callable[[t.ZigbeePacket], None],
     ) -> typing.Callable[[], None]:
-        """Register a callback that is called when a Zigbee packet is received.
+        """Register a callback that is called when a Zigbee packet is received."""
+        nwk = None
 
-        Args:
-        ----
-            filter: Optional address filter. If None, callback receives all packets.
-            If provided, only packets from this source address trigger the callback.
-            callback: Function to call when a matching packet is received.
+        if filter is not None and filter.addr_mode == t.AddrMode.NWK:
+            nwk = typing.cast(t.NWK, filter.address)
 
-        Returns:
-        -------
-            A callable that can be used to unregister the callback.
-
-        """
-        self._packet_callbacks[filter].append(callback)
-
-        def cancel_callback() -> None:
-            """Remove the callback."""
-            with contextlib.suppress(ValueError):
-                self._packet_callbacks[filter].remove(callback)
-
-        return cancel_callback
-
-    def notify_packet_callbacks(self, packet: t.ZigbeePacket) -> None:
-        """Notify registered packet callbacks about a received Zigbee packet."""
-
-        # Notify global callbacks (registered with None filter)
-        for callback in self._packet_callbacks[None]:
-            try:
-                callback(packet)
-            except Exception:
-                LOGGER.exception("Error in global packet callback: %s", callback)
-
-        # Notify address-specific callbacks
-        for callback in self._packet_callbacks[packet.src]:
-            try:
-                callback(packet)
-            except Exception:
-                LOGGER.exception(
-                    "Error in packet callback for address %s: %s",
-                    packet.src,
-                    callback,
-                )
+        return self.frame_listeners.subscribe(
+            nwk,
+            lambda frame: filter is None or frame.packet.src == filter,
+            lambda frame: callback(frame.packet),
+        )
 
     def register_callback_listener(
         self,
