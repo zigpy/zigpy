@@ -371,28 +371,6 @@ def test_endpoint_getitem(dev):
         dev[1]
 
 
-async def test_broadcast(app_mock):
-    app_mock.state.node_info.ieee = t.EUI64.convert("08:09:0A:0B:0C:0D:0E:0F")
-
-    (profile, cluster, src_ep, dst_ep, data) = (
-        zha.PROFILE_ID,
-        1,
-        2,
-        3,
-        b"\x02\x01\x00",
-    )
-    await device.broadcast(app_mock, profile, cluster, src_ep, dst_ep, 0, 0, 123, data)
-
-    assert app_mock.send_packet.call_count == 1
-    packet = app_mock.send_packet.mock_calls[0].args[0]
-
-    assert packet.profile_id == profile
-    assert packet.cluster_id == cluster
-    assert packet.src_ep == src_ep
-    assert packet.dst_ep == dst_ep
-    assert packet.data.serialize() == data
-
-
 async def _get_node_descriptor(dev, zdo_success=True, request_success=True):
     async def mockrequest(command):
         if not request_success:

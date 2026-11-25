@@ -2127,28 +2127,3 @@ class ZigbeeDevice(BaseDevice):
 
 # Backwards-compatible alias
 Device = ZigbeeDevice
-
-
-async def broadcast(
-    app,
-    profile,
-    cluster,
-    src_ep,
-    dst_ep,
-    grpid,
-    radius,
-    sequence,
-    data,
-    broadcast_address=t.BroadcastAddress.RX_ON_WHEN_IDLE,
-):
-    return await app.broadcast(
-        profile,
-        cluster,
-        src_ep,
-        dst_ep,
-        grpid,
-        radius,
-        sequence,
-        data,
-        broadcast_address=broadcast_address,
-    )

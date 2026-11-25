@@ -317,19 +317,21 @@ async def test_permit(dev):
 
 
 async def test_broadcast(app):
-    await zigpy.zdo.broadcast(
-        app,
+    await app.broadcast_zdo_command(
         zdo_c.MgmtPermitJoiningReq(permit_duration=60, tc_significant=False),
-        0,
-        0,
+        radius=0,
     )
 
     assert len(app.send_packet.mock_calls) == 1
 
     packet = app.send_packet.mock_calls[0].args[0]
-    assert packet.dst.addr_mode == t.AddrMode.Broadcast
+    assert packet.dst == t.AddrModeAddress(
+        addr_mode=t.AddrMode.Broadcast, address=t.BroadcastAddress.RX_ON_WHEN_IDLE
+    )
+    assert packet.src_ep == packet.dst_ep == 0
+    assert packet.profile_id == 0x0000
     assert packet.cluster_id == 0x0036
-    assert packet.data.serialize()[1:] == b"\x3c\x00"
+    assert packet.data.serialize() == bytes([packet.tsn]) + b"\x3c\x00"
 
 
 @pytest.mark.parametrize(

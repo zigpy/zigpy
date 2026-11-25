@@ -1642,7 +1642,7 @@ async def test_move_network_to_new_channel_noop(app):
 
     old_channel = app.state.network_info.channel
 
-    with patch("zigpy.zdo.broadcast") as mock_broadcast:
+    with patch.object(app, "broadcast_zdo_command") as mock_broadcast:
         await app.move_network_to_channel(new_channel=old_channel)
 
     assert app.state.network_info.channel == old_channel

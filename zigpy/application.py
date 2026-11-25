@@ -475,14 +475,12 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
                 num_broadcasts,
             )
 
-            await zigpy.zdo.broadcast(
-                app=self,
-                command=zdo_commands.MgmtNwkUpdateReq(
+            await self.broadcast_zdo_command(
+                zdo_commands.MgmtNwkUpdateReq(
                     scan_channels=zigpy.types.Channels.from_channel_list([new_channel]),
                     scan_duration=zdo_types.CHANNEL_CHANGE_REQ,
                     nwk_update_id=new_nwk_update_id,
                 ),
-                grpid=None,
                 radius=30,  # Explicitly set the maximum radius
                 broadcast_address=zigpy.types.BroadcastAddress.ALL_DEVICES,
             )
@@ -1524,17 +1522,39 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
 
         return (zigpy.zcl.foundation.Status.SUCCESS, "")
 
+    async def broadcast_zdo_command(
+        self,
+        command: zdo_commands.ZDOPayload,
+        *,
+        radius: int,
+        broadcast_address: t.BroadcastAddress = t.BroadcastAddress.RX_ON_WHEN_IDLE,
+    ) -> None:
+        """Broadcast a ZDO command. No responses are collected."""
+        sequence = t.uint8_t(self.get_sequence())
+
+        await self.broadcast(
+            profile=0x0000,
+            cluster=command.command_id,
+            src_ep=zigpy.zdo.ZDO_ENDPOINT,
+            dst_ep=zigpy.zdo.ZDO_ENDPOINT,
+            grpid=0x0000,
+            radius=radius,
+            sequence=sequence,
+            data=zdo_commands.ZDOCommand(
+                command_id=command.command_id, tsn=sequence, command=command
+            ).serialize(),
+            broadcast_address=broadcast_address,
+        )
+
     async def _discover_unknown_device(self, nwk: t.NWK) -> None:
         """Discover the IEEE address of a device with an unknown NWK."""
 
-        return await zigpy.zdo.broadcast(
-            app=self,
-            command=zdo_commands.IeeeAddrReq(
+        await self.broadcast_zdo_command(
+            zdo_commands.IeeeAddrReq(
                 nwk_addr_of_interest=nwk,
                 request_type=zdo_types.AddrRequestType.Single,
                 start_index=0,
             ),
-            grpid=None,
             radius=0,
         )
 
@@ -2126,12 +2146,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
                 await self.permit_ncp(time_s)
             return
 
-        await zigpy.zdo.broadcast(
-            app=self,
-            command=zdo_commands.MgmtPermitJoiningReq(
+        await self.broadcast_zdo_command(
+            zdo_commands.MgmtPermitJoiningReq(
                 permit_duration=time_s, tc_significant=False
             ),
-            grpid=0x0000,
             radius=0x00,
             broadcast_address=t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
         )
