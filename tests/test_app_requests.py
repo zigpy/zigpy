@@ -7,6 +7,7 @@ import zigpy.exceptions
 import zigpy.types as t
 from zigpy.zcl import foundation
 from zigpy.zcl.clusters.general import Basic, Ota, PollControl
+import zigpy.zdo.commands as zdo_c
 import zigpy.zdo.types as zdo_t
 
 from .conftest import make_node_desc
@@ -337,27 +338,56 @@ async def test_cluster_response_parsing_error(app):
         )
 
 
-def test_get_sequence_per_nwk(app):
+def test_get_zcl_sequence_per_nwk(app):
     """Each destination NWK has its own TSN counter."""
-    first = [app.get_sequence(NWK) for _ in range(3)]
-    other = app.get_sequence(t.NWK(0x5678))
+    first = [app.get_zcl_sequence(NWK) for _ in range(3)]
+    other = app.get_zcl_sequence(t.NWK(0x5678))
 
     assert first == [1, 2, 3]
     assert other == 1
-    assert app.get_sequence(NWK) == 4
+    assert app.get_zcl_sequence(NWK) == 4
 
 
-def test_get_sequence_wraps(app):
-    tsns = [app.get_sequence(NWK) for _ in range(257)]
+def test_get_zcl_sequence_wraps(app):
+    tsns = [app.get_zcl_sequence(NWK) for _ in range(257)]
 
     assert tsns[254:] == [255, 0, 1]
+
+
+def test_get_sequence_is_global(app):
+    """The broadcast and group counter is apart from the per-NWK counters."""
+    # The test app pins `get_sequence`, use the real one
+    get_sequence = type(app).get_sequence
+
+    assert [get_sequence(app), get_sequence(app)] == [1, 2]
+    assert app.get_zcl_sequence(NWK) == 1
+    assert app.get_zdo_sequence(NWK) == 1
+
+
+def test_zdo_and_zcl_sequences_are_separate(app):
+    """ZDO and ZCL TSNs to a NWK are counted apart."""
+    assert [app.get_zdo_sequence(NWK) for _ in range(2)] == [1, 2]
+    assert [app.get_zcl_sequence(NWK) for _ in range(2)] == [1, 2]
+    assert app.get_zdo_sequence(t.NWK(0x5678)) == 1
+
+
+async def test_device_zdo_sequence(app):
+    """A device's ZDO requests use the ZDO counter of its NWK."""
+    dev = app.add_device(ieee=t.EUI64.convert("11:22:33:44:55:66:77:88"), nwk=NWK)
+    app.get_zdo_sequence(NWK)
+
+    await dev.send_zdo_command(zdo_c.MgmtLeaveRsp(status=zdo_t.Status.SUCCESS))
+
+    [packet] = [c.args[0] for c in app.send_packet.mock_calls]
+    assert packet.tsn == 2
+    assert app.get_zcl_sequence(NWK) == 1
 
 
 def test_device_shares_nwk_sequence(app):
     """A device and requests to its NWK draw from one counter."""
     dev = app.add_device(ieee=t.EUI64.convert("11:22:33:44:55:66:77:88"), nwk=NWK)
 
-    assert [dev.get_sequence(), app.get_sequence(NWK), dev.get_sequence()] == [
+    assert [dev.get_sequence(), app.get_zcl_sequence(NWK), dev.get_sequence()] == [
         1,
         2,
         3,

@@ -900,7 +900,7 @@ class ZigbeeDevice(BaseDevice):
 
     def get_sequence(self) -> int:
         # Shared with every other sender to this NWK
-        return self._application.get_sequence(self.nwk)
+        return self._application.get_zcl_sequence(self.nwk)
 
     @property
     def name(self) -> str:
@@ -1388,7 +1388,7 @@ class ZigbeeDevice(BaseDevice):
     ) -> zdo_c.ZDOPayloadT | None:
         """Send a ZDO command and wait for its response, if a response type is given."""
         if tsn is None:
-            tsn = self.get_sequence()
+            tsn = self._application.get_zdo_sequence(self.nwk)
 
         policy = self.send_policy
 

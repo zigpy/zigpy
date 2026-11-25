@@ -259,12 +259,7 @@ def make_app(
 
     app.device_initialized = Mock(wraps=app.device_initialized)
     app.listener_event = Mock(wraps=app.listener_event)
-    get_sequence = app.get_sequence
-
-    # Broadcast and group TSNs are fixed, TSNs to a NWK count up
-    app.get_sequence = MagicMock(
-        side_effect=lambda nwk=None: 123 if nwk is None else get_sequence(nwk)
-    )
+    app.get_sequence = MagicMock(wraps=app.get_sequence, return_value=123)
     app.send_packet = AsyncMock(wraps=app.send_packet)
     app.write_network_info = AsyncMock(wraps=app.write_network_info)
 

@@ -105,7 +105,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         self._dblistener = None
         self._groups = zigpy.group.Groups(self)
         self._send_sequence = 0
-        self._nwk_sequences: dict[t.NWK, int] = {}
+        self._nwk_zcl_sequences: dict[t.NWK, int] = {}
+        self._nwk_zdo_sequences: dict[t.NWK, int] = {}
         self._tasks: set[asyncio.Future[Any]] = set()
         self.local_timezone: tzinfo | None = None
 
@@ -1547,7 +1548,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         is given. No device object is needed.
         """
         if tsn is None:
-            tsn = self.get_sequence(nwk)
+            tsn = self.get_zdo_sequence(nwk)
 
         frame = zdo_commands.ZDOCommand(
             command_id=command.command_id, tsn=tsn, command=command
@@ -1645,7 +1646,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         general = command in foundation.GENERAL_COMMANDS.values()
 
         if tsn is None:
-            tsn = self.get_sequence(nwk)
+            tsn = self.get_zcl_sequence(nwk)
 
         if disable_default_response is None:
             disable_default_response = (
@@ -2555,15 +2556,23 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         """Open or close (`time_s=0`) the Green Power commissioning window."""
         await self.green_power.permit_join(time_s)
 
-    def get_sequence(self, nwk: t.NWK | None = None) -> int:
-        """Get a TSN, for a destination NWK or for a broadcast or group."""
-        if nwk is None:
-            self._send_sequence = (self._send_sequence + 1) % 256
-            return self._send_sequence
+    def get_sequence(self) -> int:
+        """Get a TSN for a broadcast or a group."""
+        self._send_sequence = (self._send_sequence + 1) % 256
+        return self._send_sequence
 
-        # All requests to a NWK share a counter so their responses never collide
-        tsn = (self._nwk_sequences.setdefault(nwk, 0) + 1) % 256
-        self._nwk_sequences[nwk] = tsn
+    def get_zcl_sequence(self, nwk: t.NWK) -> int:
+        """Get a ZCL TSN for a destination NWK."""
+        # All ZCL requests to a NWK share a counter so their responses never collide
+        tsn = (self._nwk_zcl_sequences.setdefault(nwk, 0) + 1) % 256
+        self._nwk_zcl_sequences[nwk] = tsn
+
+        return tsn
+
+    def get_zdo_sequence(self, nwk: t.NWK) -> int:
+        """Get a ZDO TSN for a destination NWK, counted apart from ZCL TSNs."""
+        tsn = (self._nwk_zdo_sequences.setdefault(nwk, 0) + 1) % 256
+        self._nwk_zdo_sequences[nwk] = tsn
 
         return tsn
 
