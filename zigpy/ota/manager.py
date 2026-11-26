@@ -31,8 +31,9 @@ if TYPE_CHECKING:
 # to detect when OTA has permanently stalled
 MAX_TIME_WITHOUT_PROGRESS = 30
 
-# Separate timeout for the final block, to give devices time to finally verify the OTA
-FINAL_BLOCK_TIMEOUT = 60
+# Separate timeout for the final block, to give devices time to finally verify the OTA.
+# Some take more than a minute (e.g. ~75 s for the LiXee ZLinky_TIC).
+FINAL_BLOCK_TIMEOUT = 300
 
 
 def _image_block_size_for_manufacturer(
