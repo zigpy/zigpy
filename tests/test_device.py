@@ -1954,6 +1954,63 @@ async def test_fast_poll_mode_cancel_old_timer(dev: device.Device) -> None:
     assert not dev._fast_polling
 
 
+async def test_fast_poll_mode_failure(dev: device.Device) -> None:
+    """Test that a failed fast_poll_mode turns off fast polling from an earlier run."""
+    ep = dev.add_endpoint(1)
+    poll_control = ep.add_input_cluster(PollControl.cluster_id)
+    poll_control.bind = AsyncMock()
+    poll_control.write_attributes = AsyncMock()
+
+    await dev.begin_fast_polling(60)
+    assert dev._fast_polling
+
+    # Setting up fast poll mode cancels the earlier reset before it fails
+    poll_control.bind = AsyncMock(side_effect=TimeoutError())
+
+    with pytest.raises(TimeoutError):
+        async with dev.fast_poll_mode():
+            pass
+
+    assert dev._fast_polling_reset_task is None
+    assert not dev._fast_polling
+
+
+async def test_fast_poll_mode_failure_newer_run(dev: device.Device) -> None:
+    """Test that a failed fast_poll_mode keeps fast polling started meanwhile."""
+    ep = dev.add_endpoint(1)
+    poll_control = ep.add_input_cluster(PollControl.cluster_id)
+    poll_control.write_attributes = AsyncMock()
+
+    bind_started = asyncio.Event()
+    bind_failure: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+
+    async def bind() -> None:
+        if not bind_started.is_set():
+            bind_started.set()
+            await bind_failure
+
+    poll_control.bind = AsyncMock(side_effect=bind)
+
+    async def run_fast_poll_mode() -> None:
+        async with dev.fast_poll_mode():
+            pass
+
+    task = asyncio.create_task(run_fast_poll_mode())
+    await bind_started.wait()
+
+    # Another request starts fast polling while the first one is still binding
+    await dev.begin_fast_polling(60)
+    assert dev._fast_polling
+
+    bind_failure.set_exception(TimeoutError())
+
+    with pytest.raises(TimeoutError):
+        await task
+
+    assert dev._fast_polling
+    dev._fast_polling_reset_task.cancel()
+
+
 async def test_begin_fast_polling_no_cluster(dev: device.Device) -> None:
     """Test beginning fast polling when PollControl cluster doesn't exist."""
     dev.add_endpoint(1)  # No PollControl cluster
