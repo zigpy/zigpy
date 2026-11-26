@@ -1286,6 +1286,10 @@ async def test_ota_manager_request_during_fast_poll_setup() -> None:
 
     dev.application.send_packet.side_effect = send_packet
 
+    # Still fast polling after being interviewed, until the reset task runs
+    dev._fast_polling = True
+    dev._fast_polling_reset_task = asyncio.create_task(asyncio.sleep(60))
+
     dev.ota_in_progress = True
     status = await update_firmware(dev, FW_IMAGE)
 
@@ -1299,11 +1303,13 @@ async def test_ota_manager_request_during_fast_poll_setup() -> None:
     ]
 
     # The pending bind is abandoned rather than holding back our responses until it
-    # times out, and fast polling is not set up
+    # times out
     names = [name for name, _ in sent]
     assert names[0] == "bind"
     assert "bind" not in names[1:]
     assert sent[1][1] - sent[0][1] < 0.1
+
+    # Fast polling ends with the update
     assert not dev._fast_polling
 
 

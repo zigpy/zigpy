@@ -1179,7 +1179,13 @@ class ZigbeeDevice(BaseDevice):
         self, initial_timeout: float = DEFAULT_FAST_POLL_TIMEOUT
     ) -> None:
         """Ask the device to enter fast polling mode."""
-        await self.begin_fast_polling(timeout=initial_timeout, reset_after=False)
+        try:
+            await self.begin_fast_polling(timeout=initial_timeout, reset_after=False)
+        except BaseException:
+            # Fast polling may still be on from an earlier request, whose reset was
+            # cancelled. Nothing else will turn it off.
+            self._fast_polling = False
+            raise
 
         try:
             yield
