@@ -825,7 +825,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         **kwargs,
     ):
         if disable_default_response is None:
-            disable_default_response = self.is_client
+            disable_default_response = (
+                self.send_direction == foundation.Direction.Server_to_Client
+            )
 
         hdr, request = self._create_request(
             general=general,
@@ -834,11 +836,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             manufacturer=manufacturer,
             tsn=tsn,
             disable_default_response=disable_default_response,
-            direction=(
-                foundation.Direction.Server_to_Client
-                if self.is_client
-                else foundation.Direction.Client_to_Server
-            ),
+            direction=self.send_direction,
             args=args,
             kwargs=kwargs,
         )
@@ -890,11 +888,7 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             manufacturer=manufacturer,
             tsn=tsn,
             disable_default_response=disable_default_response,
-            direction=(
-                foundation.Direction.Server_to_Client
-                if self.is_client
-                else foundation.Direction.Client_to_Server
-            ),
+            direction=self.send_direction,
             args=args,
             kwargs=kwargs,
         )
@@ -2040,6 +2034,14 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
     def is_server(self) -> bool:
         """Return True if this is a server cluster."""
         return self._type == ClusterType.Server
+
+    @property
+    def send_direction(self) -> foundation.Direction:
+        """Return the direction of frames sent to this cluster."""
+        if self.is_client:
+            return foundation.Direction.Server_to_Client
+
+        return foundation.Direction.Client_to_Server
 
     @property
     def name(self) -> str:
