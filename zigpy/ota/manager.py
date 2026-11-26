@@ -68,6 +68,11 @@ class OTAManager:
 
         self.image = image
         self._image_data = image.firmware.serialize()
+
+        # A new update replaces the image the device may still be finishing
+        self.ota_cluster.last_transferred_image = None
+        self._transferred = False
+        self._rejected = False
         self.progress_callback = progress_callback
         self.force = force
 
@@ -128,6 +133,16 @@ class OTAManager:
 
     def __exit__(self, *exc_details) -> None:
         self.stack.close()
+
+        # Let the OTA cluster answer the device's Upgrade End Request for this image if
+        # it arrives after the update has ended
+        if self._transferred and not self._rejected:
+            header = self.image.firmware.header
+            self.ota_cluster.last_transferred_image = (
+                header.manufacturer_id,
+                header.image_type,
+                header.file_version,
+            )
 
     def _stall_callback(self) -> None:
         """Handle the stall timer expiring."""
@@ -214,6 +229,10 @@ class OTAManager:
 
         return MAX_TIME_WITHOUT_PROGRESS
 
+    def _image_transferred(self) -> None:
+        """Remember that the device received the whole image."""
+        self._transferred = True
+
     async def _image_block_req(
         self, hdr: foundation.ZCLHeader, command: ImageBlockCommand
     ) -> None:
@@ -256,6 +275,9 @@ class OTAManager:
 
             if not self._upgrade_end_future.done():
                 self._stall_timer.reschedule(self._block_stall_timeout())
+
+            if command.file_offset + len(block) >= len(self._image_data):
+                self._image_transferred()
 
             # Image block requests can sometimes succeed after the device aborts the
             # update. We should not allow the progress callback to be called.
@@ -322,6 +344,7 @@ class OTAManager:
                     self._stall_timer.reschedule(MAX_TIME_WITHOUT_PROGRESS)
                 else:
                     self._stall_timer.reschedule(FINAL_BLOCK_TIMEOUT)
+                    self._image_transferred()
 
                 if (
                     self.progress_callback is not None
@@ -344,6 +367,9 @@ class OTAManager:
         self._on_device_request()
 
         if command.status != foundation.Status.SUCCESS:
+            # The device will not apply this image
+            self._rejected = True
+
             # A failed upgrade gets a successful Default Response, never an Upgrade End
             # Response telling the device when to upgrade (ZCL R8 11.13.9.4)
             if not hdr.frame_control.disable_default_response:

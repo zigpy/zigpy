@@ -2622,6 +2622,11 @@ class Ota(Cluster):
         super().__init__(*args, **kwargs)
         self.last_query_cmd: QueryNextImageCommand | None = None
 
+        # The (manufacturer code, image type, file version) of the last image the
+        # device downloaded in full, to answer its Upgrade End Request when it arrives
+        # after the OTA update has stopped waiting for it
+        self.last_transferred_image: tuple[int, int, int] | None = None
+
     class AttributeDefs(BaseAttributeDefs):
         upgrade_server_id: Final = ZCLAttributeDef(
             id=0x0000, type=t.EUI64, access="r", mandatory=True
@@ -2726,6 +2731,15 @@ class Ota(Cluster):
         # This parameter is unused and kept only for backwards compatibility
         dst_addressing: t.AddrMode | None = None,
     ):
+        if (
+            hdr.direction == foundation.Direction.Client_to_Server
+            and hdr.command_id == self.ServerCommandDefs.query_specific_file.id
+        ):
+            # Device specific files are not supported (ZCL R8 11.13.10.5.2). This is an
+            # error, so it is reported even if no Default Response was asked for.
+            self.send_default_rsp(hdr, foundation.Status.UNSUP_CLUSTER_COMMAND)
+            return
+
         # We don't want the cluster to do anything here because it would interfere with
         # the OTA manager
         device = self.endpoint.device
@@ -2741,11 +2755,24 @@ class Ota(Cluster):
             )
         elif (
             hdr.direction == foundation.Direction.Client_to_Server
-            and hdr.command_id == self.ServerCommandDefs.image_block.id
+            and hdr.command_id
+            in (
+                self.ServerCommandDefs.image_block.id,
+                self.ServerCommandDefs.image_page.id,
+            )
         ):
             self.create_catching_task(
                 self._handle_image_block_req(hdr, args),
             )
+        elif (
+            hdr.direction == foundation.Direction.Client_to_Server
+            and hdr.command_id == self.ServerCommandDefs.upgrade_end.id
+        ):
+            self.create_catching_task(
+                self._handle_upgrade_end(hdr, args),
+            )
+        else:
+            super().handle_cluster_request(hdr, args)
 
     async def _handle_query_next_image(self, hdr, cmd):
         # Cache the query command fields for proactive OTA lookups
@@ -2774,6 +2801,35 @@ class Ota(Cluster):
     async def _handle_image_block_req(self, hdr, cmd):
         # Abort any running firmware update (i.e. the integration is reloaded midway)
         await self.image_block_response(foundation.Status.ABORT, tsn=hdr.tsn)
+
+    async def _handle_upgrade_end(self, hdr, cmd):
+        if cmd.status == foundation.Status.SUCCESS and self.last_transferred_image == (
+            cmd.manufacturer_code,
+            cmd.image_type,
+            cmd.file_version,
+        ):
+            # The device took longer to verify the image than the OTA update waited for
+            # it (or our response was lost). Tell it to apply the image now, as the
+            # update would have (ZCL R8 11.16).
+            self.info(
+                "Device finished downloading image 0x%08X after the OTA update ended,"
+                " telling it to upgrade",
+                cmd.file_version,
+            )
+            await self.upgrade_end_response(
+                manufacturer_code=cmd.manufacturer_code,
+                image_type=cmd.image_type,
+                file_version=cmd.file_version,
+                current_time=0x00000000,
+                upgrade_time=0x00000000,
+                tsn=hdr.tsn,
+            )
+            return
+
+        # Without an Upgrade End Response, a successful Default Response is required
+        # (ZCL R8 11.13.9.4, 11.13.9.5)
+        if not hdr.frame_control.disable_default_response:
+            self.send_default_rsp(hdr, foundation.Status.SUCCESS)
 
 
 class ScheduleRecord(t.Struct):
