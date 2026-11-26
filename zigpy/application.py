@@ -27,6 +27,7 @@ import zigpy.device
 from zigpy.device import BaseDevice, GreenPowerDevice, ZigbeeDevice
 import zigpy.endpoint
 import zigpy.exceptions
+import zigpy.frames
 import zigpy.group
 import zigpy.listeners
 import zigpy.ota
@@ -49,6 +50,8 @@ import zigpy.zgp.util
 
 DEFAULT_ENDPOINT_ID = 1
 LOGGER = logging.getLogger(__name__)
+
+_R = typing.TypeVar("_R")
 
 # Minimum time between two leave requests sent to the same blocked device
 BLOCKED_DEVICE_LEAVE_INTERVAL = 30
@@ -102,6 +105,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         self._dblistener = None
         self._groups = zigpy.group.Groups(self)
         self._send_sequence = 0
+        self._nwk_zcl_sequences: dict[t.NWK, int] = {}
+        self._nwk_zdo_sequences: dict[t.NWK, int] = {}
         self._tasks: set[asyncio.Future[Any]] = set()
         self.local_timezone: tzinfo | None = None
 
@@ -125,10 +130,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             collections.deque[zigpy.listeners.BaseRequestListener],
         ] = collections.defaultdict(lambda: collections.deque([]))
 
-        # Add callback storage
-        self._packet_callbacks: collections.defaultdict[
-            t.AddrModeAddress | None, list[typing.Callable[[t.ZigbeePacket], None]]
-        ] = collections.defaultdict(list)
+        self.frame_listeners = zigpy.frames.FrameListeners(create_task=self.create_task)
 
         # Context variable for request priority context manager
         self._packet_priority_var = contextvars.ContextVar(
@@ -1384,15 +1386,51 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         """
 
         if use_ieee:
+            dst = t.AddrModeAddress(addr_mode=t.AddrMode.IEEE, address=device.ieee)
+        else:
+            dst = t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=device.nwk)
+
+        return await self._send_unicast(
+            dst=dst,
+            profile=profile,
+            cluster=cluster,
+            src_ep=src_ep,
+            dst_ep=dst_ep,
+            sequence=sequence,
+            data=data,
+            expect_reply=expect_reply,
+            extended_timeout=extended_timeout,
+            ask_for_ack=ask_for_ack,
+            priority=priority,
+            force_route_discovery=force_route_discovery,
+            aps_encryption=aps_encryption,
+        )
+
+    async def _send_unicast(
+        self,
+        *,
+        dst: t.AddrModeAddress,
+        profile: t.uint16_t,
+        cluster: t.uint16_t,
+        src_ep: t.uint8_t,
+        dst_ep: t.uint8_t,
+        sequence: t.uint8_t,
+        data: bytes,
+        expect_reply: bool,
+        extended_timeout: bool,
+        ask_for_ack: bool | None,
+        priority: int,
+        force_route_discovery: bool,
+        aps_encryption: bool,
+    ) -> tuple[zigpy.zcl.foundation.Status, str]:
+        if dst.addr_mode == t.AddrMode.IEEE:
             src = t.AddrModeAddress(
                 addr_mode=t.AddrMode.IEEE, address=self.state.node_info.ieee
             )
-            dst = t.AddrModeAddress(addr_mode=t.AddrMode.IEEE, address=device.ieee)
         else:
             src = t.AddrModeAddress(
                 addr_mode=t.AddrMode.NWK, address=self.state.node_info.nwk
             )
-            dst = t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=device.nwk)
 
         tx_options = t.TransmitOptions.NONE
 
@@ -1426,6 +1464,288 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         )
 
         return (zigpy.zcl.foundation.Status.SUCCESS, "")
+
+    async def _request_with_retries(
+        self,
+        policy: zigpy.device.SendPolicy,
+        *,
+        priority: int | None,
+        attempt: typing.Callable[[int], typing.Awaitable[_R]],
+    ) -> _R:
+        """Run a request attempt under the policy's concurrency limit and retries."""
+        if priority is None:
+            priority = self._packet_priority_var.get()
+
+        max_attempts = policy.retries + 1
+        number = 0
+
+        while True:
+            slot_acquired = False
+
+            try:
+                async with zigpy.device.limit_concurrency(policy.limiter, priority):
+                    slot_acquired = True
+                    return await attempt(number)
+            except zigpy.exceptions.ParsingError:
+                raise
+            except Exception:
+                if not slot_acquired:
+                    # Failed while waiting in the queue, e.g. `cancel_waiting()` when
+                    # the device left or re-joined. Retrying would only re-queue it.
+                    raise
+
+                LOGGER.debug(
+                    "Failed to send request, attempt %d of %d",
+                    number + 1,
+                    max_attempts,
+                    exc_info=True,
+                )
+
+                if number >= max_attempts - 1:
+                    raise
+
+            await asyncio.sleep(policy.retry_delay)
+            number += 1
+
+    @typing.overload
+    async def send_zdo_command(
+        self,
+        nwk: t.NWK,
+        command: zdo_commands.ZDOPayload,
+        response_type: type[zdo_commands.ZDOPayloadT],
+        *,
+        policy: zigpy.device.SendPolicy,
+        tsn: int | None = None,
+        priority: int | None = None,
+        aps_encryption: bool = False,
+    ) -> zdo_commands.ZDOPayloadT: ...
+
+    @typing.overload
+    async def send_zdo_command(
+        self,
+        nwk: t.NWK,
+        command: zdo_commands.ZDOPayload,
+        response_type: None = None,
+        *,
+        policy: zigpy.device.SendPolicy,
+        tsn: int | None = None,
+        priority: int | None = None,
+        aps_encryption: bool = False,
+    ) -> None: ...
+
+    async def send_zdo_command(
+        self,
+        nwk: t.NWK,
+        command: zdo_commands.ZDOPayload,
+        response_type: type[zdo_commands.ZDOPayloadT] | None = None,
+        *,
+        policy: zigpy.device.SendPolicy,
+        tsn: int | None = None,
+        priority: int | None = None,
+        aps_encryption: bool = False,
+    ) -> zdo_commands.ZDOPayloadT | None:
+        """Send a ZDO command to a NWK and wait for its response, if a response type
+        is given. No device object is needed.
+        """
+        if tsn is None:
+            tsn = self.get_zdo_sequence(nwk)
+
+        frame = zdo_commands.ZDOCommand(
+            command_id=command.command_id, tsn=tsn, command=command
+        )
+        # e.g. Node_Desc_req = 0x0002 corresponds to Node_Desc_rsp = 0x8002
+        rsp_cluster = command.command_id | 0x8000
+
+        def is_response(rsp: zigpy.frames.Frame) -> bool:
+            packet = rsp.packet
+
+            if (
+                packet.src_ep != zigpy.zdo.ZDO_ENDPOINT
+                or packet.cluster_id != rsp_cluster
+            ):
+                return False
+
+            if isinstance(rsp, zigpy.frames.ZDOFrame):
+                return rsp.command.tsn == frame.tsn
+
+            # The TSN of a frame that failed to parse
+            return packet.data.serialize()[:1] == frame.tsn.serialize()
+
+        async def attempt(number: int) -> zdo_commands.ZDOPayloadT | None:
+            send = self._send_unicast(
+                dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=nwk),
+                profile=t.uint16_t(0x0000),
+                cluster=t.uint16_t(command.command_id),
+                src_ep=t.uint8_t(zigpy.zdo.ZDO_ENDPOINT),
+                dst_ep=t.uint8_t(zigpy.zdo.ZDO_ENDPOINT),
+                sequence=frame.tsn,
+                data=frame.serialize(),
+                expect_reply=response_type is not None,
+                extended_timeout=policy.extended_timeout,
+                ask_for_ack=None,
+                priority=(
+                    self._packet_priority_var.get() if priority is None else priority
+                ),
+                force_route_discovery=(number > 0),
+                aps_encryption=aps_encryption,
+            )
+
+            if response_type is None:
+                await send
+                return None
+
+            with self.frame_listeners.wait_for(nwk, is_response) as future:
+                await send
+
+                async with asyncio_timeout(policy.timeout):
+                    rsp = await future
+
+            if isinstance(rsp, zigpy.frames.RawFrame):
+                raise zigpy.exceptions.ParsingError(
+                    f"Failed to parse ZDO response {rsp.packet!r}"
+                ) from rsp.error
+
+            assert isinstance(rsp, zigpy.frames.ZDOFrame)
+            response = rsp.command.command
+            assert isinstance(response, response_type)
+
+            return response
+
+        return await self._request_with_retries(
+            policy, priority=priority, attempt=attempt
+        )
+
+    async def send_zcl_command(
+        self,
+        nwk: t.NWK,
+        endpoint: int,
+        cluster_id: int,
+        command: zigpy.zcl.foundation.ZCLCommandDef,
+        *args: typing.Any,
+        policy: zigpy.device.SendPolicy,
+        direction: zigpy.zcl.foundation.Direction = (
+            zigpy.zcl.foundation.Direction.Client_to_Server
+        ),
+        manufacturer: int | None = None,
+        profile_id: int = zigpy.profiles.zha.PROFILE_ID,
+        tsn: int | None = None,
+        expect_reply: bool = True,
+        response_schema: type[zigpy.zcl.foundation.CommandSchema] | None = None,
+        disable_default_response: bool | None = None,
+        priority: int | None = None,
+        **kwargs: typing.Any,
+    ) -> zigpy.zcl.foundation.CommandSchema | bytes | None:
+        """Send a general or cluster-specific ZCL command to a NWK without a device or
+        cluster object, and wait for its response if `expect_reply`.
+
+        `command` is a definition from `foundation.GENERAL_COMMANDS` or from a cluster
+        class. A general response is returned parsed. A cluster-specific response is
+        parsed with `response_schema` if given, otherwise returned as bytes.
+        """
+        foundation = zigpy.zcl.foundation
+        general = command in foundation.GENERAL_COMMANDS.values()
+
+        if tsn is None:
+            tsn = self.get_zcl_sequence(nwk)
+
+        if disable_default_response is None:
+            disable_default_response = (
+                direction == foundation.Direction.Server_to_Client
+            )
+
+        header = foundation.ZCLHeader(
+            frame_control=foundation.FrameControl(
+                frame_type=(
+                    foundation.FrameType.GLOBAL_COMMAND
+                    if general
+                    else foundation.FrameType.CLUSTER_COMMAND
+                ),
+                is_manufacturer_specific=manufacturer is not None,
+                direction=direction,
+                disable_default_response=disable_default_response,
+                reserved=0b000,
+            ),
+            manufacturer=manufacturer,
+            tsn=tsn,
+            command_id=command.id,
+        )
+        data = header.serialize() + command.schema(*args, **kwargs).serialize()
+
+        def is_response(rsp: zigpy.frames.Frame) -> bool:
+            return (
+                isinstance(rsp, zigpy.frames.ZCLFrame)
+                and rsp.packet.src_ep == endpoint
+                and rsp.packet.cluster_id == cluster_id
+                and rsp.header.tsn == header.tsn
+                and rsp.header.direction == direction.flip()
+                # Attribute reports often collide with responses
+                and not (
+                    rsp.header.frame_control.frame_type
+                    == foundation.FrameType.GLOBAL_COMMAND
+                    and rsp.header.command_id
+                    == foundation.GeneralCommand.Report_Attributes
+                )
+            )
+
+        async def attempt(
+            number: int,
+        ) -> zigpy.zcl.foundation.CommandSchema | bytes | None:
+            send = self._send_unicast(
+                dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=nwk),
+                profile=t.uint16_t(profile_id),
+                cluster=t.uint16_t(cluster_id),
+                src_ep=t.uint8_t(endpoint),
+                dst_ep=t.uint8_t(endpoint),
+                sequence=header.tsn,
+                data=data,
+                expect_reply=expect_reply,
+                extended_timeout=policy.extended_timeout,
+                ask_for_ack=None,
+                priority=(
+                    self._packet_priority_var.get() if priority is None else priority
+                ),
+                force_route_discovery=(number > 0),
+                aps_encryption=False,
+            )
+
+            if not expect_reply:
+                await send
+                return None
+
+            with self.frame_listeners.wait_for(nwk, is_response) as future:
+                await send
+
+                async with asyncio_timeout(policy.timeout):
+                    rsp = await future
+
+            assert isinstance(rsp, zigpy.frames.ZCLFrame)
+
+            if not isinstance(rsp.command, bytes):
+                return rsp.command
+
+            if (
+                rsp.header.frame_control.frame_type
+                == foundation.FrameType.GLOBAL_COMMAND
+            ):
+                raise zigpy.exceptions.ParsingError(
+                    f"Failed to parse ZCL response {rsp.packet!r}"
+                )
+
+            if response_schema is None:
+                return rsp.command
+
+            try:
+                response, _ = response_schema.deserialize(rsp.command)
+            except ValueError as exc:
+                raise zigpy.exceptions.ParsingError(
+                    f"Failed to parse ZCL response {rsp.packet!r}"
+                ) from exc
+
+            return response
+
+        return await self._request_with_retries(
+            policy, priority=priority, attempt=attempt
+        )
 
     async def mrequest(
         self,
@@ -1558,20 +1878,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
             radius=0,
         )
 
-    def _maybe_parse_zdo(self, packet: t.ZigbeePacket) -> None:
-        """Attempt to parse an incoming packet as ZDO, to extract useful notifications."""
-
-        try:
-            frame = zdo_commands.ZDOCommand.deserialize(
-                cluster_id=packet.cluster_id, data=packet.data.serialize()
-            )
-        except ValueError:
-            LOGGER.debug("Could not parse ZDO message from packet")
-            return
-
+    def _handle_zdo_notification(self, frame: zdo_commands.ZDOCommand) -> None:
+        """Interpret useful global ZDO responses and notifications."""
         command = frame.command
 
-        # Interpret useful global ZDO responses and notifications
         if isinstance(command, zdo_commands.DeviceAnnce):
             self.handle_join(
                 nwk=command.nwk_addr, ieee=command.ieee_addr, parent_nwk=None
@@ -1589,6 +1899,114 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
                     parent_nwk=None,
                     handle_rejoin=False,
                 )
+
+    def _answer_zdo_request(self, frame: zigpy.frames.ZDOFrame) -> None:
+        """Answer ZDO requests sent to the coordinator."""
+        src = frame.packet.src
+        assert src is not None
+
+        if src.addr_mode != t.AddrMode.NWK:
+            return
+
+        nwk = typing.cast(t.NWK, src.address)
+        node_info = self.state.node_info
+        reply: zdo_commands.ZDOPayload
+
+        match frame.command.command:
+            case zdo_commands.NwkAddrReq(ieee_addr=ieee, request_type=request_type):
+                if ieee != node_info.ieee:
+                    return
+
+                reply = zdo_commands.NwkAddrRsp(
+                    status=zdo_types.Status.SUCCESS,
+                    ieee_addr=node_info.ieee,
+                    nwk_addr=node_info.nwk,
+                    num_assoc_dev=self._num_assoc_dev(request_type),
+                )
+                priority = t.PacketPriority.LOW
+                limit_retries = True
+            case zdo_commands.IeeeAddrReq(
+                nwk_addr_of_interest=nwk_of_interest, request_type=request_type
+            ):
+                if nwk_of_interest not in (
+                    t.BroadcastAddress.ALL_DEVICES,
+                    t.BroadcastAddress.RX_ON_WHEN_IDLE,
+                    t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
+                    node_info.nwk,
+                ):
+                    return
+
+                reply = zdo_commands.IeeeAddrRsp(
+                    status=zdo_types.Status.SUCCESS,
+                    ieee_addr=node_info.ieee,
+                    nwk_addr=node_info.nwk,
+                    num_assoc_dev=self._num_assoc_dev(request_type),
+                )
+                priority = t.PacketPriority.LOW
+                limit_retries = True
+            case zdo_commands.MatchDescReq(profile_id=profile_id):
+                reply = zdo_commands.MatchDescRsp(
+                    status=zdo_types.Status.SUCCESS,
+                    nwk_addr_of_interest=node_info.nwk,
+                    match_list=(
+                        [t.uint8_t(1)]
+                        if profile_id == zigpy.profiles.zha.PROFILE_ID
+                        else []
+                    ),
+                )
+                priority = t.PacketPriority.CRITICAL
+                limit_retries = False
+            case _:
+                return
+
+        self.create_task(
+            self._send_zdo_reply(
+                nwk,
+                reply,
+                tsn=frame.command.tsn,
+                priority=priority,
+                limit_retries=limit_retries,
+            ),
+            f"zdo_reply_{type(reply).__name__}",
+        )
+
+    @staticmethod
+    def _num_assoc_dev(request_type: zdo_types.AddrRequestType) -> int | None:
+        # Only an extended request gets the associated devices, we have none
+        return 0 if request_type == zdo_types.AddrRequestType.Extended else None
+
+    async def _send_zdo_reply(
+        self,
+        nwk: t.NWK,
+        reply: zdo_commands.ZDOPayload,
+        *,
+        tsn: t.uint8_t,
+        priority: int,
+        limit_retries: bool,
+    ) -> None:
+        try:
+            device = self.get_device(nwk=nwk)
+        except KeyError:
+            device = None
+
+        if isinstance(device, ZigbeeDevice):
+            policy = device.send_policy
+
+            # Address replies are not retried if the device may be asleep
+            if limit_retries and device.reply_retries is not None:
+                policy = policy.replace(retries=device.reply_retries)
+        else:
+            policy = zigpy.device.SendPolicy.from_node_descriptor(None, limiter=None)
+
+            if limit_retries:
+                policy = policy.replace(retries=0)
+
+        try:
+            await self.send_zdo_command(
+                nwk, reply, policy=policy, tsn=tsn, priority=priority
+            )
+        except (TimeoutError, zigpy.exceptions.ZigbeeException) as exc:
+            LOGGER.debug("Failed to send ZDO reply %s to %s: %r", reply, nwk, exc)
 
     def packet_received(self, packet: t.ZigbeePacket) -> None:
         """Notify zigpy of a received Zigbee packet."""
@@ -1612,9 +2030,11 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
 
             return None
 
+        frame = zigpy.frames.parse_frame(packet)
+
         # Peek into ZDO packets to handle possible ZDO notifications
-        if zigpy.zdo.ZDO_ENDPOINT in (packet.src_ep, packet.dst_ep):
-            self._maybe_parse_zdo(packet)
+        if isinstance(frame, zigpy.frames.ZDOFrame):
+            self._handle_zdo_notification(frame.command)
 
         # A blocked device's last address is checked before the device lookup: another
         # device may still have it stored. ZDO parsing above has already forgotten it if
@@ -1622,6 +2042,13 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         if packet.src.addr_mode == t.AddrMode.NWK and self._drop_blocked_nwk_packet(
             typing.cast(t.NWK, packet.src.address)
         ):
+            return None
+
+        if isinstance(frame, zigpy.frames.ZDOFrame):
+            self._answer_zdo_request(frame)
+
+        # A frame consumed by an application-level listener is kept from the device
+        if self.frame_listeners.dispatch(frame):
             return None
 
         try:
@@ -1820,53 +2247,23 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         else:
             raise ValueError(f"Invalid address: {address!r}")
 
+    @zigpy.util.deprecated("use `frame_listeners.subscribe` instead")
     def register_packet_callback(
         self,
         filter: t.AddrModeAddress | None,
         callback: typing.Callable[[t.ZigbeePacket], None],
     ) -> typing.Callable[[], None]:
-        """Register a callback that is called when a Zigbee packet is received.
+        """Register a callback that is called when a Zigbee packet is received."""
+        nwk = None
 
-        Args:
-        ----
-            filter: Optional address filter. If None, callback receives all packets.
-            If provided, only packets from this source address trigger the callback.
-            callback: Function to call when a matching packet is received.
+        if filter is not None and filter.addr_mode == t.AddrMode.NWK:
+            nwk = typing.cast(t.NWK, filter.address)
 
-        Returns:
-        -------
-            A callable that can be used to unregister the callback.
-
-        """
-        self._packet_callbacks[filter].append(callback)
-
-        def cancel_callback() -> None:
-            """Remove the callback."""
-            with contextlib.suppress(ValueError):
-                self._packet_callbacks[filter].remove(callback)
-
-        return cancel_callback
-
-    def notify_packet_callbacks(self, packet: t.ZigbeePacket) -> None:
-        """Notify registered packet callbacks about a received Zigbee packet."""
-
-        # Notify global callbacks (registered with None filter)
-        for callback in self._packet_callbacks[None]:
-            try:
-                callback(packet)
-            except Exception:
-                LOGGER.exception("Error in global packet callback: %s", callback)
-
-        # Notify address-specific callbacks
-        for callback in self._packet_callbacks[packet.src]:
-            try:
-                callback(packet)
-            except Exception:
-                LOGGER.exception(
-                    "Error in packet callback for address %s: %s",
-                    packet.src,
-                    callback,
-                )
+        return self.frame_listeners.subscribe(
+            nwk,
+            lambda frame: filter is None or frame.packet.src == filter,
+            lambda frame: callback(frame.packet),
+        )
 
     def register_callback_listener(
         self,
@@ -2160,8 +2557,24 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         await self.green_power.permit_join(time_s)
 
     def get_sequence(self) -> int:
+        """Get a TSN for a broadcast or a group."""
         self._send_sequence = (self._send_sequence + 1) % 256
         return self._send_sequence
+
+    def get_zcl_sequence(self, nwk: t.NWK) -> int:
+        """Get a ZCL TSN for a destination NWK."""
+        # All ZCL requests to a NWK share a counter so their responses never collide
+        tsn = (self._nwk_zcl_sequences.setdefault(nwk, 0) + 1) % 256
+        self._nwk_zcl_sequences[nwk] = tsn
+
+        return tsn
+
+    def get_zdo_sequence(self, nwk: t.NWK) -> int:
+        """Get a ZDO TSN for a destination NWK, counted apart from ZCL TSNs."""
+        tsn = (self._nwk_zdo_sequences.setdefault(nwk, 0) + 1) % 256
+        self._nwk_zdo_sequences[nwk] = tsn
+
+        return tsn
 
     def get_device(self, ieee: t.EUI64 = None, nwk: t.NWK | int = None) -> BaseDevice:
         """Looks up a device in the `devices` dictionary based either on its NWK or IEEE

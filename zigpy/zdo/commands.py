@@ -59,6 +59,9 @@ class ZDOCommand:
     command: ZDOPayload | UnknownCommand
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "command_id", ZDOCmd(self.command_id))
+        object.__setattr__(self, "tsn", t.uint8_t(self.tsn))
+
         assert isinstance(self.command, UnknownCommand) or (
             self.command_id == self.command.command_id
         )

@@ -1570,10 +1570,10 @@ async def test_request_exception_propagation(dev):
 async def test_zdo_request_parsing_error_propagation(dev):
     """A ZDO response with an invalid payload fails the pending request."""
     tsn = 0x12
-    dev.get_sequence = MagicMock(return_value=tsn)
+    dev.application.get_zdo_sequence = MagicMock(return_value=tsn)
 
     asyncio.get_running_loop().call_soon(
-        dev.packet_received,
+        dev.application.packet_received,
         t.ZigbeePacket(
             profile_id=0x0000,
             cluster_id=zdo_t.ZDOCmd.Active_EP_rsp,
