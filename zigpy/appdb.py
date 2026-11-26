@@ -1213,6 +1213,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         for ieee, rows in attribute_rows.items():
             self._application.get_device(ieee).load_attribute_cache(rows)
 
+        # Devices a quirk was applied to
+        quirked: set[t.EUI64] = set()
+
         for device in self._application.devices.values():
             # Populate the device signature before we apply any quirks, which can modify
             # the device structure (for now)
@@ -1220,6 +1223,9 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             new_device = self._application._resolve_device(device)
             new_device.original_signature = device.original_signature
             self._application.devices[device.ieee] = new_device
+
+            if new_device is not device:
+                quirked.add(device.ieee)
 
         # Clear the attribute cache to ensure the quirked state is correct
         for device in self._application.devices.values():
@@ -1231,9 +1237,12 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     cluster._attr_cache.clear()
 
         # Second pass: populate the caches of the final clusters. Only their attribute
-        # definitions decide how rows should be rewritten.
+        # definitions decide how rows should be rewritten. Only quirked devices can
+        # migrate rows of attributes they no longer define.
         results = [
-            self._application.get_device(ieee).load_attribute_cache(rows)
+            self._application.get_device(ieee).load_attribute_cache(
+                rows, migrate=ieee in quirked
+            )
             for ieee, rows in attribute_rows.items()
         ]
 

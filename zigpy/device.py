@@ -275,9 +275,13 @@ class BaseDevice(
         raise NotImplementedError
 
     def load_attribute_cache(
-        self, rows: list[AttributeCacheRow]
+        self, rows: list[AttributeCacheRow], *, migrate: bool = False
     ) -> AttributeCacheLoadResult:
-        """Populate cluster attribute caches from the device's database rows."""
+        """Populate cluster attribute caches from the device's database rows.
+
+        With `migrate`, clusters can migrate the rows of attributes they do not define
+        (see `Cluster.migrate_attribute_cache_row`).
+        """
         result = AttributeCacheLoadResult()
         existing_keys = {row.key for row in rows}
         endpoints = {ep.endpoint_id: ep for ep in self.non_zdo_endpoints}
@@ -301,7 +305,7 @@ class BaseDevice(
 
             cluster = clusters[row.cluster_id]
             loaded = cluster._load_attribute_cache_row(
-                row, existing_keys=existing_keys, result=result
+                row, existing_keys=existing_keys, result=result, migrate=migrate
             )
 
             if loaded is not None:

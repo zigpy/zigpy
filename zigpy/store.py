@@ -160,13 +160,21 @@ class StoreNamespace:
         value: Any,
         *,
         version: int = DEFAULT_VERSION,
+        last_updated: datetime | None = None,
     ) -> None:
         """Store a JSON value and emit `StoreValueUpdatedEvent`.
+
+        `last_updated` defaults to now; a value carried over from elsewhere, such as a
+        migrated attribute, can keep the time it was last updated there. It must be
+        timezone-aware, like every stored time.
 
         A closed store (only a removed device's is) ignores the write, so code still
         holding a reference to a removed device cannot write rows for it.
         """
         value = normalize_json(value)
+
+        if last_updated is not None and last_updated.utcoffset() is None:
+            raise ValueError(f"`last_updated` must be timezone-aware: {last_updated!r}")
 
         if self._store.closed:
             LOGGER.debug(
@@ -180,7 +188,7 @@ class StoreNamespace:
         item = StoreItem(
             value=value,
             version=version,
-            last_updated=datetime.now(UTC),
+            last_updated=datetime.now(UTC) if last_updated is None else last_updated,
         )
         self._items[key] = item
         self._store._emit(
@@ -374,8 +382,21 @@ class Store(Generic[E]):
             return default
 
     def __setitem__(self, decl: StoredValue[T], value: T) -> None:
+        self.set(decl, value)
+
+    def set(
+        self,
+        decl: StoredValue[T],
+        value: T,
+        *,
+        last_updated: datetime | None = None,
+    ) -> None:
+        """Set a value, like `store[decl] = value`, optionally with its update time."""
         self.namespace(decl.namespace).set(
-            decl.key, decl.encode(value), version=decl.version
+            decl.key,
+            decl.encode(value),
+            version=decl.version,
+            last_updated=last_updated,
         )
 
     def __delitem__(self, decl: StoredValue[Any]) -> None:
