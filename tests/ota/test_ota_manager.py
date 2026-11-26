@@ -125,6 +125,7 @@ def test_image_block_size_for_manufacturer(
 
 
 @patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
+@patch("zigpy.ota.manager.FIRST_BLOCK_TIMEOUT", 0.2)
 async def test_ota_manger_stall(image_with_metadata: OtaImageWithMetadata) -> None:
     img = image_with_metadata
 
@@ -1253,6 +1254,59 @@ async def test_ota_manager_device_goes_silent_during_notify() -> None:
         "image_block_response:error",
         "image_block_response:error",
         "image_block_response:error",
+    ]
+
+
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
+@patch("zigpy.ota.manager.FIRST_BLOCK_TIMEOUT", 1.0)
+async def test_ota_manager_slow_first_block() -> None:
+    """Test that a device can take longer to request the first block than later ones."""
+
+    async def image_notify() -> None:
+        pass
+
+    # The device accepts the image but only starts the transfer after a while
+    dev, _ota, log, wake_up = _make_sleepy_device(image_notify, first_block_delay=0.3)
+    asyncio.get_running_loop().call_later(0, wake_up)
+
+    dev.ota_in_progress = True
+
+    async with asyncio.timeout(2):
+        status = await update_firmware(dev, FW_IMAGE)
+
+    assert status == foundation.Status.SUCCESS
+    assert log[:3] == [
+        "image_notify",
+        "query_next_image",
+        "query_next_image_response:SUCCESS",
+    ]
+    assert log[-2:] == ["upgrade_end", "upgrade_end_response"]
+
+
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
+@patch("zigpy.ota.manager.FIRST_BLOCK_TIMEOUT", 0.3)
+async def test_ota_manager_first_block_timeout() -> None:
+    """Test that the OTA times out if the device never requests the first block."""
+
+    async def image_notify() -> None:
+        pass
+
+    dev, _ota, log, wake_up = _make_sleepy_device(image_notify, first_block_delay=10)
+    asyncio.get_running_loop().call_later(0, wake_up)
+
+    dev.ota_in_progress = True
+
+    start = time.monotonic()
+
+    async with asyncio.timeout(2):
+        status = await update_firmware(dev, FW_IMAGE)
+
+    assert status == foundation.Status.TIMEOUT
+    assert time.monotonic() - start >= 0.3
+    assert log == [
+        "image_notify",
+        "query_next_image",
+        "query_next_image_response:SUCCESS",
     ]
 
 

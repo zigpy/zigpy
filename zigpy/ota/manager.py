@@ -33,6 +33,11 @@ MAX_TIME_WITHOUT_PROGRESS = 30
 # Separate timeout for the final block, to give devices time to finally verify the OTA
 FINAL_BLOCK_TIMEOUT = 60
 
+# Separate timeout for the first block request after the image has been offered. Some
+# devices prepare their flash before downloading and only start requesting blocks after
+# a long delay (e.g. ~31s for the Schneider EKO07259, ~76s for the WDE002497).
+FIRST_BLOCK_TIMEOUT = 180
+
 
 def _image_block_size_for_manufacturer(
     manufacturer_code: int, requested_size: int
@@ -78,6 +83,7 @@ class OTAManager:
         # The image notify is only a hint, the device drives the actual OTA process
         self._notify_task: asyncio.Task[None] | None = None
         self._device_responded = False
+        self._block_requested = False
 
         self.stack = contextlib.ExitStack()
 
@@ -160,6 +166,17 @@ class OTAManager:
         if not self._upgrade_end_future.done():
             self._stall_timer.reschedule(MAX_TIME_WITHOUT_PROGRESS)
 
+    def _on_block_request(self) -> None:
+        """Handle the device requesting its first block."""
+        if self._block_requested:
+            return
+
+        self._block_requested = True
+
+        # The transfer has started, so we no longer need to wait for the first block
+        if not self._upgrade_end_future.done():
+            self._stall_timer.reschedule(MAX_TIME_WITHOUT_PROGRESS)
+
     async def _image_query_req(
         self, hdr: foundation.ZCLHeader, command: QueryNextImageCommand
     ) -> None:
@@ -190,6 +207,10 @@ class OTAManager:
 
         if status != foundation.Status.SUCCESS:
             self._finish(status)
+        elif not self._block_requested and not self._upgrade_end_future.done():
+            # The device may take a while to start the transfer after accepting the
+            # image, the shorter timeout applies once it has requested a block
+            self._stall_timer.reschedule(FIRST_BLOCK_TIMEOUT)
 
     async def _finish_malformed_image_block_response(self, handler: str, tsn: int):
         """Create an image block response failure."""
@@ -209,6 +230,7 @@ class OTAManager:
     ) -> None:
         """Handle image block request."""
         self._on_device_request()
+        self._on_block_request()
         default_image_block_size = _image_block_size_for_manufacturer(
             command.manufacturer_code, command.maximum_data_size
         )
@@ -256,6 +278,7 @@ class OTAManager:
     ) -> None:
         """Handle image page request."""
         self._on_device_request()
+        self._on_block_request()
         offset = command.file_offset
         max_block_size = _image_block_size_for_manufacturer(
             command.manufacturer_code, command.maximum_data_size
