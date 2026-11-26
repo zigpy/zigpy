@@ -87,6 +87,10 @@ class OTAManager:
         self._device_responded = False
         self._last_block_requested = False
 
+        # Whether the device asked us about this image, or only about other images
+        self._image_requested = False
+        self._other_image_queried = False
+
         self.stack = contextlib.ExitStack()
 
     def __enter__(self) -> Self:
@@ -147,7 +151,11 @@ class OTAManager:
 
     def _stall_callback(self) -> None:
         """Handle the stall timer expiring."""
-        self._finish(foundation.Status.TIMEOUT)
+        if self._other_image_queried and not self._image_requested:
+            # The device only ever asked for its other images, not for this one
+            self._finish(foundation.Status.NO_IMAGE_AVAILABLE)
+        else:
+            self._finish(foundation.Status.TIMEOUT)
 
     def _finish(self, status: foundation.Status) -> None:
         """Finish the OTA process."""
@@ -162,8 +170,15 @@ class OTAManager:
         if self._notify_task is not None:
             self._notify_task.cancel()
 
-    def _on_device_request(self) -> None:
+    def _on_device_request(self, *, other_image: bool = False) -> None:
         """Handle the device sending us an OTA request."""
+        if other_image:
+            # This is not an answer to our Image Notify, so keep it going and wait
+            self._other_image_queried = True
+            return
+
+        self._image_requested = True
+
         if self._device_responded:
             return
 
@@ -182,7 +197,30 @@ class OTAManager:
         self, hdr: foundation.ZCLHeader, command: QueryNextImageCommand
     ) -> None:
         """Handle image query request."""
-        self._on_device_request()
+        # Devices with several firmware images (e.g. one per chip) query for each of
+        # them. A query for another image is not about this update, so don't end it.
+        other_image = not self.force and (
+            command.manufacturer_code != self.image._manufacturer_id
+            or command.image_type != self.image._image_type
+        )
+
+        self._on_device_request(other_image=other_image)
+
+        if other_image:
+            self.device.debug(
+                "OTA ignoring query for another image (manufacturer 0x%04X, type"
+                " 0x%04X) during the update",
+                command.manufacturer_code,
+                command.image_type,
+            )
+            try:
+                await self.ota_cluster.query_next_image_response(
+                    status=foundation.Status.NO_IMAGE_AVAILABLE, tsn=hdr.tsn
+                )
+            except Exception as ex:  # noqa: BLE001
+                self.device.debug("OTA query_next_image handler exception", exc_info=ex)
+
+            return
 
         # If we try to send a device an old image (e.g. cache issue), don't bother
         if not self.force and (
