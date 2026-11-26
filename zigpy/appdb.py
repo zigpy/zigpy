@@ -1634,6 +1634,13 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
             col_list = ", ".join(columns)
             placeholders = ", ".join("?" * len(columns))
             select_sql = f"SELECT {col_list} FROM {old_table}"
+
+            # Any failing row fails the migration, so the table can be copied in one
+            # statement instead of one round trip to the database thread per row
+            if errors == "raise":
+                await self.execute(f"INSERT INTO {new_table} ({col_list}) {select_sql}")
+                continue
+
             insert_sql = f"INSERT INTO {new_table} ({col_list}) VALUES ({placeholders})"
 
             async with self.execute(select_sql) as cursor:
@@ -1641,9 +1648,7 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
                     try:
                         await self.execute(insert_sql, row)
                     except sqlite3.IntegrityError as e:
-                        if errors == "raise":
-                            raise
-                        elif errors == "warn":
+                        if errors == "warn":
                             LOGGER.warning(
                                 "Failed to migrate row %s%s: %s", old_table, row, e
                             )
@@ -1983,56 +1988,35 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         )
 
         # Migrate unsupported attributes into the attributes cache with status
-        async with self.execute("SELECT * FROM unsupported_attributes_v13") as cursor:
-            async for (
-                ieee,
-                endpoint_id,
-                cluster_type,
-                cluster_id,
-                attrid,
-            ) in cursor:
-                await self.execute(
-                    "INSERT INTO attributes_cache_v14 (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code, status, value, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        ieee,
-                        endpoint_id,
-                        cluster_type,
-                        cluster_id,
-                        attrid,
-                        UNMIGRATED_MANUFACTURER_CODE,
-                        Status.UNSUPPORTED_ATTRIBUTE,
-                        None,
-                        datetime.fromtimestamp(0, UTC).timestamp(),
-                    ),
-                )
+        await self.execute(
+            """
+            INSERT INTO attributes_cache_v14
+                (ieee, endpoint_id, cluster_type, cluster_id, attr_id,
+                 manufacturer_code, status, value, last_updated)
+            SELECT ieee, endpoint_id, cluster_type, cluster_id, attr_id, ?, ?, NULL, ?
+            FROM unsupported_attributes_v13
+            """,
+            (
+                UNMIGRATED_MANUFACTURER_CODE,
+                Status.UNSUPPORTED_ATTRIBUTE,
+                datetime.fromtimestamp(0, UTC).timestamp(),
+            ),
+        )
 
-        async with self.execute("SELECT * FROM attributes_cache_v13") as cursor:
-            async for (
-                ieee,
-                endpoint_id,
-                cluster_type,
-                cluster_id,
-                attrid,
-                value,
-                last_updated,
-            ) in cursor:
-                # Use INSERT OR IGNORE because the same attribute may exist in both
-                # unsupported_attributes_v13 and attributes_cache_v13. The unsupported
-                # status (inserted first) should win over old cached values.
-                await self.execute(
-                    "INSERT OR IGNORE INTO attributes_cache_v14 (ieee, endpoint_id, cluster_type, cluster_id, attr_id, manufacturer_code, status, value, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        ieee,
-                        endpoint_id,
-                        cluster_type,
-                        cluster_id,
-                        attrid,
-                        UNMIGRATED_MANUFACTURER_CODE,
-                        Status.SUCCESS,
-                        value,
-                        last_updated,
-                    ),
-                )
+        # Use INSERT OR IGNORE because the same attribute may exist in both
+        # unsupported_attributes_v13 and attributes_cache_v13. The unsupported
+        # status (inserted first) should win over old cached values.
+        await self.execute(
+            """
+            INSERT OR IGNORE INTO attributes_cache_v14
+                (ieee, endpoint_id, cluster_type, cluster_id, attr_id,
+                 manufacturer_code, status, value, last_updated)
+            SELECT ieee, endpoint_id, cluster_type, cluster_id, attr_id, ?, ?, value,
+                   last_updated
+            FROM attributes_cache_v13
+            """,
+            (UNMIGRATED_MANUFACTURER_CODE, Status.SUCCESS),
+        )
 
     async def _migrate_to_v15(self) -> None:
         """Schema v15 adds `ota_query_cache` table for persisting OTA query fields."""
