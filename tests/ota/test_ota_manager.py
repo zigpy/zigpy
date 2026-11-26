@@ -1177,6 +1177,65 @@ async def test_ota_manager_notify_failure_timeout() -> None:
 
 
 @pytest.mark.parametrize(
+    "exc", [TimeoutError(), DeliveryError("Failed to send request: MAC_NO_ACK")]
+)
+async def test_ota_manager_fast_poll_failure(exc: Exception) -> None:
+    """Test that the OTA continues if the device cannot be asked to poll faster."""
+
+    async def image_notify() -> None:
+        wake_up()
+
+    dev, _ota, log, wake_up = _make_sleepy_device(image_notify)
+
+    # Binding the Poll Control cluster of a sleeping device fails
+    dev.begin_fast_polling = AsyncMock(side_effect=exc)
+
+    dev.ota_in_progress = True
+    status = await update_firmware(dev, FW_IMAGE)
+
+    assert status == foundation.Status.SUCCESS
+    assert len(dev.begin_fast_polling.mock_calls) == 1
+    assert log == [
+        "image_notify",
+        "query_next_image",
+        "query_next_image_response:SUCCESS",
+        "image_block_response:last",
+        "upgrade_end",
+        "upgrade_end_response",
+    ]
+
+
+async def test_ota_manager_request_during_fast_poll_setup() -> None:
+    """Test that OTA requests are answered while the device is asked to poll faster."""
+
+    async def image_notify() -> None:
+        pytest.fail("The device already requested the image")
+
+    dev, _ota, log, wake_up = _make_sleepy_device(image_notify)
+
+    async def begin_fast_polling(*args, **kwargs) -> None:
+        # The device is woken up to start the update and queries for the image while
+        # the Poll Control cluster is being bound
+        wake_up()
+        await asyncio.sleep(0.1)
+        raise TimeoutError
+
+    dev.begin_fast_polling = AsyncMock(side_effect=begin_fast_polling)
+
+    dev.ota_in_progress = True
+    status = await update_firmware(dev, FW_IMAGE)
+
+    assert status == foundation.Status.SUCCESS
+    assert log == [
+        "query_next_image",
+        "query_next_image_response:SUCCESS",
+        "image_block_response:last",
+        "upgrade_end",
+        "upgrade_end_response",
+    ]
+
+
+@pytest.mark.parametrize(
     "logical_type", [zdo_t.LogicalType.EndDevice, zdo_t.LogicalType.Router]
 )
 @pytest.mark.parametrize("wake_up_with_block", [False, True])

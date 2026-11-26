@@ -380,6 +380,10 @@ class OTAManager:
 
     async def notify(self) -> None:
         """Notify device of new image."""
+        # The device is already talking to us, there is nothing to notify it about
+        if self._device_responded:
+            return
+
         self._notify_task = asyncio.create_task(self._send_image_notify())
 
         try:
@@ -439,8 +443,19 @@ async def update_firmware(
         if progress_callback is not None:
             progress_callback(current, total, progress)
 
-    # Ask the device to start fast polling before we send the OTA image
-    async with device.fast_poll_mode():
-        with OTAManager(device, image, progress_callback=progress, force=force) as ota:
+    # Listen for the device's OTA requests before preparing it: a sleepy device is
+    # often woken up to start the update and may ask for the image right away
+    with OTAManager(device, image, progress_callback=progress, force=force) as ota:
+        async with contextlib.AsyncExitStack() as stack:
+            # Ask the device to start fast polling before we send the OTA image. This
+            # only speeds up the transfer, the device can still request the image on
+            # its own if it cannot be reached right now.
+            try:
+                await stack.enter_async_context(device.fast_poll_mode())
+            except (TimeoutError, zigpy.exceptions.DeliveryError) as exc:
+                device.info(
+                    "OTA could not ask the device to poll faster, continuing: %r", exc
+                )
+
             await ota.notify()
             return await ota.wait()
