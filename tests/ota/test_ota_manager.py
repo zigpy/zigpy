@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Awaitable, Callable
+import contextlib
 import itertools
 import time
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -2553,3 +2554,29 @@ async def test_ota_other_command_outside_update_default_response() -> None:
     assert rsp_hdr.tsn == hdr.tsn
     assert rsp_hdr.command_id == foundation.GeneralCommand.Default_Response
     assert rsp.status == foundation.Status.SUCCESS
+
+
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
+async def test_ota_manager_image_page_send_ignores_cancellation() -> None:
+    """No further blocks of a page are sent once the update has ended, even if the
+    send that was running when it ended does not pass the cancellation on.
+    """
+
+    async def on_image_block() -> None:
+        if len(blocks) != 2:
+            return
+
+        # The update times out while the radio library is still sending this block,
+        # and the library swallows the cancellation
+        with contextlib.suppress(asyncio.CancelledError):
+            await asyncio.sleep(1)
+
+    dev, blocks, _request_page, _upgrade_end = _make_paging_device(
+        on_image_block, page_size=500
+    )
+
+    status = await update_firmware(dev, FW_IMAGE)
+    assert status == foundation.Status.TIMEOUT
+
+    await asyncio.sleep(0.05)
+    assert _block_offsets(dev, blocks) == [0, 50]
