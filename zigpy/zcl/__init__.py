@@ -1857,10 +1857,10 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         )
 
     async def bind(self, **kwargs):
-        return await self._endpoint.device.zdo.bind(cluster=self, **kwargs)
+        return await self._endpoint.device.bind(cluster=self, **kwargs)
 
     async def unbind(self):
-        return await self._endpoint.device.zdo.unbind(cluster=self)
+        return await self._endpoint.device.unbind(cluster=self)
 
     async def configure_reporting(
         self,

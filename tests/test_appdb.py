@@ -15,9 +15,11 @@ from tests.conftest import (
     make_app,
     make_ieee,
     make_node_desc,
+    make_simple_desc_rsp,
     mock_attribute_reads,
     mock_attribute_report,
     mock_attribute_writes,
+    mock_zdo_requests,
 )
 from tests.test_backups import backup_factory  # noqa: F401
 from tests.zgp.conftest import (
@@ -59,7 +61,7 @@ from zigpy.zcl.clusters.measurement import TemperatureMeasurement
 from zigpy.zcl.clusters.security import IasZone
 from zigpy.zcl.clusters.smartenergy import Metering
 from zigpy.zcl.foundation import Array, DataTypeId, Status as ZCLStatus, ZCLAttributeDef
-from zigpy.zdo import types as zdo_t
+from zigpy.zdo import commands as zdo_c, types as zdo_t
 from zigpy.zgp.commands import (
     GPClusterReport,
     GPGenericSwitchConfiguration,
@@ -261,7 +263,7 @@ async def test_database(tmp_path):
     async def mockleave(*args, **kwargs):
         return [0]
 
-    app3.devices[ieee].zdo.leave = mockleave
+    app3.devices[ieee].leave = mockleave
     await app3.remove(ieee)
     for _i in range(1, 20):
         await asyncio.sleep(0)
@@ -1509,7 +1511,7 @@ async def test_appdb_custom_device_subclass_round_trip(tmp_path) -> None:
             self.manufacturer = replaces.manufacturer
             self.model = replaces.model
 
-            for endpoint in replaces.non_zdo_endpoints:
+            for endpoint in replaces.endpoints.values():
                 new_ep = self.add_endpoint(endpoint.endpoint_id)
                 new_ep.status = endpoint.status
                 new_ep.profile_id = endpoint.profile_id
@@ -1654,17 +1656,24 @@ async def test_inactive_endpoints_round_trip(tmp_path) -> None:
     dev.node_desc = make_node_desc()
 
     # Endpoint 2 is listed as active but has no simple descriptor, zigpy/zigpy#1894
-    async def mock_active_ep_req(nwk):
-        return [zdo_t.Status.SUCCESS, nwk, [1, 2]]
+    async def mock_active_ep_req(command):
+        return zdo_c.ActiveEpRsp(
+            status=zdo_t.Status.SUCCESS,
+            nwk_addr_of_interest=command.nwk_addr_of_interest,
+            active_ep_list=[1, 2],
+        )
 
-    async def mock_simple_desc_req(nwk, endpoint_id):
-        if endpoint_id == 2:
-            return [zdo_t.Status.NOT_ACTIVE, nwk, None]
+    async def mock_simple_desc_req(command):
+        if command.endpoint == 2:
+            return zdo_c.SimpleDescRsp(
+                status=zdo_t.Status.NOT_ACTIVE,
+                nwk_addr_of_interest=command.nwk_addr_of_interest,
+                length=0,
+            )
 
-        return [
-            zdo_t.Status.SUCCESS,
-            nwk,
-            zdo_t.SizePrefixedSimpleDescriptor(
+        return make_simple_desc_rsp(
+            nwk=command.nwk_addr_of_interest,
+            descriptor=zdo_t.SimpleDescriptor(
                 endpoint=1,
                 profile=profiles.zha.PROFILE_ID,
                 device_type=profiles.zha.DeviceType.ON_OFF_SWITCH,
@@ -1672,10 +1681,15 @@ async def test_inactive_endpoints_round_trip(tmp_path) -> None:
                 input_clusters=[Basic.cluster_id],
                 output_clusters=[OnOff.cluster_id],
             ),
-        ]
+        )
 
-    dev.zdo.Active_EP_req = mock_active_ep_req
-    dev.zdo.Simple_Desc_req = mock_simple_desc_req
+    mock_zdo_requests(
+        dev,
+        {
+            zdo_c.ActiveEpReq: mock_active_ep_req,
+            zdo_c.SimpleDescReq: mock_simple_desc_req,
+        },
+    )
 
     with patch(
         "zigpy.endpoint.Endpoint.get_model_info",
@@ -3393,7 +3407,7 @@ async def test_reinterview_does_not_commit_mid_handler(tmp_path):
     # The re-interviewed device replaced the old one
     app2 = await make_app_with_db(db)
     dev2 = app2.get_device(old_dev.ieee)
-    assert list(dev2.non_zdo_endpoints) == [dev2.endpoints[2]]
+    assert list(dev2.endpoints.values()) == [dev2.endpoints[2]]
     assert Basic.cluster_id in dev2.endpoints[2].in_clusters
     await app2.shutdown()
 
@@ -4030,7 +4044,7 @@ async def test_reinterview_device_removed_with_leave_pending(tmp_path, order):
 
     with (
         patch.object(Device, "_discover", mock_discover),
-        patch("zigpy.zdo.ZDO.leave", mock_leave),
+        patch("zigpy.device.ZigbeeDevice.leave", mock_leave),
         patch.object(app, "listener_event", wraps=app.listener_event),
     ):
         reinterview = asyncio.create_task(dev.reinterview())
@@ -4099,7 +4113,7 @@ async def test_reinterview_device_removed_during_db_delete(tmp_path):
 
     with (
         patch.object(Device, "_discover", mock_discover),
-        patch("zigpy.zdo.ZDO.leave", mock_leave),
+        patch("zigpy.device.ZigbeeDevice.leave", mock_leave),
         patch.object(app._dblistener, "_remove_device", remove_during_delete),
         patch.object(app, "listener_event", wraps=app.listener_event),
     ):
@@ -4131,7 +4145,7 @@ async def test_device_store_closed_on_remove(tmp_path):
     await app._dblistener._callback_handlers.join()
     assert _count_store_rows(db, dev.ieee) == 1
 
-    dev.zdo.leave = AsyncMock()
+    dev.leave = AsyncMock()
     await app.remove(dev.ieee)
 
     # Written while the leave request is still pending
@@ -4216,7 +4230,7 @@ async def test_device_store_not_inherited_after_rejoin(tmp_path, used_before_rem
     if used_before_removal:
         dev.store[STORE_COUNT] = 1
 
-    dev.zdo.leave = AsyncMock()
+    dev.leave = AsyncMock()
     await app.remove(dev.ieee)
 
     # The first write may only happen while the leave request is pending
@@ -4320,7 +4334,7 @@ async def test_device_store_bound_at_construction(tmp_path):
     dev, _, _ = _add_joined_device(app)
     untouched = Device(app, dev.ieee, dev.nwk)
 
-    dev.zdo.leave = AsyncMock()
+    dev.leave = AsyncMock()
     await app.remove(dev.ieee)
     await asyncio.sleep(0)
     await asyncio.sleep(0)

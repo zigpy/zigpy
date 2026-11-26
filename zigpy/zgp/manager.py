@@ -29,6 +29,7 @@ from zigpy.zcl.clusters.greenpower import (
     ResponseOptions,
     TempMasterTxChannel,
 )
+import zigpy.zdo.commands as zdo_commands
 import zigpy.zdo.types as zdo_types
 from zigpy.zgp.commands import (
     GPChannelConfigurationPayload,
@@ -732,10 +733,15 @@ class GreenPowerManager(CreateTaskMixin):
             capability |= zdo_types.MACCapabilityFlags.SecurityCapable
 
         tsn = t.uint8_t(0)
-        data = tsn.serialize() + t.serialize(
-            (device.nwk, t.EUI64.convert("ff:ff:ff:ff:ff:ff:ff:ff"), capability),
-            zdo_types.CLUSTERS[zdo_types.ZDOCmd.Device_annce][1],
-        )
+        data = zdo_commands.ZDOCommand(
+            command_id=zdo_types.ZDOCmd.Device_annce,
+            tsn=tsn,
+            command=zdo_commands.DeviceAnnce(
+                nwk_addr=device.nwk,
+                ieee_addr=t.EUI64.convert("ff:ff:ff:ff:ff:ff:ff:ff"),
+                capability=capability,
+            ),
+        ).serialize()
         packet = t.ZigbeePacket(
             dst=t.AddrModeAddress(
                 addr_mode=t.AddrMode.Broadcast,

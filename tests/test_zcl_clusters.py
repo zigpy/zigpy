@@ -38,9 +38,10 @@ from zigpy.zcl.clusters.general import (
 from zigpy.zcl.clusters.protocol import BacnetProtocolTunnel, BinaryInputRegular
 import zigpy.zcl.clusters.security as sec
 from zigpy.zcl.clusters.wwah import WorksWithAllHubs
-from zigpy.zdo import types as zdo_t
+from zigpy.zdo import commands as zdo_c, types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, call, patch, sentinel
+from .conftest import mock_zdo_requests
 
 IMAGE_SIZE = 0x2345
 IMAGE_OFFSET = 0x2000
@@ -752,10 +753,16 @@ def dev(monkeypatch, app_mock):
 
     dev = device.Device(app_mock, ieee, 65535)
     node_desc = zdo_t.NodeDescriptor(1, 1, 1, 4, 5, 6, 7, 8)
-    with patch.object(
-        dev.zdo, "Node_Desc_req", new=AsyncMock(return_value=(0, 0xFFFF, node_desc))
-    ):
-        yield dev
+
+    async def node_desc_req(command):
+        return zdo_c.NodeDescRsp(
+            status=zdo_t.Status.SUCCESS,
+            nwk_addr_of_interest=command.nwk_addr_of_interest,
+            node_descriptor=node_desc,
+        )
+
+    mock_zdo_requests(dev, {zdo_c.NodeDescReq: node_desc_req})
+    return dev
 
 
 @pytest.fixture

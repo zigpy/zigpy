@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from asyncio import timeout as asyncio_timeout
 from collections import defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -46,6 +46,7 @@ from zigpy.util import CreateTaskMixin
 from zigpy.zcl import Cluster, ClusterType, OtaQueryCacheClearedEvent, foundation
 from zigpy.zcl.clusters.general import Basic, Ota, PollControl, QueryNextImageCommand
 from zigpy.zcl.helpers import AttributeCacheLoadResult, AttributeCacheRow
+import zigpy.zdo.commands as zdo_c
 import zigpy.zdo.types as zdo_t
 from zigpy.zgp.commands import (
     GPD_COMMAND_SCHEMAS,
@@ -148,6 +149,7 @@ class BaseDevice(
     """Base class shared by all device types, keyed on `ieee` and `nwk` addresses."""
 
     _store: DeviceStore | None = None
+    endpoints: Mapping[typing.Any, zigpy.endpoint.BaseEndpoint]
 
     def __init__(
         self, application: ControllerApplication, ieee: t.EUI64, nwk: t.NWK
@@ -271,8 +273,9 @@ class BaseDevice(
         raise NotImplementedError
 
     @property
+    @zigpy.util.deprecated("use `endpoints` instead, it no longer contains ZDO")
     def non_zdo_endpoints(self) -> Sequence[zigpy.endpoint.BaseEndpoint]:
-        raise NotImplementedError
+        return list(self.endpoints.values())
 
     def load_attribute_cache(
         self, rows: list[AttributeCacheRow], *, migrate: bool = False
@@ -284,7 +287,7 @@ class BaseDevice(
         """
         result = AttributeCacheLoadResult()
         existing_keys = {row.key for row in rows}
-        endpoints = {ep.endpoint_id: ep for ep in self.non_zdo_endpoints}
+        endpoints = self.endpoints
 
         for row in rows:
             self.debug("Loading attribute cache row %s", row)
@@ -441,10 +444,6 @@ class GreenPowerDevice(BaseDevice):
         device.rssi = packet.rssi
 
         return device
-
-    @property
-    def non_zdo_endpoints(self) -> list[zigpy.endpoint.GreenPowerEndpoint]:
-        return list(self.endpoints.values())
 
     def add_clusters(self) -> None:
         """Create the clusters the GPD listed during commissioning."""
@@ -791,8 +790,7 @@ class ZigbeeDevice(BaseDevice):
 
     def __init__(self, application: ControllerApplication, ieee: t.EUI64, nwk: t.NWK):
         super().__init__(application, ieee, nwk)
-        self.zdo: zdo.ZDO = zdo.ZDO(self)
-        self.endpoints: dict[int, zdo.ZDO | zigpy.endpoint.Endpoint] = {0: self.zdo}
+        self.endpoints: dict[int, zigpy.endpoint.Endpoint] = {}
 
         self.ota_in_progress: bool = False
 
@@ -879,19 +877,14 @@ class ZigbeeDevice(BaseDevice):
         return f"0x{self.nwk:04X}"
 
     @property
-    def non_zdo_endpoints(self) -> list[zigpy.endpoint.Endpoint]:
-        return [
-            ep for epid, ep in self.endpoints.items() if not (isinstance(ep, zdo.ZDO))
-        ]
-
-    @property
+    @zigpy.util.deprecated("use `endpoints` instead, it no longer contains ZDO")
     def has_non_zdo_endpoints(self) -> bool:
-        return bool(self.non_zdo_endpoints)
+        return bool(self.endpoints)
 
     @property
     def all_endpoints_init(self) -> bool:
-        return self.has_non_zdo_endpoints and all(
-            ep.status != zigpy.endpoint.Status.NEW for ep in self.non_zdo_endpoints
+        return bool(self.endpoints) and all(
+            ep.status != zigpy.endpoint.Status.NEW for ep in self.endpoints.values()
         )
 
     @property
@@ -925,7 +918,7 @@ class ZigbeeDevice(BaseDevice):
 
     async def group_membership_scan(self) -> None:
         """Sync up group membership."""
-        for ep in self.non_zdo_endpoints:
+        for ep in list(self.endpoints.values()):
             await ep.group_membership_scan()
 
     @property
@@ -1064,17 +1057,20 @@ class ZigbeeDevice(BaseDevice):
     async def get_node_descriptor(self) -> zdo_t.NodeDescriptor:
         self.info("Requesting 'Node Descriptor'")
 
-        status, _, node_desc = await self.zdo.Node_Desc_req(self.nwk)
+        rsp = await self.send_zdo_command(
+            zdo_c.NodeDescReq(nwk_addr_of_interest=self.nwk),
+            response_type=zdo_c.NodeDescRsp,
+        )
 
-        if status != zdo_t.Status.SUCCESS:
+        if rsp.status != zdo_t.Status.SUCCESS:
             raise zigpy.exceptions.InvalidResponse(
-                f"Requesting Node Descriptor failed: {status}"
+                f"Requesting Node Descriptor failed: {rsp.status}"
             )
 
-        self.node_desc = node_desc
-        self.info("Got Node Descriptor: %s", node_desc)
+        self.node_desc = rsp.node_descriptor
+        self.info("Got Node Descriptor: %s", self.node_desc)
 
-        return node_desc
+        return self.node_desc
 
     async def initialize(self) -> None:
         try:
@@ -1096,7 +1092,7 @@ class ZigbeeDevice(BaseDevice):
         self, cluster_id: int, cluster_type: ClusterType = ClusterType.Server
     ) -> Cluster:
         """Find the first cluster by its ID and type on any endpoint."""
-        for ep in self.non_zdo_endpoints:
+        for ep in list(self.endpoints.values()):
             if cluster_type == ClusterType.Server and cluster_id in ep.in_clusters:
                 return ep.in_clusters[cluster_id]
             elif cluster_type == ClusterType.Client and cluster_id in ep.out_clusters:
@@ -1202,22 +1198,24 @@ class ZigbeeDevice(BaseDevice):
         if self.node_desc is None:
             await self.get_node_descriptor()
 
-        # Devices should have endpoints other than ZDO
-        if self.has_non_zdo_endpoints:
+        if self.endpoints:
             self.info("Already have endpoints: %s", self.endpoints)
         else:
             self.info("Discovering endpoints")
 
-            status, _, endpoints = await self.zdo.Active_EP_req(self.nwk)
+            rsp = await self.send_zdo_command(
+                zdo_c.ActiveEpReq(nwk_addr_of_interest=self.nwk),
+                response_type=zdo_c.ActiveEpRsp,
+            )
 
-            if status != zdo_t.Status.SUCCESS:
+            if rsp.status != zdo_t.Status.SUCCESS:
                 raise zigpy.exceptions.InvalidResponse(
-                    f"Endpoint request failed: {status}"
+                    f"Endpoint request failed: {rsp.status}"
                 )
 
-            self.info("Discovered endpoints: %s", endpoints)
+            self.info("Discovered endpoints: %s", rsp.active_ep_list)
 
-            for endpoint_id in endpoints:
+            for endpoint_id in rsp.active_ep_list:
                 if endpoint_id != 0:
                     self.add_endpoint(endpoint_id)
 
@@ -1228,16 +1226,17 @@ class ZigbeeDevice(BaseDevice):
 
         if self.all_endpoints_init:
             self.info(
-                "All endpoints are already initialized: %s", self.non_zdo_endpoints
+                "All endpoints are already initialized: %s",
+                list(self.endpoints.values()),
             )
 
             if not initiated_fast_polling:
                 # Begin fast polling if we are re-initializing
                 await self.begin_fast_polling()
         else:
-            self.info("Initializing endpoints %s", self.non_zdo_endpoints)
+            self.info("Initializing endpoints %s", list(self.endpoints.values()))
 
-            for ep in self.non_zdo_endpoints:
+            for ep in list(self.endpoints.values()):
                 await ep.initialize()
 
                 # Some devices list endpoints as active but have no simple descriptor
@@ -1260,7 +1259,7 @@ class ZigbeeDevice(BaseDevice):
         if self.model is not None and self.manufacturer is not None:
             self.info("Already have model and manufacturer info")
         else:
-            for ep in self.non_zdo_endpoints:
+            for ep in list(self.endpoints.values()):
                 if self.model is None or self.manufacturer is None:
                     model, manufacturer = await ep.get_model_info()
                     self.info(
@@ -1313,12 +1312,112 @@ class ZigbeeDevice(BaseDevice):
         return ep
 
     async def add_to_group(self, grp_id: int, name: str | None = None) -> None:
-        for ep in self.non_zdo_endpoints:
+        for ep in list(self.endpoints.values()):
             await ep.add_to_group(grp_id, name)
 
     async def remove_from_group(self, grp_id: int) -> None:
-        for ep in self.non_zdo_endpoints:
+        for ep in list(self.endpoints.values()):
             await ep.remove_from_group(grp_id)
+
+    @typing.overload
+    async def send_zdo_command(
+        self,
+        command: zdo_c.ZDOPayload,
+        response_type: type[zdo_c.ZDOPayloadT],
+        *,
+        tsn: int | None = None,
+        **kwargs: Any,
+    ) -> zdo_c.ZDOPayloadT: ...
+
+    @typing.overload
+    async def send_zdo_command(
+        self,
+        command: zdo_c.ZDOPayload,
+        response_type: None = None,
+        *,
+        tsn: int | None = None,
+        **kwargs: Any,
+    ) -> None: ...
+
+    async def send_zdo_command(
+        self,
+        command: zdo_c.ZDOPayload,
+        response_type: type[zdo_c.ZDOPayloadT] | None = None,
+        *,
+        tsn: int | None = None,
+        **kwargs: Any,
+    ) -> zdo_c.ZDOPayloadT | None:
+        """Send a ZDO command and wait for its response, if a response type is given."""
+        if tsn is None:
+            tsn = self.get_sequence()
+
+        response = await self.request(
+            profile=0x0000,
+            cluster=command.command_id,
+            src_ep=zdo.ZDO_ENDPOINT,
+            dst_ep=zdo.ZDO_ENDPOINT,
+            sequence=tsn,
+            data=zdo_c.ZDOCommand(
+                command_id=command.command_id, tsn=t.uint8_t(tsn), command=command
+            ).serialize(),
+            expect_reply=response_type is not None,
+            **kwargs,
+        )
+
+        if response_type is None:
+            return None
+
+        assert isinstance(response, response_type)
+        return response
+
+    async def bind(self, cluster: Cluster, **kwargs: Any) -> zdo_c.BindRsp:
+        return await self.send_zdo_command(
+            zdo_c.BindReq(
+                src_address=self.ieee,
+                src_endpoint=cluster.endpoint.endpoint_id,
+                cluster_id=cluster.cluster_id,
+                dst_address=self.application.get_dst_address(cluster),
+            ),
+            response_type=zdo_c.BindRsp,
+            **kwargs,
+        )
+
+    async def unbind(self, cluster: Cluster) -> zdo_c.UnbindRsp:
+        return await self.send_zdo_command(
+            zdo_c.UnbindReq(
+                src_address=self.ieee,
+                src_endpoint=cluster.endpoint.endpoint_id,
+                cluster_id=cluster.cluster_id,
+                dst_address=self.application.get_dst_address(cluster),
+            ),
+            response_type=zdo_c.UnbindRsp,
+        )
+
+    async def leave(
+        self, remove_children: bool = True, rejoin: bool = False
+    ) -> zdo_c.MgmtLeaveRsp:
+        """Ask the device to leave the network."""
+        opts = zdo_c.LeaveOptions.NONE
+        if remove_children:
+            opts |= zdo_c.LeaveOptions.RemoveChildren
+        if rejoin:
+            opts |= zdo_c.LeaveOptions.Rejoin
+
+        return await self.send_zdo_command(
+            zdo_c.MgmtLeaveReq(device_address=self.ieee, options=opts),
+            response_type=zdo_c.MgmtLeaveRsp,
+        )
+
+    async def permit(
+        self, duration: int = 60, tc_significance: bool = False
+    ) -> zdo_c.MgmtPermitJoiningRsp:
+        """Ask the device to permit joins."""
+        return await self.send_zdo_command(
+            zdo_c.MgmtPermitJoiningReq(
+                permit_duration=duration, tc_significant=tc_significance
+            ),
+            response_type=zdo_c.MgmtPermitJoiningRsp,
+        )
 
     async def request(
         self,
@@ -1481,6 +1580,7 @@ class ZigbeeDevice(BaseDevice):
         """Find the ZCL cluster for a given header and packet, strict."""
         assert packet.src_ep is not None
         ep = self.endpoints[packet.src_ep]
+        assert isinstance(ep, zigpy.endpoint.Endpoint)
 
         if hdr.frame_control.direction == foundation.Direction.Client_to_Server:
             return ep.out_clusters[packet.cluster_id]
@@ -1534,20 +1634,11 @@ class ZigbeeDevice(BaseDevice):
 
     def _parse_packet_header(
         self, packet: t.ZigbeePacket
-    ) -> tuple[zdo_t.ZDOHeader | foundation.ZCLHeader, ResponseKey] | tuple[None, None]:
+    ) -> tuple[foundation.ZCLHeader, ResponseKey] | tuple[None, None]:
         """Parse packet header and create response key."""
         data = packet.data.serialize()
 
-        if packet.src_ep == zdo.ZDO_ENDPOINT:
-            hdr, _ = zdo_t.ZDOHeader.deserialize(packet.cluster_id, data)
-            rsp_key = ResponseKey(
-                endpoint_id=packet.src_ep,
-                cluster_id=packet.cluster_id,
-                direction=None,
-                tsn=hdr.tsn,
-            )
-            return hdr, rsp_key
-        elif packet.profile_id in (zha.PROFILE_ID, zll.PROFILE_ID):
+        if packet.profile_id in (zha.PROFILE_ID, zll.PROFILE_ID):
             hdr, _ = foundation.ZCLHeader.deserialize(data)
             rsp_key = ResponseKey(
                 endpoint_id=packet.src_ep,
@@ -1560,12 +1651,8 @@ class ZigbeeDevice(BaseDevice):
             return None, None
 
     def _match_packet_endpoint_cluster(
-        self, packet: t.ZigbeePacket, hdr: zdo_t.ZDOHeader | foundation.ZCLHeader
-    ) -> (
-        tuple[zigpy.endpoint.Endpoint, Cluster]
-        | tuple[zigpy.zdo.ZDO, None]
-        | tuple[None, None]
-    ):
+        self, packet: t.ZigbeePacket, hdr: foundation.ZCLHeader
+    ) -> tuple[zigpy.endpoint.Endpoint, Cluster] | tuple[None, None]:
         """Validate packet routing and find target endpoint and cluster."""
         if packet.src_ep not in self.endpoints:
             self.debug(
@@ -1576,34 +1663,24 @@ class ZigbeeDevice(BaseDevice):
             return None, None
 
         endpoint = self.endpoints[packet.src_ep]
+        assert isinstance(endpoint, zigpy.endpoint.Endpoint)
 
-        if packet.src_ep == zdo.ZDO_ENDPOINT:
-            assert isinstance(endpoint, zigpy.zdo.ZDO)
-            return endpoint, None
+        try:
+            zcl_cluster = self._find_zcl_cluster(hdr, packet)
+        except KeyError:
+            self.debug(
+                "Ignoring message on unknown cluster: 0x%04x",
+                packet.cluster_id,
+            )
+            return None, None
         else:
-            assert isinstance(endpoint, zigpy.endpoint.Endpoint)
-            try:
-                zcl_cluster = self._find_zcl_cluster(hdr, packet)
-            except KeyError:
-                self.debug(
-                    "Ignoring message on unknown cluster: 0x%04x",
-                    packet.cluster_id,
-                )
-                return None, None
-            else:
-                return endpoint, zcl_cluster
+            return endpoint, zcl_cluster
 
     def _parse_packet_command(
-        self, packet: t.ZigbeePacket, endpoint: typing.Any, zcl_cluster: Cluster | None
+        self, packet: t.ZigbeePacket, endpoint: typing.Any, zcl_cluster: Cluster
     ) -> typing.Any:
         """Deserialize packet data."""
-        data = packet.data.serialize()
-
-        if packet.src_ep == zdo.ZDO_ENDPOINT:
-            _, cmd = endpoint.deserialize(packet.cluster_id, data)
-        else:
-            assert zcl_cluster is not None
-            _, cmd = zcl_cluster.deserialize(data)
+        _, cmd = zcl_cluster.deserialize(packet.data.serialize())
 
         return cmd
 
@@ -1653,6 +1730,10 @@ class ZigbeeDevice(BaseDevice):
             self.debug("Filtering duplicate packet")
             return
 
+        if packet.src_ep == zdo.ZDO_ENDPOINT:
+            self._zdo_packet_received(packet)
+            return
+
         # Parse packet header and create response key
         hdr, rsp_key = self._parse_packet_header(packet)
         if hdr is None:
@@ -1683,23 +1764,122 @@ class ZigbeeDevice(BaseDevice):
         if error is not None:
             return
 
-        # Pass the request off to a listener, if one is registered
+        self._notify_request_listeners(hdr, cmd)
+
+        # Finally, pass it off to the cluster message handler. This will be removed.
+        zcl_cluster.handle_message(hdr, cmd)
+
+    def _zdo_packet_received(self, packet: t.ZigbeePacket) -> None:
+        data = packet.data.serialize()
+
+        # The TSN is needed to fail a pending request even if the payload is invalid
+        tsn, _ = t.uint8_t.deserialize(data)
+        rsp_key = ResponseKey(
+            endpoint_id=zdo.ZDO_ENDPOINT,
+            cluster_id=packet.cluster_id,
+            direction=None,
+            tsn=tsn,
+        )
+
+        try:
+            frame = zdo_c.ZDOCommand.deserialize(packet.cluster_id, data)
+        except Exception as exc:  # noqa: BLE001
+            error = zigpy.exceptions.ParsingError()
+            error.__cause__ = exc
+            self.debug("Failed to parse packet %r", packet, exc_info=error)
+            self._maybe_match_response(rsp_key, None, error)
+            return
+
+        if self._maybe_match_response(rsp_key, frame.command, None):
+            return
+
+        self._notify_request_listeners(frame, frame.command)
+        self._handle_zdo_request(frame)
+
+    def _handle_zdo_request(self, frame: zdo_c.ZDOCommand) -> None:
+        """Answer ZDO requests sent by this device to the coordinator."""
+        node_info = self.application.state.node_info
+
+        match frame.command:
+            case zdo_c.NwkAddrReq(ieee_addr=ieee, request_type=request_type):
+                if ieee != node_info.ieee:
+                    return
+
+                reply: zdo_c.ZDOPayload = zdo_c.NwkAddrRsp(
+                    status=zdo_t.Status.SUCCESS,
+                    ieee_addr=node_info.ieee,
+                    nwk_addr=node_info.nwk,
+                    num_assoc_dev=self._num_assoc_dev(request_type),
+                )
+                priority = t.PacketPriority.LOW
+                retries = self.reply_retries
+
+            case zdo_c.IeeeAddrReq(nwk_addr_of_interest=nwk, request_type=request_type):
+                if nwk not in (
+                    t.BroadcastAddress.ALL_DEVICES,
+                    t.BroadcastAddress.RX_ON_WHEN_IDLE,
+                    t.BroadcastAddress.ALL_ROUTERS_AND_COORDINATOR,
+                    node_info.nwk,
+                ):
+                    return
+
+                reply = zdo_c.IeeeAddrRsp(
+                    status=zdo_t.Status.SUCCESS,
+                    ieee_addr=node_info.ieee,
+                    nwk_addr=node_info.nwk,
+                    num_assoc_dev=self._num_assoc_dev(request_type),
+                )
+                priority = t.PacketPriority.LOW
+                retries = self.reply_retries
+
+            case zdo_c.MatchDescReq(profile_id=profile_id):
+                reply = zdo_c.MatchDescRsp(
+                    status=zdo_t.Status.SUCCESS,
+                    nwk_addr_of_interest=node_info.nwk,
+                    match_list=[t.uint8_t(1)] if profile_id == zha.PROFILE_ID else [],
+                )
+                priority = t.PacketPriority.CRITICAL
+                retries = None
+
+            case _:
+                self.debug("No handler for ZDO request %s", frame)
+                return
+
+        self.create_task(
+            self._send_zdo_reply(
+                reply, tsn=frame.tsn, priority=priority, retries=retries
+            ),
+            name=f"zdo_reply_{type(reply).__name__}",
+        )
+
+    @staticmethod
+    def _num_assoc_dev(request_type: zdo_t.AddrRequestType) -> int | None:
+        # Only an extended request gets the associated devices, we have none
+        return 0 if request_type == zdo_t.AddrRequestType.Extended else None
+
+    async def _send_zdo_reply(
+        self, command: zdo_c.ZDOPayload, *, tsn: t.uint8_t, **kwargs: Any
+    ) -> None:
+        try:
+            await self.send_zdo_command(command, tsn=tsn, **kwargs)
+        except (TimeoutError, zigpy.exceptions.ZigbeeException) as exc:
+            self.debug("Failed to send ZDO reply %s: %r", command, exc)
+
+    def _notify_request_listeners(
+        self,
+        hdr: foundation.ZCLHeader | zdo_c.ZDOCommand,
+        command: typing.Any,
+    ) -> None:
+        """Pass the request off to a listener, if one is registered."""
         for listener in itertools.chain(
             self._application._req_listeners[zigpy.listeners.ANY_DEVICE],
             self._application._req_listeners[self],
         ):
             # Resolve only until the first future listener
-            if listener.resolve(hdr, cmd) and isinstance(
+            if listener.resolve(hdr, command) and isinstance(
                 listener, zigpy.listeners.FutureListener
             ):
                 break
-
-        # Finally, pass it off to the cluster message handler. This will be removed.
-        if zcl_cluster is not None:
-            zcl_cluster.handle_message(hdr, cmd)
-        else:
-            assert isinstance(endpoint, zdo.ZDO)
-            endpoint.handle_message(packet.profile_id, packet.cluster_id, hdr, cmd)
 
     async def reply(
         self,
@@ -1799,7 +1979,7 @@ class ZigbeeDevice(BaseDevice):
 
     def get_last_ota_query_cmd(self) -> QueryNextImageCommand | None:
         """Return the last cached QueryNextImageCommand, preferring client clusters."""
-        for ep in self.non_zdo_endpoints:
+        for ep in list(self.endpoints.values()):
             # Prefer client (out) clusters since runtime routing places
             # query_next_image there when both cluster types exist.
             for clusters in (ep.out_clusters, ep.in_clusters):
@@ -1891,7 +2071,7 @@ class ZigbeeDevice(BaseDevice):
         new.manufacturer_id_override = self.manufacturer_id_override
         new.skip_configuration = self.skip_configuration
 
-        for endpoint in self.non_zdo_endpoints:
+        for endpoint in list(self.endpoints.values()):
             new_ep = new.add_endpoint(endpoint.endpoint_id)
             new_ep.status = endpoint.status
             new_ep.profile_id = endpoint.profile_id
@@ -1926,8 +2106,6 @@ class ZigbeeDevice(BaseDevice):
             signature[SIG_NODE_DESC] = self.node_desc.as_dict()
 
         for endpoint_id, endpoint in self.endpoints.items():
-            if endpoint_id == zdo.ZDO_ENDPOINT:  # ZDO
-                continue
             signature.setdefault(SIG_ENDPOINTS, {})
             in_clusters = list(endpoint.in_clusters)
             out_clusters = list(endpoint.out_clusters)
@@ -1954,28 +2132,3 @@ class ZigbeeDevice(BaseDevice):
 
 # Backwards-compatible alias
 Device = ZigbeeDevice
-
-
-async def broadcast(
-    app,
-    profile,
-    cluster,
-    src_ep,
-    dst_ep,
-    grpid,
-    radius,
-    sequence,
-    data,
-    broadcast_address=t.BroadcastAddress.RX_ON_WHEN_IDLE,
-):
-    return await app.broadcast(
-        profile,
-        cluster,
-        src_ep,
-        dst_ep,
-        grpid,
-        radius,
-        sequence,
-        data,
-        broadcast_address=broadcast_address,
-    )

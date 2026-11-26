@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import typing
-from typing import Any, Final
+from typing import Final
 
 import zigpy.types as t
 
@@ -330,14 +330,6 @@ class Neighbor(t.Struct):
     Relationship: Final = Relationship
 
 
-class Neighbors(t.Struct):
-    """Mgmt_Lqi_rsp"""
-
-    Entries: t.uint8_t
-    StartIndex: t.uint8_t
-    NeighborTableList: t.LVList[Neighbor, t.uint8_t]
-
-
 class RouteStatus(t.enum3):
     """Route descriptor route status."""
 
@@ -371,30 +363,8 @@ class Route(t.Struct):
     NextHop: t.NWK
 
 
-class Routes(t.Struct):
-    Entries: t.uint8_t
-    StartIndex: t.uint8_t
-    RoutingTableList: t.LVList[Route, t.uint8_t]
-
-
 CHANNEL_CHANGE_REQ = 0xFE
 CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ = 0xFF
-
-
-class NwkUpdate(t.Struct):
-    CHANNEL_CHANGE_REQ = CHANNEL_CHANGE_REQ
-    CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ = CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ
-
-    ScanChannels: t.Channels
-    ScanDuration: t.uint8_t
-    ScanCount: t.uint8_t = t.StructField(requires=lambda s: s.ScanDuration <= 0x05)
-    nwkUpdateId: t.uint8_t = t.StructField(  # noqa: N815
-        requires=lambda s: s.ScanDuration
-        in (CHANNEL_CHANGE_REQ, CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ)
-    )
-    nwkManagerAddr: t.NWK = t.StructField(  # noqa: N815
-        requires=lambda s: s.ScanDuration == CHANNEL_MASK_MANAGER_ADDR_CHANGE_REQ
-    )
 
 
 class Binding(t.Struct):
@@ -452,12 +422,6 @@ class Status(t.enum8):
         status._name_ = chained.name
         status._value_ = value
         return status
-
-
-NWK = ("NWKAddr", t.NWK)
-NWKI = ("NWKAddrOfInterest", t.NWK)
-IEEE = ("IEEEAddr", t.EUI64)
-STATUS = ("Status", Status)
 
 
 class ZDOCmd(t.enum16):
@@ -537,258 +501,3 @@ class ZDOCmd(t.enum16):
     Mgmt_Permit_Joining_rsp = 0x8036
     # ... TODO optional stuff ...
     Mgmt_NWK_Update_rsp = 0x8038
-
-
-CLUSTERS: dict[ZDOCmd, tuple[tuple[str, Any], ...]] = {
-    # Device and Service Discovery Server Requests
-    ZDOCmd.NWK_addr_req: (
-        IEEE,
-        ("RequestType", AddrRequestType),
-        ("StartIndex", t.uint8_t),
-    ),
-    ZDOCmd.IEEE_addr_req: (
-        NWKI,
-        ("RequestType", AddrRequestType),
-        ("StartIndex", t.uint8_t),
-    ),
-    ZDOCmd.Node_Desc_req: (NWKI,),
-    ZDOCmd.Power_Desc_req: (NWKI,),
-    ZDOCmd.Simple_Desc_req: (NWKI, ("EndPoint", t.uint8_t)),
-    ZDOCmd.Active_EP_req: (NWKI,),
-    ZDOCmd.Match_Desc_req: (
-        NWKI,
-        ("ProfileID", t.uint16_t),
-        ("InClusterList", t.LVList[t.uint16_t, t.uint8_t]),
-        ("OutClusterList", t.LVList[t.uint16_t, t.uint8_t]),
-    ),
-    # ZDO.Complex_Desc_req: (NWKI, ),
-    ZDOCmd.User_Desc_req: (NWKI,),
-    ZDOCmd.Discovery_Cache_req: (NWK, IEEE),
-    ZDOCmd.Device_annce: (NWK, IEEE, ("Capability", t.uint8_t)),
-    ZDOCmd.User_Desc_set: (
-        NWKI,
-        ("UserDescriptor", t.CharacterString),
-    ),  # Really a string
-    ZDOCmd.System_Server_Discovery_req: (("ServerMask", t.uint16_t),),
-    ZDOCmd.Discovery_store_req: (
-        NWK,
-        IEEE,
-        ("NodeDescSize", t.uint8_t),
-        ("PowerDescSize", t.uint8_t),
-        ("ActiveEPSize", t.uint8_t),
-        ("SimpleDescSizeList", t.LVList[t.uint8_t, t.uint8_t]),
-    ),
-    ZDOCmd.Node_Desc_store_req: (NWK, IEEE, ("NodeDescriptor", NodeDescriptor)),
-    ZDOCmd.Active_EP_store_req: (
-        NWK,
-        IEEE,
-        ("ActiveEPList", t.LVList[t.uint8_t, t.uint8_t]),
-    ),
-    ZDOCmd.Simple_Desc_store_req: (
-        NWK,
-        IEEE,
-        ("SimpleDescriptor", SizePrefixedSimpleDescriptor),
-    ),
-    ZDOCmd.Remove_node_cache_req: (NWK, IEEE),
-    ZDOCmd.Find_node_cache_req: (NWK, IEEE),
-    ZDOCmd.Extended_Simple_Desc_req: (
-        NWKI,
-        ("EndPoint", t.uint8_t),
-        ("StartIndex", t.uint8_t),
-    ),
-    ZDOCmd.Extended_Active_EP_req: (NWKI, ("StartIndex", t.uint8_t)),
-    ZDOCmd.Parent_annce: (("Children", t.LVList[t.EUI64, t.uint8_t]),),
-    #  Bind Management Server Services Responses
-    ZDOCmd.End_Device_Bind_req: (
-        ("BindingTarget", t.uint16_t),
-        ("SrcAddress", t.EUI64),
-        ("SrcEndpoint", t.uint8_t),
-        ("ProfileID", t.uint8_t),
-        ("InClusterList", t.LVList[t.uint8_t, t.uint8_t]),
-        ("OutClusterList", t.LVList[t.uint8_t, t.uint8_t]),
-    ),
-    ZDOCmd.Bind_req: (
-        ("SrcAddress", t.EUI64),
-        ("SrcEndpoint", t.uint8_t),
-        ("ClusterID", t.uint16_t),
-        ("DstAddress", MultiAddress),
-    ),
-    ZDOCmd.Unbind_req: (
-        ("SrcAddress", t.EUI64),
-        ("SrcEndpoint", t.uint8_t),
-        ("ClusterID", t.uint16_t),
-        ("DstAddress", MultiAddress),
-    ),
-    # Network Management Server Services Requests
-    # ... TODO optional stuff ...
-    ZDOCmd.Mgmt_Lqi_req: (("StartIndex", t.uint8_t),),
-    ZDOCmd.Mgmt_Rtg_req: (("StartIndex", t.uint8_t),),
-    ZDOCmd.Mgmt_Bind_req: (("StartIndex", t.uint8_t),),
-    # ... TODO optional stuff ...
-    ZDOCmd.Mgmt_Leave_req: (("DeviceAddress", t.EUI64), ("Options", t.bitmap8)),
-    ZDOCmd.Mgmt_Permit_Joining_req: (
-        ("PermitDuration", t.uint8_t),
-        ("TC_Significant", t.Bool),
-    ),
-    ZDOCmd.Mgmt_NWK_Update_req: (("NwkUpdate", NwkUpdate),),
-    # ... TODO optional stuff ...
-    # Responses
-    # Device and Service Discovery Server Responses
-    ZDOCmd.NWK_addr_rsp: (
-        STATUS,
-        IEEE,
-        NWK,
-        ("NumAssocDev", t.Optional(t.uint8_t)),
-        ("StartIndex", t.Optional(t.uint8_t)),
-        ("NWKAddressAssocDevList", t.Optional(t.List[t.NWK])),
-    ),
-    ZDOCmd.IEEE_addr_rsp: (
-        STATUS,
-        IEEE,
-        NWK,
-        ("NumAssocDev", t.Optional(t.uint8_t)),
-        ("StartIndex", t.Optional(t.uint8_t)),
-        ("NWKAddrAssocDevList", t.Optional(t.List[t.NWK])),
-    ),
-    ZDOCmd.Node_Desc_rsp: (
-        STATUS,
-        NWKI,
-        ("NodeDescriptor", t.Optional(NodeDescriptor)),
-    ),
-    ZDOCmd.Power_Desc_rsp: (
-        STATUS,
-        NWKI,
-        ("PowerDescriptor", t.Optional(PowerDescriptor)),
-    ),
-    ZDOCmd.Simple_Desc_rsp: (
-        STATUS,
-        NWKI,
-        ("SimpleDescriptor", t.Optional(SizePrefixedSimpleDescriptor)),
-    ),
-    ZDOCmd.Active_EP_rsp: (
-        STATUS,
-        NWKI,
-        ("ActiveEPList", t.LVList[t.uint8_t, t.uint8_t]),
-    ),
-    ZDOCmd.Match_Desc_rsp: (
-        STATUS,
-        NWKI,
-        ("MatchList", t.LVList[t.uint8_t, t.uint8_t]),
-    ),
-    # ZDO.Complex_Desc_rsp: (
-    #     STATUS,
-    #     NWKI,
-    #     ('Length', t.uint8_t),
-    #     ('ComplexDescriptor', t.Optional(ComplexDescriptor)),
-    # ),
-    ZDOCmd.User_Desc_rsp: (
-        STATUS,
-        NWKI,
-        ("UserDescriptor", t.CharacterString),
-    ),
-    ZDOCmd.Discovery_Cache_rsp: (STATUS,),
-    ZDOCmd.User_Desc_conf: (STATUS, NWKI),
-    ZDOCmd.System_Server_Discovery_rsp: (STATUS, ("ServerMask", t.uint16_t)),
-    ZDOCmd.Discovery_Store_rsp: (STATUS,),
-    ZDOCmd.Node_Desc_store_rsp: (STATUS,),
-    ZDOCmd.Power_Desc_store_rsp: (STATUS, IEEE, ("PowerDescriptor", PowerDescriptor)),
-    ZDOCmd.Active_EP_store_rsp: (STATUS,),
-    ZDOCmd.Simple_Desc_store_rsp: (STATUS,),
-    ZDOCmd.Remove_node_cache_rsp: (STATUS,),
-    ZDOCmd.Find_node_cache_rsp: (("CacheNWKAddr", t.EUI64), NWK, IEEE),
-    ZDOCmd.Extended_Simple_Desc_rsp: (
-        STATUS,
-        NWK,
-        ("Endpoint", t.uint8_t),
-        ("AppInputClusterCount", t.uint8_t),
-        ("AppOutputClusterCount", t.uint8_t),
-        ("StartIndex", t.uint8_t),
-        ("AppClusterList", t.Optional(t.List[t.uint16_t])),
-    ),
-    ZDOCmd.Extended_Active_EP_rsp: (
-        STATUS,
-        NWKI,
-        ("ActiveEPCount", t.uint8_t),
-        ("StartIndex", t.uint8_t),
-        ("ActiveEPList", t.List[t.uint8_t]),
-    ),
-    ZDOCmd.Parent_annce_rsp: (STATUS, ("Children", t.LVList[t.EUI64, t.uint8_t])),
-    #  Bind Management Server Services Responses
-    ZDOCmd.End_Device_Bind_rsp: (STATUS,),
-    ZDOCmd.Bind_rsp: (STATUS,),
-    ZDOCmd.Unbind_rsp: (STATUS,),
-    # ... TODO optional stuff ...
-    # Network Management Server Services Responses
-    ZDOCmd.Mgmt_Lqi_rsp: (STATUS, ("Neighbors", t.Optional(Neighbors))),
-    ZDOCmd.Mgmt_Rtg_rsp: (STATUS, ("Routes", t.Optional(Routes))),
-    ZDOCmd.Mgmt_Bind_rsp: (
-        STATUS,
-        ("BindingTableEntries", t.uint8_t),
-        ("StartIndex", t.uint8_t),
-        ("BindingTableList", t.LVList[Binding, t.uint8_t]),
-    ),
-    # ... TODO optional stuff ...
-    ZDOCmd.Mgmt_Leave_rsp: (STATUS,),
-    ZDOCmd.Mgmt_Permit_Joining_rsp: (STATUS,),
-    ZDOCmd.Mgmt_NWK_Update_rsp: (
-        STATUS,
-        ("ScannedChannels", t.Channels),
-        ("TotalTransmissions", t.uint16_t),
-        ("TransmissionFailures", t.uint16_t),
-        ("EnergyValues", t.LVList[t.uint8_t, t.uint8_t]),
-    ),
-    # ... TODO optional stuff ...
-}
-
-
-# Rewrite to (name, param_names, param_types)
-for command_id, schema in CLUSTERS.items():
-    param_names = [p[0] for p in schema]
-    param_types = [p[1] for p in schema]
-    CLUSTERS[command_id] = (param_names, param_types)
-
-
-class ZDOHeader:
-    """Just a wrapper representing ZDO header, similar to ZCL header."""
-
-    def __init__(self, command_id: t.uint16_t = 0x0000, tsn: t.uint8_t = 0) -> None:
-        self._command_id = ZDOCmd(command_id)
-        self._tsn = t.uint8_t(tsn)
-
-    @property
-    def command_id(self) -> ZDOCmd:
-        """Return ZDO command."""
-        return self._command_id
-
-    @command_id.setter
-    def command_id(self, value: t.uint16_t) -> None:
-        """Command ID setter."""
-        self._command_id = ZDOCmd(value)
-
-    @property
-    def is_reply(self) -> bool:
-        """Return True if this is a reply."""
-        return bool(self._command_id & 0x8000)
-
-    @property
-    def tsn(self) -> t.uint8_t:
-        """Return transaction seq number."""
-        return self._tsn
-
-    @tsn.setter
-    def tsn(self, value: t.uint8_t) -> None:
-        """Set TSN."""
-        self._tsn = t.uint8_t(value)
-
-    @classmethod
-    def deserialize(
-        cls, command_id: t.uint16_t, data: bytes
-    ) -> tuple[ZDOHeader, bytes]:
-        """Deserialize data."""
-        tsn, data = t.uint8_t.deserialize(data)
-        return cls(command_id, tsn), data
-
-    def serialize(self) -> bytes:
-        """Serialize header."""
-
-        return self.tsn.serialize()

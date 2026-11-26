@@ -11,7 +11,9 @@ from tests.conftest import (
     add_initialized_device,
     make_ieee,
     make_node_desc,
+    make_simple_desc_rsp,
     mock_attribute_reads,
+    mock_zdo_requests,
 )
 from zigpy import device, endpoint
 import zigpy.application
@@ -32,7 +34,7 @@ from zigpy.zcl.clusters.general import (
     PollControl,
     ZigbeeDirectConfiguration,
 )
-from zigpy.zdo import types as zdo_t
+from zigpy.zdo import commands as zdo_c, types as zdo_t
 
 from .async_mock import AsyncMock, MagicMock, patch, sentinel
 
@@ -44,15 +46,25 @@ def dev(monkeypatch, app_mock):
 
     dev = device.Device(app_mock, ieee, 65535)
     node_desc = zdo_t.NodeDescriptor(1, 1, 1, 4, 5, 6, 7, 8)
-    with patch.object(
-        dev.zdo, "Node_Desc_req", new=AsyncMock(return_value=(0, 0xFFFF, node_desc))
-    ):
-        yield dev
+
+    async def node_desc_req(command):
+        return zdo_c.NodeDescRsp(
+            status=zdo_t.Status.SUCCESS,
+            nwk_addr_of_interest=command.nwk_addr_of_interest,
+            node_descriptor=node_desc,
+        )
+
+    mock_zdo_requests(dev, {zdo_c.NodeDescReq: node_desc_req})
+    return dev
 
 
 async def test_initialize(monkeypatch, dev):
-    async def mockrequest(*args, **kwargs):
-        return [0, None, [0, 1, 2, 3, 4]]
+    async def mockrequest(command):
+        return zdo_c.ActiveEpRsp(
+            status=zdo_t.Status.SUCCESS,
+            nwk_addr_of_interest=command.nwk_addr_of_interest,
+            active_ep_list=[0, 1, 2, 3, 4],
+        )
 
     async def mockepinit(self, *args, **kwargs):
         self.status = endpoint.Status.ZDO_INIT
@@ -70,10 +82,10 @@ async def test_initialize(monkeypatch, dev):
 
     monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
     monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
-    dev.zdo.Active_EP_req = mockrequest
+    mock_zdo_requests(dev, {zdo_c.ActiveEpReq: mockrequest})
     await dev.initialize()
 
-    assert dev.endpoints[0] is dev.zdo
+    assert 0 not in dev.endpoints
     assert 1 in dev.endpoints
     assert 2 in dev.endpoints
     assert 3 in dev.endpoints
@@ -195,27 +207,52 @@ async def test_initialize_read_ota_unsupported(
 
 
 async def test_initialize_fail(dev):
-    async def mockrequest(nwk, tries=None, delay=None):
-        return [1, dev.nwk, []]
+    async def mockrequest(command):
+        return zdo_c.ActiveEpRsp(
+            status=zdo_t.Status.DEVICE_NOT_FOUND,
+            nwk_addr_of_interest=command.nwk_addr_of_interest,
+            active_ep_list=[],
+        )
 
-    dev.zdo.Active_EP_req = mockrequest
+    mock_zdo_requests(dev, {zdo_c.ActiveEpReq: mockrequest})
     await dev.initialize()
 
     assert not dev.is_initialized
-    assert not dev.has_non_zdo_endpoints
+    assert not dev.endpoints
+
+
+def test_non_zdo_endpoints_deprecated(dev):
+    """The ZDO endpoint is gone, the old accessors return all endpoints."""
+    with pytest.warns(DeprecationWarning, match="no longer contains ZDO"):
+        assert dev.non_zdo_endpoints == []
+
+    with pytest.warns(DeprecationWarning, match="no longer contains ZDO"):
+        assert dev.has_non_zdo_endpoints is False
+
+    ep = dev.add_endpoint(1)
+
+    with pytest.warns(DeprecationWarning, match="no longer contains ZDO"):
+        assert dev.non_zdo_endpoints == [ep]
+
+    with pytest.warns(DeprecationWarning, match="no longer contains ZDO"):
+        assert dev.has_non_zdo_endpoints is True
 
 
 @patch("zigpy.device.Device.get_node_descriptor", AsyncMock())
 async def test_initialize_ep_failed(monkeypatch, dev):
-    async def mockrequest(req, nwk, tries=None, delay=None):
-        return [0, None, [1, 2]]
+    async def mockrequest(command):
+        return zdo_c.ActiveEpRsp(
+            status=zdo_t.Status.SUCCESS,
+            nwk_addr_of_interest=command.nwk_addr_of_interest,
+            active_ep_list=[1, 2],
+        )
 
     async def mockepinit(self):
         raise AttributeError
 
     monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
 
-    dev.zdo.request = mockrequest
+    mock_zdo_requests(dev, {zdo_c.ActiveEpReq: mockrequest})
     await dev.initialize()
 
     assert not dev.is_initialized
@@ -245,38 +282,50 @@ async def test_initialize_removes_inactive_endpoints(
 ) -> None:
     """Endpoints listed as active but without a simple descriptor are removed."""
 
-    async def mock_active_ep_req(nwk):
-        return [zdo_t.Status.SUCCESS, nwk, sorted(active_eps + inactive_eps)]
+    async def mock_active_ep_req(command):
+        return zdo_c.ActiveEpRsp(
+            status=zdo_t.Status.SUCCESS,
+            nwk_addr_of_interest=command.nwk_addr_of_interest,
+            active_ep_list=sorted(active_eps + inactive_eps),
+        )
 
-    async def mock_simple_desc_req(nwk, endpoint_id):
-        if endpoint_id in inactive_eps:
-            return [inactive_status, nwk, None]
+    async def mock_simple_desc_req(command):
+        if command.endpoint in inactive_eps:
+            return zdo_c.SimpleDescRsp(
+                status=inactive_status,
+                nwk_addr_of_interest=command.nwk_addr_of_interest,
+                length=0,
+            )
 
-        return [
-            zdo_t.Status.SUCCESS,
-            nwk,
-            zdo_t.SizePrefixedSimpleDescriptor(
-                endpoint=endpoint_id,
+        return make_simple_desc_rsp(
+            nwk=command.nwk_addr_of_interest,
+            descriptor=zdo_t.SimpleDescriptor(
+                endpoint=command.endpoint,
                 profile=zha.PROFILE_ID,
                 device_type=zha.DeviceType.ON_OFF_SWITCH,
                 device_version=1,
                 input_clusters=[Basic.cluster_id],
                 output_clusters=[OnOff.cluster_id],
             ),
-        ]
+        )
 
     async def mock_ep_get_model_info(self):
         return "Model", "Manufacturer"
 
     monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
-    dev.zdo.Active_EP_req = mock_active_ep_req
-    dev.zdo.Simple_Desc_req = mock_simple_desc_req
+    mock_zdo_requests(
+        dev,
+        {
+            zdo_c.ActiveEpReq: mock_active_ep_req,
+            zdo_c.SimpleDescReq: mock_simple_desc_req,
+        },
+    )
 
     await dev.initialize()
 
     assert dev.is_initialized
-    assert [ep.endpoint_id for ep in dev.non_zdo_endpoints] == active_eps
-    assert all(ep.status == endpoint.Status.ZDO_INIT for ep in dev.non_zdo_endpoints)
+    assert [ep.endpoint_id for ep in dev.endpoints.values()] == active_eps
+    assert all(ep.status == endpoint.Status.ZDO_INIT for ep in dev.endpoints.values())
 
 
 async def test_failed_request(dev):
@@ -322,37 +371,24 @@ def test_endpoint_getitem(dev):
         dev[1]
 
 
-async def test_broadcast(app_mock):
-    app_mock.state.node_info.ieee = t.EUI64.convert("08:09:0A:0B:0C:0D:0E:0F")
-
-    (profile, cluster, src_ep, dst_ep, data) = (
-        zha.PROFILE_ID,
-        1,
-        2,
-        3,
-        b"\x02\x01\x00",
-    )
-    await device.broadcast(app_mock, profile, cluster, src_ep, dst_ep, 0, 0, 123, data)
-
-    assert app_mock.send_packet.call_count == 1
-    packet = app_mock.send_packet.mock_calls[0].args[0]
-
-    assert packet.profile_id == profile
-    assert packet.cluster_id == cluster
-    assert packet.src_ep == src_ep
-    assert packet.dst_ep == dst_ep
-    assert packet.data.serialize() == data
-
-
 async def _get_node_descriptor(dev, zdo_success=True, request_success=True):
-    async def mockrequest(nwk, tries=None, delay=None, **kwargs):
+    async def mockrequest(command):
         if not request_success:
             raise TimeoutError
 
-        status = 0 if zdo_success else 1
-        return [status, nwk, zdo_t.NodeDescriptor.deserialize(b"abcdefghijklm")[0]]
+        if not zdo_success:
+            return zdo_c.NodeDescRsp(
+                status=zdo_t.Status.DEVICE_NOT_FOUND,
+                nwk_addr_of_interest=command.nwk_addr_of_interest,
+            )
 
-    dev.zdo.Node_Desc_req = MagicMock(side_effect=mockrequest)
+        return zdo_c.NodeDescRsp(
+            status=zdo_t.Status.SUCCESS,
+            nwk_addr_of_interest=command.nwk_addr_of_interest,
+            node_descriptor=zdo_t.NodeDescriptor.deserialize(b"abcdefghijklm")[0],
+        )
+
+    mock_zdo_requests(dev, {zdo_c.NodeDescReq: mockrequest})
     return await dev.get_node_descriptor()
 
 
@@ -361,21 +397,21 @@ async def test_get_node_descriptor(dev):
 
     assert nd is not None
     assert isinstance(nd, zdo_t.NodeDescriptor)
-    assert dev.zdo.Node_Desc_req.call_count == 1
+    assert len(dev.send_zdo_command.mock_calls) == 1
 
 
 async def test_get_node_descriptor_no_reply(dev):
     with pytest.raises(asyncio.TimeoutError):
         await _get_node_descriptor(dev, zdo_success=True, request_success=False)
 
-    assert dev.zdo.Node_Desc_req.call_count == 1
+    assert len(dev.send_zdo_command.mock_calls) == 1
 
 
 async def test_get_node_descriptor_fail(dev):
     with pytest.raises(zigpy.exceptions.InvalidResponse):
         await _get_node_descriptor(dev, zdo_success=False, request_success=True)
 
-    assert dev.zdo.Node_Desc_req.call_count == 1
+    assert len(dev.send_zdo_command.mock_calls) == 1
 
 
 async def test_add_to_group(dev, monkeypatch):
@@ -661,8 +697,12 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
     cluster = zigpy.zcl.Cluster.from_id(ep, Ota.cluster_id, is_server=False)
     ep.add_output_cluster(Ota.cluster_id, cluster)
 
-    async def mockrequest(nwk, tries=None, delay=None):
-        return [0, None, [0, 1, 2, 3, 4]]
+    async def mockrequest(command):
+        return zdo_c.ActiveEpRsp(
+            status=zdo_t.Status.SUCCESS,
+            nwk_addr_of_interest=command.nwk_addr_of_interest,
+            active_ep_list=[0, 1, 2, 3, 4],
+        )
 
     async def mockepinit(self, *args, **kwargs):
         self.status = endpoint.Status.ZDO_INIT
@@ -674,7 +714,7 @@ async def test_update_device_firmware(monkeypatch, dev, caplog):
 
     monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
     monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
-    dev.zdo.Active_EP_req = mockrequest
+    mock_zdo_requests(dev, {zdo_c.ActiveEpReq: mockrequest})
     dev.reinterview = AsyncMock()  # prevent post-OTA reinterview side effects
 
     with mock_attribute_reads(cluster, {"current_file_version": 0x00000001}):
@@ -1082,8 +1122,12 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
     cluster = zigpy.zcl.Cluster.from_id(ep, Ota.cluster_id, is_server=False)
     ep.add_output_cluster(Ota.cluster_id, cluster)
 
-    async def mockrequest(nwk, tries=None, delay=None):
-        return [0, None, [0, 1, 2, 3, 4]]
+    async def mockrequest(command):
+        return zdo_c.ActiveEpRsp(
+            status=zdo_t.Status.SUCCESS,
+            nwk_addr_of_interest=command.nwk_addr_of_interest,
+            active_ep_list=[0, 1, 2, 3, 4],
+        )
 
     async def mockepinit(self, *args, **kwargs):
         self.status = endpoint.Status.ZDO_INIT
@@ -1095,7 +1139,7 @@ async def test_update_legrand_device_firmware(monkeypatch, dev, caplog):
 
     monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
     monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
-    dev.zdo.Active_EP_req = mockrequest
+    mock_zdo_requests(dev, {zdo_c.ActiveEpReq: mockrequest})
     dev.reinterview = AsyncMock()  # prevent post-OTA reinterview side effects
 
     with mock_attribute_reads(cluster, {"current_file_version": 0x00000001}):
@@ -1521,6 +1565,34 @@ async def test_request_exception_propagation(dev):
         await ep.basic.reset_fact_default()
 
     assert type(exc.value.__cause__) is RuntimeError
+
+
+async def test_zdo_request_parsing_error_propagation(dev):
+    """A ZDO response with an invalid payload fails the pending request."""
+    tsn = 0x12
+    dev.get_sequence = MagicMock(return_value=tsn)
+
+    asyncio.get_running_loop().call_soon(
+        dev.packet_received,
+        t.ZigbeePacket(
+            profile_id=0x0000,
+            cluster_id=zdo_t.ZDOCmd.Active_EP_rsp,
+            src_ep=0,
+            dst_ep=0,
+            # Only the TSN and the status, the rest of the payload is missing
+            data=t.SerializableBytes(bytes([tsn, zdo_t.Status.SUCCESS])),
+            src=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=dev.nwk),
+            dst=t.AddrModeAddress(addr_mode=t.AddrMode.NWK, address=0x0000),
+        ),
+    )
+
+    with pytest.raises(zigpy.exceptions.ParsingError) as exc:
+        await dev.send_zdo_command(
+            zdo_c.ActiveEpReq(nwk_addr_of_interest=dev.nwk),
+            response_type=zdo_c.ActiveEpRsp,
+        )
+
+    assert type(exc.value.__cause__) is ValueError
 
 
 async def test_debouncing(dev):
@@ -2001,12 +2073,19 @@ async def test_initialize_fast_polling_failure(dev: device.Device) -> None:
 
     with patch("zigpy.endpoint.Endpoint.initialize", mockepinit):
         with patch("zigpy.endpoint.Endpoint.get_model_info", mock_ep_get_model_info):
-            with patch.object(
-                dev.zdo,
-                "Active_EP_req",
-                AsyncMock(return_value=[0, None, [0, 1, 2, 3, 4]]),
-            ):
-                await dev.initialize()
+            mock_zdo_requests(
+                dev,
+                {
+                    zdo_c.ActiveEpReq: AsyncMock(
+                        return_value=zdo_c.ActiveEpRsp(
+                            status=zdo_t.Status.SUCCESS,
+                            nwk_addr_of_interest=dev.nwk,
+                            active_ep_list=[0, 1, 2, 3, 4],
+                        )
+                    )
+                },
+            )
+            await dev.initialize()
 
     # Initialization attempted to fast poll but failure didn't stop it
     assert dev.begin_fast_polling.mock_calls == [call()]
@@ -2223,8 +2302,12 @@ async def test_reinterview_end_to_end(
         self.node_desc = node_desc
         return node_desc
 
-    async def mockrequest(*args, **kwargs):
-        return [0, None, [0, 1]]
+    async def mockrequest(command):
+        return zdo_c.ActiveEpRsp(
+            status=zdo_t.Status.SUCCESS,
+            nwk_addr_of_interest=command.nwk_addr_of_interest,
+            active_ep_list=[0, 1],
+        )
 
     async def mockepinit(self, *args, **kwargs):
         self.status = endpoint.Status.ZDO_INIT
@@ -2239,7 +2322,7 @@ async def test_reinterview_end_to_end(
 
     # Initial join and initialization
     dev = app.add_device(ieee=ieee, nwk=t.NWK(0x1234))
-    dev.zdo.Active_EP_req = mockrequest
+    mock_zdo_requests(dev, {zdo_c.ActiveEpReq: mockrequest})
     await dev.initialize()
     assert dev.is_initialized
     old_dev = app.devices[ieee]
@@ -2254,7 +2337,7 @@ async def test_reinterview_end_to_end(
 
     def patched_init(self, *args, **kwargs):
         original_init(self, *args, **kwargs)
-        self.zdo.Active_EP_req = mockrequest
+        mock_zdo_requests(self, {zdo_c.ActiveEpReq: mockrequest})
 
     monkeypatch.setattr(device.Device, "__init__", patched_init)
 
@@ -2306,25 +2389,32 @@ async def test_reinterview_invalid_ep(
         return node_desc
 
     # SALUS ST100ZB: endpoint 242 is listed as active, its descriptor is not
-    async def mock_active_ep_req(nwk):
-        return [zdo_t.Status.SUCCESS, nwk, [9, 242]]
+    async def mock_active_ep_req(command):
+        return zdo_c.ActiveEpRsp(
+            status=zdo_t.Status.SUCCESS,
+            nwk_addr_of_interest=command.nwk_addr_of_interest,
+            active_ep_list=[9, 242],
+        )
 
-    async def mock_simple_desc_req(nwk, endpoint_id):
-        if endpoint_id == 242:
-            return [zdo_t.Status.INVALID_EP, nwk, None]
+    async def mock_simple_desc_req(command):
+        if command.endpoint == 242:
+            return zdo_c.SimpleDescRsp(
+                status=zdo_t.Status.INVALID_EP,
+                nwk_addr_of_interest=command.nwk_addr_of_interest,
+                length=0,
+            )
 
-        return [
-            zdo_t.Status.SUCCESS,
-            nwk,
-            zdo_t.SizePrefixedSimpleDescriptor(
-                endpoint=endpoint_id,
+        return make_simple_desc_rsp(
+            nwk=command.nwk_addr_of_interest,
+            descriptor=zdo_t.SimpleDescriptor(
+                endpoint=command.endpoint,
                 profile=zha.PROFILE_ID,
                 device_type=zha.DeviceType.THERMOSTAT,
                 device_version=1,
                 input_clusters=[Basic.cluster_id],
                 output_clusters=[],
             ),
-        ]
+        )
 
     async def mock_ep_get_model_info(self):
         return "ST100ZB", "SALUS"
@@ -2333,8 +2423,13 @@ async def test_reinterview_invalid_ep(
 
     def patched_init(self, *args, **kwargs):
         original_init(self, *args, **kwargs)
-        self.zdo.Active_EP_req = mock_active_ep_req
-        self.zdo.Simple_Desc_req = mock_simple_desc_req
+        mock_zdo_requests(
+            self,
+            {
+                zdo_c.ActiveEpReq: mock_active_ep_req,
+                zdo_c.SimpleDescReq: mock_simple_desc_req,
+            },
+        )
 
     monkeypatch.setattr(device.Device, "get_node_descriptor", mock_get_node_descriptor)
     monkeypatch.setattr(device.Device, "__init__", patched_init)
@@ -2350,7 +2445,7 @@ async def test_reinterview_invalid_ep(
     new_dev = app.devices[ieee]
     assert new_dev is not old_dev
     assert new_dev.is_initialized
-    assert [ep.endpoint_id for ep in new_dev.non_zdo_endpoints] == [9]
+    assert [ep.endpoint_id for ep in new_dev.endpoints.values()] == [9]
     app.listener_event.assert_any_call("device_reinterviewed", new_dev)
 
 
@@ -2362,8 +2457,12 @@ async def test_reinterview_invalid_ep(
 async def test_reinterview_failure_preserves_device(monkeypatch, dev, exception):
     """Test that failed re-interview preserves the old device regardless of exception type."""
 
-    async def mockrequest_success(*args, **kwargs):
-        return [0, None, [0, 1]]
+    async def mockrequest_success(command):
+        return zdo_c.ActiveEpRsp(
+            status=zdo_t.Status.SUCCESS,
+            nwk_addr_of_interest=command.nwk_addr_of_interest,
+            active_ep_list=[0, 1],
+        )
 
     async def mockepinit(self, *args, **kwargs):
         self.status = endpoint.Status.ZDO_INIT
@@ -2376,7 +2475,7 @@ async def test_reinterview_failure_preserves_device(monkeypatch, dev, exception)
     monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
 
     # First initialize normally
-    dev.zdo.Active_EP_req = mockrequest_success
+    mock_zdo_requests(dev, {zdo_c.ActiveEpReq: mockrequest_success})
     await dev.initialize()
     assert dev.model == "OldModel"
 
@@ -2508,8 +2607,12 @@ async def test_update_firmware_triggers_reinterview(monkeypatch, dev):
     cluster = zigpy.zcl.Cluster.from_id(ep, Ota.cluster_id, is_server=False)
     ep.add_output_cluster(Ota.cluster_id, cluster)
 
-    async def mockrequest(nwk, tries=None, delay=None):
-        return [0, None, [0, 1]]
+    async def mockrequest(command):
+        return zdo_c.ActiveEpRsp(
+            status=zdo_t.Status.SUCCESS,
+            nwk_addr_of_interest=command.nwk_addr_of_interest,
+            active_ep_list=[0, 1],
+        )
 
     async def mockepinit(self, *args, **kwargs):
         self.status = endpoint.Status.ZDO_INIT
@@ -2520,7 +2623,7 @@ async def test_update_firmware_triggers_reinterview(monkeypatch, dev):
 
     monkeypatch.setattr(endpoint.Endpoint, "initialize", mockepinit)
     monkeypatch.setattr(endpoint.Endpoint, "get_model_info", mock_ep_get_model_info)
-    dev.zdo.Active_EP_req = mockrequest
+    mock_zdo_requests(dev, {zdo_c.ActiveEpReq: mockrequest})
 
     with mock_attribute_reads(cluster, {"current_file_version": 0x00000001}):
         await dev.initialize()

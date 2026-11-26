@@ -37,6 +37,7 @@ from zigpy.zcl.clusters.greenpower import (
     ProxyCommissioningModeSchema,
     ResponseSchema,
 )
+import zigpy.zdo.commands as zdo_commands
 import zigpy.zdo.types as zdo_types
 from zigpy.zgp.commands import (
     GPChannelConfigurationPayload,
@@ -352,10 +353,12 @@ async def test_commissioning_registers_and_pairs(app, manager):
     # The ZDO TSN, then an invalid IEEE address and the security capability
     tsn, data = t.uint8_t.deserialize(annce.data.serialize())
     assert tsn == 0
-    assert t.deserialize(
-        data, zdo_types.CLUSTERS[zdo_types.ZDOCmd.Device_annce][1]
-    ) == (
-        [alias, t.EUI64.UNKNOWN, zdo_types.MACCapabilityFlags.SecurityCapable],
+    assert zdo_commands.DeviceAnnce.deserialize(data) == (
+        zdo_commands.DeviceAnnce(
+            nwk_addr=alias,
+            ieee_addr=t.EUI64.UNKNOWN,
+            capability=zdo_types.MACCapabilityFlags.SecurityCapable,
+        ),
         b"",
     )
 

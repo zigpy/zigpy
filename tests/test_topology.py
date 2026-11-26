@@ -14,6 +14,7 @@ import zigpy.endpoint
 import zigpy.profiles
 import zigpy.topology
 import zigpy.types as t
+import zigpy.zdo.commands as zdo_c
 import zigpy.zdo.types as zdo_t
 from zigpy.zgp.types import ApplicationID, SrcID
 
@@ -49,71 +50,53 @@ def patch_device_tables(
     neighbors: list | BaseException | zdo_t.Status,
     routes: list | BaseException | zdo_t.Status,
 ):
-    def mgmt_lqi_req(StartIndex: t.uint8_t, **kwargs):
-        status = zdo_t.Status.SUCCESS
-        entries = 0
-        start_index = 0
-        table: list[zdo_t.Neighbor] = []
-
+    def mgmt_lqi_req(command: zdo_c.MgmtLqiReq) -> zdo_c.MgmtLqiRsp:
         if isinstance(neighbors, zdo_t.Status):
-            status = neighbors
+            return zdo_c.MgmtLqiRsp(status=neighbors)
         elif isinstance(neighbors, BaseException):
             raise neighbors
-        else:
-            entries = len(neighbors)
-            start_index = StartIndex
-            table = neighbors[StartIndex : StartIndex + 3]
 
-        return list(
-            {
-                "Status": status,
-                "Neighbors": zdo_t.Neighbors(
-                    Entries=entries,
-                    StartIndex=start_index,
-                    NeighborTableList=table,
-                ),
-            }.values()
+        return zdo_c.MgmtLqiRsp(
+            status=zdo_t.Status.SUCCESS,
+            neighbor_table_entries=len(neighbors),
+            start_index=command.start_index,
+            neighbor_table_list=neighbors[
+                command.start_index : command.start_index + 3
+            ],
         )
 
-    def mgmt_rtg_req(StartIndex: t.uint8_t, **kwargs):
-        status = zdo_t.Status.SUCCESS
-        entries = 0
-        start_index = 0
-        table: list[zdo_t.Route] = []
-
+    def mgmt_rtg_req(command: zdo_c.MgmtRtgReq) -> zdo_c.MgmtRtgRsp:
         if isinstance(routes, zdo_t.Status):
-            status = routes
+            return zdo_c.MgmtRtgRsp(status=routes)
         elif isinstance(routes, BaseException):
             raise routes
-        else:
-            entries = len(routes)
-            start_index = StartIndex
-            table = routes[StartIndex : StartIndex + 3]
 
-        return list(
-            {
-                "Status": status,
-                "Routes": zdo_t.Routes(
-                    Entries=entries,
-                    StartIndex=start_index,
-                    RoutingTableList=table,
-                ),
-            }.values()
+        return zdo_c.MgmtRtgRsp(
+            status=zdo_t.Status.SUCCESS,
+            routing_table_entries=len(routes),
+            start_index=command.start_index,
+            routing_table_list=routes[command.start_index : command.start_index + 3],
         )
 
-    lqi_req_patch = mock.patch.object(
-        device.zdo,
-        "Mgmt_Lqi_req",
-        mock.AsyncMock(side_effect=mgmt_lqi_req, spec_set=device.zdo.Mgmt_Lqi_req),
-    )
-    rtg_req_patch = mock.patch.object(
-        device.zdo,
-        "Mgmt_Rtg_req",
-        mock.AsyncMock(side_effect=mgmt_rtg_req, spec_set=device.zdo.Mgmt_Rtg_req),
-    )
+    handlers = {zdo_c.MgmtLqiReq: mgmt_lqi_req, zdo_c.MgmtRtgReq: mgmt_rtg_req}
 
-    with lqi_req_patch, rtg_req_patch:
+    async def send_zdo_command(command, response_type=None, **kwargs):
+        return handlers[type(command)](command)
+
+    with mock.patch.object(
+        device, "send_zdo_command", mock.AsyncMock(side_effect=send_zdo_command)
+    ):
         yield
+
+
+def sent_requests(
+    device: zigpy.device.Device, request_type: type[zdo_c.ZDOPayload]
+) -> list[mock._Call]:
+    return [
+        c
+        for c in device.send_zdo_command.mock_calls
+        if isinstance(c.args[0], request_type)
+    ]
 
 
 async def test_scan_no_devices(topology) -> None:
@@ -139,8 +122,8 @@ async def test_scan_failures(
     with patch_device_tables(dev, neighbors=neighbors, routes=routes):
         await topology.scan()
 
-        assert len(dev.zdo.Mgmt_Lqi_req.mock_calls) == 1 if not neighbors else 3
-        assert len(dev.zdo.Mgmt_Rtg_req.mock_calls) == 1 if not routes else 3
+        assert len(sent_requests(dev, zdo_c.MgmtLqiReq)) == 1 if not neighbors else 3
+        assert len(sent_requests(dev, zdo_c.MgmtRtgReq)) == 1 if not routes else 3
 
     assert not topology.neighbors[dev.ieee]
     assert not topology.routes[dev.ieee]
@@ -152,13 +135,13 @@ async def test_neighbors_not_supported(topology, make_initialized_device) -> Non
     with patch_device_tables(dev, neighbors=zdo_t.Status.NOT_SUPPORTED, routes=[]):
         await topology.scan()
 
-        assert len(dev.zdo.Mgmt_Lqi_req.mock_calls) == 1
-        assert len(dev.zdo.Mgmt_Rtg_req.mock_calls) == 1
+        assert len(sent_requests(dev, zdo_c.MgmtLqiReq)) == 1
+        assert len(sent_requests(dev, zdo_c.MgmtRtgReq)) == 1
 
         await topology.scan()
 
-        assert len(dev.zdo.Mgmt_Lqi_req.mock_calls) == 1
-        assert len(dev.zdo.Mgmt_Rtg_req.mock_calls) == 2
+        assert len(sent_requests(dev, zdo_c.MgmtLqiReq)) == 1
+        assert len(sent_requests(dev, zdo_c.MgmtRtgReq)) == 2
 
 
 async def test_routes_not_supported(topology, make_initialized_device) -> None:
@@ -167,13 +150,13 @@ async def test_routes_not_supported(topology, make_initialized_device) -> None:
     with patch_device_tables(dev, neighbors=[], routes=zdo_t.Status.NOT_SUPPORTED):
         await topology.scan()
 
-        assert len(dev.zdo.Mgmt_Lqi_req.mock_calls) == 1
-        assert len(dev.zdo.Mgmt_Rtg_req.mock_calls) == 1
+        assert len(sent_requests(dev, zdo_c.MgmtLqiReq)) == 1
+        assert len(sent_requests(dev, zdo_c.MgmtRtgReq)) == 1
 
         await topology.scan()
 
-        assert len(dev.zdo.Mgmt_Lqi_req.mock_calls) == 2
-        assert len(dev.zdo.Mgmt_Rtg_req.mock_calls) == 1
+        assert len(sent_requests(dev, zdo_c.MgmtLqiReq)) == 2
+        assert len(sent_requests(dev, zdo_c.MgmtRtgReq)) == 1
 
 
 async def test_routes_and_neighbors_not_supported(
@@ -186,13 +169,13 @@ async def test_routes_and_neighbors_not_supported(
     ):
         await topology.scan()
 
-        assert len(dev.zdo.Mgmt_Lqi_req.mock_calls) == 1
-        assert len(dev.zdo.Mgmt_Rtg_req.mock_calls) == 1
+        assert len(sent_requests(dev, zdo_c.MgmtLqiReq)) == 1
+        assert len(sent_requests(dev, zdo_c.MgmtRtgReq)) == 1
 
         await topology.scan()
 
-        assert len(dev.zdo.Mgmt_Lqi_req.mock_calls) == 1
-        assert len(dev.zdo.Mgmt_Rtg_req.mock_calls) == 1
+        assert len(sent_requests(dev, zdo_c.MgmtLqiReq)) == 1
+        assert len(sent_requests(dev, zdo_c.MgmtRtgReq)) == 1
 
 
 async def test_scan_end_device(topology, make_initialized_device) -> None:
@@ -203,8 +186,8 @@ async def test_scan_end_device(topology, make_initialized_device) -> None:
         await topology.scan()
 
         # The device will not be scanned because it is not a router
-        assert len(dev.zdo.Mgmt_Lqi_req.mock_calls) == 0
-        assert len(dev.zdo.Mgmt_Rtg_req.mock_calls) == 0
+        assert len(sent_requests(dev, zdo_c.MgmtLqiReq)) == 0
+        assert len(sent_requests(dev, zdo_c.MgmtRtgReq)) == 0
 
 
 async def test_scan_skips_gp_device(topology) -> None:
@@ -229,10 +212,10 @@ async def test_scan_explicit_device(topology, make_initialized_device) -> None:
             await topology.scan(devices=[dev2])
 
             # Only the second device was scanned
-            assert len(dev1.zdo.Mgmt_Lqi_req.mock_calls) == 0
-            assert len(dev1.zdo.Mgmt_Rtg_req.mock_calls) == 0
-            assert len(dev2.zdo.Mgmt_Lqi_req.mock_calls) == 1
-            assert len(dev2.zdo.Mgmt_Rtg_req.mock_calls) == 1
+            assert len(sent_requests(dev1, zdo_c.MgmtLqiReq)) == 0
+            assert len(sent_requests(dev1, zdo_c.MgmtRtgReq)) == 0
+            assert len(sent_requests(dev2, zdo_c.MgmtLqiReq)) == 1
+            assert len(sent_requests(dev2, zdo_c.MgmtRtgReq)) == 1
 
 
 async def test_scan_router_many(topology, make_initialized_device) -> None:
@@ -250,8 +233,8 @@ async def test_scan_router_many(topology, make_initialized_device) -> None:
         await topology.scan()
 
         # We only permit three scans per request
-        assert len(dev.zdo.Mgmt_Lqi_req.mock_calls) == 34
-        assert len(dev.zdo.Mgmt_Rtg_req.mock_calls) == 34
+        assert len(sent_requests(dev, zdo_c.MgmtLqiReq)) == 34
+        assert len(sent_requests(dev, zdo_c.MgmtRtgReq)) == 34
 
     assert topology.neighbors[dev.ieee] == [
         make_neighbor(ieee=make_ieee(2 + i), nwk=0x1234 + i) for i in range(100)
@@ -268,8 +251,8 @@ async def test_scan_skip_coordinator(topology, make_initialized_device) -> None:
     with patch_device_tables(coordinator, neighbors=[], routes=[]):
         await topology.scan()
 
-        assert len(coordinator.zdo.Mgmt_Lqi_req.mock_calls) == 0
-        assert len(coordinator.zdo.Mgmt_Rtg_req.mock_calls) == 0
+        assert len(sent_requests(coordinator, zdo_c.MgmtLqiReq)) == 0
+        assert len(sent_requests(coordinator, zdo_c.MgmtRtgReq)) == 0
 
     assert not topology.neighbors[coordinator.ieee]
     assert not topology.routes[coordinator.ieee]
@@ -294,8 +277,8 @@ async def test_scan_coordinator(topology) -> None:
     ):
         await topology.scan()
 
-        assert len(coordinator.zdo.Mgmt_Lqi_req.mock_calls) == 1
-        assert len(coordinator.zdo.Mgmt_Rtg_req.mock_calls) == 1
+        assert len(sent_requests(coordinator, zdo_c.MgmtLqiReq)) == 1
+        assert len(sent_requests(coordinator, zdo_c.MgmtRtgReq)) == 1
 
     assert topology.neighbors[coordinator.ieee] == [
         make_neighbor(ieee=make_ieee(2), nwk=0x1234)

@@ -13,6 +13,7 @@ import zigpy.config
 from zigpy.device import ZigbeeDevice
 import zigpy.types as t
 import zigpy.util
+import zigpy.zdo.commands as zdo_c
 import zigpy.zdo.types as zdo_t
 
 LOGGER = logging.getLogger(__name__)
@@ -94,7 +95,12 @@ class Topology(zigpy.util.ListenableMixin):
         await self._scan_task
 
     async def _scan_table(
-        self, scan_request: typing.Callable, entries_attr: str
+        self,
+        device: ZigbeeDevice,
+        request_type: type[zdo_c.MgmtLqiReq | zdo_c.MgmtRtgReq],
+        response_type: type[zdo_c.MgmtLqiRsp | zdo_c.MgmtRtgRsp],
+        total_attr: str,
+        entries_attr: str,
     ) -> list[typing.Any]:
         """Scan a device table by sending ZDO requests."""
 
@@ -102,9 +108,14 @@ class Topology(zigpy.util.ListenableMixin):
         table = []
 
         while True:
-            status, rsp = await scan_request(index, retries=2, retry_delay=1.0)
+            rsp = await device.send_zdo_command(
+                request_type(start_index=index),
+                response_type=response_type,
+                retries=2,
+                retry_delay=1.0,
+            )
 
-            if status != zdo_t.Status.SUCCESS:
+            if rsp.status != zdo_t.Status.SUCCESS:
                 raise ScanNotSupported
 
             entries = getattr(rsp, entries_attr)
@@ -116,7 +127,7 @@ class Topology(zigpy.util.ListenableMixin):
             # delay logic when scanning many devices in quick succession
             await asyncio.sleep(random.uniform(*REQUEST_DELAY))
 
-            if index >= rsp.Entries or not entries:
+            if index >= getattr(rsp, total_attr) or not entries:
                 break
 
         return table
@@ -128,7 +139,13 @@ class Topology(zigpy.util.ListenableMixin):
         LOGGER.debug("Scanning neighbors of %s", device)
 
         try:
-            table = await self._scan_table(device.zdo.Mgmt_Lqi_req, "NeighborTableList")
+            table = await self._scan_table(
+                device,
+                zdo_c.MgmtLqiReq,
+                zdo_c.MgmtLqiRsp,
+                "neighbor_table_entries",
+                "neighbor_table_list",
+            )
         except ScanNotSupported:
             table = []
             self._neighbors_unsupported.add(device.ieee)
@@ -142,7 +159,13 @@ class Topology(zigpy.util.ListenableMixin):
         LOGGER.debug("Scanning routing table of %s", device)
 
         try:
-            table = await self._scan_table(device.zdo.Mgmt_Rtg_req, "RoutingTableList")
+            table = await self._scan_table(
+                device,
+                zdo_c.MgmtRtgReq,
+                zdo_c.MgmtRtgRsp,
+                "routing_table_entries",
+                "routing_table_list",
+            )
         except ScanNotSupported:
             table = []
             self._routes_unsupported.add(device.ieee)
