@@ -79,6 +79,9 @@ class OTAManager:
         self._notify_task: asyncio.Task[None] | None = None
         self._device_responded = False
 
+        # Fast polling only speeds the update up, see `begin_fast_polling`
+        self._fast_poll_task: asyncio.Task[None] | None = None
+
         self.stack = contextlib.ExitStack()
 
     def __enter__(self) -> Self:
@@ -151,8 +154,12 @@ class OTAManager:
 
         self._device_responded = True
 
-        # A pending image notify would delay our responses to the device
+        # A pending image notify or fast poll request would delay our responses to the
+        # device: they hold the device's request slot until they complete or time out
         self._cancel_notify()
+
+        if self._fast_poll_task is not None:
+            self._fast_poll_task.cancel()
 
         # Make sure the OTA cannot stall forever once the device has started talking to
         # us. Only the first request does this, so it can never shorten a longer timeout
@@ -378,6 +385,37 @@ class OTAManager:
                 MAX_TIME_WITHOUT_PROGRESS,
             )
 
+    async def begin_fast_polling(self, stack: contextlib.AsyncExitStack) -> None:
+        """Ask the device to poll faster for the rest of the update.
+
+        This only speeds up the transfer. The device can still request the image on its
+        own if it cannot be reached right now, and once it does, it is awake and we stop
+        asking so that our responses are not held up.
+        """
+        self._fast_poll_task = asyncio.create_task(
+            stack.enter_async_context(self.device.fast_poll_mode())
+        )
+
+        try:
+            # The device can send a request before fast polling is set up, which
+            # cancels the task. We do not want to cancel ourselves here.
+            await asyncio.wait([self._fast_poll_task])
+        finally:
+            self._fast_poll_task.cancel()
+
+        if self._fast_poll_task.cancelled():
+            self.device.debug("OTA started by the device, not waiting for fast polling")
+            return
+
+        exc = self._fast_poll_task.exception()
+
+        if isinstance(exc, (TimeoutError, zigpy.exceptions.DeliveryError)):
+            self.device.info(
+                "OTA could not ask the device to poll faster, continuing: %r", exc
+            )
+        elif exc is not None:
+            raise exc
+
     async def notify(self) -> None:
         """Notify device of new image."""
         # The device is already talking to us, there is nothing to notify it about
@@ -447,15 +485,7 @@ async def update_firmware(
     # often woken up to start the update and may ask for the image right away
     with OTAManager(device, image, progress_callback=progress, force=force) as ota:
         async with contextlib.AsyncExitStack() as stack:
-            # Ask the device to start fast polling before we send the OTA image. This
-            # only speeds up the transfer, the device can still request the image on
-            # its own if it cannot be reached right now.
-            try:
-                await stack.enter_async_context(device.fast_poll_mode())
-            except (TimeoutError, zigpy.exceptions.DeliveryError) as exc:
-                device.info(
-                    "OTA could not ask the device to poll faster, continuing: %r", exc
-                )
-
+            # Ask the device to start fast polling before we send the OTA image
+            await ota.begin_fast_polling(stack)
             await ota.notify()
             return await ota.wait()

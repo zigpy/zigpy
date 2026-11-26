@@ -25,7 +25,7 @@ import zigpy.types as t
 import zigpy.util
 from zigpy.zcl import foundation
 from zigpy.zcl.clusters import Cluster
-from zigpy.zcl.clusters.general import Ota
+from zigpy.zcl.clusters.general import Ota, PollControl
 import zigpy.zdo.types as zdo_t
 
 
@@ -1205,22 +1205,86 @@ async def test_ota_manager_fast_poll_failure(exc: Exception) -> None:
     ]
 
 
+async def test_ota_manager_fast_poll_unexpected_error() -> None:
+    """Test that unexpected errors from setting up fast polling are not swallowed."""
+
+    async def image_notify() -> None:
+        pytest.fail("The update should not continue")
+
+    dev, _ota, log, _wake_up = _make_sleepy_device(image_notify)
+    dev.begin_fast_polling = AsyncMock(side_effect=RuntimeError("Unexpected"))
+
+    dev.ota_in_progress = True
+
+    with pytest.raises(RuntimeError, match="Unexpected"):
+        await update_firmware(dev, FW_IMAGE)
+
+    assert log == []
+
+
+async def test_ota_manager_cancelled_during_fast_poll_setup() -> None:
+    """Test that cancelling the update stops setting up fast polling."""
+
+    async def image_notify() -> None:
+        pytest.fail("The update should not continue")
+
+    dev, _ota, _log, _wake_up = _make_sleepy_device(image_notify)
+
+    setup_started = asyncio.Event()
+    setup_cancelled = False
+
+    async def begin_fast_polling(*args, **kwargs) -> None:
+        nonlocal setup_cancelled
+        setup_started.set()
+
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            setup_cancelled = True
+            raise
+
+    dev.begin_fast_polling = AsyncMock(side_effect=begin_fast_polling)
+
+    dev.ota_in_progress = True
+    update = asyncio.create_task(update_firmware(dev, FW_IMAGE))
+    await setup_started.wait()
+
+    update.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await update
+
+    assert setup_cancelled
+
+
+@patch("zigpy.device.APS_REPLY_TIMEOUT_EXTENDED", 0.5)
 async def test_ota_manager_request_during_fast_poll_setup() -> None:
     """Test that OTA requests are answered while the device is asked to poll faster."""
+    loop = asyncio.get_running_loop()
 
     async def image_notify() -> None:
         pytest.fail("The device already requested the image")
 
     dev, _ota, log, wake_up = _make_sleepy_device(image_notify)
+    dev.endpoints[1].add_input_cluster(PollControl.cluster_id)
 
-    async def begin_fast_polling(*args, **kwargs) -> None:
-        # The device is woken up to start the update and queries for the image while
-        # the Poll Control cluster is being bound
-        wake_up()
-        await asyncio.sleep(0.1)
-        raise TimeoutError
+    send_ota_packet = dev.application.send_packet.side_effect
+    sent: list[tuple[str, float]] = []
 
-    dev.begin_fast_polling = AsyncMock(side_effect=begin_fast_polling)
+    async def send_packet(packet: t.ZigbeePacket) -> None:
+        if packet.cluster_id == zdo_t.ZDOCmd.Bind_req:
+            # The device is woken up to start the update and queries for the image
+            # while the Poll Control cluster is being bound. The bind is never answered.
+            sent.append(("bind", loop.time()))
+            loop.call_soon(wake_up)
+            return
+
+        if packet.cluster_id == Ota.cluster_id:
+            sent.append(("ota", loop.time()))
+
+        await send_ota_packet(packet)
+
+    dev.application.send_packet.side_effect = send_packet
 
     dev.ota_in_progress = True
     status = await update_firmware(dev, FW_IMAGE)
@@ -1233,6 +1297,14 @@ async def test_ota_manager_request_during_fast_poll_setup() -> None:
         "upgrade_end",
         "upgrade_end_response",
     ]
+
+    # The pending bind is abandoned rather than holding back our responses until it
+    # times out, and fast polling is not set up
+    names = [name for name, _ in sent]
+    assert names[0] == "bind"
+    assert "bind" not in names[1:]
+    assert sent[1][1] - sent[0][1] < 0.1
+    assert not dev._fast_polling
 
 
 @pytest.mark.parametrize(
