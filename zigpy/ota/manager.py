@@ -27,7 +27,8 @@ if TYPE_CHECKING:
     from zigpy.ota.providers import OtaImageWithMetadata
 
 
-# Maximum time between two block requests, to detect when OTA has permanently stalled
+# Maximum time without a block request from the device, or since we sent it a block,
+# to detect when OTA has permanently stalled
 MAX_TIME_WITHOUT_PROGRESS = 30
 
 # Separate timeout for the final block, to give devices time to finally verify the OTA
@@ -78,6 +79,7 @@ class OTAManager:
         # The image notify is only a hint, the device drives the actual OTA process
         self._notify_task: asyncio.Task[None] | None = None
         self._device_responded = False
+        self._last_block_requested = False
 
         self.stack = contextlib.ExitStack()
 
@@ -204,6 +206,14 @@ class OTAManager:
 
         self._finish(foundation.Status.MALFORMED_COMMAND)
 
+    def _block_stall_timeout(self) -> float:
+        """Return how long the device may take to send its next request."""
+        # Once the device has asked for the last block, it may take longer to finish
+        if self._last_block_requested:
+            return FINAL_BLOCK_TIMEOUT
+
+        return MAX_TIME_WITHOUT_PROGRESS
+
     async def _image_block_req(
         self, hdr: foundation.ZCLHeader, command: ImageBlockCommand
     ) -> None:
@@ -222,6 +232,16 @@ class OTAManager:
             )
             return
 
+        # A device may download parts of the image again, only its latest request counts
+        self._last_block_requested = command.file_offset + len(block) >= len(
+            self._image_data
+        )
+
+        # The device is still downloading, even if our answer to it is delayed (e.g.
+        # it is queued behind other requests). Measure the stall from its requests.
+        if not self._upgrade_end_future.done():
+            self._stall_timer.reschedule(self._block_stall_timeout())
+
         try:
             async with self.device.application.request_priority(t.PacketPriority.LOW):
                 await self.ota_cluster.image_block_response(
@@ -234,10 +254,8 @@ class OTAManager:
                     tsn=hdr.tsn,
                 )
 
-            if command.file_offset + len(block) < len(self._image_data):
-                self._stall_timer.reschedule(MAX_TIME_WITHOUT_PROGRESS)
-            else:
-                self._stall_timer.reschedule(FINAL_BLOCK_TIMEOUT)
+            if not self._upgrade_end_future.done():
+                self._stall_timer.reschedule(self._block_stall_timeout())
 
             # Image block requests can sometimes succeed after the device aborts the
             # update. We should not allow the progress callback to be called.
