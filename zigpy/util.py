@@ -303,7 +303,7 @@ class CatchingTaskMixin(LocalLogMixin):
 
     def create_catching_task(
         self,
-        target: typing.Coroutine,
+        target: typing.Awaitable,
         exceptions: type[Exception] | tuple | None = None,
         name: str | None = None,
     ) -> None:

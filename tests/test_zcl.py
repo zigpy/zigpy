@@ -134,6 +134,23 @@ def endpoint():
     return ep
 
 
+@pytest.mark.parametrize("device_spec", [None, zigpy.device.ZigbeeDevice])
+async def test_cluster_task_runs_with_mock_device(device_spec):
+    """A mock task owner must not consume work without scheduling it."""
+    device = MagicMock(spec=device_spec)
+    endpoint = zigpy.endpoint.Endpoint(device, 1)
+    cluster = endpoint.add_input_cluster(Basic.cluster_id)
+    completed = asyncio.Event()
+
+    async def work():
+        completed.set()
+
+    cluster.create_catching_task(work())
+    await asyncio.sleep(0)
+
+    assert completed.is_set()
+
+
 def test_deserialize_general(endpoint):
     hdr, args = endpoint.in_clusters[0].deserialize(b"\x00\x01\x00")
     assert hdr.tsn == 1

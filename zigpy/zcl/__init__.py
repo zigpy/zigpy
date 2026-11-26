@@ -546,9 +546,17 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
         name: str | None = None,
     ) -> None:
         """Create background work owned by the device or group controller."""
-        create_task = getattr(self._endpoint.device, "create_task", None)
-        if create_task is None:
-            create_task = self._endpoint.device.application.create_task
+        device = self._endpoint.device
+        # Check the actual type so a mock cannot stand in for a task owner.
+        if issubclass(type(device), util.CreateTaskMixin):
+            create_task = device.create_task
+        else:
+            application = getattr(device, "application", None)
+            if not issubclass(type(application), util.CreateTaskMixin):
+                super().create_catching_task(target, exceptions, name=name)
+                return
+            create_task = application.create_task
+
         task = create_task(self.catching_coro(target, exceptions), name=name)
 
         def task_done(task: asyncio.Task) -> None:
