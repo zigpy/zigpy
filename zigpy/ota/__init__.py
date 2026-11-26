@@ -575,8 +575,13 @@ class OTA:
             for img in candidates
             if img.check_version(query_cmd.current_file_version)
         }
+
+        # A newer image that its current file version range excludes is neither an
+        # upgrade nor a downgrade: it can't be installed on the device's version
         downgrades = {
-            img.metadata: img for img in candidates if img.metadata not in upgrades
+            img.metadata: img
+            for img in candidates
+            if img.version <= query_cmd.current_file_version
         }
 
         # Only download upgrade images from untrusted providers; trusted providers have

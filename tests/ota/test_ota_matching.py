@@ -483,6 +483,67 @@ async def test_ota_trusted_provider_missing_sha3_256_checksum(
     assert "does not have SHA3-256 checksum" in caplog.text
 
 
+@pytest.mark.parametrize(
+    "version_range",
+    [
+        {"min_current_file_version": 0x20},
+        {"max_current_file_version": 0x0F},
+    ],
+)
+async def test_ota_version_range_gated_newer_image_not_a_downgrade(
+    query_cmd, version_range
+) -> None:
+    """A newer image that the device's current version cannot install is neither."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+    query_cmd = query_cmd.replace(current_file_version=0x10)
+
+    index = [
+        SelfContainedOtaImageMetadata(
+            file_version=0x30,
+            manufacturer_id=query_cmd.manufacturer_code,
+            test_data=b"",  # Never fetched
+            **version_range,
+        ),
+    ]
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    ota.register_provider(SelfContainedProvider(index))
+
+    images = await ota.get_ota_images(device, query_cmd)
+
+    assert images.upgrades == ()
+    assert images.downgrades == ()
+
+
+async def test_ota_downgrades_are_older_or_same_version(query_cmd) -> None:
+    """Older and same-version images are downgrades, gated newer images are not."""
+    device = make_device(model="device model", manufacturer_id=0x1234)
+    query_cmd = query_cmd.replace(current_file_version=0x10)
+
+    def meta(file_version: int, **kwargs: typing.Any) -> SelfContainedOtaImageMetadata:
+        return SelfContainedOtaImageMetadata(
+            file_version=file_version,
+            manufacturer_id=query_cmd.manufacturer_code,
+            test_data=b"",  # Never fetched
+            **kwargs,
+        )
+
+    index = [
+        meta(0x08),
+        meta(0x10),
+        meta(0x30, min_current_file_version=0x20),
+        meta(0x40, max_current_file_version=0x0F),
+    ]
+
+    ota = zigpy.ota.OTA(config={config.CONF_OTA_ENABLED: False}, application=None)
+    ota.register_provider(SelfContainedProvider(index))
+
+    images = await ota.get_ota_images(device, query_cmd)
+
+    assert images.upgrades == ()
+    assert [img.version for img in images.downgrades] == [0x10, 0x08]
+
+
 def _make_device_with_ota_cluster(
     query_cmd,
     *,
