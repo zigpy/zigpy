@@ -1310,6 +1310,33 @@ async def test_ota_manager_first_block_timeout() -> None:
     ]
 
 
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
+@patch("zigpy.ota.manager.FIRST_BLOCK_TIMEOUT", 0.3)
+async def test_ota_manager_first_block_timeout_requery() -> None:
+    """Test that repeated queries do not extend the wait for the first block."""
+
+    async def image_notify() -> None:
+        pass
+
+    dev, _ota, log, wake_up = _make_sleepy_device(image_notify, first_block_delay=10)
+
+    # The device keeps querying but never requests a block
+    loop = asyncio.get_running_loop()
+    for i in range(15):
+        loop.call_later(i * 0.2, wake_up)
+
+    dev.ota_in_progress = True
+
+    start = time.monotonic()
+
+    async with asyncio.timeout(2):
+        status = await update_firmware(dev, FW_IMAGE)
+
+    assert status == foundation.Status.TIMEOUT
+    assert 0.3 <= time.monotonic() - start < 0.6
+    assert "image_block_response" not in " ".join(log)
+
+
 @patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.3)
 @patch("zigpy.ota.manager.FINAL_BLOCK_TIMEOUT", 1.0)
 async def test_ota_manager_final_block_timeout_not_shortened() -> None:

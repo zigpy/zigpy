@@ -84,6 +84,7 @@ class OTAManager:
         self._notify_task: asyncio.Task[None] | None = None
         self._device_responded = False
         self._block_requested = False
+        self._first_block_timeout_armed = False
 
         self.stack = contextlib.ExitStack()
 
@@ -207,9 +208,15 @@ class OTAManager:
 
         if status != foundation.Status.SUCCESS:
             self._finish(status)
-        elif not self._block_requested and not self._upgrade_end_future.done():
+        elif (
+            not self._block_requested
+            and not self._first_block_timeout_armed
+            and not self._upgrade_end_future.done()
+        ):
             # The device may take a while to start the transfer after accepting the
-            # image, the shorter timeout applies once it has requested a block
+            # image, the shorter timeout applies once it has requested a block. This
+            # is only armed once, so repeated queries cannot extend the wait forever.
+            self._first_block_timeout_armed = True
             self._stall_timer.reschedule(FIRST_BLOCK_TIMEOUT)
 
     async def _finish_malformed_image_block_response(self, handler: str, tsn: int):
