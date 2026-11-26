@@ -552,7 +552,9 @@ class Cluster(util.ListenableMixin, util.CatchingTaskMixin, EventBase):
             create_task = device.create_task
         else:
             application = getattr(device, "application", None)
-            if not issubclass(type(application), util.CreateTaskMixin):
+            if application is None or not issubclass(
+                type(application), util.CreateTaskMixin
+            ):
                 super().create_catching_task(target, exceptions, name=name)
                 return
             create_task = application.create_task
