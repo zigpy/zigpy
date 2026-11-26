@@ -293,7 +293,9 @@ class OTA:
 
         The refresh revokes images withdrawn from the new indexes.
         Already-downloaded firmware is carried over for images whose metadata
-        is unchanged and is otherwise re-downloaded.
+        is unchanged and is otherwise re-downloaded. Providers with a cheap
+        freshness probe (e.g. the zigpy-ota version file) may skip re-reading
+        an unchanged index, keeping their cached images.
         """
         for provider in self._providers:
             provider._index_last_updated = datetime.datetime.fromtimestamp(
