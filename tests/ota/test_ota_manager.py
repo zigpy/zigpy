@@ -1853,16 +1853,16 @@ async def test_ota_late_upgrade_end_is_answered() -> None:
 
 
 @pytest.mark.parametrize(
-    ("status", "file_version"),
+    "status",
     [
         # The device reports an image we never sent it
-        (foundation.Status.SUCCESS, None),
+        foundation.Status.SUCCESS,
         # The device failed to verify the image
-        (foundation.Status.INVALID_IMAGE, None),
+        foundation.Status.INVALID_IMAGE,
     ],
 )
 async def test_ota_unknown_upgrade_end_gets_default_response(
-    status: foundation.Status, file_version: int | None
+    status: foundation.Status,
 ) -> None:
     """Test that other Upgrade End Requests outside an OTA get a Default Response."""
     dev, ota, sent = _make_device_for_late_upgrade_end()
@@ -2010,3 +2010,56 @@ async def test_ota_late_upgrade_end_after_failed_verification(
     assert len(sent) == 1
     hdr, _cmd = sent[0]
     assert hdr.command_id == foundation.GeneralCommand.Default_Response
+
+
+@patch("zigpy.ota.manager.FINAL_BLOCK_TIMEOUT", 0.1)
+async def test_ota_late_upgrade_end_after_last_block_send_failed() -> None:
+    """Test that the image is remembered if the device got the last block we failed to
+    send, e.g. because its acknowledgement was lost.
+    """
+    assert FW_IMAGE.firmware is not None
+    header = FW_IMAGE.firmware.header
+    image_size = len(FW_IMAGE.firmware.serialize())
+
+    dev, ota, sent = _make_device_for_late_upgrade_end()
+
+    send_packet = dev.application.send_packet.side_effect
+
+    async def last_block_unacknowledged(packet: t.ZigbeePacket) -> None:
+        await send_packet(packet)
+
+        _hdr, cmd = ota.deserialize(packet.data.serialize())
+        if (
+            isinstance(cmd, Ota.ClientCommandDefs.image_block_response.schema)
+            and cmd.file_offset + len(cmd.image_data) == image_size
+        ):
+            raise DeliveryError("No APS acknowledgement")
+
+    dev.application.send_packet = AsyncMock(side_effect=last_block_unacknowledged)
+
+    status = await dev.update_firmware(FW_IMAGE)
+    assert status == foundation.Status.TIMEOUT
+
+    sent.clear()
+
+    # The device received the last block and finishes verifying it late
+    packet = _upgrade_end_packet(dev, ota, foundation.Status.SUCCESS)
+    dev.application.packet_received(packet)
+    await asyncio.sleep(0.01)
+
+    # The unacknowledged block may still be retried
+    responses = [
+        (hdr, cmd)
+        for hdr, cmd in sent
+        if not isinstance(cmd, Ota.ClientCommandDefs.image_block_response.schema)
+    ]
+    assert len(responses) == 1
+    hdr, cmd = responses[0]
+    assert hdr.tsn == packet.tsn
+    assert cmd == Ota.ClientCommandDefs.upgrade_end_response.schema(
+        manufacturer_code=header.manufacturer_id,
+        image_type=header.image_type,
+        file_version=header.file_version,
+        current_time=0,
+        upgrade_time=0,
+    )
