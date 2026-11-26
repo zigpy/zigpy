@@ -2137,6 +2137,43 @@ async def test_ota_manager_query_for_other_image(when: str) -> None:
     ]
 
 
+async def test_ota_manager_query_for_other_image_send_failure() -> None:
+    """Test that failing to answer a query for another image does not end the update."""
+
+    async def image_notify() -> None:
+        dev.application.packet_received(_other_image_query(dev, ota))
+        wake_up()
+
+    dev, ota, log, wake_up = _make_sleepy_device(image_notify)
+    send_packet = dev.application.send_packet.side_effect
+
+    async def fail_other_image_response(packet: t.ZigbeePacket) -> None:
+        hdr, cmd = ota.deserialize(packet.data.serialize())
+
+        if (
+            isinstance(cmd, Ota.ClientCommandDefs.query_next_image_response.schema)
+            and cmd.status == foundation.Status.NO_IMAGE_AVAILABLE
+        ):
+            raise DeliveryError("Failed to send request: MAC_NO_ACK")
+
+        await send_packet(packet)
+
+    dev.application.send_packet = AsyncMock(side_effect=fail_other_image_response)
+
+    dev.ota_in_progress = True
+
+    # Give up on the response right away, so its failure is handled during the update
+    with patch("zigpy.device.DEFAULT_REQUEST_RETRIES", 0):
+        status = await update_firmware(dev, FW_IMAGE)
+
+    assert status == foundation.Status.SUCCESS
+    assert log[-3:] == [
+        "image_block_response:last",
+        "upgrade_end",
+        "upgrade_end_response",
+    ]
+
+
 @patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.2)
 async def test_ota_manager_only_other_image_queried() -> None:
     """Test that an update ends if the device only queries for its other image."""
