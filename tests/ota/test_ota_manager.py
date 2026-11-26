@@ -2263,3 +2263,31 @@ async def test_ota_late_upgrade_end_after_last_block_send_failed() -> None:
         current_time=0,
         upgrade_time=0,
     )
+
+
+async def test_ota_other_command_outside_update_default_response() -> None:
+    """Test that other OTA commands outside an update get the default handling."""
+    dev, ota, sent = _make_device_for_late_upgrade_end()
+
+    # A server to client command the device should not be sending to us
+    hdr, _ = ota._create_request(
+        general=False,
+        command_id=Ota.ClientCommandDefs.image_notify.id,
+        schema=Ota.ClientCommandDefs.image_notify.schema,
+        disable_default_response=False,
+        direction=foundation.Direction.Server_to_Client,
+        args=(),
+        kwargs={
+            "payload_type": Ota.ImageNotifyCommand.PayloadType.QueryJitter,
+            "query_jitter": 100,
+        },
+    )
+
+    ota.handle_cluster_request(hdr, [])
+    await asyncio.sleep(0.01)
+
+    assert len(sent) == 1
+    rsp_hdr, rsp = sent[0]
+    assert rsp_hdr.tsn == hdr.tsn
+    assert rsp_hdr.command_id == foundation.GeneralCommand.Default_Response
+    assert rsp.status == foundation.Status.SUCCESS
