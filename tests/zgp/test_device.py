@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import timedelta
+import json
 from typing import Any
 from unittest.mock import call
 
@@ -145,6 +146,23 @@ def test_device_properties(device) -> None:
         "mac_seq_num_capability": True,
         "extra_commissioning_payload": None,
     }
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        (None, None),
+        (b"", ""),
+        (b"qerh7pox@GP0001\xcb", "7165726837706f7840475030303031cb"),
+    ],
+)
+def test_signature_commissioning_payload(device, payload, expected) -> None:
+    """The trailing commissioning data is hex in the JSON-serializable signature."""
+    device.extra_commissioning_payload = payload
+    signature = device.get_signature()
+
+    assert signature["extra_commissioning_payload"] == expected
+    assert json.loads(json.dumps(signature))["extra_commissioning_payload"] == expected
 
 
 def test_packet_received(device, events) -> None:
