@@ -146,6 +146,12 @@ def test_device_properties(device) -> None:
         "extra_commissioning_payload": None,
     }
 
+    device.extra_commissioning_payload = b"qerh7pox@GP0001\xcb"
+    assert (
+        device.get_signature()["extra_commissioning_payload"]
+        == "7165726837706f7840475030303031cb"
+    )
+
 
 def test_packet_received(device, events) -> None:
     device.packet_received(make_packet(1000))
