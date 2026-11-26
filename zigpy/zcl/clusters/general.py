@@ -2622,8 +2622,8 @@ class Ota(Cluster):
         super().__init__(*args, **kwargs)
         self.last_query_cmd: QueryNextImageCommand | None = None
 
-        # The (manufacturer code, image type, file version) of the last image the
-        # device downloaded in full, to answer its Upgrade End Request when it arrives
+        # The (manufacturer code, image type, file version) of the last image whose last
+        # block the device asked for, to answer its Upgrade End Request when it arrives
         # after the OTA update has stopped waiting for it
         self.last_transferred_image: tuple[int, int, int] | None = None
 
