@@ -463,7 +463,16 @@ def combine_concurrent_calls(
     """Decorator that allows concurrent calls to expensive coroutines to share a result."""
 
     tasks: dict[tuple, asyncio.Task] = {}
+    waiter_counts: dict[asyncio.Task, int] = {}
     signature = inspect.signature(function)
+
+    def task_done(key: tuple, task: asyncio.Task) -> None:
+        if tasks.get(key) is task:
+            del tasks[key]
+
+        # Mark the exception as retrieved, all waiters may have been cancelled
+        if not task.cancelled():
+            task.exception()
 
     @functools.wraps(function)
     async def replacement(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
@@ -473,16 +482,27 @@ def combine_concurrent_calls(
         # XXX: all args and kwargs are assumed to be hashable
         key = tuple(bound.arguments.items())
 
-        if key in tasks:
-            return await tasks[key]
+        if key not in tasks:
+            tasks[key] = asyncio.create_task(function(*args, **kwargs))
+            tasks[key].add_done_callback(functools.partial(task_done, key))
 
-        tasks[key] = asyncio.create_task(function(*args, **kwargs))
+        task = tasks[key]
+        waiter_counts[task] = waiter_counts.get(task, 0) + 1
 
         try:
-            return await tasks[key]
+            # Cancelling one caller must not cancel the work shared with the others
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            # Cancel the shared work only once nobody else is waiting for it
+            if waiter_counts[task] == 1:
+                task.cancel()
+
+            raise
         finally:
-            assert tasks[key].done()
-            del tasks[key]
+            waiter_counts[task] -= 1
+
+            if waiter_counts[task] == 0:
+                del waiter_counts[task]
 
     return replacement
 
