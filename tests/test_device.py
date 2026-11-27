@@ -2411,6 +2411,65 @@ async def test_reinterview_failure_preserves_device(monkeypatch, dev, exception)
     )
 
 
+async def test_reinterview_cancelled_preserves_device(dev):
+    """Test that cancelling a re-interview during discovery restores the old device."""
+    dev._application.devices = {dev.ieee: dev}
+    dev._application._device_reinterviewed = AsyncMock()
+
+    discovery_started = asyncio.Event()
+
+    async def slow_discover(self):
+        discovery_started.set()
+        await asyncio.Event().wait()
+
+    with patch.object(device.Device, "_discover", slow_discover):
+        task = asyncio.create_task(dev.reinterview())
+        await discovery_started.wait()
+        shadow = dev._application.devices[dev.ieee]
+        assert shadow is not dev
+
+        task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    dev._application._device_reinterviewed.assert_not_called()
+
+    # The shadow is gone and the old device is back
+    assert dev._application.devices[dev.ieee] is dev
+    assert not dev.reinterviewing
+
+
+async def test_reinterview_cancelled_after_device_removed(dev):
+    """A cancellation propagates when the device was removed during discovery."""
+    dev._application.devices = {dev.ieee: dev}
+    dev._application._device_reinterviewed = AsyncMock()
+
+    discovery_started = asyncio.Event()
+
+    async def slow_discover(shadow):
+        # `remove()` picks up the registered shadow and tears it down
+        dev._application.devices.pop(dev.ieee).on_remove()
+        discovery_started.set()
+        await asyncio.Event().wait()
+
+    with patch.object(device.Device, "_discover", slow_discover):
+        task = asyncio.create_task(dev.reinterview())
+        await discovery_started.wait()
+        task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    dev._application._device_reinterviewed.assert_not_called()
+
+    # The removed device is not restored, and it is torn down as well
+    assert dev.ieee not in dev._application.devices
+    assert not dev.reinterviewing
+    assert not dev._on_remove_callbacks
+    dev._application.listener_event.assert_not_called()
+
+
 async def test_reinterview_discards_shadow_when_device_removed(monkeypatch, dev):
     """A device removed while its shadow is interviewed is not registered again."""
     dev._application.devices = {dev.ieee: dev}

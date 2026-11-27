@@ -1019,7 +1019,8 @@ class ZigbeeDevice(BaseDevice):
                     t.PacketPriority.CRITICAL
                 ):
                     await shadow._discover()
-            except Exception:
+            except BaseException as exc:
+                # Discovery failed or was cancelled
                 shadow.on_remove()
 
                 if self._shadow_removed(shadow):
@@ -1027,10 +1028,17 @@ class ZigbeeDevice(BaseDevice):
                     self.info(
                         "Device was removed during re-interview, discarding shadow"
                     )
-                    self._application.listener_event("device_reinterview_failure", self)
-                    return
 
-                # Discovery failed — restore old device
+                    if isinstance(exc, Exception):
+                        self._application.listener_event(
+                            "device_reinterview_failure", self
+                        )
+                        return
+
+                    # A cancellation propagates
+                    raise
+
+                # Restore the old device
                 self._application.devices[self._ieee] = self
                 raise
 
