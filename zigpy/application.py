@@ -101,6 +101,7 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         self._dblistener = None
         self._groups = zigpy.group.Groups(self)
         self._send_sequence = 0
+        self._request_id = 0
         self._tasks: set[asyncio.Future[Any]] = set()
         self.local_timezone: tzinfo | None = None
 
@@ -1352,6 +1353,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         priority: int = t.PacketPriority.NORMAL,
         force_route_discovery: bool = False,
         aps_encryption: bool = False,
+        request_id: int | None = None,
+        attempt: int = 0,
     ) -> tuple[zigpy.zcl.foundation.Status, str]:
         """Submit and send data out as an unicast transmission.
         :param device: destination device
@@ -1366,6 +1369,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
         :param extended_timeout: instruct the radio to use slower APS retries
         :param force_route_discovery: force route re-discovery for this transmission
         :param aps_encryption: APS encrypt the transmission with the device's link key
+        :param request_id: the same for every attempt of one request
+        :param attempt: which attempt of the request this is, from 0
         """
 
         if use_ieee:
@@ -1407,6 +1412,8 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
                 extended_timeout=extended_timeout,
                 tx_options=tx_options,
                 priority=priority,
+                request_id=request_id,
+                attempt=attempt,
             )
         )
 
@@ -2127,6 +2134,10 @@ class ControllerApplication(zigpy.util.ListenableMixin, CreateTaskMixin, abc.ABC
     def get_sequence(self) -> int:
         self._send_sequence = (self._send_sequence + 1) % 256
         return self._send_sequence
+
+    def get_request_id(self) -> int:
+        self._request_id = (self._request_id + 1) % 0x10000
+        return self._request_id
 
     def get_device(self, ieee: t.EUI64 = None, nwk: t.NWK | int = None) -> BaseDevice:
         """Looks up a device in the `devices` dictionary based either on its NWK or IEEE

@@ -1063,6 +1063,8 @@ ZIGBEE_PACKET_VALUES = {
     "alias_seq": t.uint8_t(1),
     "lqi": t.uint8_t(1),
     "rssi": t.int8s(-1),
+    "request_id": 1,
+    "attempt": 1,
 }
 
 
