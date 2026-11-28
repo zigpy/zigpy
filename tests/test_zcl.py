@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from typing import Any
 from unittest import mock
@@ -40,12 +41,116 @@ from zigpy.zdo import types as zdo_t
 DEFAULT_TSN = 123
 
 
+@pytest.mark.parametrize("start_task", [False, True])
+async def test_cluster_task_cancelled_on_device_teardown(app_mock, start_task, caplog):
+    """Cluster work must not outlive its owning device."""
+    device = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = device.endpoints[1].add_input_cluster(Basic.cluster_id)
+    target = asyncio.Event().wait()
+    global_tasks_before = set(zigpy.util.CatchingTaskMixin._tasks)
+
+    cluster.create_catching_task(target, name="pending cluster work")
+    tasks = set(device._tasks)
+    assert len(tasks) == 1
+    assert zigpy.util.CatchingTaskMixin._tasks == global_tasks_before
+    if start_task:
+        await asyncio.sleep(0)
+
+    device.on_remove()
+    await asyncio.gather(*tasks, return_exceptions=True)
+    await asyncio.sleep(0)
+    assert not device._tasks
+    assert all(task.cancelled() for task in tasks)
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
+    assert inspect.getcoroutinestate(target) == inspect.CORO_CLOSED
+
+
+async def test_cluster_task_device_ownership_is_independent(app_mock):
+    """Removing one device must not cancel another device's background work."""
+    first = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    second = add_initialized_device(app_mock, nwk=0x5678, ieee=make_ieee(2))
+    first_cluster = first.endpoints[1].add_input_cluster(Basic.cluster_id)
+    second_cluster = second.endpoints[1].add_input_cluster(Basic.cluster_id)
+    release = asyncio.Event()
+    first_cluster.create_catching_task(asyncio.Event().wait())
+    second_cluster.create_catching_task(release.wait())
+    first_tasks = set(first._tasks)
+    second_tasks = set(second._tasks)
+    assert len(first_tasks) == 1
+    assert len(second_tasks) == 1
+    await asyncio.sleep(0)
+
+    first.on_remove()
+    await asyncio.gather(*first_tasks, return_exceptions=True)
+    assert all(not task.done() for task in second_tasks)
+
+    release.set()
+    await asyncio.gather(*second_tasks)
+    await asyncio.sleep(0)
+    assert not second._tasks
+
+
+async def test_cluster_task_accepts_future(app_mock, caplog):
+    """Future targets complete without coroutine-only cleanup errors."""
+    device = add_initialized_device(app_mock, nwk=0x1234, ieee=make_ieee(1))
+    cluster = device.endpoints[1].add_input_cluster(Basic.cluster_id)
+    target = asyncio.get_running_loop().create_future()
+    cluster.create_catching_task(target)
+    tasks = set(device._tasks)
+    target.set_result(True)
+    assert await asyncio.gather(*tasks) == [True]
+    await asyncio.sleep(0)
+    assert not device._tasks
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
+
+
+@pytest.mark.parametrize("start_task", [False, True])
+async def test_group_cluster_task_cancelled_on_controller_shutdown(
+    app_mock, start_task
+):
+    """Virtual group cluster work belongs to the controller."""
+    group = app_mock.groups.add_group(0x1234, "test group")
+    cluster = group.endpoint[OnOff.cluster_id]
+    target = asyncio.Event().wait()
+    global_tasks_before = set(zigpy.util.CatchingTaskMixin._tasks)
+    cluster.create_catching_task(target)
+    tasks = set(app_mock._tasks)
+    assert len(tasks) == 1
+    assert zigpy.util.CatchingTaskMixin._tasks == global_tasks_before
+    if start_task:
+        await asyncio.sleep(0)
+
+    await app_mock.shutdown()
+    await asyncio.gather(*tasks, return_exceptions=True)
+    await asyncio.sleep(0)
+    assert all(task.cancelled() for task in tasks)
+    assert not app_mock._tasks
+    assert inspect.getcoroutinestate(target) == inspect.CORO_CLOSED
+
+
 @pytest.fixture
 def endpoint():
     ep = zigpy.endpoint.Endpoint(MagicMock(), 1)
     ep.add_input_cluster(0)
     ep.add_input_cluster(3)
     return ep
+
+
+@pytest.mark.parametrize("device_spec", [None, zigpy.device.ZigbeeDevice])
+async def test_cluster_task_runs_with_mock_device(device_spec):
+    """A mock task owner must not consume work without scheduling it."""
+    device = MagicMock(spec=device_spec)
+    endpoint = zigpy.endpoint.Endpoint(device, 1)
+    cluster = endpoint.add_input_cluster(Basic.cluster_id)
+    completed = asyncio.Event()
+
+    async def work():
+        completed.set()
+
+    cluster.create_catching_task(work())
+    await asyncio.sleep(0)
+
+    assert completed.is_set()
 
 
 def test_deserialize_general(endpoint):
