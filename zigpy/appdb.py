@@ -1283,6 +1283,17 @@ class PersistingListener(zigpy.util.CatchingTaskMixin):
         async with self.execute(f"SELECT * FROM group_members{DB_V}") as cursor:
             async for group_id, ieee, ep_id in cursor:
                 dev = self._get_zigbee_device(ieee)
+
+                if ep_id not in dev.endpoints:
+                    # A quirk can remove the endpoint, keep the row in case it returns
+                    LOGGER.debug(
+                        "Skipping group 0x%04X member %s:%s, the endpoint is gone",
+                        group_id,
+                        ieee,
+                        ep_id,
+                    )
+                    continue
+
                 group = self._application.groups[group_id]
                 group.add_member(dev.endpoints[ep_id], suppress_event=True)
 

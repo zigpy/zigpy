@@ -356,6 +356,61 @@ async def test_appdb_str_model(tmp_path):
     assert dev.endpoints[3].model == "Mock Model"
 
 
+def drop_ep2_resolver(device):
+    """Resolver that replaces a device with a clone lacking endpoint 2, like a quirk."""
+    if 2 not in device.endpoints:
+        return device
+
+    new = device.clone()
+    del new.endpoints[2]
+    return new
+
+
+@patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
+@patch("zigpy.zcl.Cluster.request", new_callable=AsyncMock)
+async def test_group_member_on_endpoint_removed_by_quirk(mock_request, tmp_path):
+    """A quirk dropping an endpoint that is a group member must not break loading."""
+
+    group_id = 0x1234
+    mock_request.return_value = [ZCLStatus.SUCCESS, group_id]
+
+    db = tmp_path / "test.db"
+    app = await make_app_with_db(db)
+    ieee = make_ieee()
+    app.handle_join(99, ieee, 0)
+
+    dev = app.get_device(ieee)
+    for ep_id in (1, 2):
+        ep = dev.add_endpoint(ep_id)
+        ep.status = zigpy.endpoint.Status.ZDO_INIT
+        ep.profile_id = 260
+        ep.device_type = profiles.zha.DeviceType.ON_OFF_LIGHT
+        ep.add_input_cluster(4)
+    app.device_initialized(dev)
+
+    await dev.endpoints[1].add_to_group(group_id, "Group")
+    await dev.endpoints[2].add_to_group(group_id, "Group")
+    await app.shutdown()
+
+    # A quirk now removes endpoint 2, the stored membership must not prevent startup
+    app2 = await make_app_with_db(db, device_resolver=drop_ep2_resolver)
+    dev2 = app2.get_device(ieee)
+    assert 2 not in dev2.endpoints
+
+    group = app2.groups[group_id]
+    assert (ieee, 1) in group
+    assert (ieee, 2) not in group
+    assert group_id in dev2.endpoints[1].member_of
+    await app2.shutdown()
+
+    # The stored membership was kept and returns once the endpoint does
+    app3 = await make_app_with_db(db)
+    dev3 = app3.get_device(ieee)
+    assert (ieee, 2) in app3.groups[group_id]
+    assert group_id in dev3.endpoints[2].member_of
+    await app3.shutdown()
+
+
 @patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
 @patch("zigpy.zcl.Cluster.request", new_callable=AsyncMock)
 async def test_groups(mock_request, tmp_path):
