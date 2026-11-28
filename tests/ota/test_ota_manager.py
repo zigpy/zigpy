@@ -171,6 +171,180 @@ async def test_ota_manger_stall(image_with_metadata: OtaImageWithMetadata) -> No
     assert status == foundation.Status.TIMEOUT
 
 
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.2)
+async def test_ota_manager_stall_timer_counts_device_requests() -> None:
+    """Test that a device still requesting blocks keeps the OTA alive.
+
+    Our answer to one block request is delayed for longer than the stall timeout,
+    e.g. because the coordinator does not confirm the previous send. The device keeps
+    asking for the same block in the meantime.
+    """
+    assert FW_IMAGE.firmware is not None
+    header = FW_IMAGE.firmware.header
+    image_data = FW_IMAGE.firmware.serialize()
+
+    app = make_app({})
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = zigpy.profiles.zha.DeviceType.PUMP
+    ota = ep.add_output_cluster(Ota.cluster_id)
+
+    loop = asyncio.get_running_loop()
+    expected_offset = 0
+    delayed = False
+    received = bytearray()
+
+    def request_block(offset: int) -> None:
+        app.packet_received(
+            make_packet(
+                dev,
+                ota,
+                "image_block",
+                field_control=Ota.ImageBlockCommand.FieldControl(0),
+                manufacturer_code=header.manufacturer_id,
+                image_type=header.image_type,
+                file_version=header.file_version,
+                file_offset=offset,
+                maximum_data_size=50,
+            )
+        )
+
+    async def send_packet(packet: t.ZigbeePacket) -> None:
+        nonlocal expected_offset, delayed
+
+        if packet.cluster_id != Ota.cluster_id:
+            return
+
+        hdr, cmd = ota.deserialize(packet.data.serialize())
+
+        if isinstance(cmd, Ota.ImageNotifyCommand):
+            app.packet_received(
+                make_packet(
+                    dev,
+                    ota,
+                    "query_next_image",
+                    field_control=Ota.QueryNextImageCommand.FieldControl(0),
+                    manufacturer_code=header.manufacturer_id,
+                    image_type=header.image_type,
+                    current_file_version=header.file_version - 10,
+                )
+            )
+        elif isinstance(cmd, Ota.ClientCommandDefs.query_next_image_response.schema):
+            assert cmd.status == foundation.Status.SUCCESS
+            loop.call_soon(request_block, 0)
+        elif isinstance(cmd, Ota.ClientCommandDefs.image_block_response.schema):
+            assert cmd.status == foundation.Status.SUCCESS
+
+            if cmd.file_offset == 500 and not delayed:
+                delayed = True
+
+                # The device re-requests the block while our answer is stuck
+                for i in range(1, 5):
+                    loop.call_later(0.1 * i, request_block, 500)
+
+                await asyncio.sleep(0.5)
+
+            if cmd.file_offset != expected_offset:
+                # Answers to repeated requests are ignored by the device
+                return
+
+            received.extend(cmd.image_data)
+            expected_offset += len(cmd.image_data)
+
+            if expected_offset < len(image_data):
+                loop.call_soon(request_block, expected_offset)
+            else:
+                loop.call_soon(
+                    app.packet_received,
+                    make_packet(
+                        dev,
+                        ota,
+                        "upgrade_end",
+                        status=foundation.Status.SUCCESS,
+                        manufacturer_code=header.manufacturer_id,
+                        image_type=header.image_type,
+                        file_version=header.file_version,
+                    ),
+                )
+
+    app.send_packet = AsyncMock(side_effect=send_packet)
+
+    # Stop the general cluster handler from interfering
+    dev.ota_in_progress = True
+    status = await update_firmware(dev, FW_IMAGE)
+
+    assert delayed
+    assert status == foundation.Status.SUCCESS
+    assert received == image_data
+
+
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
+@patch("zigpy.ota.manager.FINAL_BLOCK_TIMEOUT", 10)
+async def test_ota_manager_stall_after_downloading_again() -> None:
+    """Test that the final-block timeout only applies while the last block is wanted."""
+    assert FW_IMAGE.firmware is not None
+    header = FW_IMAGE.firmware.header
+    image_data = FW_IMAGE.firmware.serialize()
+
+    app = make_app({})
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = zigpy.profiles.zha.DeviceType.PUMP
+    ota = ep.add_output_cluster(Ota.cluster_id)
+
+    loop = asyncio.get_running_loop()
+    offsets: list[int] = []
+
+    def request_block(offset: int) -> None:
+        app.packet_received(
+            make_packet(
+                dev,
+                ota,
+                "image_block",
+                field_control=Ota.ImageBlockCommand.FieldControl(0),
+                manufacturer_code=header.manufacturer_id,
+                image_type=header.image_type,
+                file_version=header.file_version,
+                file_offset=offset,
+                maximum_data_size=50,
+            )
+        )
+
+    async def send_packet(packet: t.ZigbeePacket) -> None:
+        if packet.cluster_id != Ota.cluster_id:
+            return
+
+        hdr, cmd = ota.deserialize(packet.data.serialize())
+
+        if isinstance(cmd, Ota.ImageNotifyCommand):
+            # The device asks for the last block, then starts over and goes silent
+            loop.call_soon(request_block, len(image_data) - 10)
+        elif isinstance(cmd, Ota.ClientCommandDefs.image_block_response.schema):
+            offsets.append(cmd.file_offset)
+
+            if cmd.file_offset != 0:
+                loop.call_soon(request_block, 0)
+
+    app.send_packet = AsyncMock(side_effect=send_packet)
+
+    # Stop the general cluster handler from interfering
+    dev.ota_in_progress = True
+
+    async with asyncio.timeout(2):
+        status = await update_firmware(dev, FW_IMAGE)
+
+    assert status == foundation.Status.TIMEOUT
+    assert offsets == [len(image_data) - 10, 0]
+
+
 @patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
 async def test_ota_manger_device_reject(
     image_with_metadata: OtaImageWithMetadata,
