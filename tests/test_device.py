@@ -2460,6 +2460,55 @@ async def test_reinterview_failure_after_device_removed(monkeypatch, dev):
     )
 
 
+@pytest.mark.parametrize("window", ["discovery", "swap"])
+async def test_reinterview_cancelled_keeps_old_device_working(monkeypatch, dev, window):
+    """A cancelled re-interview does not tear down the old device.
+
+    Nothing removed or replaced it, so callers keep using it, and a retry whose
+    discovery fails registers it again.
+    """
+    dev._application.devices = {dev.ieee: dev}
+    callbacks = list(dev._on_remove_callbacks)
+    assert callbacks
+
+    blocked = asyncio.Event()
+
+    async def block(*args, **kwargs):
+        blocked.set()
+        await asyncio.Event().wait()
+
+    async def mock_discover(shadow):
+        if window == "discovery":
+            await block()
+
+    monkeypatch.setattr(device.Device, "_discover", mock_discover)
+    # The real swap runs, so the cancel hits it at its awaited DB delete
+    dev._application._dblistener = MagicMock()
+    dev._application._dblistener._remove_device = AsyncMock(side_effect=block)
+
+    task = asyncio.create_task(dev.reinterview())
+    await blocked.wait()
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert not dev.reinterviewing
+    assert dev._on_remove_callbacks == callbacks
+
+    async def failing_discover(shadow):
+        raise TimeoutError
+
+    monkeypatch.setattr(device.Device, "_discover", failing_discover)
+    await dev.reinterview()
+
+    assert dev._application.devices[dev.ieee] is dev
+    assert dev._on_remove_callbacks == callbacks
+    dev._application.listener_event.assert_called_with(
+        "device_reinterview_failure", dev
+    )
+
+
 async def test_reinterview_blocks_auto_init(dev):
     """Test that schedule_initialize is a no-op while reinterviewing."""
     dev._reinterview_in_progress = True

@@ -1005,6 +1005,7 @@ class ZigbeeDevice(BaseDevice):
             return
 
         self._reinterview_in_progress = True
+        shadow: ZigbeeDevice | None = None
 
         try:
             shadow = ZigbeeDevice(self._application, self._ieee, self.nwk)
@@ -1054,11 +1055,17 @@ class ZigbeeDevice(BaseDevice):
         finally:
             self._reinterview_in_progress = False
 
-            if self._application.devices.get(self._ieee) is not self:
-                # This device object is no longer registered: it was swapped out (already
-                # torn down by `_device_reinterviewed`, a no-op here) or removed while the
-                # shadow was registered in its place, in which case `remove()` only tore
-                # down the shadow
+            if (
+                shadow is not None
+                and self._application.devices.get(self._ieee) is not self
+                and self._shadow_removed(shadow)
+            ):
+                # The device was removed while the shadow was registered in its place,
+                # so `remove()` only tore down the shadow. A swap ends here too when a
+                # quirk replaced the shadow, but it already tore this object down. A
+                # re-interview cancelled, or failing in the swap before it tore this
+                # object down, leaves the shadow registered with an open store: nothing
+                # replaced this object then, so callers keep using it
                 self.on_remove()
 
     async def get_node_descriptor(self) -> zdo_t.NodeDescriptor:
