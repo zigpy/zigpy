@@ -91,6 +91,9 @@ class OTAManager:
         self._image_requested = False
         self._other_image_queried = False
 
+        # Only the most recent image page request is served
+        self._page_task: asyncio.Task[None] | None = None
+
         # Fast polling only speeds the update up, see `begin_fast_polling`
         self._fast_poll_task: asyncio.Task[None] | None = None
 
@@ -141,6 +144,7 @@ class OTAManager:
 
     def __exit__(self, *exc_details) -> None:
         self.stack.close()
+        self._cancel_page()
 
         # Let the OTA cluster answer the device's Upgrade End Request for this image if
         # it arrives after the update has ended
@@ -164,6 +168,7 @@ class OTAManager:
         """Finish the OTA process."""
         self._stall_timer.cancel()
         self._cancel_notify()
+        self._cancel_page()
 
         if not self._upgrade_end_future.done():
             self._upgrade_end_future.set_result(status)
@@ -172,6 +177,11 @@ class OTAManager:
         """Stop sending the image notify, it is no longer needed."""
         if self._notify_task is not None:
             self._notify_task.cancel()
+
+    def _cancel_page(self) -> None:
+        """Stop sending the blocks of the current image page."""
+        if self._page_task is not None:
+            self._page_task.cancel()
 
     def _on_device_request(self, *, other_image: bool = False) -> None:
         """Handle the device sending us an OTA request."""
@@ -360,7 +370,17 @@ class OTAManager:
             )
             return
 
-        while bytes_remaining > 0:
+        # The device is still downloading, measure the stall from its requests too
+        if not self._upgrade_end_future.done():
+            self._stall_timer.reschedule(
+                MAX_TIME_WITHOUT_PROGRESS + command.response_spacing / 1000
+            )
+
+        # A repeated page request (e.g. after a page timeout) replaces the current one
+        self._cancel_page()
+        self._page_task = asyncio.current_task()
+
+        while bytes_remaining > 0 and not self._upgrade_end_future.done():
             block_size = min(max_block_size, bytes_remaining)
             block = self._image_data[offset : offset + block_size]
             offset += block_size
@@ -383,6 +403,8 @@ class OTAManager:
                         command_id=Ota.ClientCommandDefs.image_block_response.id,
                         schema=Ota.ClientCommandDefs.image_block_response.schema,
                         expect_reply=False,
+                        # Page responses are sent without APS acks (ZCL R8 11.13.7.4)
+                        ask_for_ack=False,
                         # kwargs
                         status=foundation.Status.SUCCESS,
                         manufacturer_code=self.image.firmware.header.manufacturer_id,
@@ -392,8 +414,14 @@ class OTAManager:
                         image_data=block,
                     )
 
+                if self._upgrade_end_future.done():
+                    return
+
                 if offset < len(self._image_data):
-                    self._stall_timer.reschedule(MAX_TIME_WITHOUT_PROGRESS)
+                    # We wait for the response spacing before sending the next block
+                    self._stall_timer.reschedule(
+                        MAX_TIME_WITHOUT_PROGRESS + command.response_spacing / 1000
+                    )
                 else:
                     self._stall_timer.reschedule(FINAL_BLOCK_TIMEOUT)
 

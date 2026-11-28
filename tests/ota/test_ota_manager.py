@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Awaitable, Callable
+import contextlib
 import itertools
 import time
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -2249,6 +2250,231 @@ async def test_ota_manager_query_matches_image_metadata() -> None:
     assert "query_next_image_response:SUCCESS" in log
 
 
+def _make_paging_device(
+    on_image_block: Callable[[], Awaitable[None]],
+    *,
+    page_size: int,
+    response_spacing: int = 0,
+) -> tuple[
+    zigpy.device.Device,
+    list[t.ZigbeePacket],
+    Callable[[], None],
+    Callable[[foundation.Status], None],
+]:
+    """Create a device that downloads the image with Image Page Requests.
+
+    Returns the device, the Image Block Response packets sent to it, and callbacks
+    that make it request the first page and send an Upgrade End Request. The device
+    requests the first page once it has queried for the image, `on_image_block` is
+    called for every block sent to it.
+    """
+    assert FW_IMAGE.firmware is not None
+    header = FW_IMAGE.firmware.header
+
+    app = make_app({})
+    dev = add_initialized_device(
+        app, nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77")
+    )
+    cluster = dev.endpoints[1].add_output_cluster(Ota.cluster_id)
+
+    # Stop the general cluster handler from interfering
+    dev.ota_in_progress = True
+
+    blocks: list[t.ZigbeePacket] = []
+
+    def request_page() -> None:
+        app.packet_received(
+            make_packet(
+                dev,
+                cluster,
+                "image_page",
+                field_control=0,
+                manufacturer_code=header.manufacturer_id,
+                image_type=header.image_type,
+                file_version=header.file_version,
+                file_offset=0,
+                maximum_data_size=50,
+                page_size=page_size,
+                response_spacing=response_spacing,
+            )
+        )
+
+    def upgrade_end(status: foundation.Status) -> None:
+        app.packet_received(
+            make_packet(
+                dev,
+                cluster,
+                "upgrade_end",
+                status=status,
+                manufacturer_code=header.manufacturer_id,
+                image_type=header.image_type,
+                file_version=header.file_version,
+            )
+        )
+
+    async def send_packet(packet: t.ZigbeePacket) -> None:
+        if packet.cluster_id != Ota.cluster_id:
+            return
+
+        hdr, cmd = cluster.deserialize(packet.data.serialize())
+
+        if isinstance(cmd, Ota.ImageNotifyCommand):
+            app.packet_received(
+                make_packet(
+                    dev,
+                    cluster,
+                    "query_next_image",
+                    field_control=Ota.QueryNextImageCommand.FieldControl(0),
+                    manufacturer_code=header.manufacturer_id,
+                    image_type=header.image_type,
+                    current_file_version=header.file_version - 10,
+                )
+            )
+        elif isinstance(cmd, Ota.ClientCommandDefs.query_next_image_response.schema):
+            request_page()
+        elif isinstance(cmd, Ota.ClientCommandDefs.image_block_response.schema):
+            blocks.append(packet)
+            await on_image_block()
+
+    app.send_packet = AsyncMock(side_effect=send_packet)
+
+    return dev, blocks, request_page, upgrade_end
+
+
+def _block_offsets(dev: zigpy.device.Device, blocks: list[t.ZigbeePacket]) -> list[int]:
+    cluster = dev.endpoints[1].out_clusters[Ota.cluster_id]
+    return [cluster.deserialize(p.data.serialize())[1].file_offset for p in blocks]
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+async def test_ota_manager_image_page_stops_when_update_ends(cancel: bool) -> None:
+    """The blocks of an image page stop once the device aborts the update or the
+    update is cancelled, they are not sent after `update_firmware` has returned.
+    """
+
+    async def on_image_block() -> None:
+        if len(blocks) != 3:
+            return
+
+        # The device gives up after a few blocks, a page request sent after that is
+        # not served either
+        if not cancel:
+            upgrade_end(foundation.Status.ABORT)
+            request_page()
+            return
+
+        # The update is cancelled while delivering a block takes a long time
+        update.cancel()
+        await asyncio.sleep(10)
+
+    # The whole image is requested as a single page
+    dev, blocks, request_page, upgrade_end = _make_paging_device(
+        on_image_block,
+        page_size=len(FW_IMAGE.firmware.serialize()),
+        response_spacing=10,
+    )
+
+    update = asyncio.create_task(update_firmware(dev, FW_IMAGE))
+
+    if cancel:
+        with pytest.raises(asyncio.CancelledError):
+            await update
+    else:
+        assert await update == foundation.Status.ABORT
+
+    # A block still being sent is cancelled
+    await asyncio.sleep(0)
+    assert dev._concurrent_requests_semaphore.active_requests == 0
+
+    sent_blocks = len(blocks)
+    await asyncio.sleep(0.2)
+
+    assert _block_offsets(dev, blocks) == [0, 50, 100]
+    assert len(blocks) == sent_blocks
+
+
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.3)
+async def test_ota_manager_image_page_repeated_request() -> None:
+    """A repeated Image Page Request restarts the page instead of sending it twice
+    in parallel.
+    """
+
+    async def on_image_block() -> None:
+        # The device requests the page again, e.g. after its page timeout
+        if len(blocks) == 3:
+            request_page()
+
+    dev, blocks, request_page, _upgrade_end = _make_paging_device(
+        on_image_block, page_size=500, response_spacing=5
+    )
+
+    status = await update_firmware(dev, FW_IMAGE)
+
+    assert status == foundation.Status.TIMEOUT
+    assert _block_offsets(dev, blocks) == [0, 50, 100, *range(0, 500, 50)]
+
+
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
+async def test_ota_manager_image_page_no_aps_ack() -> None:
+    """Image Block Responses for an Image Page Request are sent without APS acks
+    (ZCL R8 11.13.7.4).
+    """
+
+    dev, blocks, _request_page, _upgrade_end = _make_paging_device(
+        AsyncMock(), page_size=100
+    )
+
+    status = await update_firmware(dev, FW_IMAGE)
+
+    assert status == foundation.Status.TIMEOUT
+    assert len(blocks) == 2
+    assert all(t.TransmitOptions.ACK not in p.tx_options for p in blocks)
+
+
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
+async def test_ota_manager_image_page_long_response_spacing() -> None:
+    """A response spacing longer than the stall timeout does not end the update while
+    the page is being sent.
+    """
+
+    dev, blocks, _request_page, _upgrade_end = _make_paging_device(
+        AsyncMock(), page_size=150, response_spacing=200
+    )
+
+    status = await update_firmware(dev, FW_IMAGE)
+
+    assert status == foundation.Status.TIMEOUT
+    assert _block_offsets(dev, blocks) == [0, 50, 100]
+
+
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.2)
+async def test_ota_manager_image_page_request_restarts_stall_timer() -> None:
+    """A device repeating its page request while nothing can be sent to it keeps the
+    update alive.
+    """
+    loop = asyncio.get_running_loop()
+    coordinator_ready = asyncio.Event()
+
+    async def on_image_block() -> None:
+        # The coordinator does not confirm any send for a while, during which the
+        # device asks for the page again
+        await coordinator_ready.wait()
+
+    dev, blocks, request_page, _upgrade_end = _make_paging_device(
+        on_image_block, page_size=150
+    )
+
+    for i in range(1, 4):
+        loop.call_later(0.1 * i, request_page)
+
+    loop.call_later(0.35, coordinator_ready.set)
+
+    status = await update_firmware(dev, FW_IMAGE)
+
+    assert status == foundation.Status.TIMEOUT
+    assert _block_offsets(dev, blocks)[-3:] == [0, 50, 100]
+
+
 @patch("zigpy.ota.manager.FINAL_BLOCK_TIMEOUT", 0.1)
 async def test_ota_late_upgrade_end_after_last_block_send_failed() -> None:
     """Test that the image is remembered if the device got the last block we failed to
@@ -2328,3 +2554,29 @@ async def test_ota_other_command_outside_update_default_response() -> None:
     assert rsp_hdr.tsn == hdr.tsn
     assert rsp_hdr.command_id == foundation.GeneralCommand.Default_Response
     assert rsp.status == foundation.Status.SUCCESS
+
+
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.1)
+async def test_ota_manager_image_page_send_ignores_cancellation() -> None:
+    """No further blocks of a page are sent once the update has ended, even if the
+    send that was running when it ended does not pass the cancellation on.
+    """
+
+    async def on_image_block() -> None:
+        if len(blocks) != 2:
+            return
+
+        # The update times out while the radio library is still sending this block,
+        # and the library swallows the cancellation
+        with contextlib.suppress(asyncio.CancelledError):
+            await asyncio.sleep(1)
+
+    dev, blocks, _request_page, _upgrade_end = _make_paging_device(
+        on_image_block, page_size=500
+    )
+
+    status = await update_firmware(dev, FW_IMAGE)
+    assert status == foundation.Status.TIMEOUT
+
+    await asyncio.sleep(0.05)
+    assert _block_offsets(dev, blocks) == [0, 50]
