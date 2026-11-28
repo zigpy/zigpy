@@ -236,6 +236,17 @@ def test_state_backup_as_open_coordinator(backup):
     assert backup == backup2
 
 
+def test_open_coordinator_nwk_manager_round_trip(backup):
+    backup.network_info.nwk_manager_id = t.NWK(0x1234)
+
+    obj = json.loads(json.dumps(backup.as_open_coordinator_json()))
+    assert obj["metadata"]["internal"]["network"]["nwk_manager"] == "1234"
+
+    backup2 = zigpy.backups.NetworkBackup.from_open_coordinator_json(obj)
+    assert backup2.network_info.nwk_manager_id == t.NWK(0x1234)
+    assert backup2 == backup
+
+
 def test_z2m_backup_parsing(z2m_backup_json, backup):
     backup.network_info.metadata = None
     backup.network_info.source = None

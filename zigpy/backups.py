@@ -387,7 +387,7 @@ def _open_coordinator_backup_to_network_backup(obj: dict[str, Any]) -> NetworkBa
 
     if "nwk_manager" in network_meta:
         network_info.nwk_manager_id, _ = t.NWK.deserialize(
-            bytes.fromhex(network_meta["nwk_manager"])
+            bytes.fromhex(network_meta["nwk_manager"])[::-1]
         )
     else:
         network_info.nwk_manager_id = t.NWK(0x0000)
