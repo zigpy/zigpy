@@ -1807,3 +1807,365 @@ async def test_ota_manager_image_page_zero_data_size() -> None:
     assert empty_blocks == 0
     assert malformed_rsps == 1
     assert status == foundation.Status.MALFORMED_COMMAND
+
+
+def _make_device_for_late_upgrade_end() -> tuple[
+    zigpy.device.Device, Cluster, list[tuple[foundation.ZCLHeader, object]]
+]:
+    """Create a device that downloads the image but never finishes in time."""
+    assert FW_IMAGE.firmware is not None
+    header = FW_IMAGE.firmware.header
+    image_data = FW_IMAGE.firmware.serialize()
+
+    app = make_app({})
+    dev = app.add_device(nwk=0x1234, ieee=t.EUI64.convert("00:11:22:33:44:55:66:77"))
+    dev.node_desc = make_node_desc(logical_type=zdo_t.LogicalType.Router)
+
+    ep = dev.add_endpoint(1)
+    ep.status = zigpy.endpoint.Status.ZDO_INIT
+    ep.profile_id = 260
+    ep.device_type = zigpy.profiles.zha.DeviceType.PUMP
+    ota = ep.add_output_cluster(Ota.cluster_id)
+
+    loop = asyncio.get_running_loop()
+    sent: list[tuple[foundation.ZCLHeader, object]] = []
+
+    def request_block(offset: int) -> None:
+        app.packet_received(
+            make_packet(
+                dev,
+                ota,
+                "image_block",
+                field_control=Ota.ImageBlockCommand.FieldControl(0),
+                manufacturer_code=header.manufacturer_id,
+                image_type=header.image_type,
+                file_version=header.file_version,
+                file_offset=offset,
+                maximum_data_size=50,
+            )
+        )
+
+    async def send_packet(packet: t.ZigbeePacket) -> None:
+        if packet.cluster_id != Ota.cluster_id:
+            return
+
+        hdr, cmd = ota.deserialize(packet.data.serialize())
+        sent.append((hdr, cmd))
+
+        if isinstance(cmd, Ota.ImageNotifyCommand):
+            app.packet_received(
+                make_packet(
+                    dev,
+                    ota,
+                    "query_next_image",
+                    field_control=Ota.QueryNextImageCommand.FieldControl(0),
+                    manufacturer_code=header.manufacturer_id,
+                    image_type=header.image_type,
+                    current_file_version=header.file_version - 10,
+                )
+            )
+        elif isinstance(cmd, Ota.ClientCommandDefs.query_next_image_response.schema):
+            loop.call_soon(request_block, 0)
+        elif isinstance(cmd, Ota.ClientCommandDefs.image_block_response.schema):
+            next_offset = cmd.file_offset + len(cmd.image_data)
+
+            # The device verifies the image for a long time after the last block
+            if next_offset < len(image_data):
+                loop.call_soon(request_block, next_offset)
+
+    app.send_packet = AsyncMock(side_effect=send_packet)
+
+    return dev, ota, sent
+
+
+def _upgrade_end_packet(
+    dev: zigpy.device.Device,
+    ota: Cluster,
+    status: foundation.Status,
+    *,
+    file_version: int | None = None,
+) -> t.ZigbeePacket:
+    assert FW_IMAGE.firmware is not None
+    header = FW_IMAGE.firmware.header
+
+    return make_packet(
+        dev,
+        ota,
+        "upgrade_end",
+        status=status,
+        manufacturer_code=header.manufacturer_id,
+        image_type=header.image_type,
+        file_version=header.file_version if file_version is None else file_version,
+    )
+
+
+@patch("zigpy.ota.manager.FINAL_BLOCK_TIMEOUT", 0.1)
+async def test_ota_late_upgrade_end_is_answered() -> None:
+    """Test that an Upgrade End Request after the OTA timed out is still answered."""
+    assert FW_IMAGE.firmware is not None
+    header = FW_IMAGE.firmware.header
+
+    dev, ota, sent = _make_device_for_late_upgrade_end()
+
+    status = await dev.update_firmware(FW_IMAGE)
+    assert status == foundation.Status.TIMEOUT
+    assert not dev.ota_in_progress
+
+    sent.clear()
+
+    # The device finishes verifying the image after the update has ended
+    packet = _upgrade_end_packet(dev, ota, foundation.Status.SUCCESS)
+    dev.application.packet_received(packet)
+    await asyncio.sleep(0.01)
+
+    assert len(sent) == 1
+    hdr, cmd = sent[0]
+    assert hdr.tsn == packet.tsn
+    assert cmd == Ota.ClientCommandDefs.upgrade_end_response.schema(
+        manufacturer_code=header.manufacturer_id,
+        image_type=header.image_type,
+        file_version=header.file_version,
+        current_time=0,
+        upgrade_time=0,
+    )
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        # The device reports an image we never sent it
+        foundation.Status.SUCCESS,
+        # The device failed to verify the image
+        foundation.Status.INVALID_IMAGE,
+    ],
+)
+async def test_ota_unknown_upgrade_end_gets_default_response(
+    status: foundation.Status,
+) -> None:
+    """Test that other Upgrade End Requests outside an OTA get a Default Response."""
+    dev, ota, sent = _make_device_for_late_upgrade_end()
+
+    # No image was ever transferred to the device
+    packet = _upgrade_end_packet(dev, ota, status)
+    dev.application.packet_received(packet)
+    await asyncio.sleep(0.01)
+
+    assert len(sent) == 1
+    hdr, cmd = sent[0]
+    assert hdr.tsn == packet.tsn
+    assert hdr.command_id == foundation.GeneralCommand.Default_Response
+    assert cmd.command_id == Ota.ServerCommandDefs.upgrade_end.id
+    assert cmd.status == foundation.Status.SUCCESS
+
+
+@patch("zigpy.ota.manager.FINAL_BLOCK_TIMEOUT", 0.1)
+async def test_ota_late_upgrade_end_other_version_not_answered() -> None:
+    """Test that a late Upgrade End Request for another image is not acknowledged."""
+    assert FW_IMAGE.firmware is not None
+
+    dev, ota, sent = _make_device_for_late_upgrade_end()
+
+    status = await dev.update_firmware(FW_IMAGE)
+    assert status == foundation.Status.TIMEOUT
+
+    sent.clear()
+
+    packet = _upgrade_end_packet(
+        dev,
+        ota,
+        foundation.Status.SUCCESS,
+        file_version=FW_IMAGE.firmware.header.file_version + 1,
+    )
+    dev.application.packet_received(packet)
+    await asyncio.sleep(0.01)
+
+    assert len(sent) == 1
+    hdr, _cmd = sent[0]
+    assert hdr.command_id == foundation.GeneralCommand.Default_Response
+
+
+async def test_ota_image_page_outside_update_is_aborted() -> None:
+    """Test that an Image Page Request outside an OTA is aborted like a block request."""
+    assert FW_IMAGE.firmware is not None
+    header = FW_IMAGE.firmware.header
+
+    dev, ota, sent = _make_device_for_late_upgrade_end()
+
+    packet = make_packet(
+        dev,
+        ota,
+        "image_page",
+        field_control=0,
+        manufacturer_code=header.manufacturer_id,
+        image_type=header.image_type,
+        file_version=header.file_version,
+        file_offset=0,
+        maximum_data_size=50,
+        page_size=500,
+        response_spacing=0,
+    )
+    dev.application.packet_received(packet)
+    await asyncio.sleep(0.01)
+
+    assert len(sent) == 1
+    hdr, cmd = sent[0]
+    assert hdr.tsn == packet.tsn
+    assert cmd.status == foundation.Status.ABORT
+
+
+@pytest.mark.parametrize("ota_in_progress", [False, True])
+@pytest.mark.parametrize("disable_default_response", [False, True])
+async def test_ota_query_specific_file_unsupported(
+    ota_in_progress: bool, disable_default_response: bool
+) -> None:
+    """Test that a Query Device Specific File Request is answered as unsupported."""
+    dev, ota, sent = _make_device_for_late_upgrade_end()
+    dev.ota_in_progress = ota_in_progress
+
+    packet = make_packet(
+        dev,
+        ota,
+        "query_specific_file",
+        disable_default_response=disable_default_response,
+        request_node_addr=dev.ieee,
+        manufacturer_code=0x1234,
+        image_type=0x0090,
+        file_version=0x00000001,
+        current_zigbee_stack_version=2,
+    )
+    dev.application.packet_received(packet)
+    await asyncio.sleep(0.01)
+
+    assert len(sent) == 1
+    hdr, cmd = sent[0]
+    assert hdr.tsn == packet.tsn
+    assert hdr.command_id == foundation.GeneralCommand.Default_Response
+    assert cmd.status == foundation.Status.UNSUP_CLUSTER_COMMAND
+
+
+@pytest.mark.parametrize("during_last_block", [False, True])
+@patch("zigpy.ota.manager.FINAL_BLOCK_TIMEOUT", 0.1)
+async def test_ota_late_upgrade_end_after_failed_verification(
+    during_last_block: bool,
+) -> None:
+    """Test that an image the device rejected is not applied by a late request."""
+    dev, ota, sent = _make_device_for_late_upgrade_end()
+
+    loop = asyncio.get_running_loop()
+    send_packet = dev.application.send_packet.side_effect
+
+    async def reject_image(packet: t.ZigbeePacket) -> None:
+        await send_packet(packet)
+
+        hdr, cmd = ota.deserialize(packet.data.serialize())
+        if isinstance(
+            cmd, Ota.ClientCommandDefs.image_block_response.schema
+        ) and cmd.file_offset + len(cmd.image_data) == len(
+            FW_IMAGE.firmware.serialize()
+        ):
+            # The device fails to verify the image, possibly before the send of the
+            # last block has completed
+            loop.call_soon(
+                dev.application.packet_received,
+                _upgrade_end_packet(dev, ota, foundation.Status.INVALID_IMAGE),
+            )
+
+            if during_last_block:
+                await asyncio.sleep(0.05)
+
+    dev.application.send_packet = AsyncMock(side_effect=reject_image)
+
+    status = await dev.update_firmware(FW_IMAGE)
+    assert status == foundation.Status.INVALID_IMAGE
+
+    sent.clear()
+
+    dev.application.packet_received(
+        _upgrade_end_packet(dev, ota, foundation.Status.SUCCESS)
+    )
+    await asyncio.sleep(0.01)
+
+    assert len(sent) == 1
+    hdr, _cmd = sent[0]
+    assert hdr.command_id == foundation.GeneralCommand.Default_Response
+
+
+@patch("zigpy.ota.manager.FINAL_BLOCK_TIMEOUT", 0.1)
+async def test_ota_late_upgrade_end_after_last_block_send_failed() -> None:
+    """Test that the image is remembered if the device got the last block we failed to
+    send, e.g. because its acknowledgement was lost.
+    """
+    assert FW_IMAGE.firmware is not None
+    header = FW_IMAGE.firmware.header
+    image_size = len(FW_IMAGE.firmware.serialize())
+
+    dev, ota, sent = _make_device_for_late_upgrade_end()
+
+    send_packet = dev.application.send_packet.side_effect
+
+    async def last_block_unacknowledged(packet: t.ZigbeePacket) -> None:
+        await send_packet(packet)
+
+        _hdr, cmd = ota.deserialize(packet.data.serialize())
+        if (
+            isinstance(cmd, Ota.ClientCommandDefs.image_block_response.schema)
+            and cmd.file_offset + len(cmd.image_data) == image_size
+        ):
+            raise DeliveryError("No APS acknowledgement")
+
+    dev.application.send_packet = AsyncMock(side_effect=last_block_unacknowledged)
+
+    status = await dev.update_firmware(FW_IMAGE)
+    assert status == foundation.Status.TIMEOUT
+
+    sent.clear()
+
+    # The device received the last block and finishes verifying it late
+    packet = _upgrade_end_packet(dev, ota, foundation.Status.SUCCESS)
+    dev.application.packet_received(packet)
+    await asyncio.sleep(0.01)
+
+    # The unacknowledged block may still be retried
+    responses = [
+        (hdr, cmd)
+        for hdr, cmd in sent
+        if not isinstance(cmd, Ota.ClientCommandDefs.image_block_response.schema)
+    ]
+    assert len(responses) == 1
+    hdr, cmd = responses[0]
+    assert hdr.tsn == packet.tsn
+    assert cmd == Ota.ClientCommandDefs.upgrade_end_response.schema(
+        manufacturer_code=header.manufacturer_id,
+        image_type=header.image_type,
+        file_version=header.file_version,
+        current_time=0,
+        upgrade_time=0,
+    )
+
+
+async def test_ota_other_command_outside_update_default_response() -> None:
+    """Test that other OTA commands outside an update get the default handling."""
+    dev, ota, sent = _make_device_for_late_upgrade_end()
+
+    # A server to client command the device should not be sending to us
+    hdr, _ = ota._create_request(
+        general=False,
+        command_id=Ota.ClientCommandDefs.image_notify.id,
+        schema=Ota.ClientCommandDefs.image_notify.schema,
+        disable_default_response=False,
+        direction=foundation.Direction.Server_to_Client,
+        args=(),
+        kwargs={
+            "payload_type": Ota.ImageNotifyCommand.PayloadType.QueryJitter,
+            "query_jitter": 100,
+        },
+    )
+
+    ota.handle_cluster_request(hdr, [])
+    await asyncio.sleep(0.01)
+
+    assert len(sent) == 1
+    rsp_hdr, rsp = sent[0]
+    assert rsp_hdr.tsn == hdr.tsn
+    assert rsp_hdr.command_id == foundation.GeneralCommand.Default_Response
+    assert rsp.status == foundation.Status.SUCCESS

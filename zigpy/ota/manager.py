@@ -31,8 +31,9 @@ if TYPE_CHECKING:
 # to detect when OTA has permanently stalled
 MAX_TIME_WITHOUT_PROGRESS = 30
 
-# Separate timeout for the final block, to give devices time to finally verify the OTA
-FINAL_BLOCK_TIMEOUT = 60
+# Separate timeout for the final block, to give devices time to finally verify the OTA.
+# Some take more than a minute (e.g. ~75 s for the LiXee ZLinky_TIC).
+FINAL_BLOCK_TIMEOUT = 300
 
 
 def _image_block_size_for_manufacturer(
@@ -68,6 +69,11 @@ class OTAManager:
 
         self.image = image
         self._image_data = image.firmware.serialize()
+
+        # A new update replaces the image the device may still be finishing
+        self.ota_cluster.last_transferred_image = None
+        self._transferred = False
+        self._rejected = False
         self.progress_callback = progress_callback
         self.force = force
 
@@ -131,6 +137,16 @@ class OTAManager:
 
     def __exit__(self, *exc_details) -> None:
         self.stack.close()
+
+        # Let the OTA cluster answer the device's Upgrade End Request for this image if
+        # it arrives after the update has ended
+        if self._transferred and not self._rejected:
+            header = self.image.firmware.header
+            self.ota_cluster.last_transferred_image = (
+                header.manufacturer_id,
+                header.image_type,
+                header.file_version,
+            )
 
     def _stall_callback(self) -> None:
         """Handle the stall timer expiring."""
@@ -221,6 +237,10 @@ class OTAManager:
 
         return MAX_TIME_WITHOUT_PROGRESS
 
+    def _image_transferred(self) -> None:
+        """Remember that the end of the image is being sent to the device."""
+        self._transferred = True
+
     async def _image_block_req(
         self, hdr: foundation.ZCLHeader, command: ImageBlockCommand
     ) -> None:
@@ -243,6 +263,11 @@ class OTAManager:
         self._last_block_requested = command.file_offset + len(block) >= len(
             self._image_data
         )
+
+        # The device may have the last block and verify the image before our send of it
+        # succeeds (it is retried, e.g. after a lost acknowledgement) or even if it fails
+        if self._last_block_requested:
+            self._image_transferred()
 
         # The device is still downloading, even if our answer to it is delayed (e.g.
         # it is queued behind other requests). Measure the stall from its requests.
@@ -303,6 +328,10 @@ class OTAManager:
             offset += block_size
             bytes_remaining -= block_size
 
+            # As for block requests, the device may get the last block even if this fails
+            if offset >= len(self._image_data):
+                self._image_transferred()
+
             try:
                 # OTA sometimes is overwhelmingly fast, we should allow higher priority
                 # requests to make it through
@@ -351,6 +380,9 @@ class OTAManager:
         self._on_device_request()
 
         if command.status != foundation.Status.SUCCESS:
+            # The device will not apply this image
+            self._rejected = True
+
             # A failed upgrade gets a successful Default Response, never an Upgrade End
             # Response telling the device when to upgrade (ZCL R8 11.13.9.4)
             if not hdr.frame_control.disable_default_response:
