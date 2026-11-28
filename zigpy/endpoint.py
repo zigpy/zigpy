@@ -10,7 +10,12 @@ import zigpy.profiles
 import zigpy.types as t
 import zigpy.util
 import zigpy.zcl
-from zigpy.zcl.foundation import GENERAL_COMMANDS, GeneralCommand, Status as ZCLStatus
+from zigpy.zcl.foundation import (
+    GENERAL_COMMANDS,
+    DefaultResponse,
+    GeneralCommand,
+    Status as ZCLStatus,
+)
 from zigpy.zdo.types import Status as ZDOStatus
 
 if TYPE_CHECKING:
@@ -19,6 +24,19 @@ if TYPE_CHECKING:
 LOGGER = logging.getLogger(__name__)
 
 DeviceT = TypeVar("DeviceT", bound="BaseDevice")
+
+
+def _group_command_status(res: Any) -> ZCLStatus:
+    """Return the status of an Add Group or Remove Group reply.
+
+    A device that does not support the command answers with a Default Response
+    instead, whose first field is the echoed command ID (0x00 for Add Group), not a
+    status.
+    """
+    if isinstance(res, DefaultResponse):
+        return res.status
+
+    return res[0]
 
 
 class Status(enum.IntEnum):
@@ -224,13 +242,15 @@ class Endpoint(BaseEndpoint["ZigbeeDevice"]):
             self.debug("Cannot add 0x%04x group, no groups cluster", grp_id)
             return ZCLStatus.FAILURE
 
-        if res[0] not in (ZCLStatus.SUCCESS, ZCLStatus.DUPLICATE_EXISTS):
-            self.debug("Couldn't add to 0x%04x group: %s", grp_id, res[0])
-            return res[0]
+        status = _group_command_status(res)
+
+        if status not in (ZCLStatus.SUCCESS, ZCLStatus.DUPLICATE_EXISTS):
+            self.debug("Couldn't add to 0x%04x group: %s", grp_id, status)
+            return status
 
         group = self.device.application.groups.add_group(grp_id, name)
         group.add_member(self)
-        return res[0]
+        return status
 
     async def remove_from_group(self, grp_id: int) -> ZCLStatus:
         try:
@@ -239,13 +259,15 @@ class Endpoint(BaseEndpoint["ZigbeeDevice"]):
             self.debug("Cannot remove 0x%04x group, no groups cluster", grp_id)
             return ZCLStatus.FAILURE
 
-        if res[0] not in (ZCLStatus.SUCCESS, ZCLStatus.NOT_FOUND):
-            self.debug("Couldn't remove to 0x%04x group: %s", grp_id, res[0])
-            return res[0]
+        status = _group_command_status(res)
+
+        if status not in (ZCLStatus.SUCCESS, ZCLStatus.NOT_FOUND):
+            self.debug("Couldn't remove to 0x%04x group: %s", grp_id, status)
+            return status
 
         if grp_id in self.device.application.groups:
             self.device.application.groups[grp_id].remove_member(self)
-        return res[0]
+        return status
 
     async def group_membership_scan(self) -> None:
         """Sync up group membership."""

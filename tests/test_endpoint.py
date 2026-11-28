@@ -442,6 +442,57 @@ async def test_add_to_group_fail(ep, status):
     assert groups.remove_group.call_count == 0
 
 
+@pytest.mark.parametrize(
+    "status",
+    [
+        ZCLStatus.FAILURE,
+        ZCLStatus.UNSUP_CLUSTER_COMMAND,
+        ZCLStatus.UNSUPPORTED_CLUSTER,
+    ],
+)
+async def test_add_to_group_default_response(ep, status):
+    """A Default Response rejecting Add Group does not make the endpoint a member."""
+    ep.add_input_cluster(4)
+    ep.device.application.groups = MagicMock(spec_set=group.Groups)
+
+    # ZCL R8 2.5.12.2: a device that rejects the command with a Default Response
+    # echoes the command ID, which is 0x00 for Add Group
+    rsp = GENERAL_COMMANDS[GeneralCommand.Default_Response].schema(
+        command_id=zcl.clusters.general.Groups.ServerCommandDefs.add.id,
+        status=status,
+    )
+    ep.request = AsyncMock(return_value=rsp)
+
+    res = await ep.add_to_group(0x1234, "Group 0x1234")
+
+    assert res == status
+    assert ep.request.call_count == 1
+    assert ep.device.application.groups.add_group.call_count == 0
+
+
+@pytest.mark.parametrize(
+    ("status", "removed"),
+    [
+        (ZCLStatus.UNSUP_CLUSTER_COMMAND, False),
+        (ZCLStatus.SUCCESS, True),
+    ],
+)
+async def test_remove_from_group_default_response(ep, status, removed):
+    """A Default Response to Remove Group is judged by its status field."""
+    ep, grp_mock = _group_remove_mock(ep)
+
+    rsp = GENERAL_COMMANDS[GeneralCommand.Default_Response].schema(
+        command_id=zcl.clusters.general.Groups.ServerCommandDefs.remove.id,
+        status=status,
+    )
+    ep.request = AsyncMock(return_value=rsp)
+
+    res = await ep.remove_from_group(0x1234)
+
+    assert res == status
+    assert grp_mock.remove_member.call_count == (1 if removed else 0)
+
+
 def _group_remove_mock(ep, success=True, no_groups_cluster=False, not_member=False):
     async def mock_req(*args, **kwargs):
         if success:
