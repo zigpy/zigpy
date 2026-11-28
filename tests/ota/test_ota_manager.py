@@ -109,6 +109,8 @@ def make_packet(
     [
         (4474, 64, 40),  # Insta
         (4405, 64, 40),  # Dresden Elektronik
+        (4489, 63, 40),  # LEDVANCE DIM requesting 63-byte chunks
+        (4489, 48, 48),  # LEDVANCE PLUG EU T, A60 RGBW T requesting 48-byte chunks
         (4129, 64, 64),  # Legrand
         (4742, 64, 50),  # Sonoff/default behavior
         (4742, 48, 48),  # Sonoff requested 48-byte chunks

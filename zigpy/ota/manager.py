@@ -40,6 +40,10 @@ def _image_block_size_for_manufacturer(
     if manufacturer_code in (4474, 4405):
         # Insta (4474) and Dresden Elektronik (4405) have issues above 40 bytes
         base_size = 40
+    elif manufacturer_code == 4489:
+        # LEDVANCE (4489) devices requesting 63 bytes only accept 40-byte blocks, but
+        # those requesting 48 bytes reject an image sent in 40-byte blocks
+        base_size = requested_size if requested_size <= 48 else 40
     elif manufacturer_code == 4129:
         # Legrand (4129) is not capped
         base_size = requested_size
