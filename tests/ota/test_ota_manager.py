@@ -2090,6 +2090,165 @@ async def test_ota_late_upgrade_end_after_failed_verification(
     assert hdr.command_id == foundation.GeneralCommand.Default_Response
 
 
+def _other_image_query(dev: zigpy.device.Device, ota: Cluster) -> t.ZigbeePacket:
+    """Create a query for the device's other firmware image (e.g. a second chip)."""
+    assert FW_IMAGE.firmware is not None
+    header = FW_IMAGE.firmware.header
+
+    return make_packet(
+        dev,
+        ota,
+        "query_next_image",
+        field_control=Ota.QueryNextImageCommand.FieldControl(0),
+        manufacturer_code=header.manufacturer_id,
+        image_type=header.image_type ^ 0x0100,
+        current_file_version=0x00030104,
+    )
+
+
+@pytest.mark.parametrize("when", ["before", "after", "during_transfer"])
+async def test_ota_manager_query_for_other_image(when: str) -> None:
+    """Test that a query for another image of the device does not end the update."""
+    loop = asyncio.get_running_loop()
+
+    async def image_notify() -> None:
+        if when == "before":
+            dev.application.packet_received(_other_image_query(dev, ota))
+            wake_up()
+        elif when == "after":
+            wake_up()
+            dev.application.packet_received(_other_image_query(dev, ota))
+        else:
+            wake_up()
+            loop.call_later(
+                0.01, dev.application.packet_received, _other_image_query(dev, ota)
+            )
+
+    dev, ota, log, wake_up = _make_sleepy_device(image_notify)
+
+    dev.ota_in_progress = True
+    status = await update_firmware(dev, FW_IMAGE)
+
+    assert status == foundation.Status.SUCCESS
+    assert log[-3:] == [
+        "image_block_response:last",
+        "upgrade_end",
+        "upgrade_end_response",
+    ]
+
+
+async def test_ota_manager_query_for_other_image_send_failure() -> None:
+    """Test that failing to answer a query for another image does not end the update."""
+
+    async def image_notify() -> None:
+        dev.application.packet_received(_other_image_query(dev, ota))
+        wake_up()
+
+    dev, ota, log, wake_up = _make_sleepy_device(image_notify)
+    send_packet = dev.application.send_packet.side_effect
+
+    async def fail_other_image_response(packet: t.ZigbeePacket) -> None:
+        hdr, cmd = ota.deserialize(packet.data.serialize())
+
+        if (
+            isinstance(cmd, Ota.ClientCommandDefs.query_next_image_response.schema)
+            and cmd.status == foundation.Status.NO_IMAGE_AVAILABLE
+        ):
+            raise DeliveryError("Failed to send request: MAC_NO_ACK")
+
+        await send_packet(packet)
+
+    dev.application.send_packet = AsyncMock(side_effect=fail_other_image_response)
+
+    dev.ota_in_progress = True
+
+    # Give up on the response right away, so its failure is handled during the update
+    with patch("zigpy.device.DEFAULT_REQUEST_RETRIES", 0):
+        status = await update_firmware(dev, FW_IMAGE)
+
+    assert status == foundation.Status.SUCCESS
+    assert log[-3:] == [
+        "image_block_response:last",
+        "upgrade_end",
+        "upgrade_end_response",
+    ]
+
+
+@patch("zigpy.ota.manager.MAX_TIME_WITHOUT_PROGRESS", 0.2)
+async def test_ota_manager_only_other_image_queried() -> None:
+    """Test that an update ends if the device only queries for its other image."""
+
+    async def image_notify() -> None:
+        dev.application.packet_received(_other_image_query(dev, ota))
+
+    dev, ota, log, _wake_up = _make_sleepy_device(image_notify)
+
+    dev.ota_in_progress = True
+    status = await update_firmware(dev, FW_IMAGE)
+
+    assert status == foundation.Status.NO_IMAGE_AVAILABLE
+    assert log == ["image_notify", "query_next_image_response:NO_IMAGE_AVAILABLE"]
+
+
+async def test_ota_manager_query_for_other_image_during_fast_poll_setup() -> None:
+    """Test that a query for another image does not stop us from notifying."""
+
+    async def image_notify() -> None:
+        wake_up()
+
+    dev, ota, log, wake_up = _make_sleepy_device(image_notify)
+
+    async def begin_fast_polling(*args, **kwargs) -> None:
+        # The device's other chip queries while we prepare the device
+        dev.application.packet_received(_other_image_query(dev, ota))
+        await asyncio.sleep(0.01)
+
+    dev.begin_fast_polling = AsyncMock(side_effect=begin_fast_polling)
+
+    dev.ota_in_progress = True
+    status = await update_firmware(dev, FW_IMAGE)
+
+    assert status == foundation.Status.SUCCESS
+    assert log[:3] == [
+        "query_next_image_response:NO_IMAGE_AVAILABLE",
+        "image_notify",
+        "query_next_image",
+    ]
+
+
+async def test_ota_manager_query_matches_image_metadata() -> None:
+    """Test that the image type of the index metadata identifies this image."""
+    assert FW_IMAGE.firmware is not None
+    header = FW_IMAGE.firmware.header
+
+    # The index lists the image under another image type than its file header
+    image = FW_IMAGE.replace(
+        metadata=FW_IMAGE.metadata.replace(image_type=header.image_type + 1)
+    )
+
+    async def image_notify() -> None:
+        log.append("query_next_image")
+        dev.application.packet_received(
+            make_packet(
+                dev,
+                ota,
+                "query_next_image",
+                field_control=Ota.QueryNextImageCommand.FieldControl(0),
+                manufacturer_code=header.manufacturer_id,
+                image_type=header.image_type + 1,
+                current_file_version=header.file_version - 10,
+            )
+        )
+
+    dev, ota, log, _wake_up = _make_sleepy_device(image_notify)
+
+    dev.ota_in_progress = True
+    status = await update_firmware(dev, image)
+
+    assert status == foundation.Status.SUCCESS
+    assert "query_next_image_response:SUCCESS" in log
+
+
 @patch("zigpy.ota.manager.FINAL_BLOCK_TIMEOUT", 0.1)
 async def test_ota_late_upgrade_end_after_last_block_send_failed() -> None:
     """Test that the image is remembered if the device got the last block we failed to
